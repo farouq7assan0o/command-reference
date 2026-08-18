@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nScans for WinRM ports 5985 (HTTP) and 5986 (HTTPS). WinRM must be explicitly enabled on older Windows but is on by default from Server 2012. Confirming open WinRM with valid credentials = interactive PowerShell shell via evil-winrm.\n\n=== CHAINING ===\nPort 5985/5986 open \u2192 attempt evil-winrm with discovered credentials \u2192 interactive PS shell \u2192 enumerate \u2192 privesc.",
+  "references": []
+}

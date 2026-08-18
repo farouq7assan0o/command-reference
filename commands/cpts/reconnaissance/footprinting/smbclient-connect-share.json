@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nsmbclient connects to a specific SMB share for file browsing and transfer. Interactive session provides ls, get, put, mget commands. With null session (-U '' -N), accesses shares that permit unauthenticated connection.\n\n=== CHAINING ===\ncme or smbmap identifies READ/WRITE shares \u2192 smbclient connects \u2192 browse contents \u2192 get sensitive files (configs, scripts, credentials) \u2192 put files if WRITE access + escalation path exists.\n\n=== FILE TRANSFER ===\nmget * downloads all files from current directory. recurse ON + prompt OFF \u2192 mget * downloads entire share tree recursively.",
+  "references": []
+}

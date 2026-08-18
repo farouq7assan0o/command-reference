@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nnc TARGET 873 probes rsync daemon and triggers share listing (#list) without any credentials. Returns available share names and their descriptions before any authentication attempt.\n\n=== CHAINING ===\nnc probe \u2192 list share names \u2192 rsync -av --list-only rsync://target/share \u2192 see contents \u2192 rsync download for files of interest.\n\n=== WHY NC FIRST ===\nThe initial nc probe reveals share names without authentication. Some shares listed may not be accessible without creds \u2014 enumerate names first, then attempt access per-share.",
+  "references": []
+}

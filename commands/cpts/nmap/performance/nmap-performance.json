@@ -1,0 +1,105 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "performance",
+    "timing"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Performance",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "Baseline: count open TCP ports",
+      "command": "sudo nmap 10.129.2.0/24 -F | grep \"/tcp\" | wc -l"
+    },
+    {
+      "label": "Save + compare two runs",
+      "command": "sudo nmap 10.129.2.0/24 -F -oN tnet.default\nsudo nmap 10.129.2.0/24 -F -oN tnet.minrate300 --min-rate 300\ncat tnet.default | grep \"/tcp\" | wc -l\ncat tnet.minrate300 | grep \"/tcp\" | wc -l"
+    },
+    {
+      "label": "Lab example",
+      "command": "sudo nmap 10.129.2.0/24 -F --initial-rtt-timeout 50ms --max-rtt-timeout 100ms"
+    }
+  ],
+  "notes": "Timing templates T1-T2 are useful against IDS-monitored networks; T4-T5 for fast internal scans. --min-rate controls minimum packets/second sent regardless of timing template. Combine --max-retries 0 with T4 for fastest reliable scans on stable networks.",
+  "references": [
+    {
+      "title": "Nmap Timing and Performance",
+      "url": "https://nmap.org/book/performance.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-nmap-timing",
+      "rel": "next",
+      "note": "Timing-template reference (-T0..-T5)."
+    }
+  ],
+  "id": "nmap-performance",
+  "name": "Nmap - Performance Tuning",
+  "command": "sudo nmap <cidr> -F --initial-rtt-timeout 50ms --max-rtt-timeout 100ms",
+  "description": "Tune RTT timeouts, retries, and packet rate to speed up big scans - at the cost of missing hosts on lossy links. Save outputs and diff open-port counts to see the trade-off.",
+  "variations": [
+    {
+      "label": "Optimized RTT timeouts",
+      "command": "sudo nmap <cidr> -F --initial-rtt-timeout 50ms --max-rtt-timeout 100ms"
+    },
+    {
+      "label": "No retries (fastest, least reliable)",
+      "command": "sudo nmap <cidr> -F --max-retries 0"
+    },
+    {
+      "label": "Minimum packet rate",
+      "command": "sudo nmap <cidr> -F --min-rate 300"
+    },
+    {
+      "label": "Insane timing template",
+      "command": "sudo nmap <cidr> -F -T 5"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Nmap timing templates (-T0..-T5) and fine-grained flags (--min-rate, --max-retries, --host-timeout) trade scan speed against stealth and reliability; slow scans evade rate-based IDS while fast scans finish sooner but generate denser, noisier traffic.",
+    "prerequisites": "Network access to the target.",
+    "impact": "A scan tuned for the required balance of speed, stealth, and reliability.",
+    "detection": "Aggressive timing templates (T4/T5) generate high packet volumes that trigger rate-based IDS/IPS alerts and can cause security systems to block the scanning host.\n\n[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "Fast timing produces dense traffic bursts (more detectable); slow timing produces a low-and-slow pattern that can slip under rate thresholds.",
+    "prevention": "[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "evasion": "Use lower timing templates (T0-T2) to reduce the network traffic rate and avoid triggering security monitoring. The default (-T3) is a reasonable middle ground; T1 (sneaky) and T0 (paranoid) are slowest and quietest.",
+    "sources": [
+      "HTB M03",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Network perimeters that do not filter ICMP, do not use egress filtering, or expose unnecessary services (all ports open) allow comprehensive port scanning. Systems without host-based firewalls or IDS/IPS allow scan traffic to enumerate every open service, revealing attack surface. No rate-limiting on inbound probes means stealth scans complete quickly.",
+    "vulnerable_config": "# No firewall between attacker and target (or overly permissive rules):\n# iptables -L  ->  Chain INPUT (policy ACCEPT)  [no rules]\n# Or: Windows Firewall disabled\n# Every service's port is reachable from any source\n\n# No IDS/IPS:\n# Snort/Suricata not deployed; no AWS GuardDuty / Azure Defender\n# Nmap SYN scan completes in seconds with no alert generated",
+    "secure_config": "# Linux host-based firewall — default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
+  }
+}

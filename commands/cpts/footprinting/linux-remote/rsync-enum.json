@@ -1,0 +1,93 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "rsync"
+  ],
+  "tools": [
+    "nmap",
+    "netcat",
+    "rsync"
+  ],
+  "tags": [
+    "rsync",
+    "shares"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Linux Remote Management",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "List an rsync share",
+      "command": "rsync -av --list-only rsync://10.129.14.128/dev"
+    }
+  ],
+  "notes": "List modules with `rsync -av rsync://<ip>:873/`. Unauthenticated shares let you pull (and sometimes push) files directly - grab configs, keys, backups. Anonymous access is common on NAS devices.",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "linux-cred-hunt",
+      "rel": "next",
+      "note": "Hunt secrets in the pulled files."
+    }
+  ],
+  "id": "rsync-enum",
+  "name": "Rsync - Enumeration",
+  "command": "rsync -av --list-only rsync://127.0.0.1/dev",
+  "description": "Rsync daemons (873) often expose modules/shares without auth. Probe, list, and pull files - optionally tunneled over SSH.",
+  "variations": [
+    {
+      "label": "Scan + probe",
+      "command": "sudo nmap -sV -p 873 127.0.0.1\nnc -nv 127.0.0.1 873"
+    },
+    {
+      "label": "List a share",
+      "command": "rsync -av --list-only rsync://127.0.0.1/dev"
+    },
+    {
+      "label": "Download a share",
+      "command": "rsync -av rsync://127.0.0.1/dev"
+    },
+    {
+      "label": "Over SSH",
+      "command": "rsync -av -e ssh rsync://127.0.0.1/dev\nrsync -av -e \"ssh -p2222\" rsync://127.0.0.1/dev"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Rsync uses port 873 and transfers data unencrypted by default. If no authentication is configured on rsync modules, they can be listed and accessed anonymously, exposing file contents and paths over the network in plaintext.",
+    "prerequisites": "Network access to rsync (TCP 873).",
+    "impact": "Listing and reading of exposed rsync modules when authentication is not configured.",
+    "detection": "[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "An rsync connection and module listing in the daemon's logs; unencrypted transfer traffic.",
+    "prevention": "Configure rsync to use SSH as its transport ('rsync -e ssh') to encrypt all transfers. Require authentication for all rsync modules in /etc/rsyncd.conf using 'auth users' and 'secrets file' directives. Restrict access to specific IPs using 'hosts allow'.\n\n[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "sources": [
+      "HTB M04",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
+    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  }
+}

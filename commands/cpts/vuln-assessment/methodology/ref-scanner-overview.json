@@ -1,0 +1,60 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [],
+  "tags": [
+    "reference",
+    "scanners",
+    "scan-types"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "Authenticated scans find far more",
+      "command": "# Unauthenticated = attacker's outside view; Authenticated (creds supplied) = missing patches, weak configs inside"
+    }
+  ],
+  "notes": "Scan types: Unauthenticated (external view) vs Authenticated (credentialed, deeper); Static testing (code/config) vs Dynamic (running app).\nScanners: Nessus (Tenable), Qualys, Nexpose (Rapid7), OpenVAS (Greenbone).\nAuthenticated scans find far more (missing patches, local misconfig) than unauthenticated.",
+  "references": [
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nessus-setup",
+      "rel": "next",
+      "note": "Set up Nessus."
+    },
+    {
+      "id": "openvas-setup",
+      "rel": "alternative",
+      "note": "Or OpenVAS."
+    }
+  ],
+  "id": "ref-scanner-overview",
+  "name": "Reference - Vulnerability Scanning Overview",
+  "command": "# unauthenticated vs authenticated ; static vs dynamic",
+  "description": "Scan modes and the mainstream scanner options.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1595.002"
+  ]
+}

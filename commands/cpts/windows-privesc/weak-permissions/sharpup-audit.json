@@ -1,0 +1,96 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "sharpup",
+    "icacls"
+  ],
+  "tags": [
+    "weak-permissions",
+    "enumeration"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Weak Permissions",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Run the audit",
+      "command": "./SharpUp.exe audit"
+    },
+    {
+      "label": "Verify permissions on a flagged service binary",
+      "command": "icacls \"C:\\Program Files (x86)\\PCProtect\\SecurityService.exe\""
+    }
+  ],
+  "notes": "=== SharpUp — Automated Privilege Escalation Audit ===\nC# port of PowerUp focused exclusively on privilege escalation misconfigurations.\n\n=== WHAT SHARPUP CHECKS ===\n.\\SharpUp.exe audit runs all checks:\n- ModifiableServices → service objects with write access for current user\n- ModifiableServiceBinaries → service binaries with write access\n- UnquotedServicePath → services with unquoted paths containing spaces\n- ModifiableRegistryAutoRuns → autorun registry keys with write access\n- ModifiableAutoRuns → autorun binary paths with write access\n- AlwaysInstallElevated → both HKCU and HKLM keys set to 1\n- TokenPrivileges → non-standard privileges in current token\n- ProcessDLLHijack → processes loading DLLs from writable locations\n- RegistryAutoLogon → Autologon credentials stored in registry\n\nIndividual check:\n  .\\SharpUp.exe audit ModifiableServiceBinaries\n\n=== COMPARISON WITH POWERUP ===\nPowerUp.ps1 → Invoke-AllChecks  (PowerShell — use when C# execution is blocked)\nSharpUp     → .\\SharpUp.exe audit  (C# — harder for script-based controls to block)\nwinPEAS     → broader coverage, noisier, includes non-privesc findings\n\n=== OPERATIONAL NOTES ===\nAV often flags SharpUp by signature — compile fresh from source or use obfuscation\nRun immediately after landing foothold — don't wait for manual enumeration\nSave output: .\\SharpUp.exe audit | Tee-Object sharpup-out.txt\nCross-reference findings with icacls and accesschk to confirm before exploiting\n\n=== CHAINING CONTEXT ===\nSharpUp identifies → manual verify with icacls/accesschk → select exploit path\nModifiableServiceBinaries → weak binary replacement → SYSTEM\nUnquotedServicePath + writable directory → place binary at candidate path → SYSTEM\nAlwaysInstallElevated → msfvenom MSI → SYSTEM\nTokenPrivileges → SeImpersonate → Potato attack → SYSTEM\n\n=== WHAT TO LOOK FOR ===\nAny finding from SharpUp = immediate exploitation attempt\nMultiple findings on same host = escalation path redundancy (exploit the easiest one first)\nNo SharpUp findings → move to: kernel exploits, credential hunting, DLL hijacking\nSharpUp on service accounts → different token → may reveal different writable paths",
+  "references": [
+    {
+      "title": "SharpUp (GhostPack)",
+      "url": "https://github.com/GhostPack/SharpUp"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "weak-service-binary",
+      "note": "Exploit a modifiable service binary.",
+      "rel": "next"
+    },
+    {
+      "id": "weak-service-acl-binpath",
+      "note": "Exploit a weak service ACL (reconfigure binPath).",
+      "rel": "next"
+    },
+    {
+      "id": "unquoted-service-path",
+      "note": "Exploit an unquoted service path.",
+      "rel": "next"
+    },
+    {
+      "id": "weak-registry-imagepath",
+      "note": "Exploit weak service registry ACLs.",
+      "rel": "next"
+    }
+  ],
+  "id": "sharpup-audit",
+  "name": "Weak Permissions - SharpUp Audit",
+  "command": ".\\SharpUp.exe audit",
+  "description": "SharpUp flags modifiable service binaries, weak service/registry ACLs, unquoted paths, and AlwaysInstallElevated. Confirm any hit with icacls before exploiting.",
+  "opsec": "loud",
+  "mitre": [
+    "T1082"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SharpUp is a C# port of PowerUp that performs automated Windows privilege escalation checks. It identifies misconfigured services, unquoted service paths, AlwaysInstallElevated, writable service binaries, registry ACL weaknesses, and token privilege abuse opportunities in a single scan. Typically run as the first post-exploitation enumeration step.",
+    "prerequisites": "Shell access. SharpUp.exe binary available. Standard user or admin — checks different findings at each level.",
+    "impact": "Comprehensive enumeration of privilege escalation vectors — identifies which subsequent attacks are applicable, significantly speeding up the escalation process.",
+    "detection": "SharpUp.exe execution (known tool signature, 25+ AV detections). Large number of service and registry queries in rapid succession. EDR: privilege escalation enumeration pattern.",
+    "artifacts": "Process: SharpUp.exe executed by standard user | Series of WMI/registry queries against service configurations | EDR: tool signature match for SharpUp",
+    "prevention": "Deploy AV/EDR that detects SharpUp execution. Fix underlying misconfigurations that SharpUp identifies. Run SharpUp defensively on a regular schedule to proactively detect misconfigurations before attackers do.",
+    "misconfiguration": "No EDR detecting known privilege escalation enumeration tools. Underlying misconfigurations (weak service permissions, unquoted paths, AlwaysInstallElevated) present that SharpUp would identify.",
+    "vulnerable_config": "# SharpUp audit:\n.\\SharpUp.exe audit\n# Output:\n# [!] Modifiable Service Binaries: C:\\Tools\\svc.exe (Everyone: GenericWrite)\n# [!] Unquoted Service Paths: 'C:\\Program Files\\Vuln App\\service.exe'\n# [!] AlwaysInstallElevated: 1 in HKCU and HKLM",
+    "secure_config": "# Run SharpUp defensively to find misconfigurations:\n.\\SharpUp.exe audit > C:\\Reports\\privesc_findings.txt\n\n# Then remediate findings:\n# Weak service binary: icacls <path> to restrict permissions\n# Unquoted paths: update service config to quote the binary path\n# AlwaysInstallElevated: disable in both registry keys",
+    "sources": [
+      "HTB M26",
+      "MITRE T1057",
+      "MITRE T1082"
+    ]
+  }
+}

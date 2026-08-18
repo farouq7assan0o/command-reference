@@ -1,0 +1,99 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "nessus"
+  ],
+  "tags": [
+    "reference",
+    "nessus",
+    "templates",
+    "credentialed"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Nessus",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "CPTS Ch06 — unauthenticated basic network scan workflow",
+      "command": "# 1. New Scan → Basic Network Scan\n# 2. Name: 'Lab Scan', Targets: 10.10.10.0/24\n# 3. Discovery tab: adjust port range\n# 4. Save → Launch\n# 5. Review findings by severity: Critical/High/Medium/Low/Info"
+    },
+    {
+      "label": "Review plugin output for a specific finding",
+      "command": "# Click finding → Plugin Details → see CVE IDs, CVSS score, solution"
+    }
+  ],
+  "notes": "Templates: Host Discovery, Basic Network Scan, Advanced Scan, Advanced Dynamic, Malware, Mobile Device, Web Application Tests, Credentialed Patch Audit, Badlock/Shellshock/DROWN detection.\nCredentialed auth - Windows: Password, Kerberos, LM/NTLM hash. Linux: Password, Public Key, Certificate, Kerberos. Also DB (Oracle/PostgreSQL/MySQL/MSSQL/...) and service (FTP/HTTP/IMAP/IPMI/Telnet).\nPlugin severities: Critical/High/Medium/Low/Info (plugins written in NASL). Safe checks recommended. Key Nessus scan types: Basic Network Scan (unauthenticated, broad), Advanced Scan (full control + credentials), Web Application Tests (web-focused), Credentialed Patch Audit (compliance-focused). Authenticated scans find significantly more findings — always use credentials when in scope. Also covered in: CPTS Ch06 (Vulnerability Assessment).",
+  "references": [
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nessus-setup",
+      "rel": "prereq",
+      "note": "Install/start Nessus first."
+    },
+    {
+      "id": "nmap-vuln-scripts",
+      "rel": "alternative",
+      "note": "Exam-legal detection: Nessus is banned on OSCP, use nmap NSE vuln scripts."
+    }
+  ],
+  "id": "ref-nessus-scanning",
+  "name": "Reference - Nessus Templates & Credentialed Scanning",
+  "command": "# pick a template + supply creds for a deeper scan",
+  "description": "Nessus scan templates and the authentication methods for credentialed scans.",
+  "opsec": "silent",
+  "exam": "restricted",
+  "mitre": [
+    "T1595.002"
+  ],
+  "variations": [
+    {
+      "description": "Basic network scan template (unauthenticated)",
+      "command": "# UI: New Scan → Basic Network Scan → set targets (IP/range/CIDR) → Save & Launch",
+      "label": "UI: New Scan → Basic Network Scan …"
+    },
+    {
+      "description": "Credentialed scan (Windows — provides domain access for deeper findings)",
+      "command": "# UI: Advanced Scan → Credentials tab → Windows → set domain\\user + password → Launch",
+      "label": "UI: Advanced Scan → Credentials ta…"
+    },
+    {
+      "description": "Credentialed scan (Linux SSH)",
+      "command": "# UI: Advanced Scan → Credentials tab → SSH → set username + password/key → Launch",
+      "label": "UI: Advanced Scan → Credentials ta…"
+    },
+    {
+      "description": "Web Application Tests scan template",
+      "command": "# UI: New Scan → Web Application Tests → set URL target → Launch",
+      "label": "UI: New Scan → Web Application Tes…"
+    },
+    {
+      "description": "Download Nessus scan report programmatically via API",
+      "command": "./nessus_downloader.rb\n# Enter: server IP, port (8834), username, password, scan ID",
+      "label": "nessus_downloader.rb"
+    },
+    {
+      "description": "Export scan as CSV via API",
+      "command": "curl -k -X POST 'https://localhost:8834/scans/<scan_id>/export' \\\n  -H 'X-ApiKeys: accessKey=<ak>;secretKey=<sk>' \\\n  -d '{\"format\":\"csv\"}' | jq .",
+      "label": "POST request"
+    }
+  ]
+}

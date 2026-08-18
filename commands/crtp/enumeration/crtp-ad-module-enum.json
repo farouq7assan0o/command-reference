@@ -1,0 +1,111 @@
+{
+  "id": "crtp-ad-module-enum",
+  "name": "AD Module Enumeration (Microsoft ActiveDirectory Module)",
+  "command": "Get-ADDomain | select DNSRoot,NetBIOSName,DomainSID,PDCEmulator",
+  "description": "Use the built-in Microsoft AD PowerShell module for LDAP-based enumeration. Stealthier than PowerView \u2014 uses legitimate AD admin tooling.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1482",
+    "T1069.002",
+    "T1087.002"
+  ],
+  "tools": [
+    "AD Module"
+  ],
+  "tags": [
+    "ad-module",
+    "ldap",
+    "enumeration",
+    "stealthy",
+    "rsat"
+  ],
+  "steps": [
+    {
+      "label": "Import AD module",
+      "command": "Import-Module ActiveDirectory"
+    },
+    {
+      "label": "Get domain info",
+      "command": "Get-ADDomain | select DNSRoot,NetBIOSName,DomainSID"
+    },
+    {
+      "label": "Get all users",
+      "command": "Get-ADUser -Filter * -Properties * | select SamAccountName,Enabled,AdminCount"
+    },
+    {
+      "label": "Get DA members",
+      "command": "Get-ADGroupMember 'Domain Admins' -Recursive"
+    },
+    {
+      "label": "Find Kerberoastable users",
+      "command": "Get-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName | select SamAccountName,ServicePrincipalName"
+    },
+    {
+      "label": "Find AS-REP roastable",
+      "command": "Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true} | select SamAccountName"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Get domain basic info",
+      "command": "Get-ADDomain | select DNSRoot,NetBIOSName,DomainSID"
+    },
+    {
+      "label": "Find Kerberoastable users",
+      "command": "Get-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName | select SamAccountName,ServicePrincipalName"
+    },
+    {
+      "label": "Get DA members",
+      "command": "Get-ADGroupMember 'Domain Admins' -Recursive | select SamAccountName"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-powerview-domain",
+      "note": "PowerView offers richer attribute access",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-bloodhound",
+      "note": "Graph paths after enumeration",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-kerberoasting",
+      "note": "Roast found SPN accounts",
+      "rel": "next"
+    }
+  ],
+  "notes": "AD module is pre-installed on DCs and RSAT machines. Load on regular machines: Import-Module ActiveDirectory",
+  "references": [
+    {
+      "title": "CRTP - AD Module Enumeration",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "The Microsoft ActiveDirectory PowerShell module communicates with DCs via LDAP/ADWS (port 9389) using the authenticated user's credentials. It is a signed Microsoft DLL \u2014 bypasses application allowlisting. Get-ADDomain, Get-ADUser, Get-ADGroup, Get-ADComputer return rich AD object data without elevated privileges.",
+    "prerequisites": "Domain user account. RSAT installed or AD module imported from DC. PowerShell execution. LDAP/ADWS access (ports 389/636/9389).",
+    "impact": "T1482 Domain Trust Discovery + T1069.002 Permission Groups Discovery + T1087.002 Account Discovery. Maps the full AD structure: users, groups, OUs, trusts, computers, GPOs \u2014 foundational data for attack path planning.",
+    "detection": "LDAP/ADWS queries from workstations (port 9389) \u2014 unusual for non-admins. Event 4662 for AD object access. MDI 'LDAP reconnaissance' alert. PowerShell Script Block Logging (Event 4104): Import-Module ActiveDirectory or Get-AD* commands.\nAdversary uses nltest, PowerShell, or Win32/.NET API to enumerate domain trust relationships (via DSEnumerateDomainTrusts, GetAllTrustRelationships, or LDAP queries), followed by discovery or authentication staging (DET0007/AN0016).\nDetection of adversary enumeration of domain or local group memberships via native tools such as net.exe, PowerShell, or WMI; may precede lateral movement or privilege escalation (DET0179/AN0507).\nGroup enumeration using 'id', 'groups', or 'getent group' commands on Linux, often followed by privilege escalation or SSH lateral movement (AN0508).\nGroup membership checks via 'dscl', 'dscacheutil', or 'id' on macOS, executed via terminal or automation scripts (AN0509).",
+    "artifacts": "Event 4104: Import-Module ActiveDirectory + Get-AD* | DC Event 4662: LDAP reads from workstation | MDI: LDAP reconnaissance alert | ADWS port 9389 connections in netflow | Zeek ldap.log: bulk query from non-admin",
+    "prevention": "PowerShell Constrained Language Mode (CLM) via WDAC/AppLocker. Script Block Logging + Module Logging (GPO). MDI deployment. Restrict LDAP/ADWS ports to admin hosts only.\nAudit: Map the trusts within existing domains/forests and keep trust relationships to a minimum.\nNetwork Segmentation: Employ network segmentation for sensitive domains.\nThis technique cannot be easily mitigated with preventive controls since it is based on the abuse of system features.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Use ADSI (.NET System.DirectoryServices) directly instead of AD module \u2014 same queries, different process signature. Query from a legitimate IT workstation. Use -Filter with small OUs to avoid volume anomalies.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1482/",
+      "https://attack.mitre.org/techniques/T1069/002/",
+      "https://attack.mitre.org/techniques/T1087/002/"
+    ],
+    "misconfiguration": "All domain users can read most AD object attributes by default. No Script Block Logging. No CLM enforcement. MDI not deployed. No LDAP-tier restriction.",
+    "vulnerable_config": "# PowerShell execution unrestricted:\nGet-ExecutionPolicy -List  # All scopes: Unrestricted or RemoteSigned\n\n# No Script Block Logging:\n# HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\n# EnableScriptBlockLogging = 0\n\n# ADWS port 9389 accessible from all workstations",
+    "secure_config": "# Enable Script Block Logging via GPO:\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1\n\n# CLM via WDAC (AllowMicrosoft base policy):\n# Unsigned scripts \u2192 Constrained Language Mode\n\n# MDI: built-in LDAP reconnaissance detection\n\n# Tiering: block workstations from DC LDAP/ADWS ports at firewall:\n# deny tcp 10.0.1.0/24 (workstations) 10.0.0.10/32 (DC) eq 389,636,9389"
+  }
+}

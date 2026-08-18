@@ -1,0 +1,89 @@
+{
+  "id": "ad-responder-crack",
+  "name": "Hashcat - Crack NetNTLMv2 Hash",
+  "command": "hashcat -m 5600 <hashfile> /usr/share/wordlists/rockyou.txt",
+  "description": "Cracks captured NetNTLMv2 hashes (Hashcat mode 5600) offline to recover plaintext passwords. NetNTLMv2 hashes cannot be used for pass-the-hash \u2014 cracking is the only path to leveraging them. Significantly faster with GPU.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Password Attacks",
+  "subcategory": "LLMNR/NBT-NS Poisoning",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "password-cracking",
+    "netntlm",
+    "hashcat",
+    "offline",
+    "ntlmv2"
+  ],
+  "mitre": [
+    "T1557.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY NTLMV2 MUST BE CRACKED (NOT PTH'd) ===\nNTLMv2 is a challenge-response mechanism: the authenticating client proves knowledge\nof the NT hash by computing HMAC-MD5(NTHash, challenge). The output (the hash you\ncaptured) is DIFFERENT every session because the challenge changes. It cannot replay\nagainst any service. You must find the original plaintext.\n\n=== HASH FORMAT ===\nNTLMv2 hash captured by Responder:\n  USER::DOMAIN:ServerChallenge:NTProofStr:blob\n  e.g.: backupagent::INLANEFREIGHT:4a8a02...:d2f3...:0101000000...\nThis full string is what goes in your hash file. Don't truncate it.\n\n=== HASHCAT MODES ===\n  5600  = NTLMv2  (NetNTLM challenge-response \u2014 what Responder captures)\n  5500  = NTLMv1  (older, rarer, weaker \u2014 less common in modern environments)\n  1000  = NTLM    (the raw NT hash \u2014 NOT what Responder captures)\n\n=== CRACKING STRATEGY ===\n1. rockyou.txt first (fastest): hashcat -m 5600 hash.txt /usr/share/wordlists/rockyou.txt\n2. Rules on rockyou: hashcat -m 5600 hash.txt rockyou.txt -r /usr/share/hashcat/rules/best64.rule\n3. Larger wordlists: /usr/share/seclists/Passwords/\n4. Masks for corporate patterns: hashcat -m 5600 hash.txt -a 3 ?u?l?l?l?l?d?d?s\n\n=== WHAT TO EXPECT ===\nUser account hashes: often crack if the user chose a weak/common password\nMachine account (HOSTNAME$) hashes: almost never crack (random 120-char passwords)\nService account hashes: frequently weak (admins set them and never rotate)\n\n=== AFTER CRACKING ===\nYou have a plaintext password. Use it to:\n  1. Spray across other systems (same user may reuse)\n  2. Access the specific service the hash was captured from\n  3. Get NT hash via secretsdump if you can authenticate with it\n  4. Try Evil-WinRM if the user has WinRM access\n\n=== IF THE HASH DOESN'T CRACK ===\nConsider NTLM relay instead (ntlmrelayx.py) \u2014 relay the captured challenge-response\ndirectly to a target service without needing the plaintext.",
+  "examples": [
+    {
+      "label": "Crack with rockyou.txt",
+      "command": "hashcat -m 5600 forend_ntlmv2 /usr/share/wordlists/rockyou.txt"
+    },
+    {
+      "label": "Add best64 rules for more coverage",
+      "command": "hashcat -m 5600 forend_ntlmv2 /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule"
+    },
+    {
+      "label": "Show cracked results",
+      "command": "hashcat -m 5600 forend_ntlmv2 --show"
+    },
+    {
+      "label": "Extract just the hashes from Responder logs",
+      "command": "cat /usr/share/responder/logs/SMB-NTLMv2-SSP-*.txt | grep -v '^#'"
+    }
+  ],
+  "references": [
+    {
+      "title": "hashcat",
+      "url": "https://hashcat.net/hashcat/"
+    },
+    {
+      "title": "hashcat example hashes (modes)",
+      "url": "https://hashcat.net/wiki/doku.php?id=example_hashes"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Password Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-evil-winrm",
+      "rel": "next",
+      "note": "Use the recovered creds."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Cracks captured NetNTLMv1/v2 hashes offline with hashcat (-m 5500/5600) or John to recover the victim's password.",
+    "prerequisites": "Captured NetNTLM hashes and a wordlist.",
+    "impact": "Plaintext passwords from poisoned authentications - initial access or lateral movement.",
+    "prevention": "[MITRE T1110.002 M1027] Long, high-entropy passwords make the offline NetNTLM crack infeasible; the hash is already captured, so the victim cannot detect the cracking - password strength is the only defence.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "LLMNR (Link-Local Multicast Name Resolution, UDP 5355) and NBT-NS (NetBIOS Name Service, UDP 137) are enabled by default on Windows and are used as fallback name resolution when DNS fails. These protocols broadcast name queries on the local network segment. Any host on the same subnet can respond to these broadcasts \u2014 a Responder instance claims to be the queried host and captures the NTLMv2 hash when the victim tries to authenticate.",
+    "vulnerable_config": "# LLMNR enabled (Windows default):\n# Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\n#   EnableMulticast: (not set or 1) = LLMNR active\n\n# NBT-NS enabled (Windows default):\n# Network adapter -> TCP/IP properties -> WINS -> 'Enable NetBIOS over TCP/IP'\n# = Default (or Enabled)\n\n# Test: trigger a failed DNS lookup, watch Responder capture NTLMv2:\n# net use \\\\nonexistent  -> host broadcasts LLMNR for 'nonexistent'\n# Responder replies -> host sends NTLMv2 -> Responder captures it",
+    "secure_config": "# Disable LLMNR via GPO:\n# Computer Config > Admin Templates > Network > DNS Client\n#   'Turn off multicast name resolution' = Enabled\n# OR Registry:\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient' \\\n    -Name EnableMulticast -Value 0\n\n# Disable NBT-NS via GPO (push WMI script or DHCP option 001 = 0x2):\n# Or per-machine:\nGet-WmiObject Win32_NetworkAdapterConfiguration | ForEach-Object {\n    $_.SetTcpipNetbios(2)  # 2 = Disable NetBIOS\n}\n\n# Enable SMB signing (stops relay attacks even if hash captured):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\n\n# Deploy a honeypot LLMNR responder for detection\n# Sysmon/IDS: alert on Responder-like traffic (UDP 5355 responses from non-DC hosts)"
+  },
+  "tools": [
+    "hashcat"
+  ]
+}

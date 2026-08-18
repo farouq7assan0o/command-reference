@@ -1,0 +1,101 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "mysql"
+  ],
+  "tools": [
+    "nmap",
+    "mysql"
+  ],
+  "tags": [
+    "mysql",
+    "database"
+  ],
+  "category": "Enumeration",
+  "subcategory": "MySQL",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Enumerate inside MySQL",
+      "command": "show databases;\nuse mysql;\nshow tables;\nselect version();\nselect * from <table>;"
+    },
+    {
+      "label": "Lab example",
+      "command": "mysql -u root -pP4SSw0rd -h 10.129.14.128"
+    }
+  ],
+  "notes": "Default port 3306. Try root/blank and root/root. `SHOW databases;` then hunt creds in app schemas. FILE privilege enables LOAD_FILE reads and INTO OUTFILE webshell writes.",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hydra-bruteforce",
+      "rel": "escalation",
+      "note": "Brute MySQL login."
+    },
+    {
+      "id": "sql-read-file",
+      "rel": "escalation",
+      "note": "Read files / write a webshell via FILE priv."
+    },
+    {
+      "id": "ref-mysql",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "mysql-enum",
+  "name": "MySQL - Enumeration",
+  "command": "mysql -u root -pP4SSw0rd -h <ip>",
+  "description": "Scan MySQL with NSE, then log in (empty or discovered password) and enumerate databases/tables/versions.",
+  "variations": [
+    {
+      "label": "Nmap MySQL scripts",
+      "command": "sudo nmap <ip> -sV -sC -p3306 --script mysql*"
+    },
+    {
+      "label": "Connect (no password)",
+      "command": "mysql -u root -h <ip>"
+    },
+    {
+      "label": "Connect (with password)",
+      "command": "mysql -u root -pP4SSw0rd -h <ip>"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries scan for open ports and running services on network hosts to identify attack surface and potential exploitation targets. Tools like netcat, nmap, and service-specific clients probe for banner information that reveals software versions, which can then be matched against known vulnerabilities.",
+    "prerequisites": "Network access to MySQL (TCP 3306); credentials for authenticated queries.",
+    "impact": "Server version, databases, and users; with credentials, data access and possible file read/write.",
+    "detection": "Monitor for processes performing network enumeration by correlating process creation, socket connections, and sequential destination IP probing within a time window. Unusual port scanning patterns or banner-grabbing activity from internal hosts can indicate post-compromise discovery.",
+    "artifacts": "Connection and authentication attempts in MySQL logs; traffic to 3306.",
+    "prevention": "Close unnecessary ports and services to prevent risk of discovery and potential exploitation. Use network intrusion detection/prevention systems to detect and prevent remote service scans. Ensure proper network segmentation to protect critical servers and devices.",
+    "sources": [
+      "MITRE T1046"
+    ],
+    "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
+    "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
+    "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+  }
+}

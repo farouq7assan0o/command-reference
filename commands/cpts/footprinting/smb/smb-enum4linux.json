@@ -1,0 +1,105 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tools": [
+    "enum4linux-ng",
+    "impacket"
+  ],
+  "tags": [
+    "smb",
+    "enum4linux",
+    "samrdump"
+  ],
+  "category": "Enumeration",
+  "subcategory": "SMB",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Impacket samrdump",
+      "command": "samrdump.py 10.129.14.128"
+    },
+    {
+      "label": "Lab example",
+      "command": "./enum4linux-ng.py 10.129.14.128 -A"
+    }
+  ],
+  "notes": "enum4linux-ng is the maintained rewrite (JSON output). `-A` runs all checks: shares, users, groups, password policy, RID cycling. Try a NULL session first (`-u '' -p ''`). Feeds usernames straight into spraying.",
+  "references": [
+    {
+      "title": "enum4linux-ng",
+      "url": "https://github.com/cddmp/enum4linux-ng"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "smb-share-enum",
+      "rel": "next",
+      "note": "List and access the shares found."
+    },
+    {
+      "id": "smb-rpcclient",
+      "rel": "alternative",
+      "note": "Deeper RID cycling / policy via rpcclient."
+    },
+    {
+      "id": "smb-password-spray",
+      "rel": "escalation",
+      "note": "Spray the enumerated users."
+    }
+  ],
+  "id": "smb-enum4linux",
+  "name": "SMB - enum4linux-ng & samrdump",
+  "command": "./enum4linux-ng.py <ip> -A",
+  "description": "enum4linux-ng bundles all SMB/RPC enumeration into one automated run; Impacket's samrdump dumps users via SAMR.",
+  "steps": [
+    {
+      "label": "1. Install enum4linux-ng",
+      "command": "git clone https://github.com/cddmp/enum4linux-ng.git\ncd enum4linux-ng\npip3 install -r requirements.txt"
+    },
+    {
+      "label": "2. Full enumeration",
+      "command": "./enum4linux-ng.py 10.129.14.128 -A"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046",
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SMB null sessions (-N flag) allow anonymous access without credentials when guest/anonymous access is permitted. enum4linux-ng reveals password policy weaknesses like DOMAIN_PASSWORD_COMPLEX: false and minimum password lengths as low as 5 characters, meaning discovered usernames can be attacked with brute-force using common passwords.\n\n[MITRE T1087.002] Adversaries enumerate domain accounts via net.exe, PowerShell, WMI, LDAP queries, or ldapsearch/samba tools (wbinfo -u) from non-domain-controller or non-admin endpoints — revealing valid usernames for password attacks and identifying high-value targets.",
+    "prerequisites": "Network access to SMB (TCP 445/139) and a null or guest session (or valid credentials).",
+    "impact": "Users, groups, shares, and password policy — a foundation for password spraying and share pillaging.",
+    "detection": "[MITRE T1087.002 AN0363] Adversary enumeration of domain accounts using net.exe, PowerShell, WMI, or LDAP queries from non-domain controllers or non-admin endpoints. [AN0364] Domain account enumeration using ldapsearch, samba tools (wbinfo -u), or winbindd lookups.",
+    "artifacts": "SMB session-setup and RPC query operations (Windows Event 4624 anonymous logon, 5140 share access with auditing).",
+    "prevention": "Disable null sessions and guest access (set 'restrict anonymous = 2' in smb.conf). Enforce strong password policies: enable complexity and increase minimum password length. Require SMB signing ('smb2 security mode = required') to prevent relay attacks.\n\n[MITRE T1087.002 M1028] Prevent administrator accounts from being enumerated when an application is elevating through UAC. Configure via GPO: Computer Configuration > Administrative Templates > Windows Components > Credential User Interface: 'Enumerate administrator accounts on elevation' → Disabled.",
+    "sources": [
+      "HTB M04",
+      "MITRE T1046",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
+    "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
+    "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+  }
+}

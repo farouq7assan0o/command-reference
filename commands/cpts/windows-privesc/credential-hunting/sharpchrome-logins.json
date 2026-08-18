@@ -1,0 +1,86 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "sharpchrome"
+  ],
+  "tags": [
+    "chrome",
+    "dpapi",
+    "credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Decrypt saved Chrome logins",
+      "command": ".\\SharpChrome.exe logins /unprotect"
+    }
+  ],
+  "notes": "=== SharpChrome — Decrypt Chrome Saved Passwords ===\nExtract AES key from Chrome's Local State file and decrypt Login Data SQLite database.\n\n=== HOW CHROME ENCRYPTS PASSWORDS ===\nChrome stores saved passwords in: %LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Login Data (SQLite)\nPassword column is encrypted with AES-256-GCM\nAES key is stored in: %LOCALAPPDATA%\\Google\\Chrome\\User Data\\Local State (JSON file)\nThe AES key itself is encrypted with DPAPI (user's Windows login credentials)\nSharpChrome decrypts the DPAPI-wrapped AES key, then decrypts all passwords\n\n=== USAGE ===\n  .\\SharpChrome.exe logins   → decrypts and displays all saved passwords\n  .\\SharpChrome.exe cookies  → decrypts session cookies (Slack d cookie, etc.)\n  .\\SharpChrome.exe logins /target:C:\\Users\\<user>\\   → target specific user profile\n\n=== WHAT'S TYPICALLY FOUND ===\nInternal web application credentials (SharePoint, Jira, Confluence)\nCloud platform credentials (AWS console, Azure portal, GCP)\nVPN web portals and 2FA enrollment pages\nExternal SaaS tools (Salesforce, GitHub, GitLab)\nEmail webmail interfaces\n\n=== FORENSIC NOTE ===\nGenerates Event IDs: 4688 (process creation) and 16385 (DPAPI activity)\nDefenders monitoring DPAPI events will detect this — minimize time between run and exfil\nOnly decryptable in context of owning user (DPAPI requires the user's credentials)\n\n=== CHAINING CONTEXT ===\nSharpChrome → AWS console credentials → cloud pivot → IAM escalation → org-wide compromise\nSharpChrome → GitHub credentials → source code → API keys embedded in code → further escalation\nSharpChrome → corporate SSO credentials → access to all SSO-connected applications\nAfter local admin escalation → access other users' Chrome profiles from their AppData\n\n=== WHAT TO LOOK FOR ===\nRun on any user account with a Chrome profile → almost always has saved passwords\nIT admin browser = highest value (has credentials for many systems)\nRun after DPAPI key extraction from LSASS → can decrypt any user's Chrome data offline\nSharpChrome cookies → extract Slack \"d\" cookie → hijack Slack session → internal comms",
+  "references": [
+    {
+      "title": "SharpDPAPI (GhostPack)",
+      "url": "https://github.com/GhostPack/SharpDPAPI"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "browser-cookie-theft",
+      "note": "Steal session cookies from the same browser.",
+      "rel": "alternative"
+    },
+    {
+      "id": "lazagne-all",
+      "note": "Broader automated browser/credential sweep.",
+      "rel": "alternative"
+    },
+    {
+      "id": "powershell-clixml-decrypt",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "sharpchrome-logins",
+  "name": "Credential Hunting - Chrome Saved Logins",
+  "command": ".\\SharpChrome.exe logins /unprotect",
+  "description": "SharpChrome (SharpDPAPI) decrypts saved Chrome logins using the current user's DPAPI keys, yielding plaintext site passwords.",
+  "opsec": "loud",
+  "mitre": [
+    "T1555.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Chrome stores saved login credentials encrypted with DPAPI in the Login Data SQLite database. SharpChrome uses the same DPAPI decryption path that Chrome uses, recovering plaintext usernames and passwords for all saved sites. This works without cracking because the attacker is running as the user whose DPAPI master key protects the data.",
+    "prerequisites": "Shell access as the target user (DPAPI master key accessible). Chrome must not have the database locked by a running Chrome instance, or a copy must be used. SharpChrome binary available.",
+    "impact": "Recovery of all usernames and passwords saved in Chrome for every website the user visits. May include VPN portals, corporate applications, and personal accounts that share credentials with corporate systems.",
+    "detection": "SharpChrome.exe execution (AV-detected). Access to Chrome Login Data SQLite database by non-Chrome process. Process: SharpChrome accessing %LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Login Data.",
+    "artifacts": "Process log: SharpChrome.exe executed | File access: Chrome Login Data read by non-Chrome process | EDR: credential harvesting from browser credential store",
+    "prevention": "Enable Chrome sync with account passwords (so stolen local credentials still require cloud authentication). Deploy endpoint protection detecting SharpChrome execution. Enforce MFA on all services so saved passwords require a second factor. Consider Google Advanced Protection Program for high-risk users.",
+    "misconfiguration": "No MFA enforced on corporate services — saved Chrome passwords provide direct access. No endpoint protection blocking SharpChrome. Chrome login database readable by non-Chrome processes without additional OS protection.",
+    "vulnerable_config": "# SharpChrome retrieves all saved Chrome passwords:\n.\\SharpChrome.exe logins /unprotect\n# Output: URL, username, password for all saved sites",
+    "secure_config": "# Enforce MFA on all corporate services\n# Even if passwords are stolen, MFA prevents access\n\n# Google Chrome Enterprise: disable local password saving\n# GPO: PasswordManagerEnabled = 0\n\n# Use enterprise credential manager (Keeper, 1Password) instead of browser\n\n# Monitor Chrome Login Data access by non-browser processes",
+    "sources": [
+      "HTB M26",
+      "MITRE T1555.003"
+    ]
+  }
+}

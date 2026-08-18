@@ -1,0 +1,107 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "tcp-connect",
+    "port-states"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Port Scanning",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "Filtered port - packets dropped (no reply)",
+      "command": "sudo nmap 10.129.2.28 -p 139 --packet-trace -n --disable-arp-ping -Pn"
+    },
+    {
+      "label": "Filtered port - packets rejected (RST)",
+      "command": "sudo nmap 10.129.2.28 -p 445 --packet-trace -n --disable-arp-ping -Pn"
+    },
+    {
+      "label": "Lab example",
+      "command": "sudo nmap 10.129.2.28 -p 443 --packet-trace --disable-arp-ping -Pn -n --reason -sT"
+    }
+  ],
+  "notes": "-Pn skip host discovery, -n no DNS, --disable-arp-ping force IP probes. States: open, closed, filtered, unfiltered, open|filtered, closed|filtered.",
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nmap-version-single-port",
+      "rel": "next",
+      "note": "Version-scan the open ports."
+    },
+    {
+      "id": "nmap-nse",
+      "rel": "next",
+      "note": "Run default/vuln scripts."
+    },
+    {
+      "id": "nmap-full-version-scan",
+      "rel": "alternative",
+      "note": "Full -p- -sV in one go."
+    }
+  ],
+  "id": "nmap-tcp-connect-scan",
+  "name": "Nmap - TCP Connect Scan & Port States",
+  "command": "sudo nmap <ip> -p 443 --packet-trace --disable-arp-ping -Pn -n --reason -sT",
+  "description": "Full TCP connect scan (-sT) completes the handshake - useful without root or through proxies. --reason shows why Nmap labels a port open/filtered/closed.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The TCP connect scan (-sT) completes the full three-way handshake through the OS socket API, so it needs no raw-packet privileges — but because the connection is fully established, the target service logs it, making it noisier than a SYN scan.",
+    "prerequisites": "Network access to the target (no elevated privileges required).",
+    "impact": "An open-port list obtained without raw-socket privileges.",
+    "detection": "The TCP Connect scan (-sT) fully completes the three-way handshake, creating connection log entries on most systems and is easily detected by modern IDS/IPS solutions. The SYN scan (-sS) is more stealthy as it leaves the handshake incomplete, minimizing connection logs — but advanced IDS/IPS systems have adapted to detect even this subtler technique.\n\n[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "Fully established TCP connections logged by the target services and firewalls — noisier than a half-open SYN scan.",
+    "prevention": "[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "evasion": "Prefer the SYN scan (-sS) over Connect scan to reduce log entries. Advanced IDS/IPS will still detect SYN scans through pattern matching.",
+    "sources": [
+      "HTB M03",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Network perimeters that do not filter ICMP, do not use egress filtering, or expose unnecessary services (all ports open) allow comprehensive port scanning. Systems without host-based firewalls or IDS/IPS allow scan traffic to enumerate every open service, revealing attack surface. No rate-limiting on inbound probes means stealth scans complete quickly.",
+    "vulnerable_config": "# No firewall between attacker and target (or overly permissive rules):\n# iptables -L  ->  Chain INPUT (policy ACCEPT)  [no rules]\n# Or: Windows Firewall disabled\n# Every service's port is reachable from any source\n\n# No IDS/IPS:\n# Snort/Suricata not deployed; no AWS GuardDuty / Azure Defender\n# Nmap SYN scan completes in seconds with no alert generated",
+    "secure_config": "# Linux host-based firewall — default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
+  },
+  "variations": [
+    {
+      "label": "Packet-trace on a single port (diagnose closed/filtered state)",
+      "command": "sudo nmap <ip> -p 21 --packet-trace -Pn -n --disable-arp-ping"
+    },
+    {
+      "label": "Connect scan (-sT) — no raw socket needed",
+      "command": "sudo nmap <ip> -p 443 --packet-trace --disable-arp-ping -Pn -n --reason -sT"
+    }
+  ]
+}

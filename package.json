@@ -1,0 +1,9 @@
+{
+  "name": "command-reference",
+  "version": "1.0.0",
+  "description": "Multi-certification command reference for penetration testing (CPTS and more)",
+  "scripts": {
+    "build": "node build-commands.js"
+  },
+  "license": "MIT"
+}

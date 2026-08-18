@@ -1,0 +1,97 @@
+{
+  "id": "cdsa-m11-js-encoding",
+  "name": "String Encoding & Decoding \u2014 Base64, Hex, ROT13 & Cipher Identification",
+  "command": "echo 'ZG8gdGhlIGV4ZXJjaXNlLCBkb24ndCBjb3B5IGFuZCBwYXN0ZSA7KQo=' | base64 -d",
+  "description": "Decoding encoded strings found in obfuscated JavaScript or server responses. Three main types: (1) Base64 \u2014 alphanumeric + '=', ends with == or =, echo ... | base64 -d; (2) Hex \u2014 0-9 a-f pairs only, echo ... | xxd -p -r; (3) ROT13/Caesar \u2014 letters only shifted 13 chars, echo ... | tr 'A-Za-z' 'N-ZA-Mn-za-m'. Cipher identification: Cipher Identifier at boxentriq.com. Pattern: spot by format \u2192 decode \u2192 use decoded value in subsequent curl POST request.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Malware Analysis",
+  "subcategory": "Code Analysis",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 11: JavaScript Deobfuscation",
+  "tags": [
+    "encoding",
+    "base64",
+    "hex",
+    "rot13",
+    "caesar",
+    "decoding",
+    "javascript",
+    "blue-team",
+    "curl"
+  ],
+  "notes": "=== WHY ENCODING IN OBFUSCATED JS ===\nObfuscated scripts commonly encode strings/data to:\n  \u2192 Evade string-based IDS/AV detection\n  \u2192 Hide C2 URLs, API keys, payloads\n  \u2192 Make static analysis harder\nEncoding \u2260 Encryption: encoding is reversible without a key\nEncryption DOES require a key (much harder to reverse)\n\n=== BASE64 ===\nIdentifying base64:\n  \u2192 Only contains: A-Z a-z 0-9 + / =\n  \u2192 String length is multiple of 4 (padded with = signs)\n  \u2192 Ends with = or == (padding)\n  \u2192 Example: ZG8gdGhlIGV4ZXJjaXNlCg==\n\nEncode:\n  echo 'https://www.hackthebox.eu/' | base64\n  \u2192 Output: aHR0cHM6Ly93d3cuaGFja3RoZWJveC5ldS8K\n\nDecode:\n  echo 'aHR0cHM6Ly93d3cuaGFja3RoZWJveC5ldS8K' | base64 -d\n  \u2192 Output: https://www.hackthebox.eu/\n\nDecode without trailing newline:\n  echo -n 'aHR0cHM6Ly93d3cuaGFja3RoZWJveC5ldS8K' | base64 -d\n\nDecode file:\n  base64 -d encoded.txt > decoded.txt\n\nOnline: https://www.base64decode.org/\n\n=== HEX ENCODING ===\nIdentifying hex:\n  \u2192 Only contains: 0-9 and a-f (16 chars total)\n  \u2192 Always even number of characters (each byte = 2 hex chars)\n  \u2192 Example: 68747470733a2f2f7777772e6861636b746865626f782e65752f\n\nEncode to hex:\n  echo 'https://www.hackthebox.eu/' | xxd -p\n  \u2192 68747470733a2f2f7777772e6861636b746865626f782e65752f0a\n\nDecode hex:\n  echo '68747470733a2f2f7777772e6861636b746865626f782e65752f0a' | xxd -p -r\n  \u2192 https://www.hackthebox.eu/\n\n  xxd -p -r = plain hex reverse (decode)\n  xxd -p    = plain hex forward (encode)\n\nAlternative decode with Python:\n  python3 -c \"print(bytes.fromhex('68747470733a2f2f7777772e6861636b746865626f782e65752f').decode())\"\n\nAlternative decode with printf:\n  printf '%b' \"$(echo '68747470733a...' | sed 's/\\(..\\)/\\\\x\\1/g')\"\n\n=== ROT13 / CAESAR CIPHER ===\nIdentifying ROT13:\n  \u2192 All characters are letters only (no numbers)\n  \u2192 Letter frequency looks random but 'http://' \u2192 'uggc://' (recognizable pattern)\n  \u2192 Example: uggcf://jjj.unpxgurobk.rh/ = https://www.hackthebox.eu/\n  \u2192 'ROT' + number = how many positions each letter is shifted\n  \u2192 ROT13 is self-inverse (apply twice = original)\n\nEncode ROT13 (same command as decode!):\n  echo 'https://www.hackthebox.eu/' | tr 'A-Za-z' 'N-ZA-Mn-za-m'\n  \u2192 uggcf://jjj.unpxgurobk.rh/\n\nDecode ROT13:\n  echo 'uggcf://jjj.unpxgurobk.rh/' | tr 'A-Za-z' 'N-ZA-Mn-za-m'\n  \u2192 https://www.hackthebox.eu/\n\ntr 'A-Za-z' 'N-ZA-Mn-za-m' explanation:\n  A\u2192N, B\u2192O, ..., M\u2192Z, N\u2192A, O\u2192B, ..., Z\u2192M (shift 13)\n  Same mapping for lowercase a-z\n\nOnline: https://rot13.com/\n\nOther Caesar shifts:\n  ROT1:  echo 'text' | tr 'A-Za-z' 'B-ZAb-za'\n  ROT5 (digits): echo '12345' | tr '0-9' '5-90-4'\n  ROT18 (letters+digits): combine ROT13+ROT5\n\n=== IDENTIFYING UNKNOWN ENCODING ===\nCipher Identifier: https://www.boxentriq.com/code-breaking/cipher-identifier\n  \u2192 Paste encoded string \u2192 auto-detects encoding type\n  \u2192 Works for: base64, hex, rot13, morse, binary, etc.\n\nDetermtination guide:\n  Is it only letters? \u2192 ROT13 / Caesar cipher\n  Is it 0-9 and a-f? \u2192 Hex\n  Is it alphanumeric + = ? \u2192 Base64\n  Is it only [ ] ( ) ! + ? \u2192 JSFuck\n  Is it % followed by hex? \u2192 URL encoding (%20 = space)\n  Is it &#number; ? \u2192 HTML entity encoding\n\nURL decode Python:\n  python3 -c \"from urllib.parse import unquote; print(unquote('Hello%20World'))\"\n\n=== COMPLETE WORKFLOW EXAMPLE ===\n1. Fetch the JS:\n   curl -s http://<TARGET>:<PORT>/secret.js\n\n2. Identify obfuscation: eval(function(p,a,c,k,e,d)... = packed\n\n3. Deobfuscate at UnPacker \u2192 get:\n   function generateSerial() {\n     var xhr = new XMLHttpRequest;\n     var url = '/serial.php';\n     xhr.open('POST', url, true);\n     xhr.send(null);\n   }\n\n4. Replicate JS function:\n   curl -s http://<TARGET>:<PORT>/serial.php -X POST\n   \u2192 Response: ZG8gdGhlIGV4ZXJjaXNlLCBkb24ndCBjb3B5IGFuZCBwYXN0ZSA7KQo=\n\n5. Identify encoding: ends with '=', alphanumeric \u2192 Base64\n\n6. Decode:\n   echo 'ZG8gdGhlIGV4ZXJjaXNlLCBkb24ndCBjb3B5IGFuZCBwYXN0ZSA7KQo=' | base64 -d\n   \u2192 'do the exercise, don't copy and paste ;)'\n\n7. Send decoded value as POST param:\n   curl -s http://<TARGET>:<PORT>/serial.php -X POST -d 'serial=DECODED_VALUE'\n   \u2192 Get flag!",
+  "examples": [
+    {
+      "label": "Decode base64 string",
+      "command": "echo 'aHR0cHM6Ly93d3cuaGFja3RoZWJveC5ldS8K' | base64 -d"
+    },
+    {
+      "label": "Encode string to base64",
+      "command": "echo 'https://www.hackthebox.eu/' | base64"
+    },
+    {
+      "label": "Decode hex string",
+      "command": "echo '68747470733a2f2f7777772e6861636b746865626f782e65752f0a' | xxd -p -r"
+    },
+    {
+      "label": "Encode string to hex",
+      "command": "echo 'https://www.hackthebox.eu/' | xxd -p"
+    },
+    {
+      "label": "Decode ROT13 string",
+      "command": "echo 'uggcf://jjj.unpxgurobk.rh/' | tr 'A-Za-z' 'N-ZA-Mn-za-m'"
+    },
+    {
+      "label": "Encode string to ROT13",
+      "command": "echo 'https://www.hackthebox.eu/' | tr 'A-Za-z' 'N-ZA-Mn-za-m'"
+    },
+    {
+      "label": "Decode hex with Python",
+      "command": "python3 -c \"print(bytes.fromhex('48656c6c6f').decode())\""
+    },
+    {
+      "label": "Send decoded value as POST parameter",
+      "command": "curl -s http://<TARGET_IP>:<PORT>/serial.php -X POST -d 'serial=<DECODED_VALUE>'"
+    },
+    {
+      "label": "Identify encoding type automatically",
+      "command": "# https://www.boxentriq.com/code-breaking/cipher-identifier \u2192 paste string"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - JavaScript Deobfuscation",
+      "url": "https://academy.hackthebox.com/module/details/41"
+    },
+    {
+      "title": "Cipher Identifier",
+      "url": "https://www.boxentriq.com/code-breaking/cipher-identifier"
+    },
+    {
+      "title": "Base64 Decode Online",
+      "url": "https://www.base64decode.org/"
+    },
+    {
+      "title": "ROT13 Online",
+      "url": "https://rot13.com/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m11-js-obfuscation",
+      "rel": "prereq",
+      "note": "JS obfuscation types and deobfuscation tools \u2014 must deobfuscate before decoding."
+    }
+  ],
+  "tools": [
+    "base64",
+    "xxd",
+    "tr",
+    "curl",
+    "python3"
+  ]
+}

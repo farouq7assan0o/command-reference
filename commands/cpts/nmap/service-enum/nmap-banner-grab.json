@@ -1,0 +1,105 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "ncat",
+    "tcpdump"
+  ],
+  "tags": [
+    "banner-grab",
+    "netcat"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Service Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "Lab — tcpdump on eth0 between attacker and target",
+      "command": "sudo tcpdump -i eth0 host 10.10.14.2 and 10.129.2.28"
+    },
+    {
+      "label": "Lab — nc grab SMTP banner on port 25",
+      "command": "nc -nv 10.129.2.28 25\n# Output: 220 inlane ESMTP Postfix (Ubuntu)"
+    },
+    {
+      "label": "Why tcpdump catches what nmap misses",
+      "command": "# nmap -sV may miss the banner if the service sends it after a delay\n# nc + tcpdump captures it in raw form including PSH data payload\n# Reveals exact version string and OS hint from service response"
+    }
+  ],
+  "notes": "Raw banner grab with nc/--script banner reveals software+version without a full scan - fast fingerprinting for CVE lookup. Cross-check with `-sV`.",
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nmap-version-single-port",
+      "rel": "next",
+      "note": "Confirm with nmap version detection."
+    }
+  ],
+  "id": "nmap-banner-grab",
+  "name": "Service Enumeration - Banner Grab & Capture",
+  "command": "nc -nv <ip> 25",
+  "description": "Manually grab a service banner with netcat, and optionally watch the exchange with tcpdump to confirm what the service returns.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Services expose version information through banners by design — the banner is transmitted immediately after a connection is established. Nmap reads these banners directly; if a banner is absent it falls back to signature-based matching against known service response patterns.",
+    "prerequisites": "Network access and an open port whose service returns a banner.",
+    "impact": "The service banner/version, used to fingerprint the service and match CVEs.",
+    "detection": "[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "A connection that reads the banner in the service's own log and in network monitoring.",
+    "prevention": "Configure services to suppress or reduce the verbosity of their banners. Remove exact version strings from service banners (e.g., ServerTokens Prod for Apache, set banner explicitly in vsftpd.conf) to limit version fingerprinting.\n\n[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "evasion": "A banner grab is a single short connection to one service — inherently low-noise; spacing grabs out and touching only needed services keeps the footprint minimal.",
+    "sources": [
+      "HTB M03",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Network perimeters that do not filter ICMP, do not use egress filtering, or expose unnecessary services (all ports open) allow comprehensive port scanning. Systems without host-based firewalls or IDS/IPS allow scan traffic to enumerate every open service, revealing attack surface. No rate-limiting on inbound probes means stealth scans complete quickly.",
+    "vulnerable_config": "# No firewall between attacker and target (or overly permissive rules):\n# iptables -L  ->  Chain INPUT (policy ACCEPT)  [no rules]\n# Or: Windows Firewall disabled\n# Every service's port is reachable from any source\n\n# No IDS/IPS:\n# Snort/Suricata not deployed; no AWS GuardDuty / Azure Defender\n# Nmap SYN scan completes in seconds with no alert generated",
+    "secure_config": "# Linux host-based firewall — default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
+  },
+  "steps": [
+    {
+      "label": "1. Terminal 1 — start tcpdump to capture the exchange",
+      "command": "sudo tcpdump -i eth0 host <attacker-ip> and <target-ip>"
+    },
+    {
+      "label": "2. Terminal 2 — connect with nc and read the banner",
+      "command": "nc -nv <target-ip> <port>"
+    },
+    {
+      "label": "3. Read banner from nc output (service announces itself)",
+      "command": "# Example: 220 inlane ESMTP Postfix (Ubuntu)\n# Reveals software, version, and sometimes OS"
+    },
+    {
+      "label": "4. Check tcpdump for PSH flag carrying banner bytes",
+      "command": "# Look for: Flags [P.] with payload = banner string\n# Confirms what nmap -sV couldn't show from a fast sweep"
+    }
+  ]
+}

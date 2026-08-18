@@ -1,0 +1,89 @@
+{
+  "id": "hashcat-rule-functions",
+  "name": "Hashcat - Rule Function Reference",
+  "type": "cheatsheet",
+  "command": "hashcat -a 0 -m <mode> <hash> <wordlist> -r <rule_file>",
+  "description": "Rules mutate each wordlist candidate on the fly (capitalize, leetspeak, append digits/symbols) so one base list covers many realistic variants. Bundled rules live in /usr/share/hashcat/rules; you can also write your own, one function per transformation.",
+  "platform": "linux",
+  "requires": [],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "hashcat"
+  ],
+  "tags": [
+    "hashcat",
+    "rules",
+    "wordlist",
+    "reference"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Hash Cracking",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Dictionary attack with a bundled rule",
+      "command": "hashcat -a 0 -m 0 <hash> /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule"
+    },
+    {
+      "label": "List the bundled rule files",
+      "command": "ls -l /usr/share/hashcat/rules"
+    },
+    {
+      "label": "OSCP Ch15 — preview mutations without cracking (pipe through --stdout to inspect candidates)",
+      "command": "hashcat -r <rule_file> --stdout <wordlist>"
+    }
+  ],
+  "notes": "Chain functions on one line (e.g. `c so0 $!` = capitalize, o->0, append !). best64.rule and rockyou-30000.rule are good defaults. Also covered in: OSCP PEN-200 Chapter 15 (Password Attacks).",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Hashcat Rule-Based Attack",
+      "url": "https://hashcat.net/wiki/doku.php?id=rule_based_attack"
+    },
+    {
+      "title": "OffSec PEN-200 - Password Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hashcat-mutate",
+      "note": "Use a rule to expand a wordlist to a file.",
+      "rel": "next"
+    },
+    {
+      "id": "hashcat-dictionary",
+      "note": "Apply rules during cracking.",
+      "rel": "next"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Common rule functions",
+      "command": ":      - Do nothing (pass through)\nl      - Lowercase all letters\nu      - Uppercase all letters\nc      - Capitalize first, lowercase rest\nsXY    - Replace all X with Y (e.g. so0)\n$X     - Append character X (e.g. $!)\n^X     - Prepend character X\nr      - Reverse the word\nd      - Duplicate the word"
+    },
+    {
+      "label": "Example custom rule file",
+      "command": "cat custom.rule\n:\nc\nso0\nc so0\nsa@\nc sa@\n$!\n$! c\n$! so0\n$! c so0 sa@"
+    },
+    {
+      "label": "Popular bundled rules",
+      "command": "/usr/share/hashcat/rules/best64.rule\n/usr/share/hashcat/rules/rockyou-30000.rule\n/usr/share/hashcat/rules/d3ad0ne.rule\n/usr/share/hashcat/rules/dive.rule\n/usr/share/hashcat/rules/leetspeak.rule\n/usr/share/hashcat/rules/toggles1-5.rule"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok"
+}

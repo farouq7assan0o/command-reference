@@ -1,0 +1,90 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "wevtutil",
+    "powershell"
+  ],
+  "tags": [
+    "event-logs",
+    "credential-hunting"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Event Log Readers",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Confirm group membership",
+      "command": "net localgroup \"Event Log Readers\""
+    },
+    {
+      "label": "Query Security log for credential-bearing command lines (with creds)",
+      "command": "wevtutil qe Security /rd:true /f:text /r:share01 /u:julie.clay /p:Welcome1 | findstr \"/user\""
+    },
+    {
+      "label": "Same via Get-WinEvent filtering event 4688",
+      "command": "Get-WinEvent -LogName security | where { $_.ID -eq 4688 -and $_.Properties[8].Value -like '*/user*'} | Select-Object @{name='CommandLine';expression={ $_.Properties[8].Value }}"
+    }
+  ],
+  "notes": "=== Event Log Readers — Credential Harvest from Security Log ===\nMembers can read event logs — find credentials passed as command-line args in 4688 events.\n\n=== WHY THIS WORKS ===\nWhen process creation auditing + command-line value logging is enabled:\nEvery launched process generates Event ID 4688 with the FULL command line.\nCommands like net use, runas, backup scripts frequently pass passwords as inline parameters.\nThese credentials are captured verbatim in plaintext in the event log.\n\n=== ATTACK FLOW ===\nCheck membership: net localgroup \"Event Log Readers\"\n\nUsing wevtutil (works for Event Log Readers — does NOT require local admin):\n  wevtutil qe Security /rd:true /f:text | Select-String \"/user\"\n  wevtutil qe Security /rd:true /f:text /r:<REMOTE> /u:<user> /p:<pass> | Select-String \"/user\"\n\nUsing Get-WinEvent (requires local admin OR registry ACL mod on Security log):\n  Get-WinEvent -LogName Security | Where-Object {$_.Id -eq 4688 -and $_.Properties[8].Value -like '*/user*'}\n  NOTE: wevtutil does NOT have the local admin restriction — prefer wevtutil for Event Log Readers\n\nPowerShell Operational log (readable by ANY user — no group membership needed):\n  Get-WinEvent -LogName 'Microsoft-Windows-PowerShell/Operational' | Where-Object {$_.Message -match 'password|credential'}\n\n=== CREDENTIAL PATTERNS TO SEARCH ===\n/user    → net use, runas, wevtutil remote queries\n-u       → many tools accepting credentials\npassword → script parameters and variable names\n-p       → short password flags\npass     → variable names in logged script blocks\n\n=== CHAINING CONTEXT ===\n4688 credential harvest → service account passwords → lateral movement\n4688 reveals DA running backup scripts with inline creds → immediate escalation\nPowerShell Operational log → script block reveals hardcoded creds in admin automation\nCombine wevtutil with remote queries → harvest credentials from other hosts' logs if permitted\n\n=== WHAT TO LOOK FOR ===\n4688 events enabled? Check: auditpol /get /subcategory:\"Process Creation\"\nCommand-line value logging: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit\\ProcessCreationIncludeCmdLine_Enabled\nEvent Log Readers membership in non-admin accounts = frequent misconfiguration\nPriority accounts to look for in logs: service accounts, backup accounts, domain admins running scripts",
+  "references": [
+    {
+      "title": "Microsoft - Event 4688",
+      "url": "https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting-findstr",
+      "note": "Pivot to broader on-disk credential hunting.",
+      "rel": "next"
+    },
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Confirms Event Log Readers membership.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "eventlogreaders-wevtutil",
+  "name": "Event Log Readers - Hunt Credentials in Security Logs",
+  "command": "wevtutil qe Security /rd:true /f:text | Select-String \"/user\"",
+  "description": "Members of Event Log Readers can read the Security log. Process-creation events (4688) often capture command lines containing plaintext passwords passed via /user - grep them out.",
+  "opsec": "loud",
+  "mitre": [
+    "T1654"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "When Windows process creation auditing (Event ID 4688) with command-line logging is enabled, credentials passed as command-line arguments to tools like `net use`, `runas`, or custom scripts are recorded in plaintext in the Security event log. Members of the Event Log Readers group can query this log without admin rights, discovering captured credentials.",
+    "prerequisites": "Membership in the Event Log Readers local group. Process creation auditing with command-line logging enabled via Group Policy. Administrators previously passing credentials as command-line parameters.",
+    "impact": "Plaintext credential recovery from Security event log. Discovered credentials enable lateral movement, privilege escalation, or further account compromise.",
+    "detection": "wevtutil or Get-WinEvent queries against the Security log by non-admin users. High volume of event log queries from a single user. SIEM: alerting on Event Log Readers membership changes.",
+    "artifacts": "Security event log query by non-admin | wevtutil process execution by Event Log Readers member | Credentials if discovered in 4688 events",
+    "prevention": "Never pass credentials as command-line arguments to scripts or tools — use credential objects, PSCredential, or secrets managers instead. Audit Event Log Readers group membership. Consider restricting 4688 logging to exclude sensitive command patterns, or use Windows Defender Credential Guard.",
+    "misconfiguration": "Process creation auditing with command-line logging enabled, but administrators pass credentials inline: `net use \\\\server\\share /user:admin Password123!`. Event Log Readers group has unnecessary members.",
+    "vulnerable_config": "# Command logged in Event ID 4688:\n# net use \\\\fileserver\\share /user:inlanefreight\\julie.clay Welcome1\n\n# Attacker in Event Log Readers can query:\nwevtutil qe Security /rd:true /f:text | Select-String \"/user\"",
+    "secure_config": "# Audit Event Log Readers members\nnet localgroup 'Event Log Readers'\n\n# Use PSCredential instead of inline passwords:\n$cred = Get-Credential\nNew-PSDrive -Name Z -PSProvider FileSystem -Root \\\\server\\share -Credential $cred\n\n# Remove command-line logging for sensitive operations\n# or use Windows Credential Guard to protect credentials",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552",
+      "MITRE T1552.006"
+    ]
+  }
+}

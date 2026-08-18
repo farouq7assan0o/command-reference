@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNmap with -sC -sV -A against port 21 runs ftp-anon (tests anonymous login, lists root if successful), ftp-syst (returns server version via STAT), and general service version detection. One command covers the key FTP enumeration checks.\n\n=== KEY FINDINGS ===\nftp-anon: [NSE: writeable] next to files means they are world-writable \u2014 upload capability confirmed. ftp-syst: exact vsftpd/ProFTPD version for CVE lookup.\n\n=== SCRIPT TRACE ===\n--script-trace exposes raw NSOCK communication \u2014 shows every command sent/received at the protocol level. Useful for understanding what NSE scripts actually do and for debugging.",
+  "references": []
+}

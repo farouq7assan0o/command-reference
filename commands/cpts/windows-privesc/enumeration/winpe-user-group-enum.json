@@ -1,0 +1,101 @@
+{
+  "type": "cheatsheet",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "cmd"
+  ],
+  "tags": [
+    "enumeration",
+    "users",
+    "privileges"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Current user and privileges (the key check)",
+      "command": "whoami /priv"
+    },
+    {
+      "label": "Group memberships - look for privileged groups",
+      "command": "whoami /groups"
+    },
+    {
+      "label": "Local users and groups",
+      "command": "net user ; net localgroup"
+    },
+    {
+      "label": "Members of the administrators group",
+      "command": "net localgroup administrators"
+    }
+  ],
+  "notes": "=== USER AND GROUP ENUMERATION ===\nGroup membership surfaces indirect privilege paths that don't appear in whoami /priv.\n\nCOMMANDS:\nnet user <username>                          → full user details including group membership\nnet localgroup                               → all local groups\nnet localgroup \"Backup Operators\"            → list members of specific group\nGet-LocalGroupMember -Group \"Administrators\" → PowerShell equivalent\nGet-ADPrincipalGroupMembership $env:USERNAME → domain group membership\n\nHIGH-VALUE GROUPS TO CHECK (in priority order):\n1. Administrators / Domain Admins → already privileged\n2. Backup Operators → SeBackupPrivilege → NTDS.dit → domain compromise\n3. Server Operators → SERVICE_ALL_ACCESS on DC services → SYSTEM on DC\n4. Print Operators → SeLoadDriverPrivilege → kernel driver exploit\n5. DnsAdmins → ServerLevelPluginDll → SYSTEM via DNS service on DC\n6. Hyper-V Administrators → clone DC VM → offline NTDS.dit extraction\n7. Event Log Readers → read Security log → credential harvest from 4688 events\n8. Account Operators → modify user/group accounts → group manipulation\n9. Schema Admins → modify AD schema → backdoor default object ACLs\n\n=== WINDOWS PRIVILEGES QUICK REFERENCE ===\nSeImpersonatePrivilege → JuicyPotato / PrintSpoofer / RoguePotato\nSeDebugPrivilege       → LSASS dump (ProcDump) + psgetsystem (SYSTEM via parent process)\nSeTakeOwnershipPrivilege → takeown any file → icacls grant → read SAM/NTDS/web.config\nSeBackupPrivilege      → FILE_FLAG_BACKUP_SEMANTICS → bypass ACL on any file\nSeLoadDriverPrivilege  → load Capcom.sys → kernel-level SYSTEM execution\nSeRestorePrivilege     → write anywhere on filesystem\n\nEVENT ID 4672 fires on any logon with sensitive privileges in token.\nBaseline expected accounts, alert on deviations.\n\n=== CHAINING CONTEXT ===\nStandard user + Backup Operators membership = path to all domain hashes (NTDS.dit)\nService account + SeImpersonate = reliable SYSTEM (Potato attacks)\nDeveloper account + SeDebugPrivilege = LSASS dump + psgetsystem",
+  "references": [
+    {
+      "title": "Microsoft - Privilege Constants",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/secauthz/privilege-constants"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "seimpersonate-printspoofer",
+      "note": "SeImpersonate -> SYSTEM via PrintSpoofer.",
+      "rel": "next"
+    },
+    {
+      "id": "sebackup-copy-file",
+      "note": "SeBackup/Backup Operators -> read protected files.",
+      "rel": "next"
+    },
+    {
+      "id": "setakeownership",
+      "note": "SeTakeOwnership -> seize and read any file.",
+      "rel": "next"
+    }
+  ],
+  "id": "winpe-user-group-enum",
+  "name": "WinPE - User, Group and Privilege Enumeration",
+  "command": "whoami /priv",
+  "description": "Enumerates the current token's privileges and group memberships plus local users/groups. whoami /priv is the key check - SeImpersonate, SeDebug, SeBackup, SeTakeOwnership, SeLoadDriver each map to a specific escalation path.",
+  "variations": [
+    {
+      "label": "Current token",
+      "command": "whoami /priv\nwhoami /groups\nwhoami /user\necho %USERNAME%"
+    },
+    {
+      "label": "Local users/groups",
+      "command": "net user\nnet localgroup\nnet localgroup administrators\nnet accounts\nquery user"
+    },
+    {
+      "label": "PS local groups",
+      "command": "Get-LocalGroup | Select-Object Name,Description\nGet-LocalGroupMember Administrators\nGet-LocalGroupMember '<group>'"
+    },
+    {
+      "label": "Installed software (registry)",
+      "command": "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select DisplayName,DisplayVersion\nGet-ItemProperty 'HKLM:\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select DisplayName,DisplayVersion"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1033"
+  ],
+  "exam": "exam-ok"
+}

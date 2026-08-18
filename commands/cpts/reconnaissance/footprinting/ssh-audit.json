@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nssh-audit fingerprints SSH server configuration: supported key exchange algorithms, host key types, cipher suites, and MAC algorithms. Identifies weak/deprecated algorithms (diffie-hellman-group1-sha1, arcfour, md5-hmac) worth noting in the report.\n\n=== CHAINING ===\nssh-audit \u2192 weak algorithms identified \u2192 version fingerprint enables CVE lookup \u2192 weak host key type (DSA) indicates older OpenSSH version \u2192 targeted exploitation research.\n\n=== REPORT VALUE ===\nWeak SSH cipher suites are a common finding in hardening assessments. ssh-audit output directly maps to CIS benchmark and NIST 800-52 compliance checks.",
+  "references": []
+}

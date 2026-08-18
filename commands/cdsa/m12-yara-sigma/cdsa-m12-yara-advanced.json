@@ -1,0 +1,104 @@
+{
+  "id": "cdsa-m12-yara-advanced",
+  "name": "Advanced YARA Rule Development \u2014 pe/math Modules, yarGen & Real-World Rules",
+  "command": "python3 yarGen.py -m /home/htb-student/Samples/dharma_sample.exe -o /home/htb-student/dharma.yar",
+  "description": "Advanced YARA techniques for APT/malware detection. YARA modules extend rules: import \"pe\" gives pe.imphash(), pe.number_of_sections, pe.number_of_resources, pe.resources[i]; import \"math\" gives math.entropy() for packed/encrypted sections. .NET assembly detection: BSJB magic bytes (42 53 4A 42) at CLI header = .NET artifact. yarGen workflow: update goodware DB first, then generate from samples dir, then tune. Real-world rules: APT17 ZoxPNG by imphash, Neuron Service by .NET BSJB string, Stonedrill Shamoon2 by high entropy + resource ID 101.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Malware Analysis",
+  "subcategory": "Detection Rules",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 12: YARA & Sigma for SOC Analysts",
+  "tags": [
+    "yara",
+    "pe-module",
+    "math-module",
+    "imphash",
+    "entropy",
+    "dotnet",
+    "yargen",
+    "apt",
+    "malware",
+    "blue-team",
+    "threat-hunting"
+  ],
+  "notes": "=== YARA MODULES OVERVIEW ===\nModules extend YARA with structured access to file internals.\nImport at top of rule file:\n  import \"pe\"\n  import \"math\"\n\n=== pe MODULE ===\n\npe.imphash()\n  \u2192 Import hash \u2014 hash of all imported function names in order\n  \u2192 SAME malware family often shares imphash even across recompiles\n  \u2192 If two samples have identical imphash \u2192 likely same codebase\n\n  Example (APT17 ZoxPNG rule):\n    import \"pe\"\n    rule APT17_ZoxPNG {\n        meta:\n            description = \"Detects APT17 ZoxPNG RAT via import hash\"\n            author = \"Florian Roth\"\n        condition:\n            pe.imphash() == \"414bbd566b700ea021cfae3ad8f4d9b9\"\n    }\n\npe.number_of_sections\n  \u2192 Count of PE sections (e.g., .text, .data, .rsrc)\n  \u2192 Unusual section counts can indicate packing or malware\n  \u2192 Most legitimate PE files: 3-8 sections\n\npe.number_of_resources\n  \u2192 Count of resources (icons, strings, version info, etc.)\n  \u2192 Malware embedding shellcode in resources \u2192 often 1-2 resources\n\npe.resources[i].id\n  \u2192 Resource ID at index i\n  \u2192 Stonedrill embeds dropper as resource with specific ID\n  \u2192 Access: pe.resources[0].id == 101\n\npe.resources[i].offset\n  \u2192 Byte offset of resource data in file\n\npe.resources[i].length\n  \u2192 Size of resource in bytes\n\n=== math MODULE ===\n\nmath.entropy(offset, size)\n  \u2192 Shannon entropy of a byte range in the file\n  \u2192 Range: 0 (all same byte) to 8 (maximum randomness)\n  \u2192 Threshold: > 7.0 = highly packed/encrypted (suspicious)\n  \u2192 Normal binaries: ~6.0-7.0 for code sections\n\nDetecting encrypted/packed overlay:\n  math.entropy(0, filesize) > 7.0\n\nDetecting high-entropy resource:\n  math.entropy(pe.resources[0].offset, pe.resources[0].length) > 7.0\n\nStonedrill/Shamoon2 example:\n  import \"pe\"\n  import \"math\"\n  rule Stonedrill_Wiper {\n      meta:\n          description = \"Detects Stonedrill wiper via high-entropy resource\"\n      condition:\n          pe.number_of_resources == 1 and\n          pe.resources[0].id == 101 and\n          math.entropy(pe.resources[0].offset, pe.resources[0].length) > 7.0\n  }\n\n=== .NET ASSEMBLY DETECTION ===\nAll .NET executables contain a CLI header with 'BSJB' magic bytes:\n  \u2192 ASCII string: 'BSJB'\n  \u2192 Hex: 42 53 4A 42\n  \u2192 Located in the CLI (Common Language Infrastructure) header\n  \u2192 Present in ALL .NET assemblies (executables and DLLs)\n\nDetect .NET binary in YARA:\n  rule Is_DotNET {\n      strings:\n          $bsjb = \"BSJB\"\n      condition:\n          uint16(0) == 0x5A4D and\n          $bsjb\n  }\n\nmonodis tool (Linux) \u2014 disassemble .NET assemblies:\n  monodis /path/to/assembly.exe\n  \u2192 Outputs: class names, method names, IL instructions\n  \u2192 Use to identify unique strings/classes for YARA detection\n  \u2192 Look for: class names, namespace names, string literals in IL\n\nFinding unique strings from .NET with strings:\n  strings -a assembly.exe | grep -i 'UniqueClassName'\n\nNeuron Service (Turla APT) example:\n  rule Neuron_Service {\n      meta:\n          description = \"Detects Neuron malware .NET service\"\n      strings:\n          $s1 = \"NeuronService\" fullword ascii\n          $s2 = \"Execute\" fullword ascii\n      condition:\n          uint16(0) == 0x5A4D and\n          $s1 and $s2 and\n          $bsjb  // $bsjb defined separately or as:\n          // (for inline: uint32(pe.directories[14].virtual_address) == 0x424A5342)\n  }\n\n=== UPX PACKER DETECTION ===\nUPX-packed binaries have distinctive section names:\n  \u2192 Sections named: UPX0, UPX1, UPX2\n  \u2192 PE header section names are at fixed offsets\n\nSimple UPX detection string rule:\n  rule UPX_Packed {\n      strings:\n          $upx0 = \"UPX0\"\n          $upx1 = \"UPX1\"\n      condition:\n          uint16(0) == 0x5A4D and\n          all of them\n  }\n\n=== yarGen DETAILED WORKFLOW ===\nyarGen = YARA Rule Generator by Florian Roth\n  \u2192 Extracts unique strings from malware\n  \u2192 Compares against goodware DB to exclude common strings\n  \u2192 Output: ready-to-use YARA rules\n\nStep 1: Update goodware database (first time ONLY):\n  cd /home/htb-student/yarGen\n  python3 yarGen.py --update\n  \u2192 Downloads ~100MB of known-good string databases\n  \u2192 Must run before first use or strings won't be filtered\n\nStep 2: Generate rule from a sample directory:\n  python3 yarGen.py -m /home/htb-student/Samples/ -o /home/htb-student/rules.yar\n  \u2192 -m: path to malware sample(s) \u2014 file or directory\n  \u2192 -o: output .yar file path\n  \u2192 Creates one rule per sample file\n  \u2192 Rule names auto-generated from filename\n\nStep 3: Review and tune generated rules:\n  \u2192 Remove overly generic strings (short, common substrings)\n  \u2192 Verify condition makes sense (default: 1 of ($s*))\n  \u2192 Add metadata: author, date, reference, description\n  \u2192 Test against clean samples: run on known-good directory \u2192 expect 0 matches\n  \u2192 Tune score threshold if yarGen has a scoring mode\n\nExample generated rule output:\n  rule dharma_sample {\n      meta:\n          description = \"Auto-generated rule - file dharma_sample.exe\"\n          author = \"yarGen Rule Generator\"\n      strings:\n          $s1 = \"Carbanak\" fullword ascii\n          $s2 = \"ransom_dharma\" fullword wide\n          ...\n      condition:\n          uint16(0) == 0x5A4D and ( 1 of ($s*) )\n  }\n\n=== APT17 / ZoxPNG \u2014 IMPHASH-BASED RULE ===\nReal-world case: APT17 used ZoxPNG RAT tool\n  \u2192 All samples shared same import table \u2192 same imphash\n  \u2192 Most reliable indicator across variants\n\nManual imphash check:\n  pefile Python library:\n    python3 -c \"import pefile; pe=pefile.PE('sample.exe'); print(pe.get_imphash())\"\n\nImphash-based rule:\n  import \"pe\"\n  rule APT17_ZoxPNG {\n      meta:\n          description = \"Detects APT17 ZoxPNG RAT via import hash\"\n          hash1 = \"0375b4216334c85a4b29441a3d37e61d\"\n          author = \"Florian Roth\"\n          date = \"2016-03-26\"\n      condition:\n          pe.imphash() == \"414bbd566b700ea021cfae3ad8f4d9b9\"\n  }\n\n=== COMBINING TECHNIQUES IN ONE RULE ===\nBest practice: combine multiple weak indicators = strong rule\n\n  import \"pe\"\n  import \"math\"\n  rule Example_Robust_Malware_Detection {\n      meta:\n          description = \"Detects example malware via multiple indicators\"\n      strings:\n          $s1 = \"evil_string\" fullword ascii\n          $s2 = \"c2domain.com\" fullword ascii nocase\n          $pdb = \"\\\\.pdb\" ascii\n          $bsjb = \"BSJB\"                    // if .NET\n      condition:\n          uint16(0) == 0x5A4D and\n          filesize < 2MB and\n          pe.number_of_sections > 2 and\n          math.entropy(0, filesize) > 6.5 and\n          2 of ($s*) and\n          not $pdb                           // exclude debug builds\n  }\n\n=== ONLINE HUNTING RESOURCE ===\nUnpac.Me: https://www.unpac.me/\n  \u2192 Upload sample \u2192 automatic unpacking (UPX, etc.)\n  \u2192 Run YARA rules against unpacked samples\n  \u2192 YARA Hunt: search their DB of samples with your rule\n  \u2192 Useful for testing rules against a large malware corpus",
+  "examples": [
+    {
+      "label": "Update yarGen goodware database (first time)",
+      "command": "python3 yarGen.py --update"
+    },
+    {
+      "label": "Generate YARA rules from malware sample directory",
+      "command": "python3 yarGen.py -m /home/htb-student/Samples/ -o /home/htb-student/rules.yar"
+    },
+    {
+      "label": "Get PE import hash with Python pefile",
+      "command": "python3 -c \"import pefile; pe=pefile.PE('sample.exe'); print(pe.get_imphash())\""
+    },
+    {
+      "label": "Disassemble .NET assembly with monodis",
+      "command": "monodis /home/htb-student/Samples/assembly.exe"
+    },
+    {
+      "label": "Find unique strings in .NET binary",
+      "command": "strings -a /home/htb-student/Samples/assembly.exe | grep -i 'ClassName'"
+    },
+    {
+      "label": "YARA rule with pe.imphash check",
+      "command": "# condition: pe.imphash() == \"414bbd566b700ea021cfae3ad8f4d9b9\""
+    },
+    {
+      "label": "YARA rule with math.entropy high-entropy resource check",
+      "command": "# condition: pe.number_of_resources == 1 and pe.resources[0].id == 101 and math.entropy(pe.resources[0].offset, pe.resources[0].length) > 7.0"
+    },
+    {
+      "label": "YARA rule detecting .NET BSJB magic bytes",
+      "command": "# strings: $bsjb = \"BSJB\" \u2014 condition: uint16(0)==0x5A4D and $bsjb"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - YARA & Sigma for SOC Analysts",
+      "url": "https://academy.hackthebox.com/module/details/234"
+    },
+    {
+      "title": "YARA PE Module Documentation",
+      "url": "https://yara.readthedocs.io/en/stable/modules/pe.html"
+    },
+    {
+      "title": "YARA Math Module Documentation",
+      "url": "https://yara.readthedocs.io/en/stable/modules/math.html"
+    },
+    {
+      "title": "yarGen GitHub",
+      "url": "https://github.com/Neo23x0/yarGen"
+    },
+    {
+      "title": "Unpac.Me YARA Hunt",
+      "url": "https://www.unpac.me/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m10-detection-rules",
+      "rel": "prereq",
+      "note": "YARA basics \u2014 rule structure, string types, condition syntax, yarGen intro."
+    },
+    {
+      "id": "cdsa-m12-yara-hunting",
+      "rel": "next",
+      "note": "Hunting with YARA rules across Windows disk, process memory, ETW, and Linux memory images."
+    }
+  ],
+  "lint_ignore": [
+    "hardcoded-literal"
+  ],
+  "tools": [
+    "yarGen",
+    "yara"
+  ]
+}

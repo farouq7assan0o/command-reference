@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nCombines full port scan (-p-) with service version detection (-sV). After open ports are discovered, -sV probes each with protocol-specific payloads to fingerprint application name and version. Banner-based first, signature-matching fallback.\n\n=== HOW -sV WORKS ===\n1. Read service banner after connection. 2. If insufficient, send protocol probe strings. 3. Match response against service database. Banner reading is fast; signature matching is slow \u2014 explains why -sV on all ports takes much longer than plain -p-.\n\n=== OUTPUT ===\nService name, version number, extra info (OS, CPE). Version string feeds directly into CVE lookup and exploitation planning.",
+  "references": []
+}

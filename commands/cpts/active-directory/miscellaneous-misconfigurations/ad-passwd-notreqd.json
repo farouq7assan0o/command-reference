@@ -1,0 +1,78 @@
+{
+  "id": "ad-passwd-notreqd",
+  "name": "PowerView - Find Accounts with No Password Required",
+  "command": "Get-DomainUser -UACFilter PASSWD_NOTREQD | Select-Object samaccountname,useraccountcontrol",
+  "description": "Finds AD accounts with the PASSWD_NOTREQD UAC flag set — meaning no password is required for this account, or an empty password is allowed. These accounts often exist from old migrations, poorly configured service accounts, or test accounts. May enable passwordless access or spray with blank password.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "Miscellaneous Misconfigurations",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "uac",
+    "passwd-notreqd",
+    "powerview",
+    "enumeration",
+    "weak-password"
+  ],
+  "mitre": [
+    "T1078.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT PASSWD_NOTREQD MEANS ===\nThe UAC flag PASSWD_NOTREQD (0x20 / 32) means the password policy minimum length\nrequirement is bypassed for this account — the account CAN have an empty password,\nor the fine-grained password policy doesn't apply.\n\nThis does NOT mean the password IS empty. The account may still have a password.\nBut it MAY allow blank password login, and is always worth testing.\n\n=== HOW THESE ACCOUNTS APPEAR ===\n  - Legacy accounts migrated from old domains or NT systems\n  - Service accounts set up before proper password policy enforcement\n  - Accounts created by applications that set this flag programmatically\n  - Test/automation accounts\n\n=== TESTING BLANK PASSWORD ===\n  crackmapexec smb <dc> -u accounts_list.txt -p '' --no-bruteforce\n  kerbrute passwordspray -d <domain> --dc <dc> accounts.txt ''\n  evil-winrm -i <target> -u <account> -p ''\n\n=== UAC FLAG REFERENCE ===\nCommon UAC flags to check with Get-DomainUser -UACFilter:\n  PASSWD_NOTREQD     → no password required\n  DONT_EXPIRE_PASSWD → password never expires (common + weak)\n  DONT_REQ_PREAUTH   → AS-REP roastable\n  ACCOUNTDISABLE     → disabled account\n  ENCRYPTED_TEXT_PWD_ALLOWED → cleartext password in AD (bad!)\n\n=== PIVOT ===\nEven if the password isn't blank, finding these accounts tells you about\nmisconfigured AD user management — worth investigating each account's rights.",
+  "examples": [
+    {
+      "label": "Find accounts with PASSWD_NOTREQD",
+      "command": "Get-DomainUser -UACFilter PASSWD_NOTREQD | Select-Object samaccountname,useraccountcontrol"
+    },
+    {
+      "label": "Test blank password against found accounts",
+      "command": "crackmapexec smb 172.16.5.5 -u passwd_notreqd_users.txt -p '' --continue-on-success"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-domainpasswordspray",
+      "rel": "next",
+      "note": "Reuse any recovered credentials."
+    }
+  ],
+  "defense": {
+    "why_it_works": "The PASSWD_NOTREQD flag (bit 0x20 in the userAccountControl attribute) exempts an account from the domain password policy, allowing an empty or no password. This flag is often set inadvertently during bulk account creation scripts, migration tools, or legacy service account provisioning. Any domain user can enumerate accounts with this flag via LDAP — the userAccountControl attribute is readable by all authenticated users.",
+    "prerequisites": "Domain membership (any authenticated user), PowerShell with PowerView or native Get-ADUser. No elevated privileges.",
+    "impact": "Discovery of accounts that may accept blank password authentication. If confirmed, enables passwordless logon to domain resources under that account's identity and privileges. Even low-privilege accounts with this flag are valuable for initial foothold persistence; high-privilege accounts are immediately exploitable.",
+    "detection": "No specific event for enumerating userAccountControl values via LDAP. Actual logon attempts with blank passwords generate Event 4625 (failed) or 4624 (success) with Failure Reason 'User not allowed to log on' or success. A successful logon with an empty password is highly anomalous in most environments and should alert.",
+    "prevention": "Audit userAccountControl for PASSWD_NOTREQD flag: Get-ADUser -Filter * -Properties userAccountControl | Where {$_.userAccountControl -band 0x20} | Select SamAccountName,userAccountControl. Clear the flag for all accounts that don't need it. Investigate why it was set. Enforce Fine-Grained Password Policy (PSO) with minimum length requirement even for accounts where PASSWD_NOTREQD exists. Include this check in regular AD security hygiene reviews.",
+    "evasion": "Pure LDAP attribute read — no authentication attempted, no noise. The actual exploitation (logon with blank password) is a single, low-volume logon event indistinguishable from a normal logon attempt.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1078.002"
+    ],
+    "misconfiguration": "Administrative shortcuts create persistent misconfigurations: passwords stored in AD Description/Info attributes (visible to all users), accounts with PasswordNotRequired flag set (blank passwords allowed), LAPS attribute readable by non-admin groups, gMSA readable by unintended principals, or SYSVOL containing scripts with embedded credentials.",
+    "vulnerable_config": "# Passwords in AD Description field:\nGet-ADUser -Filter * -Properties Description | Where-Object {$_.Description -ne $null}\n# Returns: svc_backup  Description: 'Temp password: Welcome1!'\n\n# PasswordNotRequired flag (UAC 0x20 = PASSWD_NOTREQD):\nGet-ADUser -Filter {PasswordNotRequired -eq $true}\n\n# LAPS password readable by Domain Users (misconfigured ACL):\nGet-ADComputer -Filter * -Properties ms-Mcs-AdmPwd | Select-Object Name,'ms-Mcs-AdmPwd'\n# Should only be readable by admins + specific LAPS readers group",
+    "secure_config": "# Remove passwords from Description/Info fields:\nGet-ADUser -Filter * -Properties Description,Info |\n    Where-Object {$_.Description -match 'pass|pwd|temp|welcome'} |\n    Set-ADUser -Description $null\n\n# Fix PasswordNotRequired accounts:\nGet-ADUser -Filter {PasswordNotRequired -eq $true} |\n    Set-ADAccountControl -PasswordNotRequired $false\n\n# LAPS ACL hardening — restrict ms-Mcs-AdmPwd reads:\n# Only specific LAPS-Readers security group should have Read on this attribute\n# Run: Set-AdmPwdComputerSelfPermission, Set-AdmPwdReadPasswordPermission\n\n# Audit gMSA readers:\nGet-ADServiceAccount -Filter * -Properties PrincipalsAllowedToRetrieveManagedPassword |\n    Select-Object Name, PrincipalsAllowedToRetrieveManagedPassword"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

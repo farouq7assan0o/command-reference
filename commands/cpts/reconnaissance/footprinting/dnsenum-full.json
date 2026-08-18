@@ -1,0 +1,123 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "dnsenum",
+    "dig"
+  ],
+  "tags": [
+    "dns",
+    "enumeration",
+    "axfr",
+    "subdomain-brute"
+  ],
+  "category": "Enumeration",
+  "subcategory": "DNS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "id": "dnsenum-full",
+  "name": "DNSenum - Full DNS Enumeration",
+  "description": "Automated DNS enumeration: NS/MX/SOA discovery, AXFR zone-transfer attempts against all nameservers, and subdomain brute force — all in a single command.",
+  "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o <output.xml> -f <wordlist> <domain>",
+  "variations": [
+    {
+      "description": "Full enumeration with subdomain brute force via specific DNS server",
+      "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o <output.xml> -f <wordlist> <domain>",
+      "label": "XML output"
+    },
+    {
+      "description": "Quick enumeration with no brute force (NS/MX/AXFR only)",
+      "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 <domain>",
+      "label": "dnsenum --dnsserver --enum -p"
+    },
+    {
+      "description": "Use SecLists subdomains wordlist for brute force",
+      "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -f /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt <domain>",
+      "label": "dnsenum --dnsserver --enum -p"
+    },
+    {
+      "description": "Save results to XML for review",
+      "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o dnsenum-results.xml -f <wordlist> <domain>",
+      "label": "XML output"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Full enumeration against internal nameserver",
+      "command": "dnsenum --dnsserver 10.129.14.128 --enum -p 0 -s 0 -o subdomains.xml -f /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt inlanefreight.htb"
+    },
+    {
+      "label": "OSCP lab — enumerate target domain via internal DNS",
+      "command": "dnsenum --dnsserver 192.168.50.151 --enum -p 0 -s 0 -f /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt megacorpone.com"
+    }
+  ],
+  "notes": "DNSenum automates DNS enumeration: NS record discovery, MX enumeration, AXFR attempts against all nameservers, and subdomain brute force — all in one run. Outputs clean results and can save to XML. Covers in one command what would require separate dig commands for NS, MX, SOA, AXFR, and brute force. Use --dnsserver to target a specific internal DNS server (critical in lab environments). -p 0 -s 0 disables Google scraping/Bing scraping (noise/accuracy concerns). Chaining: dnsenum as comprehensive first-pass DNS → review AXFR if successful → brute-forced subdomains become new scan targets → feed IPs to nmap. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "opsec": "moderate",
+  "mitre": [
+    "T1018",
+    "T1590.002"
+  ],
+  "exam": "exam-ok",
+  "references": [
+    {
+      "title": "dnsenum GitHub Repository",
+      "url": "https://github.com/SparrowOchon/dnsenum2"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Remote System Discovery",
+      "url": "https://attack.mitre.org/techniques/T1018/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "whois-lookup",
+      "rel": "prereq",
+      "note": "Run WHOIS first to identify registrar, nameservers, and registered IPs."
+    },
+    {
+      "id": "nmap-host-discovery-sweep",
+      "rel": "next",
+      "note": "After enumerating subdomains, run nmap against discovered hosts."
+    },
+    {
+      "id": "snmp-enum",
+      "rel": "next",
+      "note": "Discovered IPs may expose SNMP — scan UDP 161 next."
+    }
+  ],
+  "defense": {
+    "why_it_works": "DNS zone transfers (AXFR) are a legitimate replication mechanism — if not restricted to authorised secondary nameservers, any host can request a full dump of the zone. Subdomain brute force succeeds when domains resolve valid hosts that are not publicly advertised.",
+    "prerequisites": "DNS server reachable on UDP/TCP 53. AXFR requires the target nameserver to allow zone transfers from the attacker's IP (misconfigured allow-transfer).",
+    "misconfiguration": "Zone transfer unrestricted: `allow-transfer { any; };` in named.conf allows any IP to enumerate all records in the zone.",
+    "vulnerable_config": "# named.conf — unrestricted zone transfer\nzone \"megacorpone.com\" {\n  type master;\n  allow-transfer { any; };  // DANGEROUS — anyone can AXFR\n};",
+    "secure_config": "# named.conf — restrict AXFR to secondary nameservers only\nzone \"megacorpone.com\" {\n  type master;\n  allow-transfer { 192.168.1.2; };  // only your secondary NS\n};",
+    "impact": "Full internal DNS record dump reveals hostnames, internal IP addresses, mail servers, and service locations — dramatically accelerates reconnaissance.",
+    "detection": "AXFR requests visible in DNS server query logs (type=AXFR from unexpected source IPs). Subdomain brute force produces high NXDOMAIN rates from a single source IP.",
+    "artifacts": "DNS server query logs, firewall connection logs on TCP/UDP 53.",
+    "prevention": "Restrict AXFR with allow-transfer to known secondary server IPs. Implement TSIG for zone-transfer authentication. Use split-horizon DNS so internal records are not resolvable externally.",
+    "evasion": "Slow the brute force request rate; source from multiple IPs to avoid per-IP NXDOMAIN rate limiting.",
+    "sources": [
+      "HTB M04",
+      "OSCP Ch06",
+      "MITRE T1018"
+    ]
+  }
+}

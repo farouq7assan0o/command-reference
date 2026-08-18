@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n--script vuln runs all vulnerability-checking NSE scripts against discovered services. Cross-references versions against CVE databases and tests for common vulnerability patterns. Direct bridge from enumeration to exploitation planning.\n\n=== OUTPUT VALUE ===\nAgainst web server: identifies WordPress version, admin paths, valid usernames (http-wordpress-users), CVEs with CVSS scores and references. Against SMB: ms17-010 (EternalBlue) check. Against SSL: heartbleed, poodle checks.\n\n=== DETECTION ===\nvuln scripts send many probe requests and interact heavily with services \u2014 detectable by IDS. Run after confirming IPS won't block the source IP, or from a sacrificial scanning host.\n\n=== COMBINATION ===\nnmap -sV --script vuln -p <open_ports> <target>: fastest path from open port to vulnerability assessment.",
+  "references": []
+}

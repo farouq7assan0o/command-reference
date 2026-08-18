@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-sV against a single specific port performs targeted service version detection. More efficient than scanning all ports when the interesting port is already known. Nmap sends service-appropriate probes to fingerprint the application.\n\n=== -sV LOGIC ===\n1. Banner read attempt. 2. If insufficient: send protocol probe strings. 3. Match against nmap-service-probes database. Banner = fast. Signature matching = slow but comprehensive.\n\n=== OUTPUT ===\nSERVICE VERSION EXTRA-INFO: 'OpenSSH 7.6p1 Ubuntu 4ubuntu0.3 (Ubuntu Linux; protocol 2.0)'. Contains: service, version, OS distribution, protocol version. All directly usable for CVE lookup.",
+  "references": []
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-sT (Connect scan) completes the full TCP three-way handshake. Unlike SYN scan, does not require root privileges \u2014 falls back to this automatically when Nmap runs without sudo. More accurate but noisier than -sS.\n\n=== vs SYN SCAN ===\nSYN (-sS): half-open, never completes handshake, requires root, faster, less logged. Connect (-sT): full handshake, no root needed, slower, systems log completed connections, IDS/IPS detects readily.\n\n=== USE CASE ===\nNeeded when: no root access, scanning from restricted environment, full-connection accuracy required. Port 443 example: testing HTTPS service with a complete connection to verify the service responds.",
+  "references": []
+}

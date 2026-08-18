@@ -1,0 +1,126 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "https"
+  ],
+  "tools": [],
+  "tags": [
+    "google-dorks",
+    "osint",
+    "search-operators"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "Search Engine OSINT",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "CPTS Ch05 — find login pages",
+      "command": "site:inlanefreight.com inurl:login"
+    },
+    {
+      "label": "Find PDF documents on target",
+      "command": "site:inlanefreight.com filetype:pdf"
+    },
+    {
+      "label": "Find admin + config exposure",
+      "command": "site:inlanefreight.com (inurl:admin OR inurl:config.php)"
+    },
+    {
+      "label": "Find directory listings",
+      "command": "intitle:\"index of\" site:inlanefreight.com"
+    }
+  ],
+  "notes": "Operators: site:  inurl:  intitle:  intext:  filetype:/ext:  cache:  related:  AND/OR/NOT/-  ..range\nLogin pages: site:example.com (inurl:login OR inurl:admin)\nExposed files: site:example.com filetype:pdf  |  (filetype:xls OR filetype:docx)\nConfig files: site:example.com inurl:config.php  |  (ext:conf OR ext:cnf)\nBackups: site:example.com inurl:backup  |  filetype:sql\nMore: Google Hacking Database (exploit-db.com/google-hacking-database). Google dorking uses advanced search operators to find sensitive content indexed by search engines. Key operators: site: (restrict to domain), inurl: (URL contains), filetype:/ext: (file type), intitle: (page title), intext: (body text), cache: (cached version), - (exclude). Combine operators for precise targeting. Also covered in: CPTS Ch05 (Information Gathering – Web Edition).",
+  "references": [
+    {
+      "title": "Google Hacking Database",
+      "url": "https://www.exploit-db.com/google-hacking-database"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtsh-ct-logs",
+      "rel": "next",
+      "note": "Confirm assets via certificate transparency."
+    },
+    {
+      "id": "staff-osint",
+      "rel": "next",
+      "note": "Pivot to employee OSINT (Module 04)."
+    }
+  ],
+  "id": "google-dorks",
+  "name": "Search Engine Discovery - Google Dorks",
+  "command": "site:<domain> inurl:login",
+  "description": "Advanced search operators surface login pages, exposed files, config files, and backups indexed by search engines - all without touching the target.",
+  "opsec": "silent",
+  "mitre": [
+    "T1593.002"
+  ],
+  "exam": "exam-ok",
+  "variations": [
+    {
+      "description": "Find login or admin pages on a specific site",
+      "command": "site:<domain> (inurl:login OR inurl:admin)",
+      "label": "Login/admin dork"
+    },
+    {
+      "description": "Find exposed file types (PDF, XLS, DOCX) on target site",
+      "command": "site:<domain> (filetype:pdf OR filetype:xls OR filetype:docx)",
+      "label": "Docs/files dork"
+    },
+    {
+      "description": "Find config files on target site",
+      "command": "site:<domain> (inurl:config.php OR ext:conf OR ext:cnf)",
+      "label": "Docs/files dork"
+    },
+    {
+      "description": "Find backup files or SQL dumps",
+      "command": "site:<domain> (inurl:backup OR filetype:sql)",
+      "label": "Docs/files dork"
+    },
+    {
+      "description": "Exclude a subdomain from results",
+      "command": "site:<domain> -site:www.<domain>",
+      "label": "Exclude filter"
+    },
+    {
+      "description": "Find cache/index of a page",
+      "command": "cache:<url>",
+      "label": "Cached page"
+    },
+    {
+      "description": "Find results with keyword in body text only",
+      "command": "intext:<keyword> site:<domain>",
+      "label": "Keyword dork"
+    },
+    {
+      "description": "Find intitle matches",
+      "command": "intitle:\"index of\" site:<domain>",
+      "label": "Index-of dork"
+    },
+    {
+      "description": "Exclude irrelevant results with minus operator",
+      "command": "site:news.com -inurl:sports",
+      "label": "Exclude filter"
+    }
+  ]
+}

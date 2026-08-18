@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nmssqlclient.py from Impacket connects to MSSQL using Windows authentication (NTLM/Kerberos) via -windows-auth flag. Essential in domain environments where SQL auth may be disabled. Provides interactive T-SQL prompt.\n\n=== CHAINING ===\nDiscover MSSQL (nmap-mssql-scan) \u2192 enumerate instance (msf mssql_ping) \u2192 connect with domain credentials \u2192 enumerate databases \u2192 check xp_cmdshell \u2192 OS command execution if enabled.\n\n=== KEY QUERIES ===\nselect name from sys.databases \u2192 enumerate all databases\nselect name from master.dbo.sysdatabases \u2192 alternate\nEXEC xp_cmdshell 'whoami' \u2192 OS command execution (if enabled)\nEXEC sp_configure 'xp_cmdshell', 1 \u2192 enable if SA privileges available\n\n=== SA ACCOUNT ===\nsa (system administrator) account with blank/weak password is common. Full DBA rights \u2192 enable xp_cmdshell \u2192 OS command execution as SQL service account.",
+  "references": []
+}

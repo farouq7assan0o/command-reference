@@ -1,0 +1,94 @@
+{
+  "type": "cheatsheet",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "net-tools"
+  ],
+  "tags": [
+    "enumeration",
+    "network"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Interfaces and addresses",
+      "command": "ip a"
+    },
+    {
+      "label": "Routing table",
+      "command": "route; netstat -rn"
+    },
+    {
+      "label": "DNS + ARP neighbours",
+      "command": "cat /etc/resolv.conf; arp -a"
+    },
+    {
+      "label": "Static host entries",
+      "command": "cat /etc/hosts"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 routing table",
+      "command": "routel"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 active connections and listening ports",
+      "command": "ss -anp"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 firewall rules (readable by non-root if iptables-persistent)",
+      "command": "cat /etc/iptables/rules.v4"
+    }
+  ],
+  "notes": "Routing table, ARP cache and /etc/hosts reveal internal subnets and neighbouring hosts for pivoting; resolv.conf points at the internal DNS. Useful even when local privesc stalls - it feeds lateral movement. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "passive-traffic-capture",
+      "note": "Sniff the wire if you can read traffic.",
+      "rel": "next"
+    }
+  ],
+  "id": "linux-enum-network",
+  "name": "Enumeration - Network Information",
+  "command": "ip a",
+  "description": "Map the host's network position: interfaces, hosts file, routing, DNS, ARP neighbours, and who is/was logged in - useful for pivoting and finding other targets.",
+  "variations": [
+    {
+      "label": "Interfaces / hosts",
+      "command": "ip a\nifconfig\ncat /etc/hosts"
+    },
+    {
+      "label": "Routing / DNS / ARP",
+      "command": "route\nnetstat -rn\ncat /etc/resolv.conf\narp -a"
+    },
+    {
+      "label": "Logged-in users",
+      "command": "lastlog\nw\nwho\nfinger"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1016"
+  ],
+  "exam": "exam-ok"
+}

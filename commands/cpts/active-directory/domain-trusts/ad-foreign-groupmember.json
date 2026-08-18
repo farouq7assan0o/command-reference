@@ -1,0 +1,83 @@
+{
+  "id": "ad-foreign-groupmember",
+  "name": "PowerView - Find Foreign Group Members (Cross-Forest)",
+  "command": "Get-DomainForeignGroupMember -Domain <foreign_domain>",
+  "description": "Enumerates users from one domain who are members of groups in another domain across a forest trust. Foreign domain users in local groups inherit those group's permissions — sometimes including high-privilege access. Essential for finding cross-forest privilege escalation paths that aren't obvious from single-domain enumeration.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "Domain Trusts",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "cross-forest",
+    "domain-trust",
+    "powerview",
+    "group-membership",
+    "enumeration"
+  ],
+  "mitre": [
+    "T1482"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT THIS FINDS ===\nWhen organizations merge or establish forest trusts, accounts from Forest A\nmay be added to groups in Forest B. This card finds those accounts:\n  'User INLANEFREIGHT\\admin is member of FREIGHTLOGISTICS\\Administrators'\n\nThis means INLANEFREIGHT\\admin has administrator rights in FREIGHTLOGISTICS.\nIf you compromised admin in INLANEFREIGHT → you have admin in FREIGHTLOGISTICS too.\n\n=== OUTPUT COLUMNS ===\n  GroupDomain      → which domain the group is in\n  GroupName        → group name\n  GroupDistinguishedName → full DN of the group\n  MemberDomain     → which domain the member is FROM (the foreign account)\n  MemberName       → SID of the foreign member (run Convert-SidToName to get readable name)\n  MemberDistinguishedName → full DN of the member\n\n=== CONVERTING SID TO NAME ===\nThe output often shows SIDs instead of names for foreign accounts:\n  Convert-SidToName S-1-5-21-...-1170\n  or: Get-DomainUser -Identity S-1-5-21-...-1170\n\n=== REAL-WORLD SCENARIO ===\nFreightLogistics trust: INLANEFREIGHT.LOCAL ↔ FREIGHTLOGISTICS.LOCAL\nGet-DomainForeignGroupMember -Domain FREIGHTLOGISTICS.LOCAL finds:\n  INLANEFREIGHT\\administrator = member of FREIGHTLOGISTICS\\Administrators\nResult: INLANEFREIGHT admin creds give admin rights in FREIGHTLOGISTICS\n→ Evil-WinRM to FREIGHTLOGISTICS DC with INLANEFREIGHT admin creds\n\n=== ALSO CHECK BIDIRECTIONAL ===\nGet-DomainForeignGroupMember -Domain INLANEFREIGHT.LOCAL\n→ Finds FREIGHTLOGISTICS users who have rights in INLANEFREIGHT",
+  "examples": [
+    {
+      "label": "Find foreign members in foreign domain groups",
+      "command": "Get-DomainForeignGroupMember -Domain FREIGHTLOGISTICS.LOCAL"
+    },
+    {
+      "label": "Convert SID to name",
+      "command": "Convert-SidToName S-1-5-21-3842939050-3880317879-2865463114-500"
+    },
+    {
+      "label": "Bidirectional check",
+      "command": "Get-DomainForeignGroupMember -Domain INLANEFREIGHT.LOCAL"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-golden-ticket-mimikatz",
+      "rel": "next",
+      "note": "Leverage trust data for cross-domain forging."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Get-DomainForeignGroupMember queries the AD group membership objects in the target domain using LDAP, filtering for members whose SID domain prefix differs from the group's domain. This is a native AD query — any authenticated domain user can enumerate group memberships across trusts because group objects and their members are accessible to all authenticated users by default.",
+    "prerequisites": "PowerShell with PowerView loaded. Any valid domain credential with trust access to the target domain. Domain-joined host or runas /netonly session.",
+    "impact": "Reveals cross-domain/cross-forest privilege paths that may not be apparent from single-domain enumeration. Finding a foreign account in a high-privilege group (Administrators, Domain Admins) in another domain means existing credentials from a compromised domain immediately grant access to another — no additional exploitation required.",
+    "detection": "PowerShell Script Block Logging (Event 4104) if enabled will log PowerView function calls including Get-DomainForeignGroupMember. LDAP query traffic to the foreign domain's DC on port 389/636. AMSI detection of PowerView strings if not obfuscated. EDR telemetry on PowerShell loading PowerView module.",
+    "prevention": "Enable PowerShell Script Block Logging and constrained language mode. AMSI and EDR with PowerView detection rules. Limit cross-domain group memberships — audit regularly and remove unnecessary foreign group members (Get-ADGroupMember for privileged groups). JEA to restrict what PowerShell can enumerate. Consider using protected users or tiered admin model to prevent foreign accounts from gaining local admin.",
+    "evasion": "Obfuscate PowerView function names. Use direct LDAP queries via .NET System.DirectoryServices instead of PowerView. Target only specific groups rather than full enumeration. Spread queries over time. Use Get-ADGroupMember (signed AD module) instead of PowerView to avoid detection signatures.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1482"
+    ],
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

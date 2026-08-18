@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nevil-winrm provides an interactive PowerShell shell over WinRM (port 5985 HTTP / 5986 HTTPS) with additional pentest features: file upload/download, in-memory script loading, and pass-the-hash support.\n\n=== CHAINING ===\nDiscover WinRM open (nmap-winrm-scan) \u2192 obtain credentials (from LDAP, SMB, spray) \u2192 evil-winrm \u2192 enumerate local system \u2192 privesc \u2192 lateral movement.\n\n=== vs ALTERNATIVES ===\nevil-winrm is preferred over standard PowerShell Remoting because it doesn't require a Windows client and provides built-in upload/download. wmiexec.py uses WMI instead of WinRM, useful when WinRM is disabled.\n\n=== DETECTION ===\nWinRM connections create Event 4624 (logon) on target. Process ancestry: wsmprovhost.exe parent for all evil-winrm commands. Port 5985/5986 connections from unusual sources flagged by EDR.",
+  "references": []
+}

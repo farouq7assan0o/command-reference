@@ -1,0 +1,84 @@
+{
+  "id": "cupp-profile",
+  "name": "CUPP - Targeted Wordlist from Profile",
+  "command": "cupp -i",
+  "description": "Common User Passwords Profiler builds a personalized password wordlist from details about a target (names, dates, pet, company). -i runs the interactive interview. Pairs well with username-anarchy for the username side of a targeted brute force.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "cupp"
+  ],
+  "tags": [
+    "cupp",
+    "wordlist",
+    "osint",
+    "brute-force"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Wordlist Generation",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 16: Login Brute Forcing",
+  "examples": [
+    {
+      "label": "CUPP",
+      "command": "sudo apt install cupp -y"
+    },
+    {
+      "label": "CUPP",
+      "command": "cupp -i"
+    }
+  ],
+  "notes": "CUPP builds a targeted wordlist from a person's OSINT (name, pet, birthday, partner) - interactively answer the prompts. People pick personal passwords; a profiled list beats rockyou for a specific target.",
+  "references": [
+    {
+      "title": "HTB Academy - Login Brute Forcing",
+      "url": "https://academy.hackthebox.com/module/details/57"
+    },
+    {
+      "title": "CUPP",
+      "url": "https://github.com/Mebus/cupp"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hybrid-wordlist-filter",
+      "note": "Trims a large password list down to only candidates that satisfy a known password policy, shrinking the keyspace and attack time.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Humans create passwords based on personally meaningful information — names of relatives, pets, birthdays, anniversaries, favourite sports teams — and then apply common transformations (capitalising the first letter, appending the year, substituting 'a' with '@'). CUPP takes OSINT-derived personal data as input and systematically generates all these combinations and mutations, producing a targeted wordlist that has far higher hit probability against that specific individual than a generic rockyou.txt. It models human password psychology rather than brute-forcing the full keyspace.",
+    "prerequisites": "OSINT on the target individual: full name, nickname, date of birth, partner/children names, pet names, employer, interests. CUPP installed (pip or git). OSINT is gathered before running CUPP — the tool itself does no reconnaissance.",
+    "impact": "Highly targeted password wordlist tailored to one individual — dramatically increases brute-force success probability for accounts belonging to that person. Particularly effective against accounts where the user chose the password based on personal information rather than using a password manager.",
+    "detection": "CUPP runs locally on the attacker's machine — no network activity, no target-side detection. Detection opportunity is only in the subsequent brute-force phase when the generated wordlist is used against a target service.",
+    "artifacts": "CUPP output wordlist file on attacker's disk (e.g., firstname.txt). No target-side artifacts.",
+    "prevention": "Password manager use eliminates the personal-information pattern that CUPP exploits — randomly generated passwords contain no profiling data. User education: avoid personal details in passwords. Policy enforcement of minimum entropy (not just complexity) discourages predictable patterns. MFA as defence-in-depth since a correct password alone is insufficient.",
+    "evasion": "CUPP runs offline — completely silent at the network and target level. Combine with hybrid wordlist filtering to reduce the generated list to only policy-compliant candidates before use in a brute-force attack.",
+    "sources": [
+      "HTB CPTS M16",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
+    "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
+    "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+  }
+}

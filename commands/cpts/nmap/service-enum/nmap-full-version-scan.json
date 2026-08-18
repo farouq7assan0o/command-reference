@@ -1,0 +1,107 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "version-detection",
+    "full-scan"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Service Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "Full port range with service versions",
+      "command": "sudo nmap 10.129.2.28 -p- -sV"
+    }
+  ],
+  "notes": "Press Space during a scan for a live status line; -v/-vv increase verbosity. -A is shorthand for -sV -O --traceroute -sC combined. For OS detection alone: -O --osscan-guess. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nmap-nse",
+      "rel": "next",
+      "note": "Default+vuln scripts on the open ports."
+    },
+    {
+      "id": "smb-enum4linux",
+      "rel": "next",
+      "note": "Pivot to service enumeration (e.g. SMB)."
+    },
+    {
+      "id": "ftp-enum",
+      "rel": "next",
+      "note": "Pivot to FTP enumeration if 21 open."
+    }
+  ],
+  "id": "nmap-full-version-scan",
+  "name": "Nmap - Full Port Version Scan",
+  "command": "sudo nmap <ip> -p- -sV",
+  "description": "Scan all 65535 ports with version detection - the thorough service inventory of a host. Add progress and tracing for long-running scans.",
+  "variations": [
+    {
+      "label": "With periodic progress",
+      "command": "sudo nmap <ip> -p- -sV --stats-every=5s"
+    },
+    {
+      "label": "Verbose (report opens as found)",
+      "command": "sudo nmap <ip> -p- -sV -v"
+    },
+    {
+      "label": "With packet trace",
+      "command": "sudo nmap <ip> -p- -sV -Pn -n --disable-arp-ping --packet-trace"
+    },
+    {
+      "label": "OS detection with aggressive guess (OSCP Ch6 canonical)",
+      "command": "sudo nmap -O <ip> --osscan-guess\n# -O = enable OS detection (requires root)\n# --osscan-guess = lower the confidence threshold; still reports best guess even when match is ambiguous\n# Follow with -sT -A for service+script details on the same host"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "A full version scan (-sV, typically with -p- across all 65535 ports) probes every open port to fingerprint each service and version \u2014 comprehensive but slow and highly visible.",
+    "prerequisites": "Network access to the target.",
+    "impact": "A complete service-and-version inventory of the host.",
+    "detection": "[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "Sustained probing across all ports \u2014 a large, easily detected footprint in IDS/firewall logs.",
+    "prevention": "[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "evasion": "Run a quick port-only scan first (-sS -p-) to identify open ports with minimal traffic. Then run version detection (-sV) targeted only at discovered open ports. This approach causes significantly less traffic than a combined full-port version scan and reduces the risk of being discovered and blocked by security mechanisms.",
+    "sources": [
+      "HTB M03",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Network perimeters that do not filter ICMP, do not use egress filtering, or expose unnecessary services (all ports open) allow comprehensive port scanning. Systems without host-based firewalls or IDS/IPS allow scan traffic to enumerate every open service, revealing attack surface. No rate-limiting on inbound probes means stealth scans complete quickly.",
+    "vulnerable_config": "# No firewall between attacker and target (or overly permissive rules):\n# iptables -L  ->  Chain INPUT (policy ACCEPT)  [no rules]\n# Or: Windows Firewall disabled\n# Every service's port is reachable from any source\n\n# No IDS/IPS:\n# Snort/Suricata not deployed; no AWS GuardDuty / Azure Defender\n# Nmap SYN scan completes in seconds with no alert generated",
+    "secure_config": "# Linux host-based firewall \u2014 default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
+  }
+}

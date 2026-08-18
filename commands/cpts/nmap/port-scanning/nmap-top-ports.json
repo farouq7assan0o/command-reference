@@ -1,0 +1,100 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "port-scan",
+    "top-ports"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Port Scanning",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "Trace packets on a single port",
+      "command": "sudo nmap 10.129.2.28 -p 21 --packet-trace -Pn -n --disable-arp-ping"
+    },
+    {
+      "label": "Lab example",
+      "command": "sudo nmap 10.129.2.28 --top-ports=10"
+    }
+  ],
+  "notes": "`--top-ports N` scans the N most common ports (from nmap-services frequency data) - fast triage, but a full `-p-` is required before declaring a host clean.",
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nmap-tcp-connect-scan",
+      "rel": "next",
+      "note": "Full connect scan once triaged."
+    }
+  ],
+  "id": "nmap-top-ports",
+  "name": "Nmap - Top Ports / Port Specification",
+  "command": "sudo nmap <ip> --top-ports=10",
+  "description": "Scan the most common ports, or specify exactly which ports to scan. Port selection is the main lever on scan scope vs speed.",
+  "variations": [
+    {
+      "label": "Top 10 ports",
+      "command": "sudo nmap <ip> --top-ports=10"
+    },
+    {
+      "label": "All 65535 ports",
+      "command": "sudo nmap <ip> -p-"
+    },
+    {
+      "label": "Fast (top 100)",
+      "command": "sudo nmap <ip> -F"
+    },
+    {
+      "label": "Specific ports / range",
+      "command": "sudo nmap <ip> -p 22,25,80,139,445\nsudo nmap <ip> -p 22-445"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The --top-ports flag scans the most commonly open ports based on frequency data from nmap-services, making scans faster while still covering the services most likely to be running. Attackers use this to quickly identify attack surface without a full 65535-port scan. [MITRE T1046] Targeted port scanning to identify running services.",
+    "prerequisites": "Network access to the target.",
+    "impact": "Fast coverage of the most commonly open services, trading completeness for speed.",
+    "detection": "[MITRE T1046 AN1583] Monitor for rapid sequential port connection attempts from a single source to many ports or hosts. Nmap with --top-ports generates a characteristic pattern of SYN packets across common service ports in quick succession.",
+    "artifacts": "SYN probes to the top-N ports in firewall/IDS logs.",
+    "prevention": "[MITRE T1046 M1042] Close unnecessary ports and services to reduce attack surface exposed to scanning. Use host-based and network firewalls to block unsolicited inbound connections. [M1030] Segment networks to limit which hosts can be reached by a scanning adversary.",
+    "evasion": "Scanning only the most common ports (--top-ports) sharply cuts packet volume and scan time versus a full sweep, lowering the footprint; add slow timing (-T1) to stay under rate-based IDS thresholds.",
+    "sources": [
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Network perimeters that do not filter ICMP, do not use egress filtering, or expose unnecessary services (all ports open) allow comprehensive port scanning. Systems without host-based firewalls or IDS/IPS allow scan traffic to enumerate every open service, revealing attack surface. No rate-limiting on inbound probes means stealth scans complete quickly.",
+    "vulnerable_config": "# No firewall between attacker and target (or overly permissive rules):\n# iptables -L  ->  Chain INPUT (policy ACCEPT)  [no rules]\n# Or: Windows Firewall disabled\n# Every service's port is reachable from any source\n\n# No IDS/IPS:\n# Snort/Suricata not deployed; no AWS GuardDuty / Azure Defender\n# Nmap SYN scan completes in seconds with no alert generated",
+    "secure_config": "# Linux host-based firewall — default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
+  }
+}

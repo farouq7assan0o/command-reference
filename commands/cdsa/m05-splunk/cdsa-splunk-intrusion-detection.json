@@ -1,0 +1,81 @@
+{
+  "id": "cdsa-splunk-intrusion-detection",
+  "name": "Splunk - Intrusion Detection Queries (Sysmon + Windows Events)",
+  "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 (Image=\"*cmd.exe\" OR Image=\"*powershell.exe\") | stats count by ParentImage, Image",
+  "description": "SPL queries for real-world intrusion detection using Sysmon and Windows Security events. Covers suspicious parent-child process chains, DCSync detection, LSASS credential dumping, and CallTrace UNKNOWN shellcode detection with progressive false-positive filtering.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "SIEM",
+  "subcategory": "Splunk",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 05: Understanding Log Sources & Investigating with Splunk",
+  "tags": ["splunk", "spl", "intrusion-detection", "sysmon", "dcsync", "lsass", "shellcode", "blue-team"],
+  "notes": "=== Parent-Child Process Chain Analysis (Event 1) ===\n  # All parent-child trees:\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | stats count by ParentImage, Image\n\n  # Narrow to suspicious children (cmd.exe / powershell.exe):\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 (Image=\"*cmd.exe\" OR Image=\"*powershell.exe\") | stats count by ParentImage, Image\n\n  # Drill into specific suspicious parent (e.g. notepad.exe → powershell.exe):\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 (Image=\"*cmd.exe\" OR Image=\"*powershell.exe\") ParentImage=\"C:\\\\Windows\\\\System32\\\\notepad.exe\"\n  → Suspicious finding: notepad.exe spawning PowerShell to download files\n\n=== Investigate a Suspicious IP Across All Sources ===\n  # What sourcetypes mention this IP?\n  index=\"main\" 10.0.0.229 | stats count by sourcetype\n\n  # Linux syslog — confirm IP belongs to which host:\n  index=\"main\" 10.0.0.229 sourcetype=\"linux:syslog\"\n\n  # What commands ran involving this IP (Sysmon)?\n  index=\"main\" 10.0.0.229 sourcetype=\"WinEventLog:sysmon\" | stats count by CommandLine\n\n  # Which hosts ran those commands?\n  index=\"main\" 10.0.0.229 sourcetype=\"WinEventLog:sysmon\" | stats count by CommandLine, host\n\n=== DCSync Attack Detection (Event 4662) ===\n  index=\"main\" EventCode=4662 Access_Mask=0x100 Account_Name!=*$\n  → Event 4662: AD object accessed\n  → Access_Mask 0x100: Control Access (required for DCSync)\n  → Account_Name!=*$: filter out machine accounts (DCSync should only be done by machines)\n  → Expand Properties field: look for GUIDs:\n      {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2} = DS-Replication-Get-Changes-All\n      {19195a5b-6da0-11d0-afd3-00c04fd930c9} = DS-Replication-Get-Changes\n\n=== LSASS Credential Dump Detection (Event 10) ===\n  # All processes opening handles to lsass — sorted by frequency:\n  index=\"main\" EventCode=10 lsass | stats count by SourceImage\n\n  # Investigate specific suspicious source (e.g. notepad):\n  index=\"main\" EventCode=10 lsass SourceImage=\"C:\\\\Windows\\\\System32\\\\notepad.exe\"\n  → GrantedAccess 0x1FFFFF = PROCESS_ALL_ACCESS (highly suspicious)\n  → CallTrace with UNKNOWN = shellcode/unbacked memory region\n\n=== CallTrace UNKNOWN — Shellcode Detection (iterative refinement) ===\nGoal: detect processes making API calls from unbacked memory (shellcode indicator)\n\n  # Step 1: see which event codes have UNKNOWN call traces:\n  index=\"main\" CallTrace=\"*UNKNOWN*\" | stats count by EventCode\n  → Typically only EventCode 10 (ProcessAccess)\n\n  # Step 2: group by source process:\n  index=\"main\" CallTrace=\"*UNKNOWN*\" | stats count by SourceImage\n\n  # Step 3: filter self-accesses (process != process):\n  index=\"main\" CallTrace=\"*UNKNOWN*\" | where SourceImage!=TargetImage | stats count by SourceImage\n\n  # Step 4: exclude .NET JIT false positives (clr.dll, ni.dll, Microsoft.NET path):\n  index=\"main\" CallTrace=\"*UNKNOWN*\" SourceImage!=\"*Microsoft.NET*\" CallTrace!=*ni.dll* CallTrace!=*clr.dll* | where SourceImage!=TargetImage | stats count by SourceImage\n\n  # Step 5: exclude WOW64 (Heaven's Gate — unbacked by design):\n  index=\"main\" CallTrace=\"*UNKNOWN*\" SourceImage!=\"*Microsoft.NET*\" CallTrace!=*ni.dll* CallTrace!=*clr.dll* CallTrace!=*wow64* | where SourceImage!=TargetImage | stats count by SourceImage\n\n  # Step 6: exclude Explorer.exe (too broad, high false-positive rate):\n  index=\"main\" CallTrace=\"*UNKNOWN*\" SourceImage!=\"*Microsoft.NET*\" CallTrace!=*ni.dll* CallTrace!=*clr.dll* CallTrace!=*wow64* SourceImage!=\"C:\\\\Windows\\\\Explorer.EXE\" | where SourceImage!=TargetImage | stats count by SourceImage\n\n  # Step 7: final alert query — add TargetImage and CallTrace for triage:\n  index=\"main\" CallTrace=\"*UNKNOWN*\" SourceImage!=\"*Microsoft.NET*\" CallTrace!=*ni.dll* CallTrace!=*clr.dll* CallTrace!=*wow64* SourceImage!=\"C:\\\\Windows\\\\Explorer.EXE\" | where SourceImage!=TargetImage | stats count by SourceImage, TargetImage, CallTrace\n\nKnown false positives to filter:\n  → Squirrel.exe / electron apps (Chromium JIT)\n  → Any process with ni.dll (NGen compiled .NET) in call trace\n  → WOW64 transitions (32-bit process on 64-bit OS)\n  → Explorer.exe (loads arbitrary extensions)",
+  "mitre": ["T1059.001", "T1003.001", "T1207", "T1055"],
+  "examples": [
+    {
+      "label": "All parent-child process creation trees",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | stats count by ParentImage, Image"
+    },
+    {
+      "label": "Filter to cmd.exe / powershell.exe children only",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 (Image=\"*cmd.exe\" OR Image=\"*powershell.exe\") | stats count by ParentImage, Image"
+    },
+    {
+      "label": "Drill into notepad.exe spawning shells",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 (Image=\"*cmd.exe\" OR Image=\"*powershell.exe\") ParentImage=\"C:\\\\Windows\\\\System32\\\\notepad.exe\""
+    },
+    {
+      "label": "Investigate all activity from suspicious IP",
+      "command": "index=\"main\" 10.0.0.229 sourcetype=\"WinEventLog:sysmon\" | stats count by CommandLine"
+    },
+    {
+      "label": "DCSync detection — user accessing AD replication rights",
+      "command": "index=\"main\" EventCode=4662 Access_Mask=0x100 Account_Name!=*$"
+    },
+    {
+      "label": "LSASS access — all source processes sorted by frequency",
+      "command": "index=\"main\" EventCode=10 lsass | stats count by SourceImage"
+    },
+    {
+      "label": "LSASS access by specific suspicious process (notepad)",
+      "command": "index=\"main\" EventCode=10 lsass SourceImage=\"C:\\\\Windows\\\\System32\\\\notepad.exe\""
+    },
+    {
+      "label": "Final CallTrace UNKNOWN alert — shellcode in process handles",
+      "command": "index=\"main\" CallTrace=\"*UNKNOWN*\" SourceImage!=\"*Microsoft.NET*\" CallTrace!=*ni.dll* CallTrace!=*clr.dll* CallTrace!=*wow64* SourceImage!=\"C:\\\\Windows\\\\Explorer.EXE\" | where SourceImage!=TargetImage | stats count by SourceImage, TargetImage, CallTrace"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Understanding Log Sources & Investigating with Splunk",
+      "url": "https://academy.hackthebox.com/module/details/218"
+    },
+    {
+      "title": "UltimateWindowsSecurity - Sysmon Event ID 10",
+      "url": "https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/event.aspx?eventid=90010"
+    },
+    {
+      "title": "Microsoft - DS-Replication-Get-Changes-All (DCSync right)",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/adschema/r-ds-replication-get-changes-all"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-spl-fundamentals",
+      "rel": "prereq",
+      "note": "SPL command syntax used throughout these queries."
+    },
+    {
+      "id": "cdsa-sysmon-event-ids",
+      "rel": "prereq",
+      "note": "Sysmon event IDs 1, 10 referenced in these queries."
+    },
+    {
+      "id": "cdsa-splunk-analytics-detection",
+      "rel": "next",
+      "note": "Statistics-based anomaly detection to complement signature-based hunting."
+    }
+  ]
+}

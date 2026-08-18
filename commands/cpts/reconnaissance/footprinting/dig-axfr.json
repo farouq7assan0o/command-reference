@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nAXFR (zone transfer) is a DNS mechanism for syncing entire zone data between primary/secondary nameservers. When allow-transfer is misconfigured to 'any', an attacker retrieves every record in the zone in a single query \u2014 complete internal topology in seconds.\n\n=== WHAT IT REVEALS ===\nEvery A, MX, NS, TXT, CNAME record: domain controllers (dc1, dc2), VPN endpoint, workstations, WSUS server with internal IPs. A successful AXFR collapses the entire internal host discovery phase.\n\n=== CHAINING ===\ndig ns \u2192 identify all nameservers \u2192 attempt AXFR against each NS \u2192 collect all internal hostnames/IPs \u2192 feed to nmap for service enumeration \u2192 prioritize DCs, VPN, mail servers.\n\n=== PREVALENCE ===\nStill common in environments with legacy DNS configurations. Internal zones (e.g., internal.corp.com) are more likely to be misconfigured than external zones.",
+  "references": []
+}

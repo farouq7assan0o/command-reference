@@ -1,0 +1,71 @@
+{
+  "id": "win-bof-fuzzing",
+  "name": "Windows BOF - Step 1: Fuzzing",
+  "command": "python3 fuzzer.py",
+  "description": "First step of the OSCP Windows stack BOF methodology: send incrementally longer buffers to crash the target service and identify the approximate size at which EIP gets overwritten. A simple Python loop sends 'A' * n over the network, incrementing n until the service crashes.",
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "python"
+  ],
+  "tags": [
+    "bof",
+    "buffer-overflow",
+    "fuzzing",
+    "windows",
+    "exploit-dev"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Buffer Overflow",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP Classic - Windows Buffer Overflow Methodology",
+  "examples": [
+    {
+      "label": "Fuzzer skeleton (increment by 100 each iteration)",
+      "command": "import socket, time, sys\n\nip   = '192.168.x.x'\nport = 9999\ntimeout = 5\nprefix   = ''      # any required string before the payload\nstring   = prefix + 'A' * 100\n\nwhile True:\n    try:\n        s = socket.socket()\n        s.settimeout(timeout)\n        s.connect((ip, port))\n        s.recv(1024)\n        print(f'Sending {len(string)} bytes...')\n        s.send(bytes(string + '\\r\\n', 'latin-1'))\n        s.recv(1024)\n    except:\n        print(f'Crashed at {len(string)} bytes')\n        sys.exit(0)\n    string += 'A' * 100\n    time.sleep(1)"
+    }
+  ],
+  "notes": "Watch Immunity Debugger: when EIP shows '41414141' (AAAA) the service has crashed and the return address is overwritten. Note the approximate length at crash. The prefix must include any banner/prompt bytes the server sends before accepting input \u2014 read the banner first in Wireshark or netcat. Restart the vulnerable service (or VM snapshot) between each test run. [Note: BOF labs removed from PEN-200 2024 curriculum but remain in OSCP practice machines and TryHackMe/HackTheBox prep.]",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Windows Buffer Overflows",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-bof-eip-control",
+      "rel": "next",
+      "note": "Once you know the crash length, send a cyclic pattern to pin the exact EIP offset."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1203"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Buffer overflow fuzzing sends incrementally larger inputs to identify the input size that crashes an application. When an application copies user input into a fixed-size stack buffer without bounds checking (strcpy, gets, sprintf in C/C++), oversized input overwrites adjacent memory including the saved EIP on the stack. The crash point identifies the approximate overflow offset and confirms the vulnerability exists. Fuzzing is the discovery phase before precise offset control.",
+    "prerequisites": "Vulnerable application running (network service or local binary). Python/Spike/Boofuzz fuzzer. Immunity Debugger attached to the target process on the test system. No DEP/ASLR (or exploiting a 32-bit application where these may not apply). Network access to the target service.",
+    "impact": "T1203 Exploitation for Client Execution. Identifies exploitable buffer overflow in target application \u2014 prerequisite for crafting a working exploit. Leads to arbitrary code execution under the application's privileges.",
+    "detection": "Application crash logs: consistent crashes on large inputs are a canary for buffer overflow vulnerability (and active fuzzing). IDS/IPS: large repeated malformed inputs to a service port. WAF: if web application. Process crash telemetry (Windows Error Reporting): spike in crashes from a specific client IP.\nClient app (browser, Office, PDF/reader) crashes or loads from unusual location, then drops/modifies files in user-writable paths, spawns unexpected child (powershell/cmd/mshta/rundll32), and establishes outbound C2-like connections; correlate app logs, file writes, process lineage, and network egress (DET0287/AN0797).\nBrowser/Office/reader process logs crash/segfault; new executable/script in /sessions/magical-confident-franklin (Downloads, ~/.cache, /tmp); unexpected child like curl/wget/bash opens network connections (AN0798).\nApp crash in unified logs for Safari/Chrome/Office/Preview; new files in ~/Library, ~/Downloads, /private/var/folders/*; unexpected child (osascript, zsh, bash, curl) spawned; new outbound connections (AN0799).",
+    "artifacts": "Application crash event (Event ID 1000: Application Error) | Dr. Watson / WER dump | IDS alert: large input flooding to service port | Process termination log | Immunity Debugger: EIP overwrite confirmed",
+    "prevention": "Safe string functions (strncpy, strncat, snprintf instead of strcpy, strcat, sprintf). Stack canaries (GS compiler flag): detect stack overwrite before return. DEP/NX: prevents shellcode execution on stack. ASLR: randomizes stack/heap addresses. Address Sanitizer in development. Fuzz testing in SDL (Security Development Lifecycle) before production.\nApplication Isolation and Sandboxing: Browser sandboxes can mitigate exploitation impact; other virtualization/microsegmentation may also help.\nExploit Protection: Use WDEG/EMET to mitigate exploitation behavior; control flow integrity checking can identify and stop software exploits.\nUpdate Software: Perform regular software updates to mitigate exploitation risk.",
+    "evasion": "Fuzz at slower rate to avoid IDS rate-limit detection. Use legitimate-looking protocol data with oversized fields (not just raw byte floods). Target specific protocol fields rather than entire payload.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1203/"
+    ],
+    "misconfiguration": "Application compiled without stack canaries (/GS-). DEP disabled or application opted out (IMAGE_DLLCHARACTERISTICS_NO_SEH, NX not enforced). No input validation or bounds checking in application code. No crash telemetry monitoring.",
+    "vulnerable_config": "# C code vulnerable to overflow:\n# void vulnerable(char *input) {\n#   char buf[256];\n#   strcpy(buf, input);  // no bounds check\n# }\n\n# Compiled without protections:\n# cl.exe /GS- /DYNAMICBASE:NO /NXCOMPAT:NO vuln.c\n# \u2192 No stack canary, no ASLR, no DEP",
+    "secure_config": "# Compile with all mitigations:\n# cl.exe /GS /DYNAMICBASE /NXCOMPAT /LTCG vuln.c\n# \u2192 /GS: stack canary\n# \u2192 /DYNAMICBASE: ASLR enabled\n# \u2192 /NXCOMPAT: DEP enabled\n\n# Safe string function:\n# strncpy(buf, input, sizeof(buf) - 1);\n# buf[sizeof(buf) - 1] = '\\0';\n\n# Or use safer alternatives:\n# StringCbCopy(buf, sizeof(buf), input);  // Windows StrSafe.h\n# strlcpy(buf, input, sizeof(buf));       // BSD/Linux"
+  }
+}

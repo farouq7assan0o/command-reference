@@ -1,0 +1,74 @@
+{
+  "id": "ad-nopac-scan",
+  "name": "NoPac Scanner - CVE-2021-42278/42287 Check",
+  "command": "sudo python3 scanner.py <domain>/<user>:<password> -dc-ip <dc_ip> -use-ldap",
+  "description": "Checks if a domain is vulnerable to the NoPac attack (CVE-2021-42278 + CVE-2021-42287). Prints the domain SID and confirms if the DC is impersonatable. Low noise \u2014 just LDAP enumeration. Run this before attempting the exploit to confirm vulnerability and save time.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Vulnerability Assessment",
+  "subcategory": "Bleeding Edge Vulnerabilities",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "nopac",
+    "cve-2021-42278",
+    "cve-2021-42287",
+    "kerberos",
+    "vulnerability"
+  ],
+  "mitre": [
+    "T1558"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== NOPAC EXPLAINED (CVE-2021-42278 + CVE-2021-42287) ===\nTwo separate CVEs chain together:\n\nCVE-2021-42278: Machine account names should end with '$' but nothing enforces this.\nAny domain user can create a machine account (default quota: 10) and name it anything,\nincluding 'DC01' \u2014 the same name as the actual Domain Controller (without the $).\n\nCVE-2021-42287: When Kerberos can't find the account that was used in the AS-REQ\n(e.g. the machine account was renamed AFTER the TGT was issued), it looks for\n'<name>$' \u2014 and finds the REAL DC. The KDC issues a service ticket AS if the TGT\nwas issued FOR the real DC account.\n\nCombined: create machine account named 'DC01', get TGT, rename account to something\nelse, request service ticket \u2014 KDC looks for 'DC01$' and finds the REAL DC, issuing\nyou a ticket with DA-level privileges. One step from DA with any domain creds.\n\n=== WHAT THE SCANNER RETURNS ===\n  ms-DS-MachineAccountQuota = 10  \u2192 can create machine accounts, VULNERABLE\n  ms-DS-MachineAccountQuota = 0   \u2192 cannot create machine accounts, NOT vulnerable\n  Domain SID: S-1-5-21-...        \u2192 needed for the exploit\n\n=== REQUIREMENTS ===\n  - Any valid domain credentials\n  - ms-DS-MachineAccountQuota > 0 (default is 10 in most environments)\n  - Domain controllers running unpatched Windows (pre-November 2021 patches)\n  - scanner.py from: github.com/Ridter/noPac",
+  "examples": [
+    {
+      "label": "Scan for NoPac vulnerability",
+      "command": "sudo python3 scanner.py INLANEFREIGHT.LOCAL/forend:Klmcargo2 -dc-ip 172.16.5.5 -use-ldap"
+    }
+  ],
+  "references": [
+    {
+      "title": "noPac (Ridter)",
+      "url": "https://github.com/Ridter/noPac"
+    },
+    {
+      "title": "NoPac AD Exploit (secureworks)",
+      "url": "https://www.secureworks.com/blog/nopac-a-tale-of-two-vulnerabilities-that-could-end-in-ransomware"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-nopac-exploit",
+      "note": "Run the exploit to impersonate Administrator.",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "NoPac chains CVE-2021-42278 (a domain user renames a machine account's sAMAccountName to match a DC's, minus the trailing $) with CVE-2021-42287 (KDC ticket confusion) to obtain a Kerberos TGT impersonating the Domain Controller - a path from ANY domain user to Domain Admin. This card checks whether a DC is vulnerable.",
+    "prerequisites": "Any valid domain user account and network access to a Domain Controller. The full exploit also needs ms-DS-MachineAccountQuota > 0 so a non-admin can create a machine account.",
+    "impact": "Confirmation that the DC is unpatched and vulnerable to NoPac - i.e. a domain-user-to-Domain-Admin escalation is available.",
+    "detection": "The scan/exploit produces machine-account creation and sAMAccountName changes: Event 4741 (computer account created), 4781/4742 (account name/attribute changed), and anomalous 4768/4769 (TGT/TGS for a DC-named account). A sAMAccountName suddenly matching a DC's name is a high-fidelity indicator.",
+    "artifacts": "A new machine account (from the account quota); a sAMAccountName modified to a DC name and often reverted; anomalous Kerberos tickets; tool execution (noPac.py / Rubeus) on the attacker host.",
+    "prevention": "Apply Microsoft's November 2021 updates (KB5008380 / KB5008602), which add PAC validation; set ms-DS-MachineAccountQuota to 0 so non-admins cannot create machine accounts; alert on sAMAccountName changes and on machine-account creation by non-privileged users.",
+    "evasion": "Renaming the machine account back after obtaining the ticket hides the sAMAccountName change; using an already-controlled machine account avoids the account-creation event.",
+    "sources": [
+      "MITRE T1558",
+      "MS KB5008380 (CVE-2021-42278/42287)"
+    ],
+    "misconfiguration": "Two AD design flaws combined: (1) CVE-2021-42278 \u2014 non-admin domain users can rename computer accounts to impersonate DCs (the sAMAccountName attribute on a computer object they own can be set to any value); (2) CVE-2021-42287 \u2014 the KDC's PAC validation falls back to a user-account lookup when a machine-account ticket is requested, allowing privilege escalation. Together, a low-priv user creates a computer (ms-DS-MachineAccountQuota default = 10), renames it to the DC name, requests a TGT, renames it back, then obtains a ticket with Domain Admin rights.",
+    "vulnerable_config": "# Default insecure settings that enable NoPac:\n# 1. ms-DS-MachineAccountQuota >= 1 (default = 10)\nGet-ADObject (Get-ADDomain).DistinguishedName -Properties ms-DS-MachineAccountQuota\n# ms-DS-MachineAccountQuota: 10  <-- any user can add 10 computers\n\n# 2. November 2021 patches NOT applied:\n# KB5008102 (CVE-2021-42278) + KB5008380 (CVE-2021-42287)\nGet-HotFix -Id KB5008102  # empty output = unpatched",
+    "secure_config": "# Fix 1 \u2014 Set MachineAccountQuota to 0 (block non-admin machine joins):\nSet-ADDomain -Identity corp.local -Replace @{'ms-DS-MachineAccountQuota'=0}\n\n# Fix 2 \u2014 Apply patches:\n# KB5008102 (Oct 2021 cumulative) + KB5008380 (Nov 2021 cumulative)\n# Verify: Get-HotFix -Id KB5008102, KB5008380\n\n# Fix 3 \u2014 Enforce PAC validation (registry, post-patch):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\Kdc\n#   PacRequestorEnforcement = 2  (fully enforce after 2023-04-11 deadline)\n\n# Detection: 4741 (computer account created) + 4781 (renamed) in rapid succession"
+  },
+  "tools": [
+    "noPac"
+  ]
+}

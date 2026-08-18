@@ -1,0 +1,82 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "https"
+  ],
+  "tools": [],
+  "tags": [
+    "wayback",
+    "archives",
+    "osint"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "Web Archives",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "Browse a domain's history",
+      "command": "# https://web.archive.org  -> enter the target domain"
+    }
+  ],
+  "notes": "The Wayback Machine (web.archive.org) reveals old endpoints, removed pages, and dev artifacts that still exist server-side. waybackurls/gau dump historical URLs - great for finding forgotten admin panels and parameters.",
+  "references": [
+    {
+      "title": "Wayback Machine",
+      "url": "https://web.archive.org/"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "web-crawling",
+      "rel": "next",
+      "note": "Crawl the live site for what survived."
+    },
+    {
+      "id": "ffuf-directory",
+      "rel": "next",
+      "note": "Fuzz for the old paths still present."
+    }
+  ],
+  "id": "web-archives",
+  "name": "Web Archives - Wayback Machine",
+  "command": "# https://web.archive.org/web/*/<domain>",
+  "description": "The Wayback Machine stores historical snapshots of a site - old pages, removed endpoints, and files that no longer exist live can reveal past vulnerabilities or hidden paths.",
+  "opsec": "silent",
+  "mitre": [
+    "T1596"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Web archive services (Wayback Machine, archive.ph) store historical snapshots of websites. Attackers query these to recover removed pages, old admin interfaces, credentials or API keys exposed in past source code, deprecated endpoints, and previous technology stacks — content the organization believed was permanently removed from the internet.",
+    "prerequisites": "Only the target's domain name. Fully passive — queries a third-party archive, never the target.",
+    "impact": "Recovers removed pages, old endpoints, deprecated tech stacks, and credentials/keys once exposed in historical source — content the organization believes is gone but is still exploitable.",
+    "detection": "Very Low detection risk: accessing archived website snapshots is a normal activity — queries target a third-party service and generate no traffic to the victim organization. The target has zero visibility into who queries its historical snapshots.\n\n[MITRE T1596 AN1992] Much of this activity may have a very high occurrence and associated false positive rate, as well as potentially taking place outside the visibility of the target organization, making detection difficult for defenders. Detection efforts may be focused on related stages of the adversary lifecycle, such as during Initial Access.",
+    "artifacts": "No artifacts on the target side — requests go to the Wayback Machine / archive service, not the victim's servers.",
+    "prevention": "Submit removal requests to web archive services for pages containing sensitive data (credentials, internal paths, configuration fragments). Ensure sensitive files are never served publicly — once cached, removal is difficult and not guaranteed.\n\n[MITRE T1596 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1596"
+    ],
+    "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
+    "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
+    "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
+  }
+}

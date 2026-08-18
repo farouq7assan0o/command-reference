@@ -1,0 +1,128 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "nessus"
+  ],
+  "tags": [
+    "nessus",
+    "scanner",
+    "setup"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Nessus",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "CPTS Ch06 — full install + start sequence",
+      "command": "sudo dpkg -i Nessus-8.15.1-ubuntu910_amd64.deb\nsudo systemctl start nessusd.service\n# Open https://localhost:8834"
+    }
+  ],
+  "notes": "Editions: Nessus Essentials (free) / Professional. Activation code from tenable.com. Scan output: PDF/HTML/CSV or raw .nessus/.db. OSCP exam note: Nessus is PROHIBITED on the OSCP exam — use nmap vuln NSE scripts instead. Also covered in: OSCP PEN-200 Chapter 7 (Vulnerability Scanning). Nessus Essentials is free for up to 16 hosts. After dpkg install, start the service then access the web UI at https://localhost:8834 (self-signed cert). Register with an email to get an Essentials license key. Also covered in: CPTS Ch06 (Vulnerability Assessment).",
+  "references": [
+    {
+      "title": "Tenable Nessus",
+      "url": "https://www.tenable.com/products/nessus"
+    },
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 - Vulnerability Scanning",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-nessus-scanning",
+      "rel": "next",
+      "note": "How to configure credentialed scans/templates."
+    },
+    {
+      "id": "openvas-setup",
+      "rel": "alternative",
+      "note": "Free open-source alternative scanner."
+    },
+    {
+      "id": "nmap-vuln-scripts",
+      "rel": "alternative",
+      "note": "Exam-legal detection: Nessus is banned on OSCP, use nmap NSE vuln scripts."
+    }
+  ],
+  "id": "nessus-setup",
+  "name": "Nessus - Install & Start",
+  "command": "sudo dpkg -i Nessus-<version>-ubuntu910_amd64.deb",
+  "description": "Install the Nessus vulnerability scanner, start the service, and reach the web UI to run scans (Basic Network Scan, Advanced Scan, Credentialed Patch Audit, etc.).",
+  "steps": [
+    {
+      "label": "1. Install the package",
+      "command": "sudo dpkg -i Nessus-8.15.1-ubuntu910_amd64.deb"
+    },
+    {
+      "label": "2. Start the service",
+      "command": "sudo systemctl start nessusd.service"
+    },
+    {
+      "label": "3. Open the web interface",
+      "command": "# https://localhost:8834  (or https://<IP>:8834)"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "restricted",
+  "defense": {
+    "why_it_works": "Nessus is a commercial vulnerability scanner. It runs static tests (matching detected software/versions against its 145k+ plugins covering known CVEs) and dynamic tests (benign payloads such as weak credentials, SQL injection, or command injection). Credentialed scans authenticate to targets to inspect patch levels directly.",
+    "prerequisites": "Nessus installed and licensed, and network access to the target range. Credentialed scans additionally need valid host credentials.",
+    "impact": "A severity-ranked (Critical->Info), CVE-mapped vulnerability inventory across the target range - the roadmap for which exploits to attempt.",
+    "detection": "Active scanning generates a large, distinctive volume of probes across many hosts, ports, and services. [MITRE T1595.002 AN1999] Monitor and analyse traffic patterns/packet inspection for protocols that do not follow expected standards, and monitor network data for uncommon data flows; correlate with process monitoring. Credentialed scans appear as broad authenticated logons from the scanner host, and Nessus plugin traffic has IDS-recognisable signatures.",
+    "artifacts": "A burst of connections across many ports/hosts from the scanner IP; authenticated logons from the scanner (credentialed scans); Hydra/RID brute-force attempts (failed-logon events) if enabled; scanner user-agent in web logs.",
+    "prevention": "[MITRE T1595.002 M1056] Minimise externally exposed services and data. Segment the network so only authorised scanners reach hosts, alert on scan patterns, and tightly control the scanner's own credentials. (This is legitimate assessment tooling - the value is knowing what an attacker's scan looks like on the wire.)",
+    "evasion": "Nessus scan policies can build a slower, more evasive scan; safe checks (on by default) avoid disruptive probes; the scanner can throttle on congestion and randomise target order to blend into traffic.",
+    "sources": [
+      "HTB M06",
+      "MITRE T1595.002"
+    ],
+    "misconfiguration": "Vulnerability scanning reveals services with unpatched CVEs, default configurations, or known-weak settings. The absence of a patch management process allows critical vulnerabilities to remain exploitable for months or years. Scan results that are not acted upon create a false sense of security.",
+    "vulnerable_config": "# OpenVAS/Nessus finding typical vulnerable targets:\n# CVSSv3: 9.8 - Apache Struts2 RCE (CVE-2017-5638) - unpatched\n# CVSSv3: 8.8 - Tomcat manager with default creds (admin/admin)\n# CVSSv3: 10.0 - MS17-010 (EternalBlue) - SMBv1 enabled, unpatched\n\n# Unpatched = patch not applied within SLA:\n# Critical (CVSS 9+): patch within 24-72 hours\n# High (CVSS 7-8.9): patch within 7 days\n# Medium: patch within 30 days",
+    "secure_config": "# Establish a vulnerability management program:\n# 1. Scan weekly with authenticated scans (Nessus/OpenVAS/Qualys)\n# 2. Integrate scan results with ticketing (Jira/ServiceNow)\n# 3. Set SLA by severity: Critical 72h, High 7d, Medium 30d\n# 4. Verify patches with re-scan\n\n# CVSS scoring -> risk-based prioritization:\n# Not all CVSSv3 9+ are exploitable in your environment\n# Use EPSS (Exploit Prediction Scoring System) to prioritize by actual exploitation likelihood\n\n# Defense-in-depth: patch is the fix, but compensating controls while patching:\n# WAF rule for web vuln CVEs\n# Network segment to isolate vulnerable service\n# IDS signature for exploit traffic"
+  },
+  "variations": [
+    {
+      "description": "Install Nessus .deb package",
+      "command": "sudo dpkg -i Nessus-<version>-ubuntu910_amd64.deb",
+      "label": "sudo dpkg -i Nessus-<version>-ubun…"
+    },
+    {
+      "description": "Start Nessus service",
+      "command": "sudo systemctl start nessusd.service",
+      "label": "systemctl"
+    },
+    {
+      "description": "Enable Nessus at boot",
+      "command": "sudo systemctl enable nessusd.service",
+      "label": "systemctl"
+    },
+    {
+      "description": "Check Nessus service status",
+      "command": "sudo systemctl status nessusd.service",
+      "label": "systemctl"
+    },
+    {
+      "description": "Access Nessus web UI (after start)",
+      "command": "# Navigate to: https://localhost:8834\n# Accept self-signed cert, create admin account, enter license key (Nessus Essentials = free, 16-host limit)",
+      "label": "Navigate to: https://localhost:883…"
+    }
+  ]
+}

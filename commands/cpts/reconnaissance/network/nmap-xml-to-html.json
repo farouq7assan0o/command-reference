@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nxsltproc converts Nmap's XML output (-oX or -oA .xml) to formatted HTML using Nmap's embedded XSL stylesheet. Produces a structured table with port states, service versions, script output \u2014 suitable for client reports.\n\n=== CHAINING ===\nEvery nmap scan with -oA \u2192 .xml file \u2192 xsltproc nmap.xml -o nmap.html \u2192 open in browser \u2192 structured evidence for reporting.\n\n=== REPORT USE ===\nHTML table format is readable by non-technical stakeholders. Include in penetration test reports as appendix evidence. Preserves all scan data in structured format.",
+  "references": []
+}

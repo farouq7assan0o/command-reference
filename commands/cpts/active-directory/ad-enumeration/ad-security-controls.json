@@ -1,0 +1,107 @@
+{
+  "id": "ad-security-controls",
+  "name": "AD - Enumerate Security Controls (Defender / AppLocker / CLM)",
+  "type": "command",
+  "platform": "windows",
+  "command": "Get-MpComputerStatus",
+  "description": "Post-foothold enumeration of host security controls: checks Windows Defender real-time protection state, AppLocker policy rules, and PowerShell Constrained Language Mode. Run these to understand what defenses you are operating against before loading tools.",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "Security Controls",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "defender",
+    "applocker",
+    "constrained-language-mode",
+    "opsec",
+    "evasion",
+    "enumeration"
+  ],
+  "tools": [
+    "PowerShell"
+  ],
+  "requires": [
+    "foothold"
+  ],
+  "protocols": [],
+  "exam": "exam-ok",
+  "variations": [
+    {
+      "label": "AppLocker Policy",
+      "command": "Get-AppLockerPolicy -Effective | select -ExpandProperty RuleCollections",
+      "description": "List all effective AppLocker rules \u2014 shows which executables and scripts are blocked. Look for PowerShell blocked at system32 path but not SysWOW64 (common bypass)"
+    },
+    {
+      "label": "PowerShell CLM Check",
+      "command": "$ExecutionContext.SessionState.LanguageMode",
+      "description": "Returns FullLanguage or ConstrainedLanguage. CLM blocks COM objects, restricts .NET types, and breaks many offensive PowerShell tools \u2014 plan around it"
+    },
+    {
+      "label": "Firewall + Defender (CMD)",
+      "command": "netsh advfirewall show allprofiles\nsc query windefend",
+      "description": "Check firewall state across all profiles and query Windows Defender service status from cmd.exe"
+    }
+  ],
+  "examples": [
+    {
+      "command": "Get-MpComputerStatus | Select RealTimeProtectionEnabled, AMServiceEnabled, AntispywareEnabled",
+      "label": "Quick Defender status check"
+    },
+    {
+      "command": "$ExecutionContext.SessionState.LanguageMode",
+      "label": "Confirm if CLM is active (ConstrainedLanguage = restricted)"
+    },
+    {
+      "command": "Get-AppLockerPolicy -Effective | select -ExpandProperty RuleCollections",
+      "label": "Dump AppLocker rules"
+    }
+  ],
+  "steps": [],
+  "notes": "=== WHAT TO LOOK FOR ===\nDefender: RealTimeProtectionEnabled=True \u2192 built-in tools or signed LOLBins only\nAppLocker: Look for paths NOT blocked \u2014 SysWOW64, TEMP, user-writable dirs often missed\nCLM: ConstrainedLanguage \u2192 many PowerView/PowerUp functions break; use C# or bypass\n\n=== COMMON APPLOCKER BYPASS ===\nIf system32\\powershell.exe is blocked:\n  C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe  (32-bit, often missed)\n  PowerShell_ISE.exe  (sometimes not in rules)\n\n=== CLM BYPASS APPROACHES ===\n  1. PS downgrade: powershell.exe -version 2 (no CLM, no Script Block Logging)\n  2. Use compiled C# (runspace bypass)\n  3. Use tools that don't rely on PS (SharpHound.exe, etc.)",
+  "mitre": [
+    "T1518.001",
+    "T1562.001"
+  ],
+  "defense": {
+    "why_it_works": "Native PowerShell cmdlets (Get-MpComputerStatus, Get-AppLockerPolicy) and WMI/SC calls query security product state through legitimate management interfaces. No special privilege needed \u2014 any authenticated user can read Defender and AppLocker configuration. This enumeration is completely silent under default logging.",
+    "prerequisites": "Any authenticated foothold on a domain-joined Windows host.",
+    "impact": "Intelligence only \u2014 tells the attacker what tools will work and what bypasses are needed. Defenders lose advantage when attackers know which controls are active.",
+    "detection": "Get-MpComputerStatus and Get-AppLockerPolicy generate no dedicated security events under default config. PowerShell Script Block Logging (Event 4104) records the commands if enabled and if the attacker has not downgraded to PS v2. Sysmon Event 1 with powershell.exe parent + these cmdlet names can serve as IOCs.",
+    "artifacts": "PowerShell Operational log (4104) if Script Block Logging is enabled. No network artifacts \u2014 all local queries.",
+    "prevention": "Enable PowerShell Script Block Logging and Transcription (GPO: Computer Config \u2192 Admin Templates \u2192 Windows Components \u2192 PowerShell). Deploy Microsoft Defender for Endpoint which detects enumeration patterns. Enforce PowerShell v5+ only (disable v2 via: Disable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root).",
+    "evasion": "Downgrade to PS v2 (`powershell.exe -version 2`) to evade Script Block Logging. Use cmd.exe equivalents (`sc query windefend`, `netsh advfirewall`) to avoid PowerShell logging entirely.",
+    "vulnerable_config": "# Default Windows: No Script Block Logging\n# PowerShell v2 still installed (older systems):\nGet-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2\n# State: Enabled  -> v2 available for downgrade\n\n# No alerting on Get-MpComputerStatus by default:\n# Defender itself doesn't flag enumeration of its own status",
+    "secure_config": "# Disable PowerShell v2:\nDisable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root\n\n# Enable Script Block Logging (GPO or registry):\n$key = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging'\nNew-Item $key -Force\nSet-ItemProperty $key -Name EnableScriptBlockLogging -Value 1\n\n# Enforce AppLocker in Enforcement mode (not Audit mode):\nSet-AppLockerPolicy -XMLPolicy <policy.xml> -Merge",
+    "misconfiguration": "AppLocker deployed in Audit mode (logs but does not block). Only blocking system32\\powershell.exe while SysWOW64 and PowerShell_ISE.exe paths are not included. Script Block Logging enabled but PowerShell v2 not removed \u2014 v2 bypasses logging.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1518.001",
+      "MITRE T1562.001"
+    ]
+  },
+  "references": [
+    {
+      "title": "Get-MpComputerStatus",
+      "url": "https://docs.microsoft.com/en-us/powershell/module/defender/get-mpcomputerstatus"
+    },
+    {
+      "title": "AppLocker Overview",
+      "url": "https://docs.microsoft.com/en-us/windows/security/threat-protection/windows-defender-application-control/applocker/what-is-applocker"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-lotl-enum",
+      "rel": "next",
+      "note": "If tools are blocked, switch to LOTL techniques using built-in Windows commands"
+    }
+  ]
+}

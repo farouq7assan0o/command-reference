@@ -1,0 +1,92 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "cmd"
+  ],
+  "tags": [
+    "uac",
+    "enumeration"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - User Account Control",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Check UAC is enabled",
+      "command": "REG QUERY HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\ /v EnableLUA"
+    },
+    {
+      "label": "Check the admin consent-prompt level",
+      "command": "REG QUERY HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\ /v ConsentPromptBehaviorAdmin"
+    },
+    {
+      "label": "OS build (bypass is build-specific)",
+      "command": "[environment]::OSVersion.Version"
+    },
+    {
+      "label": "Confirm you're in a medium-integrity admin context",
+      "command": "whoami /groups"
+    }
+  ],
+  "notes": "=== UAC Overview and Enumeration ===\nUAC is a convenience feature, NOT a security boundary. It restricts admin tokens by default.\n\n=== HOW UAC WORKS ===\nAdmin accounts get TWO tokens at logon:\n1. Standard user token (used by default at medium integrity)\n2. Full administrator token (used only when elevation is granted)\nRID 500 built-in Administrator is EXEMPT from UAC — always operates at high integrity.\nAll other admin accounts run at medium integrity unless elevated.\n\n=== ENUMERATION ===\nEnableLUA value:\n  reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows\\NT\\CurrentVersion\\UAC\" /v EnableLUA\n  0x0 = UAC disabled entirely (auto-elevate everything)\n  0x1 = UAC enabled\n\nConsentPromptBehaviorAdmin (controls prompt behavior):\n  reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows\\NT\\CurrentVersion\\UAC\" /v ConsentPromptBehaviorAdmin\n  0x0 = no prompt, auto-elevate\n  0x1 = prompt for credentials (no prompt on secure desktop)\n  0x2 = prompt for consent (non-Windows binaries only)\n  0x5 = Always notify (hardest to bypass — fewest techniques work)\n\nWindows build version (cross-reference against UACME bypass list):\n  [environment]::OSVersion.Version\n\n=== DECISION FLOW ===\nIs current token high integrity?\n  Yes → UAC already bypassed or not needed\n  No → Is UAC enabled (EnableLUA=1)?\n       No → running as medium but policies may still restrict\n       Yes → select bypass technique based on build + ConsentPromptBehaviorAdmin level\n\n=== CHAINING CONTEXT ===\nUAC bypass is a PREREQUISITE step when:\n- Account is in local Administrators group but operating with restricted token\n- Need SeDebugPrivilege, SeLoadDriverPrivilege, or other privileges stripped by UAC\n- Preparing for LSASS dump, Capcom exploit, or any privilege-requiring technique\nAfter bypass: full admin token unlocks all privilege-based escalation paths\n\n=== UACME REFERENCE ===\nhttps://github.com/hfiref0x/UACME catalogs techniques by build number, binary, patch status\nAlways check build number before selecting technique to avoid wasting time on patched methods",
+  "references": [
+    {
+      "title": "Microsoft - How UAC Works",
+      "url": "https://learn.microsoft.com/en-us/windows/security/identity-protection/user-account-control/how-user-account-control-works"
+    },
+    {
+      "title": "UACME",
+      "url": "https://github.com/hfiref0x/UACME"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "uac-bypass-srrstr",
+      "note": "Bypass UAC via the srrstr.dll hijack.",
+      "rel": "next"
+    }
+  ],
+  "id": "uac-enum",
+  "name": "UAC - Enumerate Configuration",
+  "command": "REG QUERY HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\ /v EnableLUA",
+  "description": "Confirm UAC is on and read its level before choosing a bypass. EnableLUA=1 means UAC active; ConsentPromptBehaviorAdmin sets the prompt strictness. The OS build number determines which bypass works.",
+  "opsec": "loud",
+  "mitre": [
+    "T1082"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Registry keys EnableLUA and ConsentPromptBehaviorAdmin reveal the UAC configuration. EnableLUA=0 means UAC is entirely disabled (all processes run as full admin without elevation prompts). ConsentPromptBehaviorAdmin values 0-3 indicate auto-elevation or silent elevation configurations that are bypassable. This reconnaissance step identifies whether UAC bypass is needed or if admin is already available.",
+    "prerequisites": "Shell access. Read access to HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System registry key.",
+    "impact": "Reconnaissance — identifies whether UAC is disabled (immediate admin access) or misconfigured (bypassable), informing attack path selection.",
+    "detection": "reg query on System policy key by standard user. PowerShell Get-ItemProperty on UAC registry path. SIEM: UAC configuration query.",
+    "artifacts": "Process log: reg query HKLM\\...\\Policies\\System by standard user",
+    "prevention": "Keep UAC enabled (EnableLUA=1). Set ConsentPromptBehaviorAdmin=2 (always prompt for credentials). Enable PowerShell logging to detect reconnaissance. Educate administrators on UAC importance.",
+    "misconfiguration": "UAC disabled entirely (EnableLUA=0) for convenience. UAC set to auto-elevate without prompting (ConsentPromptBehaviorAdmin=0 or 5).",
+    "vulnerable_config": "# Enumerate UAC configuration:\nREG QUERY HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v EnableLUA\n# EnableLUA = 0x0 <- UAC disabled\n\nREG QUERY HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v ConsentPromptBehaviorAdmin\n# ConsentPromptBehaviorAdmin = 0x0 <- auto elevate, no prompt",
+    "secure_config": "# Enable UAC at maximum level:\nreg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v EnableLUA /t REG_DWORD /d 1 /f\nreg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v ConsentPromptBehaviorAdmin /t REG_DWORD /d 2 /f\n\n# GPO enforcement:\n# Computer Configuration > Windows Settings > Security Settings > Local Policies\n# > Security Options > User Account Control: Run all administrators in Admin Approval Mode = Enabled",
+    "sources": [
+      "HTB M26",
+      "MITRE T1548.002",
+      "MITRE T1082"
+    ]
+  }
+}

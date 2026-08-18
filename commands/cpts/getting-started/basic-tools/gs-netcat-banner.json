@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "netcat"
+  ],
+  "tags": [
+    "netcat",
+    "banner-grab"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Basic Tools",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Grab an FTP banner",
+      "command": "nc -nv 10.129.42.253 21"
+    },
+    {
+      "label": "Grab an SSH banner",
+      "command": "netcat 10.10.10.10 22"
+    },
+    {
+      "label": "TCP port scan range (-z = zero-I/O scan mode)",
+      "command": "nc -nvv -w 1 -z 192.168.50.152 3388-3390"
+    },
+    {
+      "label": "UDP port scan range",
+      "command": "nc -nv -u -z -w 1 192.168.50.149 120-123"
+    },
+    {
+      "label": "PowerShell - single port test",
+      "command": "Test-NetConnection -Port 445 192.168.50.151"
+    },
+    {
+      "label": "PowerShell - port range scan loop",
+      "command": "1..1024 | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"192.168.50.151\", $_)) \"TCP port $_ is open\"} 2>$null"
+    }
+  ],
+  "notes": "Banner grabbing reveals service version and OS info without authentication — quick fingerprinting before Nmap. `-z` (zero-I/O mode) scans without sending data, useful for fast open/closed detection across a port range. `-w 1` sets a 1s timeout per port. PowerShell `Test-NetConnection` is the Windows equivalent for interactive use; the TCP loop is useful when nmap is unavailable. Try both nc and telnet — some services respond differently. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "references": [
+    {
+      "title": "Ncat (Nmap)",
+      "url": "https://nmap.org/ncat/"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-nmap-service-scan",
+      "rel": "next",
+      "note": "Full service scan of the host."
+    }
+  ],
+  "id": "gs-netcat-banner",
+  "name": "Netcat - Banner Grab",
+  "command": "nc -nv <ip> <port>",
+  "description": "Connect raw to a port to read its service banner - the quickest manual way to fingerprint a service. -n skips DNS, -v is verbose.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries scan for open ports and running services on network hosts to identify attack surface and potential exploitation targets. Tools like netcat, nmap, and service-specific clients probe for banner information that reveals software versions, which can then be matched against known vulnerabilities.",
+    "prerequisites": "Network access to the target and a known open TCP port.",
+    "impact": "The service name and version banner, used to fingerprint the service and match it against known CVEs.",
+    "detection": "Monitor for processes performing network enumeration by correlating process creation, socket connections, and sequential destination IP probing within a time window. Unusual port scanning patterns or banner-grabbing activity from internal hosts can indicate post-compromise discovery.",
+    "artifacts": "A TCP connection to the service port in firewall/IDS logs, and a connection entry in the service's own log.",
+    "prevention": "Close unnecessary ports and services to prevent risk of discovery and potential exploitation. Use network intrusion detection/prevention systems to detect and prevent remote service scans. Ensure proper network segmentation to protect critical servers and devices.",
+    "sources": [
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nScans for rservices ports: rsh (514), rlogin (513), rexec (512). R-services are legacy remote access protocols replaced by SSH precisely because of their trust-based authentication model. Any exposure is an immediate finding.\n\n=== TRUST FILE ABUSE ===\n/etc/hosts.equiv: globally trusts specific hosts/users. .rhosts in home directory: per-user trust. '+ +' in .rhosts: any user from any host, no credential check.\n\n=== CHAINING ===\nDiscover rservices \u2192 attempt rlogin from attacker IP \u2192 if trusted (source IP in .rhosts or hosts.equiv): unauthenticated shell \u2192 rwho/rusers to identify other active sessions for lateral movement.",
+  "references": []
+}

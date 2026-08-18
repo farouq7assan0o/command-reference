@@ -1,0 +1,78 @@
+{
+  "id": "ad-sysvol-scripts",
+  "name": "SYSVOL Logon Scripts - Hunt for Creds",
+  "command": "ls \\\\<dc_host>\\SYSVOL\\<domain>\\scripts",
+  "description": "Lists the SYSVOL scripts folder where domain logon scripts are stored. Readable by all domain users. Logon scripts (batch, VBS, PowerShell) often contain hardcoded credentials for mapping drives, connecting to shares, or running with elevated rights. A frequently overlooked credential hunting location.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "Miscellaneous Misconfigurations",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "sysvol",
+    "logon-scripts",
+    "credential-hunting",
+    "group-policy",
+    "enumeration"
+  ],
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT IS SYSVOL ===\nSYSVOL is a shared folder on every DC, replicated across all DCs in the domain.\nPath: \\\\<domain>\\SYSVOL\\<domain>\\\nContents: Group Policy templates, logon scripts, startup scripts, GPP XML files.\nAny authenticated domain user can read SYSVOL.\n\n=== SCRIPTS FOLDER ===\n\\\\INLANEFREIGHT.LOCAL\\SYSVOL\\INLANEFREIGHT.LOCAL\\scripts\\\nContains .bat, .vbs, .ps1 logon/logoff scripts assigned via GPO.\nThese run on user or computer login — and are often written by admins who\nhardcode credentials because 'it's just a script, no one will look there.'\n\n=== WHAT TO LOOK FOR ===\n  - net use commands with /user and /password flags\n  - SQL connection strings with credentials\n  - PowerShell Invoke-Command with -Credential parameters\n  - Variables holding passwords (e.g., $pass = 'Password123')\n  - FTP or HTTP requests with embedded creds\n  - runas /user commands\n\n=== SEARCH TECHNIQUE ===\n  # List all scripts\n  ls \\\\INLANEFREIGHT.LOCAL\\SYSVOL\\INLANEFREIGHT.LOCAL\\scripts\n  \n  # Search script content for keywords\n  Get-ChildItem -Path \\\\INLANEFREIGHT.LOCAL\\SYSVOL -Recurse -File | \n    Select-String -Pattern 'password|passwd|cred|secret|net use' -List\n\n=== ALSO CHECK ===\n  - GPP XML files (Groups.xml, etc.) for cpassword fields — use gpp-decrypt\n  - Policy INF files for password settings\n  - INI files for application configs",
+  "examples": [
+    {
+      "label": "List scripts folder",
+      "command": "ls \\\\INLANEFREIGHT.LOCAL\\SYSVOL\\INLANEFREIGHT.LOCAL\\scripts"
+    },
+    {
+      "label": "Search all SYSVOL for password strings",
+      "command": "Get-ChildItem -Path \\\\INLANEFREIGHT.LOCAL\\SYSVOL -Recurse -File -ErrorAction SilentlyContinue | Select-String -Pattern 'password|passwd|net use' -List | Select Path"
+    },
+    {
+      "label": "From Linux via smbclient",
+      "command": "smbclient -U 'INLANEFREIGHT\\forend%Klmcargo2' //172.16.5.5/SYSVOL -c 'ls INLANEFREIGHT.LOCAL/scripts'"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-domainpasswordspray",
+      "rel": "next",
+      "note": "Reuse any recovered credentials."
+    }
+  ],
+  "defense": {
+    "why_it_works": "SYSVOL is an AD-wide shared folder replicated across all DCs and readable by all authenticated domain users (\\\\domain\\SYSVOL\\domain\\scripts). Logon scripts (.bat, .cmd, .vbs, .ps1) in this location run automatically at user logon and frequently contain hardcoded credentials for drive mapping, database connections, or service account operations — written without consideration for the world-readable nature of SYSVOL.",
+    "prerequisites": "Domain membership, network access to DC on port 445. Any standard file browsing tool (dir, ls, Get-ChildItem). No elevated privileges.",
+    "impact": "Plaintext credentials embedded in logon scripts — often for network shares, databases, or service accounts that may have elevated privileges. Credentials are typically long-lived (scripts are rarely reviewed or rotated). Direct authentication or pass-the-hash depending on what is found.",
+    "detection": "SMB share access Event 5140 (network share object access to NETLOGON or SYSVOL) if share auditing is enabled on DCs. Manual file browsing of the scripts directory is distinguishable from normal policy processing by access patterns (non-policy-related file extensions, access at unusual times, access from unexpected hosts). File access auditing (SACL) on specific script files would generate Event 4663.",
+    "prevention": "Immediately audit all files in \\\\domain\\SYSVOL\\domain\\scripts for hardcoded credentials. Replace with vault-based credential retrieval (CyberArk fetch, Azure Key Vault, gMSA accounts). Restrict NTFS read permissions on logon scripts to only the users/computers that need them — most scripts don't need to be readable by all domain users. Include SYSVOL script audit in periodic security reviews.",
+    "evasion": "SYSVOL access is completely normal for domain members — browsing the scripts folder generates the same SMB traffic as policy refresh. Reads are non-destructive and leave no modification artifacts. The logon script content is retrieved in a single directory listing and file read.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1552.001"
+    ],
+    "misconfiguration": "Administrative shortcuts create persistent misconfigurations: passwords stored in AD Description/Info attributes (visible to all users), accounts with PasswordNotRequired flag set (blank passwords allowed), LAPS attribute readable by non-admin groups, gMSA readable by unintended principals, or SYSVOL containing scripts with embedded credentials.",
+    "vulnerable_config": "# Passwords in AD Description field:\nGet-ADUser -Filter * -Properties Description | Where-Object {$_.Description -ne $null}\n# Returns: svc_backup  Description: 'Temp password: Welcome1!'\n\n# PasswordNotRequired flag (UAC 0x20 = PASSWD_NOTREQD):\nGet-ADUser -Filter {PasswordNotRequired -eq $true}\n\n# LAPS password readable by Domain Users (misconfigured ACL):\nGet-ADComputer -Filter * -Properties ms-Mcs-AdmPwd | Select-Object Name,'ms-Mcs-AdmPwd'\n# Should only be readable by admins + specific LAPS readers group",
+    "secure_config": "# Remove passwords from Description/Info fields:\nGet-ADUser -Filter * -Properties Description,Info |\n    Where-Object {$_.Description -match 'pass|pwd|temp|welcome'} |\n    Set-ADUser -Description $null\n\n# Fix PasswordNotRequired accounts:\nGet-ADUser -Filter {PasswordNotRequired -eq $true} |\n    Set-ADAccountControl -PasswordNotRequired $false\n\n# LAPS ACL hardening — restrict ms-Mcs-AdmPwd reads:\n# Only specific LAPS-Readers security group should have Read on this attribute\n# Run: Set-AdmPwdComputerSelfPermission, Set-AdmPwdReadPasswordPermission\n\n# Audit gMSA readers:\nGet-ADServiceAccount -Filter * -Properties PrincipalsAllowedToRetrieveManagedPassword |\n    Select-Object Name, PrincipalsAllowedToRetrieveManagedPassword"
+  },
+  "tools": [
+    "powershell"
+  ]
+}

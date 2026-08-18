@@ -1,0 +1,129 @@
+{
+  "id": "aws-pacu-enum",
+  "name": "AWS - Pacu Framework (Automated IAM & Cloud Enumeration)",
+  "command": "pacu\n# Inside Pacu:\nimport_keys <profile_name>\nrun iam__enum_users_roles_policies_groups\nrun iam__enum_permissions\ndata IAM",
+  "description": "Pacu is an open-source AWS exploitation framework (Rhino Security Labs) for post-exploitation enumeration and attack automation in AWS environments. It stores session state in a local SQLite database, imports credentials from named AWS CLI profiles, and provides organized modules for IAM enumeration, privilege escalation, lateral movement, and data exfiltration. Key enumeration modules: iam__enum_users_roles_policies_groups (full IAM entity inventory), iam__enum_permissions (maps what the current identity can do), iam__enum_roles (cross-account role brute-force from a wordlist).",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "awscli-configured",
+    "pacu-installed"
+  ],
+  "tools": [
+    "pacu"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "iam",
+    "enumeration",
+    "pacu",
+    "automation",
+    "post-exploitation"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.3.4, 24.5.4)",
+  "examples": [
+    {
+      "label": "Install Pacu",
+      "command": "sudo apt update && sudo apt install pacu"
+    },
+    {
+      "label": "Start Pacu and create a new session",
+      "command": "pacu\n# Prompt: 'What would you like to name this new session?' -> type a name (e.g., offseclab)"
+    },
+    {
+      "label": "Import credentials from an existing AWS CLI profile",
+      "command": "Pacu (offseclab:No Keys Set) > import_keys attacker\n# Imports from ~/.aws/credentials profile 'attacker'"
+    },
+    {
+      "label": "List available enumeration modules",
+      "command": "Pacu (offseclab:imported-attacker) > ls\n# Look under [Category: ENUM] and [Category: RECON_UNAUTH]"
+    },
+    {
+      "label": "Enumerate all IAM users, roles, policies, groups (requires iam:List* permissions)",
+      "command": "Pacu (offseclab:imported-target) > run iam__enum_users_roles_policies_groups"
+    },
+    {
+      "label": "View collected IAM data",
+      "command": "Pacu (offseclab:imported-target) > data IAM"
+    },
+    {
+      "label": "Enumerate current user/role permissions (brute-forces allowed actions)",
+      "command": "Pacu (offseclab:imported-target) > run iam__enum_permissions"
+    },
+    {
+      "label": "Cross-account IAM role enumeration from a wordlist (no target creds needed)",
+      "command": "Pacu (offseclab:imported-attacker) > run iam__enum_roles --word-list /tmp/role-names.txt --account-id <target_account_id>\n# Found role: arn:aws:iam::<account_id>:role/lab_admin"
+    },
+    {
+      "label": "Cross-account IAM user enumeration from a wordlist",
+      "command": "Pacu (offseclab:imported-attacker) > run iam__enum_users --word-list /tmp/usernames.txt --account-id <target_account_id>"
+    },
+    {
+      "label": "List services that have been enumerated this session",
+      "command": "Pacu (offseclab:imported-target) > services"
+    }
+  ],
+  "notes": "Pacu organizes data by AWS service (IAM, EC2, S3, etc.) in its SQLite database \u2014 use 'data IAM' or 'data EC2' to view collected data. Sessions persist across runs \u2014 re-running Pacu reconnects to the last session or you can activate a specific one with --activate-session. import_keys reads from the local ~/.aws/credentials file (aws configure profiles). The iam__enum_roles module works cross-account by attempting to update the AssumeRole trust policy of a role you control \u2014 if a role exists in the target account, the update succeeds. iam__enum_permissions uses a brute-force approach calling hundreds of AWS APIs and tracking which succeed vs. return AccessDenied. iam__bruteforce_permissions is a more aggressive alternative for permission discovery. Useful Pacu modules for Ch24-25: iam__enum_*, ec2__enum, s3__*, lambda__enum, rds__enum, ebs__enum_volumes_snapshots.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Enumerating AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "Pacu - Rhino Security Labs GitHub",
+      "url": "https://github.com/RhinoSecurityLabs/pacu"
+    },
+    {
+      "title": "MITRE ATT&CK - Cloud Account Discovery",
+      "url": "https://attack.mitre.org/techniques/T1087/004/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-cli-setup",
+      "rel": "prereq",
+      "note": "Configure aws CLI profiles before importing keys into Pacu."
+    },
+    {
+      "id": "aws-iam-full-dump",
+      "rel": "alternative",
+      "note": "Manual IAM dump with get-account-authorization-details if you prefer CLI over Pacu."
+    },
+    {
+      "id": "aws-iam-scope-permissions",
+      "rel": "alternative",
+      "note": "Manual permission scoping step-by-step without Pacu."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1087.004",
+    "T1580",
+    "T1526"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Pacu is an AWS exploitation framework (analogous to Metasploit for AWS) that automates enumeration and exploitation of AWS environments. Modules enumerate services (EC2, S3, Lambda, IAM, RDS, SSM), identify misconfigurations, and exploit privilege escalation paths. Pacu tracks discovered resources in a local database and uses parallelized API calls for speed. The iam__enum_permissions module specifically identifies exploitable IAM permission combinations.",
+    "prerequisites": "AWS credentials (any level). Pacu framework installed. Python 3. AWS CLI configured. Network access to AWS API endpoints.",
+    "impact": "T1087.004 Account Discovery: Cloud Account + T1580 Cloud Infrastructure Discovery + T1526 Cloud Service Discovery. Comprehensive AWS environment enumeration \u2014 maps all accessible services, identifies misconfigurations, privilege escalation paths, and exposed data across the entire cloud environment.",
+    "detection": "CloudTrail: high-volume, multi-service API calls in rapid succession from a single principal \u2014 Pacu generates hundreds of API calls in minutes. GuardDuty: 'Discovery:IAMUser/AnomalousBehavior' and service-specific discovery findings. The breadth and speed of API calls across multiple services simultaneously is a strong Pacu indicator.\nProcesses performing local or domain account enumeration by invoking account directory queries or security APIs followed by structured output of account lists (DET0587/AN1612).\nSuspicious shell commands or unauthorized access to /etc/passwd or /etc/shadow (AN1613).\nDirectory service queries or system utilities accessing account metadata stores, producing enumeration output (AN1614).\nCloud provider API calls where principals retrieve IAM users or roles in rapid succession (AN1615).\nESXi host account configuration or management APIs queried to retrieve user account listings (AN1617).",
+    "artifacts": "CloudTrail: multi-service bulk API calls (EC2+S3+IAM+Lambda all within same minute) | GuardDuty: multiple discovery findings simultaneously | CloudWatch: anomalous API call volume spike from single ARN",
+    "prevention": "GuardDuty for anomalous API call detection (Pacu generates recognizable patterns). CloudTrail with SIEM alerting on bulk multi-service enumeration. SCPs limiting service access to necessary services per role. CloudWatch alarms on API call volume. Least-privilege IAM policies reduce Pacu's enumeration surface.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Use Pacu with --delay flag between calls. Run specific modules only (not full enumeration) to reduce API call volume. Target specific services rather than full account scan. Use credentials from the expected region.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1087/004/",
+      "https://attack.mitre.org/techniques/T1580/",
+      "https://attack.mitre.org/techniques/T1526/"
+    ],
+    "misconfiguration": "GuardDuty not enabled. No CloudTrail alerting. Broad IAM permissions allowing enumeration of many services. No SCP restrictions limiting service access per role type.",
+    "vulnerable_config": "# GuardDuty not enabled:\naws guardduty list-detectors\n# \u2192 Detectors: [] (no detectors = blind to Pacu anomalies)\n\n# No CloudTrail in all regions:\naws cloudtrail describe-trails | python3 -c 'import sys,json; t=json.load(sys.stdin)[\"trailList\"]; print([x[\"IsMultiRegionTrail\"] for x in t])'\n# \u2192 [False] = single-region trail, misses Pacu calls in other regions",
+    "secure_config": "# Enable GuardDuty in all regions:\nfor region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do\n  aws guardduty create-detector --enable --region $region\ndone\n\n# Enable multi-region CloudTrail:\naws cloudtrail create-trail --name organization-trail --s3-bucket-name org-cloudtrail-logs --is-multi-region-trail --enable-log-file-validation\naws cloudtrail start-logging --name organization-trail\n\n# CloudWatch alarm: API call burst:\n# Metric: CloudTrail event count per user per 5 minutes\n# Alarm: > 100 API calls in 5 min from single ARN \u2192 SNS alert"
+  }
+}

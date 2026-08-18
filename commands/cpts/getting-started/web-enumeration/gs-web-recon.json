@@ -1,0 +1,103 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl",
+    "whatweb"
+  ],
+  "tags": [
+    "web-recon",
+    "fingerprint",
+    "headers"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Web Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Check robots.txt for disallowed paths",
+      "command": "curl http://10.10.10.121/robots.txt   # e.g. /private, /uploaded_files"
+    },
+    {
+      "label": "View page source in browser",
+      "command": "# [CTRL + U]"
+    }
+  ],
+  "notes": "whatweb/curl -I fingerprints the stack (server, CMS, headers). Read robots.txt and any config/users XML gobuster finds. Identify the CMS+version for known exploits.",
+  "references": [
+    {
+      "title": "WhatWeb",
+      "url": "https://github.com/urbanadventurer/WhatWeb"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-gobuster",
+      "rel": "next",
+      "note": "Brute more paths."
+    },
+    {
+      "id": "gs-searchsploit",
+      "rel": "next",
+      "note": "Search exploits for the CMS/version."
+    }
+  ],
+  "id": "gs-web-recon",
+  "name": "Web Recon - Headers & Fingerprinting",
+  "command": "curl -IL https://<host>",
+  "description": "Pull HTTP headers and fingerprint the tech stack before deeper enumeration. Always check robots.txt and page source for hidden paths.",
+  "variations": [
+    {
+      "label": "Headers (curl)",
+      "command": "curl -IL https://www.<domain>.com"
+    },
+    {
+      "label": "Fingerprint one target",
+      "command": "whatweb <ip>"
+    },
+    {
+      "label": "Fingerprint a subnet",
+      "command": "whatweb --no-errors <cidr>"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1592"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "HTTP response headers are designed to identify the server and application stack, but they also reveal the specific framework in use, version information, and whether the server is missing essential security options or has been misconfigured.",
+    "prerequisites": "A reachable target web application (URL).",
+    "impact": "Server/framework/version identification and missing-security-header findings — informing exploit selection.",
+    "detection": "[MITRE T1592] Detection has a very high false positive rate and much of the activity may occur outside the visibility of the target organization. Detection efforts are more effective when focused on related stages of the adversary lifecycle, such as during Initial Access.",
+    "artifacts": "Normal-looking HTTP requests (largely passive); minimal footprint beyond standard access-log entries.",
+    "prevention": "Configure web servers to suppress or generalize version information in response headers. Remove or obfuscate the Server header and framework-identifying headers to limit the fingerprinting data returned to clients.\n\n[MITRE T1592 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside of enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "evasion": "Passive fingerprinting (reading response headers and HTML) generates no more traffic than a normal page request and is indistinguishable from ordinary browsing.",
+    "sources": [
+      "HTB M02",
+      "MITRE T1592"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

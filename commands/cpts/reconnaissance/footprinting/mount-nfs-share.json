@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nmount -t nfs mounts a remote NFS export as a local directory, providing direct filesystem access. After mounting, ls -n reveals numeric UID/GID of files \u2014 the foundation for the UID matching attack.\n\n=== UID MATCHING ATTACK ===\nls -n shows file owned by UID 1000 \u2192 create local user with UID 1000 on attacker machine \u2192 now have read/write to those files on the mount. NFS trusts whatever UID/GID the client presents.\n\n=== no_root_squash EXPLOITATION ===\nIf no_root_squash is set: attacker root uploads SUID shell binary to NFS share \u2192 target SSH user executes binary \u2192 binary runs with elevated UID \u2192 privilege escalation.\n\n=== CHAINING ===\nshowmount -e \u2192 identify exports \u2192 mount share \u2192 ls -n for UIDs \u2192 match UIDs locally \u2192 access/modify files \u2192 if writable + no_root_squash: place SUID binary for privesc.",
+  "references": []
+}

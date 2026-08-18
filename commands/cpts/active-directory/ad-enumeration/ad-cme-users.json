@@ -1,0 +1,78 @@
+{
+  "id": "ad-cme-users",
+  "name": "CrackMapExec - Enumerate Domain Users",
+  "command": "crackmapexec smb <dc_ip> -u <user> -p <password> --users",
+  "description": "Enumerates all domain user accounts via SMB with valid credentials. Output includes usernames, RIDs, bad password count, and password last set dates. Useful for building spray target lists and identifying stale accounts (old PasswordLastSet = likely weak password that was never changed).",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "crackmapexec",
+    "user-enumeration",
+    "smb",
+    "enumeration"
+  ],
+  "mitre": [
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== CME USERS OUTPUT ===\n  SMB  172.16.5.5  445  ACADEMY-EA-DC01  [*] Windows Server 2019...\n  SMB  172.16.5.5  445  ACADEMY-EA-DC01  administrator  500  Badpwdcount: 0  Baddpwdtime: ...\n  SMB  172.16.5.5  445  ACADEMY-EA-DC01  jsmith         1103 Badpwdcount: 0  PasswordLastSet: 2021-11-01\n\nHigh-value observations:\n  Badpwdcount > 0  → someone is attempting this account (ongoing attack or spray)\n  PasswordLastSet old (years ago) → account may never rotate → weak/reused password\n  Accounts ending in $ → machine accounts (low value for password spraying)\n\n=== EXTRACT JUST USERNAMES ===\ncrackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --users 2>/dev/null | awk '{print $5}' | grep -v '\\[\\*\\]' | sort -u > users.txt\n\n=== CME vs OTHER USER ENUM ===\n  CME --users → fast, shows bad pwd count\n  ldapsearch   → more attributes, can filter\n  PowerView    → richest data, requires Windows foothold\n  windapsearch → clean output, Python\n\nUse CME for speed, PowerView for depth.",
+  "examples": [
+    {
+      "label": "Enumerate all users",
+      "command": "crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --users"
+    },
+    {
+      "label": "Extract clean username list",
+      "command": "crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --users 2>/dev/null | awk '{print $5}' | grep -v '^\\[' > users.txt"
+    }
+  ],
+  "references": [
+    {
+      "title": "CrackMapExec wiki",
+      "url": "https://wiki.porchetta.industries/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-cme-groups",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "CrackMapExec/NetExec enumerates domain users over SMB (--users) using valid creds or a null session.",
+    "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
+    "impact": "A domain user list gathered over SMB.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "SMB/SAMR user enumeration from one source.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "crackmapexec"
+  ]
+}

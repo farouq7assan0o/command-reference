@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nbraa performs rapid bulk OID enumeration across SNMP targets using a validated community string. Faster than snmpwalk for large OID trees because it sends many requests in parallel rather than walking sequentially.\n\n=== CHAINING ===\n1. Discover SNMP service with nmap -sU -p 161 2. Brute community string with onesixtyone 3. Bulk enumerate OIDs with braa using validated string \u2192 correlate contact/hostname with DNS findings.\n\n=== WHAT IT REVEALS ===\nOS version/kernel, system contact email, hostname, location string, uptime, running processes, installed packages with versions. Package list enables targeted CVE lookups without a vulnerability scanner.\n\n=== DETECTION ===\nBulk SNMP queries generate high volumes of UDP packets to port 161. SNMPv3 with auth would block this entirely. Network monitoring comparing SNMP query volume to baseline will flag anomalies.",
+  "references": []
+}

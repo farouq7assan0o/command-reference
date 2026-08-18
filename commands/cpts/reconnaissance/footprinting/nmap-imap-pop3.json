@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNmap scan of IMAP (143/993) and POP3 (110/995) ports with -sC flag automatically extracts SSL certificate details from TLS ports. Certificate common name and email addresses provide infrastructure intelligence without authenticating.\n\n=== CHAINING ===\nPort scan reveals IMAP/POP3 \u2192 cert extraction gives internal hostname + admin email \u2192 enumerate auth methods \u2192 attempt login with discovered credentials \u2192 curl imaps:// for folder listing \u2192 openssl interactive session for mail reading.",
+  "references": []
+}

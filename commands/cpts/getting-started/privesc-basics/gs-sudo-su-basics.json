@@ -1,0 +1,81 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "sudo",
+    "su"
+  ],
+  "tags": [
+    "sudo",
+    "su",
+    "privesc"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Basics",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Become root via sudo",
+      "command": "sudo su -"
+    },
+    {
+      "label": "Run a command as another user",
+      "command": "sudo -u user /bin/echo Hello World!"
+    },
+    {
+      "label": "Switch user with a known password",
+      "command": "su -"
+    }
+  ],
+  "notes": "Cron locations to inspect: /etc/crontab, /etc/cron.d, /var/spool/cron/crontabs/root.",
+  "references": [
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-privesc-enum",
+      "rel": "prereq",
+      "note": "Enumerate first to find the vector."
+    }
+  ],
+  "id": "gs-sudo-su-basics",
+  "name": "Privilege Escalation - sudo / su",
+  "command": "sudo -l",
+  "description": "With sudo rights or a discovered password, escalate directly. sudo -l lists what you may run; sudo su - or su - gives a root shell.",
+  "opsec": "loud",
+  "mitre": [
+    "T1548.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The sudo command caches credentials for a configurable timestamp_timeout period, allowing re-use without re-entering a password. If tty_tickets is disabled, this cached authentication is valid across all terminal sessions for that user. Sudoers entries with NOPASSWD allow specified commands to run with root privileges without any password — adversaries exploit both to escalate privileges silently.",
+    "prerequisites": "A shell as a user with some sudo rights, or an already-cached sudo timestamp.",
+    "impact": "Command execution as root (or another user) — full privilege escalation wherever the sudo rules allow.",
+    "detection": "Correlate sudo executions (euid=0) with cases where tty_tickets is disabled or timestamp_timeout is actively abused. Detect NOPASSWD entries in /etc/sudoers followed by immediate privileged commands, or modifications to /etc/sudoers by non-root processes.",
+    "artifacts": "sudo invocation logs ('sudo: user : COMMAND' in /var/log/auth.log); su session entries; TTY allocation records.",
+    "prevention": "Ensure tty_tickets is enabled (default on macOS Sierra+) to prevent cross-terminal credential reuse. Set timestamp_timeout to 0 to require a password every time sudo is invoked. Strictly edit /etc/sudoers so that passwords are always required and users cannot spawn risky processes as higher-privilege users.",
+    "evasion": "sudo/su usage is normal administrative behaviour; escalating with legitimately cached or granted sudo rights blends with day-to-day admin activity rather than triggering exploit-based alerts.",
+    "sources": [
+      "MITRE T1548.003"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

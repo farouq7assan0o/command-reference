@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\ncurl with imaps:// scheme authenticates and lists mail folders over TLS in a single command. Also exposes TLS handshake, cipher suite, server banner with version, and full CAPABILITY exchange in verbose mode (-v).\n\n=== CHAINING ===\nConfirm valid IMAP credentials (from SMTP VRFY + password reuse or other source) \u2192 curl list folders \u2192 openssl s_client for interactive session \u2192 read mail for credentials, internal IPs, sensitive data.\n\n=== INTELLIGENCE VALUE ===\nMail content frequently contains credentials for internal systems, VPN access info, and internal IP topology. IMAP is preferred over POP3 because it retains all folders including Sent, Drafts, and custom folders.\n\n=== CRED CHAIN ===\nUsername discovered via SMTP VRFY \u2192 password = username (or from password spray) \u2192 curl confirms valid IMAP creds \u2192 full mailbox accessible.",
+  "references": []
+}

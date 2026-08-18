@@ -1,0 +1,79 @@
+{
+  "id": "ad-crossforest-kerberoast",
+  "name": "GetUserSPNs.py - Kerberoast Across Forest Trust",
+  "command": "GetUserSPNs.py -request -target-domain <foreign_domain> <domain>/<user>:<password>",
+  "description": "Performs Kerberoasting against a foreign forest domain using credentials from the local forest. When a bidirectional trust exists, the foreign DC will issue TGS tickets for service accounts in the foreign domain — encrypted with the foreign service account's hash. Allows cracking foreign forest service account passwords without any credentials in that forest.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Credential Access",
+  "subcategory": "Domain Trusts",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "kerberoasting",
+    "cross-forest",
+    "domain-trust",
+    "impacket",
+    "spn"
+  ],
+  "mitre": [
+    "T1558.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY CROSS-FOREST KERBEROASTING WORKS ===\nWhen a bidirectional forest trust exists between INLANEFREIGHT.LOCAL and\nFREIGHTLOGISTICS.LOCAL:\n  - Your INLANEFREIGHT credentials are trusted by FREIGHTLOGISTICS\n  - You can request Kerberos service tickets FOR services IN FREIGHTLOGISTICS\n  - The TGS is encrypted with the FREIGHTLOGISTICS service account's hash\n  - Crack offline — same as regular kerberoasting, no credential needed in foreign forest\n\n=== THE -target-domain FLAG ===\nThis tells GetUserSPNs.py to:\n  1. Authenticate TO your domain (INLANEFREIGHT.LOCAL) with provided creds\n  2. Request a cross-realm TGS for the FOREIGN domain's SPNs\n  3. Return hashes encrypted with the foreign account's key\n\n=== OUTPUT ===\n$krb5tgs$23$*<spn>*<realm>*... → same format as regular kerberoasting\nCrack with: hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt\n\n=== FOREIGN USER IN LOCAL GROUP ===\nAlso check: Get-DomainForeignGroupMember -Domain FREIGHTLOGISTICS.LOCAL\nIf FREIGHTLOGISTICS users are members of INLANEFREIGHT groups (or vice versa),\nthose accounts may have rights in both domains — high value targets.\n\n=== FIND TRUSTS FIRST ===\nGet-DomainTrust → identify bidirectional forest trust\nGet-DomainTrust → 'TrustDirection: Bidirectional' = cross-forest kerberoast possible\n\n=== AFTER CRACKING ===\nForeign service account cred → test against foreign DC (Evil-WinRM, CME)\nForeign admin account → DCSync foreign forest if privileged",
+  "examples": [
+    {
+      "label": "Kerberoast foreign forest",
+      "command": "GetUserSPNs.py -request -target-domain FREIGHTLOGISTICS.LOCAL INLANEFREIGHT.LOCAL/forend:Klmcargo2"
+    },
+    {
+      "label": "Crack the cross-forest TGS",
+      "command": "hashcat -m 13100 crossforest_hashes.txt /usr/share/wordlists/rockyou.txt"
+    }
+  ],
+  "references": [
+    {
+      "title": "Impacket GetUserSPNs.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/GetUserSPNs.py"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-kerberoast-crack",
+      "rel": "next",
+      "note": "Crack the cross-forest TGS."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Bidirectional forest trusts allow any authenticated user in the local forest to request Kerberos service tickets for SPNs registered in the foreign forest. The foreign DC issues a TGS encrypted with the target service account's hash — identical mechanics to in-domain Kerberoasting. No credentials in the foreign forest are required; the local forest TGT is accepted via the trust referral chain.",
+    "prerequisites": "Bidirectional or outbound forest trust from local to target forest. Valid credentials in the local forest (any domain user). SPN-bearing service accounts existing in the foreign forest that have weak, crackable passwords.",
+    "impact": "Offline cracking of foreign forest service account hashes. Compromised credentials may provide privileged access in the foreign forest — especially if the SPN account is a service/admin account with cross-domain group membership or local admin rights.",
+    "detection": "Windows Security Event 4769 on the foreign forest's DCs showing TGS requests from a foreign-forest account (anomalous — normal cross-forest Kerberos is machine-to-machine). Multiple TGS requests for different SPNs in rapid succession from a single source is a Kerberoasting indicator. The requesting account's domain will differ from the DC's domain — a detectable anomaly in the foreign forest's logs.",
+    "prevention": "Set forest trust to Selective Authentication (limits which users can authenticate across the trust — prevents arbitrary domain users from requesting tickets). Enforce AES-only Kerberos on service accounts (RC4 disabled) to make cracking infeasible. Audit SPN accounts in the foreign forest and ensure they have long random passwords (25+ chars). Regularly review bidirectional forest trust necessity.",
+    "evasion": "Request TGS for one SPN at a time with delays to avoid burst patterns. Target only RC4-enabled accounts. -request flag requests only tickets — no spray noise. Blend timing with normal cross-forest authentication activity.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

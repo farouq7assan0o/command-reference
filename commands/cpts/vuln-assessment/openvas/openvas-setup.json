@@ -1,0 +1,134 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "openvas",
+    "gvm"
+  ],
+  "tags": [
+    "openvas",
+    "gvm",
+    "scanner",
+    "setup"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "OpenVAS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "CPTS Ch06 — full OpenVAS install + start",
+      "command": "sudo apt-get update && sudo apt-get -y full-upgrade\nsudo apt-get install -y gvm\nsudo gvm-setup\nsudo gvm-start\n# Access https://127.0.0.1:9392"
+    },
+    {
+      "label": "Verify setup is correct after install",
+      "command": "sudo gvm-check-setup"
+    }
+  ],
+  "notes": "Components: Greenbone Vulnerability Manager + Greenbone Security Assistant. Feeds: NVTs + CVEs. GVM (Greenbone Vulnerability Manager) is the open-source alternative to Nessus. gvm-setup takes 15-30 minutes on first run (downloads NVT/SCAP/CERT feeds). Admin password is printed at end of setup — save it. Web UI is at https://<ip>:9392 (port may vary). Also covered in: CPTS Ch06 (Vulnerability Assessment).",
+  "references": [
+    {
+      "title": "Greenbone / OpenVAS",
+      "url": "https://www.openvas.org/"
+    },
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "openvas-report-export",
+      "rel": "next",
+      "note": "Export the scan results."
+    },
+    {
+      "id": "nessus-setup",
+      "rel": "alternative",
+      "note": "Commercial alternative."
+    }
+  ],
+  "id": "openvas-setup",
+  "name": "OpenVAS (GVM) - Install & Start",
+  "command": "sudo gvm-setup",
+  "description": "Install and initialize Greenbone Vulnerability Management (OpenVAS), the open-source scanner, then start it and log into the Greenbone Security Assistant web UI.",
+  "steps": [
+    {
+      "label": "1. Install",
+      "command": "sudo apt-get update && sudo apt-get -y full-upgrade\nsudo apt-get install gvm"
+    },
+    {
+      "label": "2. Setup (downloads NVT feeds)",
+      "command": "sudo gvm-setup"
+    },
+    {
+      "label": "3. Start + open the UI",
+      "command": "sudo gvm-start\n# https://127.0.0.1:9392"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "restricted",
+  "defense": {
+    "why_it_works": "OpenVAS (Greenbone GVM) is an open-source vulnerability scanner. It runs Network Vulnerability Tests (NVTs) that match discovered services/versions to known CVEs and perform active checks, producing a severity-rated findings report.",
+    "prerequisites": "GVM installed and network access to the target range. Authenticated scans additionally need valid host credentials.",
+    "impact": "A severity-rated vulnerability report across the target range for exploitation planning.",
+    "detection": "Same active-scan signature as any network scanner - a burst of probes across many hosts/ports. [MITRE T1595.002 AN1999] Monitor for anomalous traffic patterns and uncommon data flows; correlate with process/command-line monitoring. NVT traffic is IDS-recognisable.",
+    "artifacts": "A burst of connections across hosts/ports from the scanner IP; NVT request signatures; authenticated logons from the scanner if credentialed.",
+    "prevention": "[MITRE T1595.002 M1056] Minimise exposed services/data; segment so only authorised scanners reach hosts; alert on scan bursts.",
+    "evasion": "Tune the scan config and schedule/throttle scans to reduce noise and rate-based detection.",
+    "sources": [
+      "HTB M06",
+      "MITRE T1595.002"
+    ],
+    "misconfiguration": "Vulnerability scanning reveals services with unpatched CVEs, default configurations, or known-weak settings. The absence of a patch management process allows critical vulnerabilities to remain exploitable for months or years. Scan results that are not acted upon create a false sense of security.",
+    "vulnerable_config": "# OpenVAS/Nessus finding typical vulnerable targets:\n# CVSSv3: 9.8 - Apache Struts2 RCE (CVE-2017-5638) - unpatched\n# CVSSv3: 8.8 - Tomcat manager with default creds (admin/admin)\n# CVSSv3: 10.0 - MS17-010 (EternalBlue) - SMBv1 enabled, unpatched\n\n# Unpatched = patch not applied within SLA:\n# Critical (CVSS 9+): patch within 24-72 hours\n# High (CVSS 7-8.9): patch within 7 days\n# Medium: patch within 30 days",
+    "secure_config": "# Establish a vulnerability management program:\n# 1. Scan weekly with authenticated scans (Nessus/OpenVAS/Qualys)\n# 2. Integrate scan results with ticketing (Jira/ServiceNow)\n# 3. Set SLA by severity: Critical 72h, High 7d, Medium 30d\n# 4. Verify patches with re-scan\n\n# CVSS scoring -> risk-based prioritization:\n# Not all CVSSv3 9+ are exploitable in your environment\n# Use EPSS (Exploit Prediction Scoring System) to prioritize by actual exploitation likelihood\n\n# Defense-in-depth: patch is the fix, but compensating controls while patching:\n# WAF rule for web vuln CVEs\n# Network segment to isolate vulnerable service\n# IDS signature for exploit traffic"
+  },
+  "variations": [
+    {
+      "description": "Install GVM/OpenVAS (Kali)",
+      "command": "sudo apt-get update && sudo apt-get -y full-upgrade\nsudo apt-get install -y gvm",
+      "label": "apt-get"
+    },
+    {
+      "description": "Run GVM setup (downloads NVT feed — takes 15-30 min first time)",
+      "command": "sudo gvm-setup",
+      "label": "sudo gvm-setup"
+    },
+    {
+      "description": "Start GVM services",
+      "command": "sudo gvm-start",
+      "label": "gvm-start"
+    },
+    {
+      "description": "Check GVM status",
+      "command": "sudo gvm-check-setup",
+      "label": "gvm-check-setup"
+    },
+    {
+      "description": "Access OpenVAS web UI (Greenbone Security Assistant)",
+      "command": "# Navigate to: https://<ip>:9392\n# Default creds shown at end of gvm-setup output",
+      "label": "Navigate to: https://<ip>:9392 # D…"
+    },
+    {
+      "description": "Stop GVM services",
+      "command": "sudo gvm-stop",
+      "label": "gvm-stop"
+    }
+  ]
+}

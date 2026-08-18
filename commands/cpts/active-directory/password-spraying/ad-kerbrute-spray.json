@@ -1,0 +1,89 @@
+{
+  "id": "ad-kerbrute-spray",
+  "name": "Kerbrute - Password Spray via Kerberos",
+  "command": "kerbrute passwordspray -d <domain> --dc <dc_ip> <userlist> <password>",
+  "description": "Sprays one password against many domain users using Kerberos pre-authentication \u2014 faster than SMB spraying and does NOT generate Windows Event ID 4625 (failed logon), generating 4768 instead which is less commonly monitored. Ideal quiet spray option.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Password Attacks",
+  "subcategory": "Password Spraying",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "password-spraying",
+    "kerbrute",
+    "kerberos",
+    "enumeration",
+    "lotl"
+  ],
+  "mitre": [
+    "T1110.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY KERBEROS SPRAY IS QUIETER THAN SMB SPRAY ===\nSMB spray \u2192 Windows Event 4625 (An account failed to log on)\nKerberos spray \u2192 Windows Event 4768 (Kerberos AS-REQ) with error 0x18 (bad password)\n4625 is universally watched by SIEMs. 4768 is less commonly alerted on.\nKerbrute uses the AS-REQ phase of Kerberos: it sends a pre-auth request for each\nuser/password combo \u2014 if the password is wrong, DC returns KRB5KDC_ERR_PREAUTH_FAILED.\nNo NTLM, no SMB connection, fewer artifacts.\n\n=== CRITICAL: ACCOUNT LOCKOUT RISK ===\nPassord spraying = account lockout is the #1 risk.\nBefore ANY spray, enumerate the lockout policy:\n  crackmapexec smb <dc> -u user -p pass --pass-pol\n  net accounts\nTypical safe practice: 1 attempt per user, wait > lockout reset window between rounds.\n\n=== KERBRUTE OUTPUT ===\nValid credential found:\n  [+] VALID LOGIN: jsmith@INLANEFREIGHT.LOCAL:Spring2022\nInvalid:\n  [-] Domain Account does not exist or domain cannot be contacted\nNote: kerbrute userenum first to build a confirmed-valid user list before spraying.\n\n=== WHICH TOOL WHEN ===\nKerbrute    \u2192 quiet, no 4625, requires user list, best for first spray\nCME SMB     \u2192 fast, noisier (4625), also shows 'Pwn3d!' if local admin\nDomainPasswordSpray \u2192 Windows-native, reads lockout policy automatically\nrpcclient   \u2192 fallback when both SMB and Kerberos spray are blocked\n\n=== SPRAY CANDIDATES ===\nGood first passwords to try:\n  - Current season + year (Spring2024, Winter2023)\n  - Company name + number (Inlanefreight1!)\n  - Welcome+year (Welcome2024!)\n  - Password + number (Password1, Password123)\nBuild user list: ldapsearch, CME --users, or kerbrute userenum from OSINT names. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "examples": [
+    {
+      "label": "Spray one password against user list",
+      "command": "kerbrute passwordspray -d inlanefreight.local --dc 172.16.5.5 valid_ad_users 'Welcome2021'"
+    },
+    {
+      "label": "With verbose output",
+      "command": "kerbrute passwordspray -d inlanefreight.local --dc 172.16.5.5 users.txt 'Spring2022!' -v"
+    },
+    {
+      "label": "Ch22 \u2014 Windows binary spray (kerbrute_windows_amd64.exe) with user list",
+      "command": ".\\kerbrute_windows_amd64.exe passwordspray -d <domain> .\\usernames.txt '<password>'"
+    }
+  ],
+  "references": [
+    {
+      "title": "Kerbrute (ropnop)",
+      "url": "https://github.com/ropnop/kerbrute"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Attacking Active Directory Authentication",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-cme-users",
+      "note": "Enumerate users before spraying.",
+      "rel": "prereq"
+    },
+    {
+      "id": "ad-bloodhound-python",
+      "note": "Once credentials land, run BloodHound.",
+      "rel": "alternative"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Kerbrute passwordspray sprays via Kerberos AS-REQs, which avoids generating 4625 failed-logon events (quieter than SMB/LDAP spraying).",
+    "prerequisites": "A domain user list, candidate password(s), and network access to the auth service.",
+    "impact": "Valid credentials found via a spray that leaves no 4625.",
+    "detection": "Failed-authentication bursts: Windows 4625 / Kerberos 4771; account lockouts (4740). Spraying = one password across MANY accounts (few failures each - a subtle, distributed pattern). Defender for Identity flags spraying.",
+    "artifacts": "4768 AS-REQs across many accounts (not 4625); a Kerberos spray pattern.",
+    "prevention": "[MITRE T1110.003 M1032 MFA] MFA defeats spraying; [M1027] strong/unique passwords + [M1036 Account Use Policies] lockout thresholds; alert on distributed failed logons and impossible travel.",
+    "evasion": "Spray one password low-and-slow with delays to avoid lockouts and volume alerts; rotate source hosts; Kerberos-based spraying avoids 4625.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1110.003"
+    ],
+    "misconfiguration": "The domain's lockout policy is either disabled or set with a threshold high enough (e.g., 10 attempts before lockout) that a low-and-slow spray \u2014 one guess per account per 30 minutes \u2014 never triggers lockout. Additionally, many accounts share the same simple passwords (company name + year, Season+Year), and the bad-password counter resets after the observation window elapses.",
+    "vulnerable_config": "# Weak lockout policy (domain default or intentionally lenient):\n# Fine-Grained Password Policy:\nGet-ADDefaultDomainPasswordPolicy\n# LockoutObservationWindow: 00:30:00\n# LockoutThreshold:         0          <-- DISABLED! No lockout ever\n# OR: LockoutThreshold: 10 (attacker sprays 9 per window, never locks)\n\n# Also: accounts with password = company name:\n# Common passwords: Summer2023!, Winter2024!, CompanyName1!",
+    "secure_config": "# Set a strong lockout policy:\n# Via Default Domain Policy or Fine-Grained Password Policy (PSO):\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00 \\\n    -LockoutThreshold 5\n# LockoutThreshold 5 means 5 bad attempts in 30 min = 30-min lockout\n\n# Fine-Grained PSO for admins (stricter):\nNew-ADFineGrainedPasswordPolicy -Name AdminPSO \\\n    -LockoutThreshold 3 -LockoutDuration 01:00:00 \\\n    -LockoutObservationWindow 01:00:00 \\\n    -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject AdminPSO -Subjects 'Domain Admins'\n\n# Enable Azure AD / Entra ID Password Protection (bans common passwords):\n# Also available on-premises via the Azure AD Password Protection agent\n\n# Monitor Event 4740 (Account Locked Out) \u2014 spray leaves a cluster of these"
+  },
+  "tools": [
+    "kerbrute"
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "id": "av-evasion-methods",
+  "name": "AV Evasion - Detection Methods & Approach",
+  "command": "# on-disk vs in-memory; signature / heuristic / behavioral - and TEST on antiscan.me (not VirusTotal)",
+  "description": "Reference for how antivirus catches payloads and how evasion maps to it. AV uses signature matching (known byte patterns), heuristic analysis (suspicious structure/API imports), and behavioral/emulation detection (running the sample in a sandbox). Evasion splits into two families: on-disk (encode/encrypt/pack/obfuscate the file so it doesn't match signatures) and in-memory (never write the payload to disk - inject or reflectively load it so on-disk scanning has nothing to grab).",
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "av-evasion",
+    "methodology",
+    "reference",
+    "defender"
+  ],
+  "category": "Exploitation",
+  "subcategory": "AV Evasion",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 14: Antivirus Evasion",
+  "examples": [
+    {
+      "label": "The two evasion families",
+      "command": "# on-disk : encode / encrypt / pack / obfuscate the artifact\n# in-memory: process injection, reflective load, PowerShell reflection - no file touches disk"
+    },
+    {
+      "label": "Test detection WITHOUT tipping vendors off",
+      "command": "# upload to antiscan.me - it does NOT distribute samples\n# NEVER use VirusTotal for real engagements: it shares your sample with AV vendors"
+    }
+  ],
+  "notes": "Detection methods: (1) signature = hash/byte-pattern match, beaten by any byte-level change (encoding/encryption); (2) heuristic = flags suspicious imports (VirtualAlloc, WriteProcessMemory) and PE structure, beaten by obfuscation and legit-looking wrappers; (3) behavioral/emulation = detonates the sample, beaten by in-memory-only execution, sleeps, and environment checks. Modern Defender + AMSI inspects scripts at runtime too, so pure on-disk tricks (msfvenom -e shikata_ga_nai) are largely dead against it - prefer in-memory + AMSI bypass. Golden rule: test against antiscan.me, never VirusTotal, because VT forwards samples to vendors and burns your payload. Also covered in: OSCP PEN-200 Chapter 14 (Antivirus Evasion).",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Antivirus Evasion",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "antiscan.me",
+      "url": "https://antiscan.me/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "amsi-bypass",
+      "rel": "next",
+      "note": "In-memory: neutralise AMSI before loading PowerShell payloads."
+    },
+    {
+      "id": "powershell-shellcode-runner",
+      "rel": "next",
+      "note": "In-memory: run shellcode from PowerShell without touching disk."
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1027",
+    "T1518.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Antivirus uses static signature detection (hash/byte pattern matching), heuristic analysis (behavioral rules on code structure), and emulation (sandbox execution). Attackers evade these layers by: changing file hashes (XOR encoding, polymorphism), obfuscating code structure (variable renaming, junk insertion), avoiding known heuristic patterns (sleep before payload, anti-emulation tricks), and using legitimate signed binaries as loaders (LOLBAS). Understanding all three detection layers is prerequisite to reliable AV bypass.",
+    "prerequisites": "Understanding of AV detection methods (static/heuristic/behavioral). Test environment with the target AV. A payload or shellcode to evade. Python/C for custom encoding. VirusTotal for testing (though VirusTotal results don't perfectly reflect endpoint AV behavior).",
+    "impact": "T1027 Obfuscated Files or Information + T1518.001 Software Discovery: Security Software Discovery. Enables delivery and execution of offensive tools on hosts with endpoint protection \u2014 prerequisite for post-exploitation activity on hardened targets.",
+    "detection": "Behavioral: EDR detects execution patterns regardless of signature (process injection, LSASS access, network beaconing). Memory scanning: EDR scans process memory for injected shellcode patterns post-execution. ETW: PowerShell ETW provider captures executed code even after obfuscation. AMSI: scans scripts in-memory before execution. Network: C2 traffic patterns detectable even if payload is obfuscated.\nScript execution or suspicious parent processes correlated with creation/modification of encoded, compressed, or encrypted file formats (.zip, .7z, .enc) and abnormal command-line syntax or PowerShell obfuscation (DET0378/AN1064).\nUse of gzip, base64, tar, or openssl in scripts or commands that encode/encrypt files after file staging or system enumeration (AN1065).\nArchive or encryption tools (zip, openssl) tied to user-scripted activity or binaries writing encrypted output files (AN1066).",
+    "artifacts": "EDR behavioral alert: shellcode injection pattern | AMSI Event 1799: scan result (blocked) | Windows Defender quarantine log | ETW: PowerShell executed deobfuscated script | Memory scan: injected code in process memory",
+    "prevention": "Layered defense: signature AV is not sufficient \u2014 deploy EDR with behavioral detection (CrowdStrike, Defender for Endpoint). Enable AMSI for all scripting engines. Enable ETW telemetry collection. Enable memory integrity protection. Block common LOLBAS from executing via WDAC. Network inspection for C2 traffic patterns.\nAntivirus/Antimalware: Use AMSI on Windows 10+ to analyze commands after being processed/interpreted; auto-quarantine suspicious encoded files.\nAudit: Periodically review common fileless storage locations (Registry, WMI repository) for abnormal and malicious data.\nBehavior Prevention on Endpoint: Enable Windows 10+ ASR rules to prevent execution of potentially obfuscated payloads.",
+    "evasion": "Sleep+jitter before payload execution (bypasses short-window emulation). Anti-sandbox: check for human artifacts (mouse movement, clipboard content, running processes). Custom shellcode encryption with key derived from environment (hostname, domain) \u2014 fails in sandbox. Process injection into legitimate processes.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1027/",
+      "https://attack.mitre.org/techniques/T1518/001/"
+    ],
+    "misconfiguration": "AV configured for signature-only detection (no behavioral/EDR component). AMSI disabled or not updated. ETW telemetry not collected. No memory scanning capability.",
+    "vulnerable_config": "# AV with only signature detection (Windows Defender without Defender for Endpoint):\n# Test: (Get-MpPreference).DisableRealtimeMonitoring \u2014 False (real-time on)\n# But: no behavioral EDR component\n# \u2192 Obfuscated payload evades signature = no detection\n\n# AMSI disabled by Group Policy:\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Features').TamperProtection  # 0",
+    "secure_config": "# Deploy Defender for Endpoint (P2 license) for EDR:\n# Not just AV \u2014 includes: memory scanning, behavioral detection, EDR, threat analytics\n\n# Enable Tamper Protection (prevents AMSI disable):\nSet-MpPreference -DisableTamperProtection $false\n# Or via Intune/MDE Security Center\n\n# Enable all Defender features:\nSet-MpPreference -MAPSReporting Advanced\nSet-MpPreference -SubmitSamplesConsent SendAllSamples\nSet-MpPreference -CloudBlockLevel High\nSet-MpPreference -CloudExtendedTimeout 50\n\n# WDAC: block unapproved binaries at kernel level"
+  }
+}

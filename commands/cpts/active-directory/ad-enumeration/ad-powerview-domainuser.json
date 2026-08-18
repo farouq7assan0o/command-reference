@@ -1,0 +1,96 @@
+{
+  "id": "ad-powerview-domainuser",
+  "name": "PowerView - Get-DomainUser (User Enumeration)",
+  "command": "Get-DomainUser -Identity <user> -Domain <domain>",
+  "description": "Queries AD for detailed user object attributes using PowerView. Can query any user, all users, or filter by property. Returns rich attribute set including UAC flags, logon history, SPN, group membership context, and password metadata. Foundation of PowerView-based user enumeration.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "powerview",
+    "user-enum",
+    "uac",
+    "attributes",
+    "enumeration"
+  ],
+  "mitre": [
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== KEY USER ATTRIBUTES TO LOOK FOR ===\n  pwdlastset         \u2192 when was password last changed? Old dates = stale/weak passwords\n  lastlogon          \u2192 when did user last log in? Never = service account or unused\n  badpwdcount        \u2192 failed login attempts \u2014 close to threshold = careful with spraying\n  useraccountcontrol \u2192 UAC flags (see below)\n  memberof           \u2192 direct group memberships (use -Recurse for full nesting)\n  serviceprincipalname \u2192 set = Kerberoastable\n  description        \u2192 often contains passwords set by lazy admins!\n  admincount         \u2192 1 = was/is a privileged account (SDProp protected)\n\n=== UAC FLAG VALUES TO WATCH ===\n  512   = NORMAL_ACCOUNT\n  514   = ACCOUNTDISABLE\n  528   = LOCKOUT\n  544   = PASSWD_NOTREQD\n  4096  = WORKSTATION_TRUST_ACCOUNT (machine account)\n  66048 = DONT_EXPIRE_PASSWD + NORMAL (service accounts often have this)\n  4194304 = DONT_REQ_PREAUTH \u2192 AS-REP Roastable!\n  Use: Convert-UACValue -Value <int> from PowerView to decode\n\n=== USEFUL FILTERS ===\n  All users:\n    Get-DomainUser | select samaccountname,description,pwdlastset,memberof\n  Find description field passwords:\n    Get-DomainUser | select samaccountname,description | ? {$_.description -ne $null}\n  AS-REP roastable:\n    Get-DomainUser -UACFilter DONT_REQ_PREAUTH | select samaccountname\n  Kerberoastable:\n    Get-DomainUser -SPN | select samaccountname,serviceprincipalname\n  Disabled accounts:\n    Get-DomainUser -UACFilter NOT_ACCOUNTDISABLE  (flip: active accounts only)\n\n=== QUERY CROSS-DOMAIN ===\n  Get-DomainUser -Domain LOGISTICS.INLANEFREIGHT.LOCAL | select samaccountname Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
+  "examples": [
+    {
+      "label": "Get single user details",
+      "command": "Get-DomainUser -Identity wley"
+    },
+    {
+      "label": "Get all users, select key fields",
+      "command": "Get-DomainUser | select samaccountname,description,pwdlastset,lastlogon,admincount"
+    },
+    {
+      "label": "Find description field passwords",
+      "command": "Get-DomainUser | select samaccountname,description | Where-Object {$_.description -ne $null}"
+    },
+    {
+      "label": "Find Kerberoastable users",
+      "command": "Get-DomainUser -SPN | select samaccountname,serviceprincipalname"
+    },
+    {
+      "label": "Query a specific domain",
+      "command": "Get-DomainUser -Identity jsmith -Domain LOGISTICS.INLANEFREIGHT.LOCAL"
+    },
+    {
+      "label": "Ch21 \u2014 get cn, pwdlastset, lastlogon for all users (stale account hunting)",
+      "command": "Get-NetUser | select cn,pwdlastset,lastlogon"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Active Directory Introduction and Enumeration",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-powerview-groupmember",
+      "rel": "next",
+      "note": "Enumerate group memberships."
+    }
+  ],
+  "defense": {
+    "why_it_works": "PowerView Get-DomainUser enumerates domain users and their attributes (SPNs, flags, description, last logon) via LDAP.",
+    "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
+    "impact": "A detailed user inventory revealing roasting targets, stale accounts, and embedded secrets.",
+    "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
+    "artifacts": "LDAP user-object queries via PowerView.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions \u2014 authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 \u2014 access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) \u2014 any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

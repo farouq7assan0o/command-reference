@@ -1,0 +1,89 @@
+{
+  "id": "ad-responder-analyze",
+  "name": "Responder - Passive Analysis Mode",
+  "command": "sudo responder -I <interface> -A",
+  "description": "Runs Responder in analyze mode (-A): listens to LLMNR/NBT-NS/mDNS broadcast traffic and logs who is broadcasting queries without responding. Use this first to confirm victims exist and scope the attack before going active.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Password Attacks",
+  "subcategory": "LLMNR/NBT-NS Poisoning",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "llmnr",
+    "nbt-ns",
+    "passive",
+    "responder",
+    "recon",
+    "broadcast"
+  ],
+  "mitre": [
+    "T1557.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY LLMNR/NBT-NS POISONING WORKS ===\nWindows uses three fallback name-resolution protocols when DNS fails:\n  1. LLMNR  — Link-Local Multicast Name Resolution (UDP 5355, multicast to 224.0.0.252)\n  2. NBT-NS — NetBIOS Name Service (UDP 137, subnet broadcast)\n  3. MDNS   — Multicast DNS (UDP 5353)\n\nWhen a user typos a UNC path (\\\\FILESHRE\\docs instead of \\\\FILESHARE), DNS fails,\nso Windows broadcasts to the subnet: 'Does anyone know FILESHRE?' An attacker on the\nsame L2 segment replies first: 'That's me.' Windows tries to authenticate, sending\nthe user's NTLMv2 challenge-response to the attacker — who captures the hash.\n\n=== WHAT ANALYZE MODE DOES ===\nWith -A, Responder NEVER sends any packet — it only reads. You see:\n  [*] [LLMNR]   NBT-NS requests from 172.16.5.25 for name MISTYPED-HOST\n  [*] [NBT-NS]  172.16.5.125 is querying for DCC01 (would respond to: 172.16.5.125)\nThe key word 'would' = not yet responding. This confirms which hosts are vulnerable\nbefore creating any authentication events in Windows logs.\n\n=== WHEN TO USE ANALYZE vs ACTIVE ===\n  -A only → first 15-30 min; silent; no authentication events generated\n  active  → run when you're ready to capture; creates Event ID 4625 (failed auth)\n  Rule: always start passive, confirm traffic exists, then switch to active.\n\n=== OUTPUT TO LOOK FOR ===\nLook for frequency and variety of requests. Heavy LLMNR traffic = busy environment =\nhigh probability of capturing high-privilege hashes. Service accounts often\nquery for printers, file servers, backup services — those are gold.\n\n=== HASH STORAGE (when active) ===\n  /usr/share/responder/logs/\n  Pattern: (MODULE)-(HASHTYPE)-(CLIENT_IP).txt\n  e.g.: SMB-NTLMv2-SSP-172.16.5.25.txt\n  NTLMv2 ≠ pass-the-hash. Must crack offline with hashcat -m 5600.",
+  "examples": [
+    {
+      "label": "Passive analysis on ens224",
+      "command": "sudo responder -I ens224 -A"
+    },
+    {
+      "label": "Passive analysis on eth0",
+      "command": "sudo responder -I eth0 -A"
+    },
+    {
+      "label": "Find your interface",
+      "command": "ip a | grep -E 'ens|eth|tun'"
+    }
+  ],
+  "references": [
+    {
+      "title": "Responder (lgandx)",
+      "url": "https://github.com/lgandx/Responder"
+    },
+    {
+      "title": "MITRE T1557.001 - LLMNR/NBT-NS Poisoning",
+      "url": "https://attack.mitre.org/techniques/T1557/001/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-responder-poison",
+      "note": "Switch to active mode to capture NetNTLM hashes.",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Responder in analyze mode passively OBSERVES LLMNR/NBT-NS/mDNS and browser traffic without answering, to map victims and name-resolution behaviour before poisoning.",
+    "prerequisites": "A position on the LAN segment.",
+    "impact": "Reconnaissance of who is broadcasting what - targets for later poisoning - with no packets injected.",
+    "detection": "Passive - Responder answers nothing, so there is little to detect; the underlying LLMNR/NBT-NS chatter is what enables it.",
+    "artifacts": "None injected; a local capture of observed broadcasts.",
+    "prevention": "Disabling LLMNR/NBT-NS/mDNS removes the traffic to observe (and to poison); detection is otherwise infeasible for pure analyze mode.",
+    "evasion": "Analyze mode is passive by nature - it injects nothing and is effectively undetectable on the wire.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1557.001"
+    ],
+    "misconfiguration": "LLMNR (Link-Local Multicast Name Resolution, UDP 5355) and NBT-NS (NetBIOS Name Service, UDP 137) are enabled by default on Windows and are used as fallback name resolution when DNS fails. These protocols broadcast name queries on the local network segment. Any host on the same subnet can respond to these broadcasts — a Responder instance claims to be the queried host and captures the NTLMv2 hash when the victim tries to authenticate.",
+    "vulnerable_config": "# LLMNR enabled (Windows default):\n# Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\n#   EnableMulticast: (not set or 1) = LLMNR active\n\n# NBT-NS enabled (Windows default):\n# Network adapter -> TCP/IP properties -> WINS -> 'Enable NetBIOS over TCP/IP'\n# = Default (or Enabled)\n\n# Test: trigger a failed DNS lookup, watch Responder capture NTLMv2:\n# net use \\\\nonexistent  -> host broadcasts LLMNR for 'nonexistent'\n# Responder replies -> host sends NTLMv2 -> Responder captures it",
+    "secure_config": "# Disable LLMNR via GPO:\n# Computer Config > Admin Templates > Network > DNS Client\n#   'Turn off multicast name resolution' = Enabled\n# OR Registry:\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient' \\\n    -Name EnableMulticast -Value 0\n\n# Disable NBT-NS via GPO (push WMI script or DHCP option 001 = 0x2):\n# Or per-machine:\nGet-WmiObject Win32_NetworkAdapterConfiguration | ForEach-Object {\n    $_.SetTcpipNetbios(2)  # 2 = Disable NetBIOS\n}\n\n# Enable SMB signing (stops relay attacks even if hash captured):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\n\n# Deploy a honeypot LLMNR responder for detection\n# Sysmon/IDS: alert on Responder-like traffic (UDP 5355 responses from non-DC hosts)"
+  },
+  "tools": [
+    "Responder"
+  ]
+}

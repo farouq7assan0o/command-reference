@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "tcpdump",
+    "net-creds"
+  ],
+  "tags": [
+    "sniffing",
+    "credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Miscellaneous",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Sniff live traffic for credentials",
+      "command": "tcpdump"
+    },
+    {
+      "label": "Parse creds out of traffic/pcap with net-creds/PCredz",
+      "command": "# net-creds / PCredz over live traffic or a pcap"
+    },
+    {
+      "label": "Process-args credential sniffing \u2014 watch for cleartext passwords in ps output",
+      "command": "watch -n 1 \"ps -aux | grep pass\"\n# Catches scripts/tools passing passwords on the command line, e.g.:\n# sshpass -p 'Lab123' ssh -t eve@127.0.0.1 'sleep 5;exit'"
+    },
+    {
+      "label": "sudo tcpdump on loopback \u2014 capture plaintext creds crossing localhost",
+      "command": "sudo tcpdump -i lo -A | grep \"pass\"\n# Works when tcpdump is in sudoers; captures local auth traffic"
+    }
+  ],
+  "notes": "If you can run tcpdump (or have cap_net_raw), plaintext creds on the wire are free. net-creds/PCredz parse them out of a live capture or a saved pcap. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "net-creds",
+      "url": "https://github.com/DanMcInerney/net-creds"
+    },
+    {
+      "title": "PCredz",
+      "url": "https://github.com/lgandx/PCredz"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting",
+      "note": "Correlate captured creds with on-disk configs.",
+      "rel": "next"
+    }
+  ],
+  "id": "passive-traffic-capture",
+  "name": "Misc - Passive Traffic Capture",
+  "command": "tcpdump",
+  "description": "On a multi-user host you may sniff cleartext credentials from local traffic with tcpdump, net-creds, or PCredz.",
+  "opsec": "loud",
+  "mitre": [
+    "T1040"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "tcpdump can capture unencrypted network traffic when run by a user with appropriate privileges or on interfaces they can access. Protocols like FTP, HTTP, Telnet, SMTP, and some database connections transmit credentials in plaintext. Traffic capture reveals credentials for lateral movement or privilege escalation.",
+    "prerequisites": "tcpdump accessible (often setuid or granted via sudo/capabilities). Network traffic containing plaintext credentials traversing a visible interface.",
+    "impact": "Credential capture from unencrypted protocols: FTP passwords, HTTP Basic Auth, database connection strings, SMTP auth. Enables lateral movement and further escalation.",
+    "detection": "tcpdump executed by non-root user (capability or sudo). Long-running capture process from low-privileged user. Auditd: capture of traffic on production interfaces by non-admin.",
+    "artifacts": "Auditd: tcpdump/tcpdump executed by non-root | Process log: long-running packet capture | PCAP file written to disk by non-root user",
+    "prevention": "Migrate all services to encrypted protocols (HTTPS, SFTP, encrypted database connections). Remove tcpdump setuid bit and restrict via capabilities or sudo to specific use cases. Use network segmentation to isolate sensitive traffic. Deploy 802.1X to prevent passive sniffing on switched networks.",
+    "misconfiguration": "Services still using cleartext protocols (FTP, HTTP, Telnet). tcpdump has setuid bit set or is granted via loose sudo rule, enabling non-root users to capture any traffic on the host.",
+    "vulnerable_config": "# tcpdump setuid (risky)\n-rwsr-xr-x 1 root root /usr/bin/tcpdump\n\n# Cleartext FTP in use\n# FTP credentials visible in packet capture\n# No TLS on internal database connections",
+    "secure_config": "# Remove tcpdump setuid\nchmod u-s /usr/bin/tcpdump\n\n# Use network capabilities instead (controlled)\nsetcap cap_net_raw=ep /usr/bin/tcpdump\n\n# Enforce TLS on all services\n# FTP -> SFTP/FTPS, HTTP -> HTTPS\n# Database: require SSL\nALTER USER 'dbuser'@'%' REQUIRE SSL;",
+    "evasion": "Capture traffic silently in the background. Redirect PCAP to memory (pipe to strings) to avoid writing files to disk.",
+    "sources": [
+      "HTB M25",
+      "MITRE T1040",
+      "MITRE T1552"
+    ]
+  }
+}

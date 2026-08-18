@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nLoops through a subdomain list, resolves each via 'host' command, and filters only those resolving to company-owned IPs. Separates company-hosted subdomains from CDN/third-party delegations.\n\n=== CHAINING ===\ncrtsh-unique-subdomains output \u2192 host resolution loop \u2192 filter to company IPs \u2192 feed to Shodan enrichment loop and nmap scan \u2192 third-party results excluded from active scope.\n\n=== LEGAL SIGNIFICANCE ===\nSubdomains resolving to third-party providers cannot be actively tested without explicit permission from that provider. This filtering step identifies in-scope vs out-of-scope targets \u2014 legally significant.",
+  "references": []
+}

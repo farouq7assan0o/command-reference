@@ -1,0 +1,68 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "timing",
+    "reference"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Performance",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "Slow and stealthy",
+      "command": "sudo nmap -sS -T1 10.129.2.28"
+    },
+    {
+      "label": "Fast and loud",
+      "command": "nmap -T4 10.129.2.28"
+    }
+  ],
+  "notes": "-T0 paranoid | -T1 sneaky | -T2 polite | -T3 normal (default) | -T4 aggressive | -T5 insane\nFine controls:\n  --initial-rtt-timeout 50ms\n  --max-rtt-timeout 100ms\n  --max-retries 0\n  --min-rate 300\n  --min-parallelism <n>\nLower -T = stealthier/slower; higher = faster/louder.",
+  "references": [
+    {
+      "title": "Nmap Timing and Performance",
+      "url": "https://nmap.org/book/performance.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nmap-performance",
+      "rel": "next",
+      "note": "Tune scan speed with these timing templates"
+    }
+  ],
+  "id": "ref-nmap-timing",
+  "name": "Reference - Nmap Timing Templates & Perf Flags",
+  "command": "# -T0 (slowest/stealthiest) .. -T5 (fastest/loudest)",
+  "description": "Timing templates and the fine-grained performance parameters they wrap.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1595.001",
+    "T1046"
+  ]
+}

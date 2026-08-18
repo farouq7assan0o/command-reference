@@ -1,0 +1,84 @@
+{
+  "id": "amsi-bypass",
+  "name": "AMSI Bypass (PowerShell In-Memory)",
+  "command": "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)",
+  "description": "The Antimalware Scan Interface (AMSI) lets Defender inspect PowerShell/script content at runtime, right before execution - so it catches in-memory payloads that never touch disk. Bypassing AMSI in the current process (typically by flipping the amsiInitFailed flag via reflection, or patching AmsiScanBuffer in memory) blinds that runtime scanning so download-cradles and reflective loaders run clean.",
+  "type": "payload",
+  "platform": "windows",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "av-evasion",
+    "amsi",
+    "in-memory",
+    "powershell",
+    "defender"
+  ],
+  "category": "Exploitation",
+  "subcategory": "AV Evasion",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 14: Antivirus Evasion",
+  "examples": [
+    {
+      "label": "Reflection: flip amsiInitFailed in the current session",
+      "command": "[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)"
+    },
+    {
+      "label": "The raw string is signatured - split/obfuscate it",
+      "command": "$a='Am'+'si'+'Utils'; [Ref].Assembly.GetType(\"System.Management.Automation.$a\").GetField('amsi'+'InitFailed','NonPublic,Static').SetValue($null,$true)"
+    }
+  ],
+  "notes": "AMSI bypass only affects the process you run it in - a fresh powershell.exe is protected again, so run the bypass first in each new session, before pulling any payload. Defender signatures the well-known one-liner itself, so you almost always need to obfuscate it (string concatenation, char codes, base64+IEX, reordering) or it gets caught on the way in. Alternatives to the reflection trick: patch AmsiScanBuffer in amsi.dll in memory, or use a hardware-breakpoint bypass. After AMSI is down, in-memory loaders (IEX download-cradle, Invoke-* tools) run without runtime inspection. This is exam-legal manual evasion.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Antivirus Evasion",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Impair Defenses: Disable or Modify Tools",
+      "url": "https://attack.mitre.org/techniques/T1562/001/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "powershell-shellcode-runner",
+      "rel": "next",
+      "note": "With AMSI down, load shellcode reflectively in the same session."
+    },
+    {
+      "id": "av-evasion-methods",
+      "rel": "prereq",
+      "note": "Where AMSI fits in the detection picture."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1562.001",
+    "T1059.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "AMSI (Antimalware Scan Interface) is a Windows API that scripting engines (PowerShell, VBScript, JScript, .NET) call before executing code \u2014 passing the script content to the registered AV provider for scanning. AMSI bypass patches the AmsiScanBuffer function in the amsi.dll loaded into the current PowerShell process to always return AMSI_RESULT_CLEAN, or sets the amsiInitFailed field to prevent initialization. This affects only the current process and session.",
+    "prerequisites": "PowerShell execution (any policy). Ability to run the bypass code before the malicious script. The bypass targets the current process's in-memory amsi.dll.",
+    "impact": "T1562.001 Impair Defenses: Disable or Modify Tools + T1059.001 Command and Scripting Interpreter: PowerShell. Disables AMSI scanning for the current PowerShell session \u2014 all subsequent scripts execute without AV inspection. Required prerequisite for executing known offensive PowerShell tools (Mimikatz, PowerView, PowerUp) that would otherwise be caught by AMSI.",
+    "detection": "AMSI Event Log: 1032 (AMSI session start) / 1033 (scan error) \u2014 when AMSI is patched mid-session, subsequent scans generate errors. ETW: Microsoft-Windows-AMSI/Operational provider logs bypass attempts. PowerShell Event 4104 SBL: the bypass code itself is logged (ironically, before AMSI is bypassed \u2014 or if the bypass fails). EDR: known bypass patterns in memory (reflection method access to amsiInitFailed).\nMonitor processes and command-line arguments associated with disabling or modification of security software, log clearing, or modification of firewall rules. Detect unexpected processes accessing or writing to security tool configuration files. Monitor for modifications to firewall rules, registry keys related to security software, or changes to security agent processes (DET0014).",
+    "artifacts": "AMSI-Operational Event 1033: scan errors after bypass applied | PowerShell Event 4104: bypass code in SBL (logged before bypass takes effect) | EDR: AMSI patch pattern in memory | ETW AmsiScanBuffer hook detection",
+    "prevention": "AMSI Tamper Protection: Defender Tamper Protection prevents patching of protected AMSI provider DLLs. ETW-based AMSI monitoring: Microsoft-Windows-AMSI/Operational events. Constrained Language Mode: prevents reflection-based bypasses. Protected Process Light for the AMSI provider. Keep AMSI provider updated with latest bypass signatures.\nRestrict File and Directory Permissions: Ensure proper permissions on security tool configuration files, logs, and binaries to prevent modification.\nUser Account Management: Ensure proper user and access controls are in place for accounts that could be used to disable security software.\nSoftware Configuration: Ensure security software is set to automatically restart on failure or shutdown.",
+    "evasion": "Obfuscate the bypass payload itself (concatenate strings, encode, use variable substitution) so the bypass is not caught by AMSI before it executes. Use Invoke-Obfuscation or manual obfuscation of 'amsiInitFailed' string. Use COM-based alternatives to PowerShell that don't have AMSI integration (wscript.exe with .vbs). Fork into a new PowerShell process with AMSI already patched.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1562/001/",
+      "https://attack.mitre.org/techniques/T1059/001/"
+    ],
+    "misconfiguration": "AMSI Tamper Protection not enabled. ETW not monitored. CLM not enforced. AMSI provider signatures not updated (stale \u2014 known bypasses not detected).",
+    "vulnerable_config": "# Tamper Protection off:\n(Get-MpPreference).DisableTamperProtection  # True = tampering allowed\n# \u2192 amsiInitFailed reflection bypass succeeds without detection\n\n# CLM not enforced:\n$ExecutionContext.SessionState.LanguageMode  # FullLanguage\n# \u2192 reflection via [Ref].Assembly.GetType() fully accessible",
+    "secure_config": "# Enable Tamper Protection:\n# Defender Security Center \u2192 Virus & threat protection settings \u2192 Tamper Protection: ON\n# Or via Intune/MDE\n\n# WDAC to enforce CLM on non-admin hosts:\n# CLM prevents: [Ref].Assembly.GetType() and other reflection-based bypasses\n\n# Monitor AMSI events:\n# SIEM: Microsoft-Windows-AMSI/Operational Event 1033 (scan error) \u2192 ALERT\n\n# ETW rule:\n# SilkETW + Microsoft-Windows-AMSI provider \u2192 log all AMSI bypass attempts"
+  }
+}

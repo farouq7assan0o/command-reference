@@ -1,0 +1,90 @@
+{
+  "id": "nslookup-windows",
+  "name": "DNS - Windows nslookup Queries",
+  "command": "nslookup <domain>",
+  "description": "Windows built-in DNS resolver for forward and reverse lookups. Useful from a Windows foothold when nmap/dig are unavailable. Supports querying specific record types and directing queries at a chosen DNS server.",
+  "type": "command",
+  "platform": "windows",
+  "requires": ["network-access"],
+  "protocols": ["dns"],
+  "tools": ["nslookup"],
+  "tags": ["dns", "enumeration", "windows", "lolbas", "recon"],
+  "category": "Enumeration",
+  "subcategory": "DNS",
+  "certifications": ["OSCP"],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 Chapter 06: Information Gathering",
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": ["T1018", "T1016"],
+  "variations": [
+    {
+      "label": "A record (default)",
+      "command": "nslookup <domain>"
+    },
+    {
+      "label": "TXT record",
+      "command": "nslookup -type=TXT <domain>"
+    },
+    {
+      "label": "TXT via specific DNS server",
+      "command": "nslookup -type=TXT <domain> <dns_server>"
+    },
+    {
+      "label": "MX record",
+      "command": "nslookup -type=MX <domain>"
+    },
+    {
+      "label": "Reverse PTR lookup",
+      "command": "nslookup <ip>"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Resolve mail.megacorptwo.com (A record, default DNS)",
+      "command": "nslookup mail.megacorptwo.com"
+    },
+    {
+      "label": "Query TXT records via specific internal DNS server",
+      "command": "nslookup -type=TXT info.megacorptwo.com 192.168.50.151"
+    }
+  ],
+  "notes": "nslookup is a Windows LOLBAS — no installation needed. -type= accepts: A, AAAA, MX, NS, TXT, SOA, PTR, CNAME, SRV. Directing at an internal DNS server (third argument) often returns internal records not published externally. TXT records commonly hold SPF policies, internal notes, and domain verification tokens worth reading.",
+  "recommended": [
+    {
+      "id": "dns-dig-queries",
+      "rel": "alternative",
+      "note": "Linux equivalent — dig is more flexible for zone transfers and batch queries."
+    },
+    {
+      "id": "dnsrecon-enum",
+      "rel": "next",
+      "note": "Automate full DNS enum (SOA, NS, MX, A, SRV, PTR) and subdomain brute-force from Kali."
+    }
+  ],
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Remote System Discovery (T1018)",
+      "url": "https://attack.mitre.org/techniques/T1018/"
+    },
+    {
+      "title": "Microsoft - nslookup documentation",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/nslookup"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Compromised Windows host with network access to the target's DNS resolver. No special privileges required — nslookup runs as any user.",
+    "why_it_works": "nslookup is a Windows built-in DNS resolution tool present on every Windows installation. It queries the system's configured DNS resolver (or a specified one) directly. Because it is a signed Microsoft binary and DNS queries are expected from workstations, it generates minimal EDR/SOC alerting. Internal DNS servers often answer queries from any authenticated or network-local host, exposing internal hostnames not visible in external DNS.",
+    "misconfiguration": "Internal DNS servers responding to queries from any workstation without authentication. Internal zones (e.g. corp.internal, dc.megacorptwo.com) containing hostnames, service records, and TXT notes that expose topology.",
+    "impact": "Reveals internal hostnames, IP addresses, mail server names, and TXT record metadata (SPF, domain verification tokens, internal notes). Builds target map for lateral movement and service attack prioritisation.",
+    "detection": "DNS query logs on the server (Windows DNS debug logging or BIND query log). Windows client event: DNS Client Events log (source 'Microsoft-Windows-DNS-Client', Event ID 3006/3008 for lookup failures that leak what was queried). PowerShell script block logging if nslookup is wrapped in a script.",
+    "artifacts": "nslookup.exe process creation logged by EDR and Windows Security Event 4688 (if command-line auditing enabled). Network: UDP/TCP 53 packets to DNS server visible in PCAP.",
+    "prevention": "Enable DNS query logging on internal resolvers. Restrict which hosts can query internal DNS zones (DNS zone ACLs). Audit TXT and SRV records for sensitive notes.",
+    "evasion": "nslookup is a LOLBAS — blends into normal Windows DNS activity. Single queries for specific records generate far less noise than a dnsrecon sweep. Using an authorised internal DNS server further normalises the traffic.",
+    "sources": ["PEN-200 Ch 6", "MITRE T1018", "MITRE T1016", "MS Docs"]
+  }
+}

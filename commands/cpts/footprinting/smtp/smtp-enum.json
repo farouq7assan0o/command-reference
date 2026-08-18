@@ -1,0 +1,134 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "smtp"
+  ],
+  "tools": [
+    "telnet",
+    "nmap"
+  ],
+  "tags": [
+    "smtp",
+    "user-enum",
+    "open-relay"
+  ],
+  "category": "Enumeration",
+  "subcategory": "SMTP",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Greet the server",
+      "command": "HELO mail1.inlanefreight.htb\nEHLO mail1"
+    },
+    {
+      "label": "Enumerate users (VRFY)",
+      "command": "VRFY root\nVRFY cry0l1t3\nVRFY testuser"
+    },
+    {
+      "label": "Send an email",
+      "command": "MAIL FROM: <cry0l1t3@inlanefreight.htb>\nRCPT TO: <mrb3n@inlanefreight.htb>\nDATA\nSubject: test\n.\nQUIT"
+    },
+    {
+      "label": "Reach SMTP through a web proxy",
+      "command": "CONNECT 10.129.14.128:25 HTTP/1.0"
+    },
+    {
+      "label": "Lab example",
+      "command": "telnet 10.129.14.128 25"
+    }
+  ],
+  "notes": "Banner-grab on 25/465/587. Enumerate users with VRFY/EXPN/RCPT TO (smtp-user-enum). Test for an open relay (mail from external to external). Valid usernames feed password spraying. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "smtp-user-enum",
+      "rel": "next",
+      "note": "Enumerate valid mailboxes."
+    },
+    {
+      "id": "email-bruteforce",
+      "rel": "escalation",
+      "note": "Brute discovered accounts."
+    },
+    {
+      "id": "smtp-open-relay-abuse",
+      "rel": "escalation",
+      "note": "Abuse an open relay for phishing."
+    }
+  ],
+  "id": "smtp-enum",
+  "name": "SMTP - Enumeration",
+  "command": "telnet <ip> 25",
+  "description": "Interact with SMTP over telnet to grab the banner, enumerate users with VRFY, and even send mail. Nmap checks for an open relay.",
+  "variations": [
+    {
+      "label": "Nmap SMTP scan",
+      "command": "sudo nmap <ip> -sC -sV -p25"
+    },
+    {
+      "label": "Nmap open-relay test",
+      "command": "sudo nmap <ip> -p25 --script smtp-open-relay -v"
+    },
+    {
+      "command": "nc -nv <ip> 25",
+      "caption": "Netcat banner grab on SMTP port 25",
+      "label": "nc connect"
+    },
+    {
+      "command": "VRFY <username>",
+      "caption": "Manual VRFY: 250 = valid user, 550 = not found",
+      "label": "VRFY"
+    },
+    {
+      "command": "EXPN postmaster",
+      "caption": "EXPN: expand mailing list / alias to real addresses",
+      "label": "EXPN"
+    },
+    {
+      "command": "RCPT TO:<username>@<domain>",
+      "caption": "RCPT TO as alternative enum method when VRFY/EXPN disabled",
+      "label": "RCPT"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046",
+    "T1087"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "'Many configuration mistakes can be made by administrators, which in the worst cases will allow us to read all the emails sent and received.' SMTP VRFY and EXPN commands enumerate valid usernames on the system. Open relay misconfigurations — the module shows a Postfix server passing all 16 open relay tests — allow third parties to send mail through the server. Some servers also permit anonymous login 'similar to the FTP service.'\n\n[MITRE T1087.002] Adversaries enumerate domain accounts via net.exe, PowerShell, WMI, LDAP queries, or ldapsearch/samba tools (wbinfo -u) from non-domain-controller or non-admin endpoints — revealing valid usernames for password attacks and identifying high-value targets.",
+    "prerequisites": "Network access to SMTP (TCP 25/587).",
+    "impact": "Valid usernames via VRFY/EXPN/RCPT TO, plus open-relay detection — feeding phishing and spraying.",
+    "detection": "[MITRE T1087.002 AN0363] Adversary enumeration of domain accounts using net.exe, PowerShell, WMI, or LDAP queries from non-domain controllers or non-admin endpoints. [AN0364] Domain account enumeration using ldapsearch, samba tools (wbinfo -u), or winbindd lookups.",
+    "artifacts": "VRFY/EXPN/RCPT commands in the mail server log; connection records to 25.",
+    "prevention": "Disable VRFY and EXPN commands on public-facing SMTP servers to prevent user enumeration. Configure the server to reject relaying for unauthorized senders (eliminate open relay). Disable anonymous/unauthenticated SMTP login. Restrict SMTP access to known sending hosts where possible.\n\n[MITRE T1087.002 M1028] Prevent administrator accounts from being enumerated when an application is elevating through UAC. Configure via GPO: Computer Configuration > Administrative Templates > Windows Components > Credential User Interface: 'Enumerate administrator accounts on elevation' → Disabled.",
+    "evasion": "Prefer RCPT TO-based user enumeration over VRFY/EXPN (which are more often logged or outright disabled), and throttle the attempt rate — bulk VRFY/RCPT bursts are the tell that triggers mail-server alerts.",
+    "sources": [
+      "HTB M04",
+      "MITRE T1046",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
+    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  }
+}

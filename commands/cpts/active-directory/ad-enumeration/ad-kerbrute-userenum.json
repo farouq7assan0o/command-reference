@@ -1,0 +1,78 @@
+{
+  "id": "ad-kerbrute-userenum",
+  "name": "Kerbrute - Username Enumeration via Kerberos",
+  "command": "kerbrute userenum -d <domain> --dc <dc_ip> <userlist> -o valid_users.txt",
+  "description": "Validates usernames against a domain using Kerberos pre-authentication requests. The KDC returns different responses for valid vs invalid users (PRINCIPAL_UNKNOWN vs PREAUTH_REQUIRED or PREAUTH_FAILED). No lockouts triggered — this tests existence, not passwords. Output valid users to file for spray operations.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "kerbrute",
+    "username-enumeration",
+    "kerberos",
+    "user-validation"
+  ],
+  "mitre": [
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== HOW KERBEROS USERNAME VALIDATION WORKS ===\nKerbrute sends Kerberos AS-REQ packets for each username being tested.\nThe KDC's response reveals account existence:\n  KDC_ERR_C_PRINCIPAL_UNKNOWN  → account does NOT exist\n  KDC_ERR_PREAUTH_REQUIRED     → account EXISTS (pre-auth required)\n  KDC_ERR_PREAUTH_FAILED       → account EXISTS (wrong password but valid user)\n\nNo password is used — just username probing via Kerberos error codes.\nThis does NOT trigger account lockouts because no authentication attempt fails.\n\n=== NO LOCKOUT — BUT STILL DETECTABLE ===\nWhile userenum doesn't trigger lockouts, it does generate Event 4768\n(Kerberos TGT request) on the DC for each request.\nMany requests for unknown users in rapid succession is detectable by:\n  - Microsoft Defender for Identity\n  - SIEM rules watching 4768 error rates\nSlow it down with --delay if needed.\n\n=== OUTPUT ===\n  [+] VALID USERNAME: jsmith@INLANEFREIGHT.LOCAL\n  [+] VALID USERNAME: htb-student@INLANEFREIGHT.LOCAL\n  2024/01/01 12:00:00 >  Done! Tested 89 usernames (56 valid) in 0.920 seconds\n\n=== BUILD USER LIST FROM ===\n  Username-Anarchy from OSINT names → generate\n  /usr/share/seclists/Usernames/Names/names.txt → generic list\n  OSINT: LinkedIn, company website\n  Previous breach data\n\n=== CHAIN ===\n  userenum → valid_users.txt → passwordspray with kerbrute → valid creds",
+  "examples": [
+    {
+      "label": "Enum against a wordlist",
+      "command": "kerbrute userenum -d INLANEFREIGHT.LOCAL --dc 172.16.5.5 /opt/jsmith.txt -o valid_ad_users"
+    },
+    {
+      "label": "Enum generated names",
+      "command": "kerbrute userenum -d INLANEFREIGHT.LOCAL --dc 172.16.5.5 generated_usernames.txt -o valid_users.txt"
+    }
+  ],
+  "references": [
+    {
+      "title": "Kerbrute (ropnop)",
+      "url": "https://github.com/ropnop/kerbrute"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-password-spray",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Kerbrute enumerates valid AD usernames via Kerberos AS-REQ responses (valid vs unknown differ) WITHOUT generating 4625 failed-logon events.",
+    "prerequisites": "Network access to a DC (Kerberos 88) and a username list.",
+    "impact": "A validated username list for spraying/roasting, gathered quietly.",
+    "detection": "[MITRE T1087.002] a burst of Kerberos 4768 AS-REQs for many usernames; unknown users return distinct errors - a user-enumeration pattern (Defender for Identity flags it).",
+    "artifacts": "4768 pre-auth requests for many names; distinct error patterns.",
+    "prevention": "Monitor for Kerberos enumeration patterns (Defender for Identity); the technique avoids 4625, so Kerberos-log analysis is key.",
+    "evasion": "AS-REQ enumeration avoids 4625 (quieter than LDAP/SMB); throttle to avoid 4768 spikes.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "kerbrute"
+  ]
+}

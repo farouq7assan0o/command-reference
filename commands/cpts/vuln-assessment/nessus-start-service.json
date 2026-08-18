@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNessus is a vulnerability scanner that performs credentialed or uncredentialed scans to identify known CVEs, misconfigurations, missing patches, and compliance gaps. Starting the service activates the scanner's web UI (default port 8834) for configuration and results review.\n\n=== CHAINING ===\nStart Nessus \u2192 create scan policy (Basic Network, Credentialed, PCI DSS, etc.) \u2192 configure targets \u2192 run scan \u2192 export results (PDF/XML/CSV) \u2192 prioritize findings by CVSS \u2192 recommend remediation.\n\n=== SCAN TYPES ===\nUncredentialed: identifies network-exposed services and fingerprints but has high false negative rate for patch status. Credentialed: uses SSH/WMI credentials to check installed packages, registry keys, and patch levels \u2014 much more accurate.",
+  "references": []
+}

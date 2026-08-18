@@ -1,0 +1,103 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "ssh"
+  ],
+  "tools": [
+    "ssh",
+    "ssh-audit",
+    "nmap"
+  ],
+  "tags": [
+    "ssh",
+    "ssh-audit",
+    "auth-methods"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Linux Remote Management",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Audit a target's SSH config",
+      "command": "./ssh-audit.py 10.129.14.132"
+    }
+  ],
+  "notes": "Config: /etc/ssh/sshd_config. Dangerous: PasswordAuthentication yes, PermitEmptyPasswords yes, PermitRootLogin yes, Protocol 1, X11Forwarding yes, AllowTcpForwarding yes.",
+  "references": [
+    {
+      "title": "ssh-audit",
+      "url": "https://github.com/jtesta/ssh-audit"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hydra-bruteforce",
+      "rel": "escalation",
+      "note": "Brute SSH credentials."
+    },
+    {
+      "id": "netexec-bruteforce",
+      "rel": "alternative",
+      "note": "Spray/brute over SSH with NetExec."
+    },
+    {
+      "id": "rservices-enum",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "ssh-enum",
+  "name": "SSH - Enumeration",
+  "command": "./ssh-audit.py <ip>",
+  "description": "Audit an SSH server's algorithms/config with ssh-audit and enumerate which authentication methods are accepted with a verbose connect.",
+  "variations": [
+    {
+      "label": "ssh-audit",
+      "command": "git clone https://github.com/jtesta/ssh-audit.git && cd ssh-audit\n./ssh-audit.py <ip>"
+    },
+    {
+      "label": "Enumerate auth methods (verbose)",
+      "command": "ssh -v <user>@<ip>"
+    },
+    {
+      "label": "Force password auth",
+      "command": "ssh -v <user>@<ip> -o PreferredAuthentications=password"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries scan for open ports and running services on network hosts to identify attack surface and potential exploitation targets. Tools like netcat, nmap, and service-specific clients probe for banner information that reveals software versions, which can then be matched against known vulnerabilities.",
+    "prerequisites": "Network access to SSH (TCP 22).",
+    "impact": "SSH version and supported authentication methods (and, on some versions, username enumeration) — informing brute-force or CVE matching.",
+    "detection": "Monitor for processes performing network enumeration by correlating process creation, socket connections, and sequential destination IP probing within a time window. Unusual port scanning patterns or banner-grabbing activity from internal hosts can indicate post-compromise discovery.",
+    "artifacts": "A connection and banner read in the sshd log; source IP recorded by sshd.",
+    "prevention": "Close unnecessary ports and services to prevent risk of discovery and potential exploitation. Use network intrusion detection/prevention systems to detect and prevent remote service scans. Ensure proper network segmentation to protect critical servers and devices.",
+    "sources": [
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
+    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  }
+}

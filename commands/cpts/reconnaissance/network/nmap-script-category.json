@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n--script <category> runs every script in a named NSE category. Key categories: default (safe enumeration), vuln (CVE checks, heavy service interaction), auth (credential testing), brute (password brute force), discovery (network/service discovery).\n\n=== VULN CATEGORY ===\nvuln scripts cross-reference service versions against CVE databases. Against WordPress: identifies admin paths, discovers valid usernames (http-wordpress-users), lists CVEs with CVSS scores and links. Direct bridge from enumeration to exploitation planning.\n\n=== CAUTION ===\ndos, exploit, intrusive categories can disrupt/harm services \u2014 use only with explicit authorization. vuln sits in the middle \u2014 no exploitation, but heavy interaction that may trigger IDS alerts.\n\n=== SYNTAX ===\n--script vuln runs all vuln scripts. --script 'vuln and safe' runs only vuln scripts also tagged safe. --script 'not intrusive' excludes intrusive ones.",
+  "references": []
+}

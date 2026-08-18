@@ -1,0 +1,84 @@
+{
+  "id": "crtp-powerview-userhunting",
+  "name": "PowerView User Hunting (Find-DomainUserLocation)",
+  "command": "Find-DomainUserLocation -CheckAccess",
+  "description": "Find where privileged domain users are currently logged in. CheckAccess verifies if current user has local admin access to those machines.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "loud",
+  "mitre": [
+    "T1033",
+    "T1087.002"
+  ],
+  "tools": [
+    "PowerView"
+  ],
+  "tags": [
+    "userhunting",
+    "logon",
+    "powerview",
+    "lateral",
+    "da"
+  ],
+  "examples": [
+    {
+      "label": "Find DA sessions with local admin check",
+      "command": "Find-DomainUserLocation -CheckAccess | select UserName,SessionFromName,LocalAdmin"
+    },
+    {
+      "label": "Hunt specific user sessions",
+      "command": "Find-DomainUserLocation -UserName <user> | select UserName,SessionFromName"
+    },
+    {
+      "label": "Stealth mode (DCs and file servers only)",
+      "command": "Find-DomainUserLocation -Stealth | select UserName,SessionFromName"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-psremoting",
+      "note": "PS Remoting to machine where DA is logged in",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Dump DA credentials from that machine",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-overpass-hash",
+      "note": "Use DA hash for lateral movement",
+      "rel": "next"
+    }
+  ],
+  "notes": "Queries all machines \u2014 very noisy. Use -Stealth to reduce noise. Requires admin rights on targets for -CheckAccess to work.",
+  "references": [
+    {
+      "title": "CRTP - User Hunting",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Find-DomainUserLocation uses NetSessionEnum and NetWkstaUserEnum RPC calls to query each host's active sessions, mapping which privileged users are currently logged on where. Exposes DA session locations \u2014 enabling targeted Pass-the-Hash or token impersonation on those hosts.",
+    "prerequisites": "Any domain user (NetSessionEnum accessible to all by default). PowerView. A host list (from Get-DomainComputer). SMB access (port 445) to target hosts.",
+    "impact": "T1033 System Owner/User Discovery + T1087.002 Account Discovery. Identifies which host a Domain Admin is currently logged on to \u2014 turns credential theft from guesswork to a targeted operation.",
+    "detection": "Rapid NetSessionEnum RPC calls (MSRPC \\PIPE\\srvsvc) to many hosts. Sysmon Event 3: rapid 445 connections to many hosts. Event 4104 SBL: Invoke-UserHunter / Find-DomainUserLocation. MDI: 'SMB session enumeration reconnaissance'.\nMonitor for execution of commands and arguments that may be used to gather system and network information (e.g., whoami, id, who, w, groups) particularly when chained with lateral movement behaviors. On Windows, monitor for process creation events for cmd.exe, PowerShell, and net.exe running user discovery commands. On Linux/macOS, monitor shell history and auditd for id, whoami, w, last commands. Correlate discovery activity with subsequent credential access or lateral movement.",
+    "artifacts": "Sysmon Event 3: rapid 445 connections to many hosts | Event 4104: Find-DomainUserLocation | MDI: SMB session enum recon alert | Netflow: single source \u2192 many hosts TCP 445 in short window",
+    "prevention": "Restrict NetSessionEnum to admins only (RestrictRemoteSam). Domain Admins log on only from PAWs. Protected Users group for DA accounts. MDI. Credential Guard prevents credential theft even after session enumeration.\nThis type of attack technique cannot be easily mitigated with preventive controls since it is based on the abuse of system features.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Use -CheckAccess to only hit hosts the current user can admin (fewer connections). Use targeted host list. Add delays between queries.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1033/",
+      "https://attack.mitre.org/techniques/T1087/002/"
+    ],
+    "misconfiguration": "NetSessionEnum accessible to all authenticated users (default). DAs log on to regular workstations for daily tasks. No Credential Guard. No PAW model.",
+    "vulnerable_config": "# RestrictRemoteSam not configured (default):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RestrictRemoteSam\n# Returns $null = not restricted = any auth user can enumerate sessions\n\n# DA logged onto workstation WS01:\n# NetSessionEnum returns: CORP\\DomainAdmin1 \u2192 WS01 \u2192 target for token theft",
+    "secure_config": "# Restrict NetSessionEnum:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RestrictRemoteSam -Value 'O:BAG:BAD:(A;;RC;;;BA)'\n\n# PAW model + Authentication Policy Silos:\nNew-ADAuthenticationPolicySilo -Name 'DomainAdmin-Silo'\n# Restrict DA logon to PAW computers only\n\n# Protected Users group:\nAdd-ADGroupMember -Identity 'Protected Users' -Members 'DomainAdmin1'\n# No NTLM, no delegatable credentials, no cached creds on logon"
+  }
+}

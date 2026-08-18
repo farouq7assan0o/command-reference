@@ -1,0 +1,78 @@
+{
+  "id": "cdsa-m13-windows-artifacts",
+  "name": "Windows Forensic Artifacts — NTFS, Execution, Persistence & Zone.Identifier",
+  "command": "MFTECmd.exe -f $MFT --csv C:\\output --csvf mft.csv",
+  "description": "Key Windows forensic artifact locations and analysis. NTFS: $MFT (file metadata), $J USN Journal (file ops), LNK files, ADS/Zone.Identifier (MotW), VSC. Execution artifacts: Prefetch (C:\\Windows\\Prefetch), ShimCache (HKLM\\SYSTEM\\...\\AppCompatCache), Amcache (C:\\Windows\\AppCompat\\Programs\\Amcache.hve), BAM (HKLM\\SYSTEM\\...\\bam\\State\\UserSettings\\{SID}), UserAssist, RunMRU. Persistence: Registry Run keys (HKCU/HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run), Scheduled Tasks (C:\\Windows\\System32\\Tasks), Services (HKLM\\System\\CurrentControlSet\\Services), Startup folder. SRUM: C:\\Windows\\System32\\sru\\SRUDB.dat (network usage). Zone.Identifier ZoneId=3 = Internet Zone — present on all downloaded files.",
+  "platform": "windows",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Digital Forensics",
+  "subcategory": "Windows Artifacts",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 13: Introduction to Digital Forensics",
+  "tags": ["dfir", "ntfs", "mft", "prefetch", "shimcache", "amcache", "bam", "persistence", "zone-identifier", "ads", "usn-journal", "srum", "blue-team", "forensics", "windows"],
+  "notes": "=== DIGITAL FORENSICS PROCESS ===\n1. Identification  → What evidence exists and where\n2. Collection      → Acquire evidence (forensically sound, write-blocked)\n3. Examination     → Extract relevant data\n4. Analysis        → Interpret findings\n5. Presentation    → Report conclusions\n\n=== NTFS ARTIFACT LOCATIONS ===\n$MFT           → Every file/dir record, full metadata, timestamps (MAC(b))\n$J (USN Jrnl)  → <KAPE_out>\\<Drive>\\$Extend\\$J — file create/rename/delete/overwrite\n$LogFile       → NTFS transaction log\nLNK Files      → C:\\Users\\<user>\\AppData\\Roaming\\Microsoft\\Windows\\Recent\\\nJump Lists     → C:\\Users\\<user>\\AppData\\Roaming\\Microsoft\\Windows\\Recent\\AutomaticDestinations\\\nShellbags      → HKCU\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\nThumb Cache    → C:\\Users\\<user>\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_*.db\nRecycle Bin    → C:\\$Recycle.Bin\\{SID}\\$R* (content) + $I* (metadata: orig path, deletion time)\nVSC            → Volume Shadow Copies — \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopyN\\\nSRUM           → C:\\Windows\\System32\\sru\\SRUDB.dat (SQLite — network bytes, process, user)\n\n=== MAC(b) TIMESTAMPS ===\nM = Last Modified (content change)\nA = Last Accessed\nC = $MFT record Changed (attribute/metadata change)\nb = Birth (file creation time)\n\nTimestomping (T1070.006):\n  $STANDARD_INFORMATION: modifiable by user-space tools (e.g., Meterpreter timestomp)\n  $FILE_NAME: only updated by Windows kernel — reveals real creation/modification time\n  Detection: SI modified ≠ FN modified → timestomping\n  Tool: MFTECmd deep entry dump shows both SI and FN timestamps\n\n  Detect with MFTECmd:\n    MFTECmd.exe -f $MFT --de <MFT_entry_hex>     → dump both $SI and $FN timestamps\n  Detect with Autopsy: File Metadata tab → compare $FILE_NAME MFT Modified vs $STANDARD_INFORMATION File Modified\n\n=== EXECUTION ARTIFACTS ===\n\n--- Prefetch ---\nLocation: C:\\Windows\\Prefetch\\\nNaming:   EXENAME-HASH.pf\nContents: run count, last run time, first run time, dirs/files referenced\nSuspicious: executables from %TEMP%, Downloads, Tasks\nParse: PECmd.exe (Eric Zimmerman)\n\n--- ShimCache (AppCompatCache) ---\nRegistry: HKLM\\SYSTEM\\ControlSet001\\Control\\Session Manager\\AppCompatCache\nContents: full file paths + timestamps + execution flag (Windows 7 = yes/no; Win10+ = no exec flag)\nView in Registry Explorer → bookmark \"AppCompatCache\"\nParse: AppCompatCacheParser.exe -f SYSTEM --csv <dir>\n\n--- Amcache ---\nLocation: C:\\Windows\\AppCompat\\Programs\\Amcache.hve\nContents: execution path, first executed time, deleted time, first install, file SHA1 hash\nParse: AmcacheParser.exe -f Amcache.hve --csv <dir>\n→ Load output in Timeline Explorer\n\n--- BAM (Background Activity Moderator) ---\nKernel driver; records last execution time per program per user\nRegistry: HKLM\\SYSTEM\\ControlSet001\\Services\\bam\\State\\UserSettings\\{USER-SID}\nView in Registry Explorer → bookmark \"bam\"\nParse with RegRipper: rip.exe -r SYSTEM -p bam\n\n--- UserAssist ---\nRegistry: HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\UserAssist\nContents: GUI app launch counts + timestamps (ROT13 encoded)\n\n--- RunMRU ---\nRegistry: HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU\nContents: commands typed in Win+R Run dialog\n\n=== ZONE.IDENTIFIER / MARK OF THE WEB (MotW) ===\nAll internet-downloaded files receive a Zone.Identifier ADS:\n  Zone IDs: 0=Local, 1=Intranet, 2=Trusted, 3=Internet, 4=Restricted\n  ZoneId=3 = downloaded from internet\n\nADS also contains:\n  ZoneTransfer block:\n    ReferrerUrl = page that linked to the download\n    HostUrl     = direct download URL (source URL of file)\n\nView ADS streams:\n  PowerShell list:   Get-Item * -Stream Zone.Identifier -ErrorAction SilentlyContinue\n  PowerShell read:   Get-Content <file> -Stream Zone.Identifier\n  CLI:               more < file.exe:Zone.Identifier\n\nImpact: Word/Office opens internet-origin files in Protected View\nView in Autopsy: Downloads folder → .Zone.Identifier ADS attribute\nView in Prefetch (PECmd): \"files loaded\" section includes :Zone.Identifier entries\n\n=== USN JOURNAL ($J) ===\nTracks: FileCreate, FileDelete, Rename, DataOverwrite, DataExtend, StreamChange\nLocation: <KAPE_output>\\<Drive>\\$Extend\\$J\n\nParse with MFTECmd:\n  MFTECmd.exe -f $J --csv <output_dir> --csvf MFT-J.csv\n\nFilter with PowerShell (time range + file extensions):\n  $time1 = [DateTime]::ParseExact(\"2023-08-10 09:00:00.000000\", \"yyyy-MM-dd HH:mm:ss.ffffff\", $null)\n  $time2 = [DateTime]::ParseExact(\"2023-08-10 10:00:00.000000\", \"yyyy-MM-dd HH:mm:ss.ffffff\", $null)\n  Import-Csv usn_output.csv | Where-Object { $_.'FileName' -match '\\.exe$|\\.ps1$|\\.bat$|\\.iso$|\\.lnk$' } |\n    Where-Object { $_.timestamp -as [DateTime] -ge $time1 -and $_.timestamp -as [DateTime] -lt $time2 }\n\nAlso parse with usn.py:\n  python usn.py -f $UsnJrnl:$J -o usn_output.csv -c\n\nKey pattern: .crdownload extension = Chrome partial/in-progress download\nKey pattern: STREAM_CHANGE + NAMED_DATA_EXTEND on .iso = Zone.Identifier ADS written = internet download\n\n=== PERSISTENCE LOCATIONS ===\nRegistry Run Keys (autostart at logon):\n  HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\n  HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce\n  HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run        ← system-wide\n  HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce\n  HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon  (Userinit, Shell values)\n  HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders\n\nScheduled Tasks:\n  C:\\Windows\\System32\\Tasks\\\n  View with Autoruns tool → Scheduled Tasks tab\n  Parse: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tasks\n\nServices:\n  HKLM\\System\\CurrentControlSet\\Services\\\n\nStartup Folder:\n  C:\\Users\\<user>\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\n  C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\\n\nAutoruns tool (.arn files):\n  Logon tab → Run keys\n  Scheduled Tasks tab\n  Services tab\n  SHA256 hash for each entry → submit to VirusTotal\n  Get-FileHash -Algorithm SHA256 <path>   → hash executable for VT lookup\n\n=== SRUM (System Resource Usage Monitor) ===\nLocation: C:\\Windows\\System32\\sru\\SRUDB.dat (SQLite)\nContents: per-process network bytes sent/received, per-app usage\nView via Autopsy → Data Artifacts → Run Programs → SRUDB.dat\nUseful for: quantifying data exfiltration (e.g., 430526981 bytes = ~430MB transferred)",
+  "examples": [
+    {
+      "label": "Parse $MFT to CSV",
+      "command": "MFTECmd.exe -f C:\\investigation\\$MFT --csv C:\\output --csvf mft.csv"
+    },
+    {
+      "label": "Dump single MFT entry (show both $SI and $FN timestamps)",
+      "command": "MFTECmd.exe -f C:\\investigation\\$MFT --de 0x1c6b9"
+    },
+    {
+      "label": "Parse USN Journal ($J)",
+      "command": "MFTECmd.exe -f \"C:\\kapefiles\\$Extend\\$J\" --csv C:\\output --csvf MFT-J.csv"
+    },
+    {
+      "label": "List Zone.Identifier ADS on files in directory",
+      "command": "Get-Item * -Stream Zone.Identifier -ErrorAction SilentlyContinue"
+    },
+    {
+      "label": "Read Zone.Identifier ADS (source URL, referrer)",
+      "command": "Get-Content Finance08062023.iso -Stream Zone.Identifier"
+    },
+    {
+      "label": "Parse Amcache hive",
+      "command": "AmcacheParser.exe -f C:\\Windows\\AppCompat\\Programs\\Amcache.hve --csv C:\\output"
+    },
+    {
+      "label": "Parse Prefetch directory to CSV",
+      "command": "PECmd.exe -d C:\\Windows\\Prefetch --csv C:\\output --csvf prefetch.csv"
+    },
+    {
+      "label": "Parse AppCompatCache (ShimCache) from SYSTEM hive",
+      "command": "AppCompatCacheParser.exe -f C:\\Windows\\System32\\config\\SYSTEM --csv C:\\output"
+    },
+    {
+      "label": "Get file hash for VirusTotal submission",
+      "command": "Get-FileHash -Algorithm SHA256 C:\\ProgramData\\svchost.exe"
+    },
+    {
+      "label": "Filter USN journal by time window and file types",
+      "command": "$t1=[DateTime]::ParseExact(\"2023-08-10 09:00:00.000000\",\"yyyy-MM-dd HH:mm:ss.ffffff\",$null); $t2=[DateTime]::ParseExact(\"2023-08-10 10:00:00.000000\",\"yyyy-MM-dd HH:mm:ss.ffffff\",$null); Import-Csv usn.csv | Where-Object { $_.'FileName' -match '\\.exe$|\\.ps1$|\\.bat$|\\.iso$' } | Where-Object { $_.timestamp -as [DateTime] -ge $t1 -and $_.timestamp -as [DateTime] -lt $t2 }"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Introduction to Digital Forensics",
+      "url": "https://academy.hackthebox.com/module/details/237"
+    },
+    {
+      "title": "Eric Zimmerman Tools",
+      "url": "https://ericzimmerman.github.io/#!index.md"
+    },
+    {
+      "title": "MITRE ATT&CK T1070.006 — Timestomping",
+      "url": "https://attack.mitre.org/techniques/T1070/006/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m13-disk-forensics",
+      "rel": "next",
+      "note": "Disk forensics tools: Autopsy, MFTECmd, EvtxECmd, Registry Explorer, RegRipper, Timeline Explorer, EQL, PECmd."
+    }
+  ]
+}

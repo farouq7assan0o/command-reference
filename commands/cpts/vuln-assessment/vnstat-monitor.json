@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nvnstat is a network traffic monitor that logs bandwidth usage per interface over time (daily/monthly/total). Used during vulnerability assessments and pentests to monitor scan impact, verify scan traffic reached the target, or detect unexpected bandwidth anomalies.\n\n=== CHAINING ===\nBefore scan: vnstat -i eth0 \u2192 run vulnerability scan \u2192 vnstat -i eth0 -d \u2192 compare delta to understand scan traffic volume. Useful for estimating scan footprint and documenting assessment activity.\n\n=== CONTEXT ===\nVulnerability scanners generate significant traffic (Nessus can send thousands of packets per host per minute). vnstat helps quantify this and identify if scan traffic is reaching the target interface.",
+  "references": []
+}

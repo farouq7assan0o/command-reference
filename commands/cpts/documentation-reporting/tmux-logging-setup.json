@@ -1,0 +1,82 @@
+{
+  "id": "tmux-logging-setup",
+  "name": "Engagement Terminal Logging - tmux-logging",
+  "command": "git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm   # then add tmux-logging plugin to ~/.tmux.conf",
+  "description": "Capture every command and its output during an engagement with the tmux-logging plugin. Terminal logs are essential evidence: they let the client correlate your activity with their alerts, prove what was and wasn't tested, and back up your findings and timeline. Running without logging is unprofessional and can leave you unable to answer post-engagement questions.",
+  "type": "cheatsheet",
+  "platform": "linux",
+  "requires": [],
+  "protocols": [],
+  "tools": [
+    "tmux",
+    "tpm"
+  ],
+  "tags": [
+    "reporting",
+    "logging",
+    "evidence",
+    "tmux",
+    "methodology"
+  ],
+  "category": "Reporting",
+  "subcategory": "Documentation & Reporting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 27: Documentation & Reporting",
+  "examples": [
+    {
+      "label": "Install the tmux plugin manager",
+      "command": "git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm"
+    },
+    {
+      "label": "~/.tmux.conf - enable logging plugin",
+      "command": "touch ~/.tmux.conf\n# set -g @plugin 'tmux-plugins/tpm'\n# set -g @plugin 'tmux-plugins/tmux-sensible'\n# set -g @plugin 'tmux-plugins/tmux-logging'\n# run '~/.tmux/plugins/tpm/tpm'"
+    },
+    {
+      "label": "Reload config, then install plugins with prefix + I",
+      "command": "tmux source ~/.tmux.conf   # then press <prefix> I inside tmux"
+    },
+    {
+      "label": "Keep long scrollback so nothing is lost",
+      "command": "set -g history-limit 50000"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Toggle logging / dump history for the current pane",
+      "command": "# <prefix> shift+p  -> start/stop logging to a file\n# <prefix> alt+shift+p -> save the entire visible history"
+    },
+    {
+      "label": "Quick alternative without tmux",
+      "command": "script -a engagement-$(date +%F).log   # append all terminal I/O to a file"
+    }
+  ],
+  "notes": "tmux-logging writes everything typed into a pane to a log file - invaluable for the Activity Log and Payload Log sections of a report, and for recreating an attack path. Also track things you tried that did NOT work: in a low-finding engagement, that narrative shows the client what they are adequately protected against. Change the default log path and key bindings via the plugin's configuration docs. Pair with a per-command timestamp habit for defensible evidence. This is a methodology/evidence card, not an attack.",
+  "references": [
+    {
+      "title": "tmux-logging plugin",
+      "url": "https://github.com/tmux-plugins/tmux-logging"
+    },
+    {
+      "title": "HTB Academy - Documentation & Reporting",
+      "url": "https://academy.hackthebox.com/module/details/162"
+    },
+    {
+      "title": "OffSec PEN-200 - Report Writing",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "engagement-folder-structure",
+      "note": "Where these logs live in the evidence tree.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [],
+  "exam": "exam-ok"
+}

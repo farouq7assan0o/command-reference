@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nQueries a specific DNS record type (A, MX, NS, TXT, CNAME, SOA, SRV, PTR, AAAA) for a domain. Each type reveals different infrastructure intelligence \u2014 don't rely on ANY query (frequently ignored per RFC 8482), query each type explicitly.\n\n=== RECORD INTEL ===\nA/AAAA: live host IPs. MX: mail servers (often less hardened, separately administered). NS: authoritative servers (AXFR targets). TXT: SPF internal IPs, SaaS verification tokens (full platform stack). SOA: admin email + primary NS. SRV: internal services with ports. CNAME: aliasing (may point to abandoned third-party infrastructure).\n\n=== TXT RECORD VALUE ===\nSPF records expose internal IP ranges in their syntax. Verification tokens (Atlassian, Google, LogMeIn, Mailgun) fingerprint the entire SaaS stack \u2014 each platform is its own attack surface.",
+  "references": []
+}

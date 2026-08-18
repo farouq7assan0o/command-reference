@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNikto -Tuning b restricts to Software Identification modules only \u2014 extracts technology information without running noisy vulnerability probes. Reveals: server version, CMS, login pages, disclosed files (license.txt, readme.html with version info), and missing security headers.\n\n=== KEY FINDINGS ===\nApache version (outdated = CVE targets). WordPress login at /wp-login.php. license.txt: may disclose exact software version. Missing headers: Strict-Transport-Security (HTTPS not enforced), X-Content-Type-Options (MIME sniffing risk), X-Frame-Options (clickjacking risk).\n\n=== CHAINING ===\ncurl banner grab \u2192 WAF detection (wafw00f) \u2192 nikto fingerprinting. Each layer adds to the technology profile. Nikto confirms curl findings + adds login URL + security header gaps.\n\n=== DETECTION ===\nNikto is easily detected by WAFs and IDS \u2014 distinctive User-Agent and request patterns. Run only with authorization. WAF detection (wafw00f) first informs whether Nikto results may be manipulated.",
+  "references": []
+}

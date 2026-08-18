@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-oA saves all three Nmap output formats simultaneously: .nmap (human-readable), .gnmap (grepable, one host per line), .xml (structured, tool-importable). Default best practice \u2014 no extra cost, maximum flexibility.\n\n=== FORMAT USE CASES ===\n.nmap: quick reading, overview. .gnmap: grep/awk/cut processing (grep 'open' file.gnmap | cut -d' ' -f2). .xml: import into Metasploit (db_import), generate HTML report via xsltproc, parse with scripts.\n\n=== ENGAGEMENT PRACTICE ===\nSave every scan. Different runs and scan types return different results. File comparison reveals intermittent firewall behavior or service instability. Preserves evidence for reporting.",
+  "references": []
+}

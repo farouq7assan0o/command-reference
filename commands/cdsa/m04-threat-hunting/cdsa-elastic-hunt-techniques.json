@@ -1,0 +1,80 @@
+{
+  "id": "cdsa-elastic-hunt-techniques",
+  "name": "Elastic - Advanced Hunting Techniques (Lateral Movement, Persistence, PS Remoting)",
+  "command": "event.code:11 AND file.path:*Users\\\\Public*",
+  "description": "KQL hunting queries for advanced Stuxbot TTPs: lateral tool transfer via C:\\Users\\Public, registry run key persistence, and PowerShell remoting for lateral movement. These are the skills assessment hunts from Module 04.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Threat Hunting",
+  "subcategory": "Elastic/Kibana",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 04: Introduction to Threat Hunting & Hunting With Elastic",
+  "tags": ["elastic", "kql", "lateral-movement", "persistence", "registry", "powershell-remoting", "blue-team"],
+  "notes": "=== Hunt 1: Lateral Tool Transfer to C:\\Users\\Public (T1570) ===\nAttackers drop tools (SharpHound, payloads) to C:\\Users\\Public as it's world-writable.\nHunt: Sysmon Event 11 (FileCreate) for files written to that path.\n  event.code:11 AND file.path:*Users\\\\Public*\n  → Check user.name field to identify the user/account doing the transfer\n  → Look for: SharpHound.exe, payload.exe, recon tools\n\nAlternative — also check Event 1 (process creating files there):\n  event.code:1 AND process.command_line:*Users\\\\Public*\n\n=== Hunt 2: Registry Run Key Persistence (T1547.001) ===\nStuxbot uses registry Run keys for persistence.\nSysmon Event 13 (RegistryEvent - Value Set) captures Run key writes.\n  event.code:13 AND registry.path:*\\\\Run*\n  → Check registry.value field for persistence entry name\n  → Common paths:\n      HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\n      HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\n      HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce\n  → registry.data.strings field shows the command that will execute at logon\n\nAlternative — also hunt Startup folder file drops:\n  event.code:11 AND file.path:*Startup*\n\n=== Hunt 3: PowerShell Remoting for Lateral Movement (T1021.006) ===\nPowerShell Remoting uses WinRM (port 5985/5986). Sysmon Event 1 shows\nwsmprovhost.exe (WS-Management Provider Host) spawned on the TARGET host.\n  event.code:1 AND process.name:wsmprovhost.exe\n  → Filter to DC1: event.code:1 AND process.name:wsmprovhost.exe AND host.hostname:DC1\n  → Check winlog.user.name for the account used\n  → Parent of wsmprovhost.exe = svchost.exe (normal; shows WinRM is the entry point)\n\nAlternative — Windows logon events for WinRM:\n  event.code:4624 AND winlog.event_data.LogonType:3 AND destination.port:5985\n\nAlternative — check Network connections (Sysmon Event 3) to DC on WinRM port:\n  event.code:3 AND destination.port:5985 AND host.hostname:DC1\n\n=== Zeek Hunt Patterns ===\nTrack C2 IP persistence across days:\n  destination.ip:<C2_IP> AND network.transport:tcp\n  → Add: dns.answers.data column to spot C2 IP changes (ngrok rotates IPs)\n\nHunt DNS for ngrok (common C2 tunnel):\n  dns.question.name:*ngrok.io*\n  → Check dns.answers.data for resolved IP, then track connections to that IP\n\n=== Field Reference for Hunting ===\n  process.name           → executable name\n  process.command_line   → full command line (with args)\n  process.parent.name    → parent process name\n  process.parent.command_line → parent command line\n  process.pid            → numeric PID\n  process.hash.sha256    → SHA256 of executable\n  file.path              → full path of file created/modified\n  file.name              → filename only\n  registry.path          → full registry key path\n  registry.value         → registry value name\n  registry.data.strings  → registry value data (the command/payload)\n  dns.question.name      → DNS query hostname\n  dns.answers.data       → DNS response IPs\n  source.ip              → source IP in network event\n  destination.ip         → destination IP\n  destination.port       → destination port\n  host.hostname          → hostname of reporting agent\n  winlog.user.name       → user from Windows event\n  user.name              → ECS user field",
+  "mitre": ["T1570", "T1547.001", "T1021.006", "T1059.001"],
+  "examples": [
+    {
+      "label": "Hunt 1: Lateral tool transfer to C:\\Users\\Public (Sysmon Event 11)",
+      "command": "event.code:11 AND file.path:*Users\\Public*"
+    },
+    {
+      "label": "Hunt 1 alt: Process writing to C:\\Users\\Public",
+      "command": "event.code:1 AND process.command_line:*Users\\Public*"
+    },
+    {
+      "label": "Hunt 2: Registry Run key persistence (Sysmon Event 13)",
+      "command": "event.code:13 AND registry.path:*\\Run*"
+    },
+    {
+      "label": "Hunt 2 alt: Startup folder file drops",
+      "command": "event.code:11 AND file.path:*Startup*"
+    },
+    {
+      "label": "Hunt 3: PowerShell Remoting via wsmprovhost.exe on DC1",
+      "command": "event.code:1 AND process.name:wsmprovhost.exe AND host.hostname:DC1"
+    },
+    {
+      "label": "Hunt 3 alt: WinRM logon events to DC",
+      "command": "event.code:4624 AND winlog.event_data.LogonType:3 AND destination.port:5985"
+    },
+    {
+      "label": "C2 persistence: DNS queries for ngrok tunnels",
+      "command": "dns.question.name:*ngrok.io*"
+    },
+    {
+      "label": "All connections to known C2 IP",
+      "command": "destination.ip:<C2_IP> AND network.transport:tcp"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Introduction to Threat Hunting & Hunting With Elastic",
+      "url": "https://academy.hackthebox.com/module/details/214"
+    },
+    {
+      "title": "MITRE ATT&CK - T1570 Lateral Tool Transfer",
+      "url": "https://attack.mitre.org/techniques/T1570/"
+    },
+    {
+      "title": "MITRE ATT&CK - T1547.001 Registry Run Keys",
+      "url": "https://attack.mitre.org/techniques/T1547/001/"
+    },
+    {
+      "title": "MITRE ATT&CK - T1021.006 PowerShell Remoting",
+      "url": "https://attack.mitre.org/techniques/T1021/006/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-elastic-stuxbot-hunt",
+      "rel": "prereq",
+      "note": "Main Stuxbot hunt — this card covers the advanced assessment queries."
+    },
+    {
+      "id": "cdsa-sysmon-event-ids",
+      "rel": "prereq",
+      "note": "Event IDs 1, 3, 11, 13, 22 used throughout these queries."
+    }
+  ]
+}

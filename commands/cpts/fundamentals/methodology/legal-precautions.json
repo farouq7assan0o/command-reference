@@ -1,0 +1,51 @@
+{
+  "id": "legal-precautions",
+  "name": "Pre-Engagement - Legal Precautions",
+  "command": "# Stay lawful and in-scope",
+  "description": "Pre-Engagement - Legal Precautions - reference (methodology, not a runnable command).",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Fundamentals",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 01: Penetration Testing Process",
+  "tags": [
+    "methodology",
+    "reference"
+  ],
+  "notes": "Precautions during a test: obtain WRITTEN consent from the owner/authorized rep; test ONLY within the consented scope and respect limitations; take measures to avoid damage; do not access/use/disclose personal data without permission; do not intercept communications without consent of a party; do not test HIPAA-covered systems without proper authorization. Laws differ by region (USA/EU/UK/India/China) - the RoE and contract are your legal cover.",
+  "references": [
+    {
+      "title": "HTB Academy - Penetration Testing Process",
+      "url": "https://academy.hackthebox.com/module/details/90"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "exploitation-prioritization",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Always confirm written authorization before testing",
+      "command": "# Email chain + signed agreement with explicit IP/domain scope and test window"
+    },
+    {
+      "label": "Stop and notify if critical live-system impact risk detected",
+      "command": "# Emergency contact chain: PM → client security lead → CISO. Do NOT exploit production DBs."
+    },
+    {
+      "label": "Document every action with timestamps",
+      "command": "# script -a pentest_$(date +%Y%m%d).log  # record full terminal session"
+    }
+  ],
+  "mitre": [
+    "T1591"
+  ]
+}

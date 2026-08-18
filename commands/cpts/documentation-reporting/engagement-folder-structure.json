@@ -1,0 +1,63 @@
+{
+  "id": "engagement-folder-structure",
+  "name": "Engagement Evidence Folder Structure",
+  "command": "mkdir -p ENGAGEMENT/{Admin,Deliverables,Evidence/{Findings,Scans/{Vuln,Service,Web,'AD Enumeration'},Notes,OSINT,Wireless,'Logging output','Misc Files'},Retest}",
+  "description": "Stand up a consistent directory skeleton at the start of every engagement so evidence, scans, notes, and deliverables land in predictable places. A standardized structure makes report writing faster, keeps client data organized, and ensures nothing (screenshots, scan output, logs) is lost or misfiled.",
+  "type": "cheatsheet",
+  "platform": "linux",
+  "requires": [],
+  "protocols": [],
+  "tools": [
+    "mkdir",
+    "tree"
+  ],
+  "tags": [
+    "reporting",
+    "evidence",
+    "organization",
+    "methodology"
+  ],
+  "category": "Reporting",
+  "subcategory": "Documentation & Reporting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 27: Documentation & Reporting",
+  "examples": [
+    {
+      "label": "Create the skeleton (rename ENGAGEMENT to <client>-IPT)",
+      "command": "mkdir -p ACME-IPT/{Admin,Deliverables,Evidence/{Findings,Scans/{Vuln,Service,Web,'AD Enumeration'},Notes,OSINT,Wireless,'Logging output','Misc Files'},Retest}"
+    },
+    {
+      "label": "Verify the layout",
+      "command": "tree ACME-IPT/"
+    },
+    {
+      "label": "Seed the Notes with numbered working docs",
+      "command": "cd ACME-IPT/Evidence/Notes && touch '1. Administrative Information.md' '2. Scoping Information.md' '3. Activity Log.md' '4. Payload Log.md' '6. Credentials.md' '12. Findings.md'"
+    }
+  ],
+  "notes": "Top level: Admin (scoping, contracts), Deliverables (the report), Evidence (everything collected), Retest (post-remediation). Under Evidence: Findings (one file per finding, e.g. 'H1 - Kerberoasting.md'), Scans (Vuln/Service/Web/AD), Notes (numbered working docs - Activity Log, Payload Log, Credentials, OSINT, Findings), OSINT, Wireless, Logging output (tmux logs), Misc Files. Tools like Obsidian can open this same folder so notes and evidence live together and are editable from CLI or GUI. Adjust the tree to the engagement type (add Internal/External, Cloud, etc.). Methodology card, not an attack.",
+  "references": [
+    {
+      "title": "HTB Academy - Documentation & Reporting",
+      "url": "https://academy.hackthebox.com/module/details/162"
+    },
+    {
+      "title": "OffSec PEN-200 - Report Writing",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "tmux-logging-setup",
+      "note": "Feed terminal logs into the 'Logging output' folder.",
+      "rel": "prereq"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [],
+  "exam": "exam-ok"
+}

@@ -1,0 +1,98 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "dig",
+    "dnsenum"
+  ],
+  "tags": [
+    "dns",
+    "subdomain-brute"
+  ],
+  "category": "Enumeration",
+  "subcategory": "DNS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Brute-force subdomains with dnsenum",
+      "command": "dnsenum --dnsserver 10.129.14.128 --enum -p 0 -s 0 -o subdomains.txt -f /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt inlanefreight.htb"
+    }
+  ],
+  "notes": "Brute forcing complements passive discovery - internal/non-public subdomains only appear here. Feed a good wordlist (SecLists dns-Jhaddix). Rate-limit to avoid tripping DNS RPZ/monitoring. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "references": [
+    {
+      "title": "dnsenum",
+      "url": "https://github.com/fwaeytens/dnsenum"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "subbrute-bruteforce",
+      "rel": "alternative",
+      "note": "Recursive brute alternative."
+    },
+    {
+      "id": "subfinder-enum",
+      "rel": "alternative",
+      "note": "Passive source to cross-check."
+    },
+    {
+      "id": "dns-dig-queries",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "dns-subdomain-brute",
+  "name": "DNS - Subdomain Brute Force",
+  "command": "dnsenum --dnsserver <ns> --enum -p 0 -s 0 -o subdomains.txt -f <wordlist> <domain>",
+  "description": "Brute-force subdomains when zone transfer is refused - a dig loop or dnsenum against a wordlist.",
+  "variations": [
+    {
+      "label": "dig loop",
+      "command": "for sub in $(cat /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt);do dig $sub.<domain> @<ip> | grep -v ';\\|SOA' | sed -r '/^\\s*$/d' | grep $sub | tee -a subdomains.txt;done"
+    },
+    {
+      "label": "dnsenum",
+      "command": "dnsenum --dnsserver <ip> --enum -p 0 -s 0 -o subdomains.txt -f /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt <domain>"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1590.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries query DNS to gather network intelligence including subdomains, mail servers, name server records, and MX/TXT/SPF records that reveal third-party services. Misconfigured DNS servers that allow zone transfers (AXFR) expose every DNS record for a domain in a single query — providing a complete map of the target's network.",
+    "prerequisites": "A target domain, a subdomain wordlist, and a resolver willing to answer high query volumes.",
+    "impact": "Discovery of internet-facing subdomains (dev, staging, admin, vpn) not linked publicly — new attack surface.",
+    "detection": "Zone transfer attempts (DNS AXFR requests) from unauthorized IPs can be logged and alerted on. General DNS reconnaissance has a high false positive rate; detection efforts are more effective when focused on related Initial Access stages that follow the reconnaissance.",
+    "artifacts": "A large burst of sequential DNS queries from one source against the target's nameservers — a clear enumeration signature.",
+    "prevention": "Implement DNS zone transfer policies that enforce a validated list of servers permitted for AXFR transfers. Restrict zone transfers to authorized secondary DNS servers only. Remove DNS records for internal-only infrastructure from public-facing DNS.",
+    "evasion": "Use a distributed resolver pool to spread queries across many source IPs and slow the rate below detection thresholds; passive DNS and CT-log sources find subdomains without any direct brute-force traffic against the target's nameservers.",
+    "sources": [
+      "MITRE T1590.002"
+    ],
+    "misconfiguration": "DNS zone transfers (AXFR queries) are permitted to any requesting host — not restricted to authorized secondary DNS servers. This exposes the entire DNS zone (all hostnames, IPs, mail servers, internal naming conventions) to any attacker who can reach the DNS port. Even without AXFR, DNS servers that respond to ANY queries or provide detailed error messages leak zone structure.",
+    "vulnerable_config": "# BIND (named) — zone transfer unrestricted (vulnerable):\n# /etc/bind/named.conf or named.conf.local:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { any; };  // <-- allows AXFR from ANY host = zone exposure\n};\n\n# Windows DNS — no transfer restriction:\n# DNS Manager -> Zone -> Properties -> Zone Transfers tab:\n# 'Allow zone transfers' checked, 'To any server' selected",
+    "secure_config": "# BIND — restrict zone transfers to secondary DNS IPs only:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { 10.10.1.5; 10.10.1.6; };  // only secondary DNS servers\n    // Or disable entirely if using AD-integrated zones:\n    // allow-transfer { none; };\n};\n\n# Windows DNS (integrated zones) — disable zone transfers:\n# DNS Manager -> Zone -> Properties -> Zone Transfers:\n# Uncheck 'Allow zone transfers' entirely (AD-integrated zones replicate via AD replication)\n\n# Additional hardening:\n# Disable DNS recursion for external clients\n# Response Rate Limiting (RRL) to prevent DNS amplification\n# Split-horizon DNS — internal and external zones serve different records"
+  }
+}

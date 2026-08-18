@@ -1,0 +1,82 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "debugfs"
+  ],
+  "tags": [
+    "disk-group",
+    "adm-group",
+    "debugfs"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Privileged Groups",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "disk group - raw filesystem read via debugfs",
+      "command": "debugfs /dev/sda1"
+    },
+    {
+      "label": "adm group - read all system logs",
+      "command": "cat /var/log/*"
+    }
+  ],
+  "notes": "disk group = raw read of the block device with debugfs (read any file, including /etc/shadow). adm group = read every file under /var/log, which often leaks creds and tokens.",
+  "references": [
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "linux-enum-users-groups",
+      "note": "Confirms which privileged group you're in.",
+      "rel": "prereq"
+    },
+    {
+      "id": "cred-hunting",
+      "note": "Mine the readable logs/files for creds.",
+      "rel": "next"
+    }
+  ],
+  "id": "group-disk-adm",
+  "name": "Privileged Groups - disk and adm Groups",
+  "command": "debugfs /dev/sda1",
+  "description": "The disk group grants raw block-device access via debugfs - read any file including /etc/shadow and root's SSH key. The adm group can read all system logs, often exposing credentials.",
+  "opsec": "loud",
+  "mitre": [
+    "T1006"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Members of the 'disk' group can access raw block devices (/dev/sda, /dev/sdb). debugfs provides filesystem-level access to block devices, allowing reading of any file on the disk including /etc/shadow, SSH keys, and /root/ contents -- bypassing filesystem permission checks entirely since access is at the block level.",
+    "prerequisites": "Attacker's user is a member of the 'disk' group. debugfs tool installed. Raw block device accessible.",
+    "impact": "Full read access to any file on the system disk, including /etc/shadow (for offline password cracking), /root/.ssh/id_rsa, database files, and any other sensitive data -- without needing root-level sudo.",
+    "detection": "debugfs executed by a disk-group member. Raw block device access by non-root. Auditd: open(/dev/sda) by non-root user.",
+    "artifacts": "Auditd: debugfs accessing /dev/sda | Process log: debugfs opened by non-root | Block device access log",
+    "prevention": "Remove users from the 'disk' group unless strictly required for operational purposes. Audit group memberships regularly. Treat disk group membership as equivalent to root access.",
+    "misconfiguration": "Regular users added to the 'disk' group without understanding that it provides raw disk access equivalent to root read access on the filesystem.",
+    "vulnerable_config": "# User in disk group\nid\n# uid=1000(htb-student) groups=...,6(disk)\n\n# debugfs unrestricted\ndebugfs /dev/sda1  # gives filesystem-level read",
+    "secure_config": "# Audit and remove unnecessary group memberships\ngetent group disk\ngpasswd -d htb-student disk\n\n# Periodic audit\nawk -F: '$4 ~ /(disk|docker|lxd|sudo|adm)/' /etc/group\n\n# Use minimal group assignment -- principle of least privilege",
+    "sources": [
+      "HTB M25",
+      "MITRE T1078.001",
+      "MITRE T1083"
+    ]
+  }
+}

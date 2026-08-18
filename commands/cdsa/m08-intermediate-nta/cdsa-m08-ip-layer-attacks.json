@@ -1,0 +1,76 @@
+{
+  "id": "cdsa-m08-ip-layer-attacks",
+  "name": "IP Layer Attack Detection — Fragmentation, Spoofing, SMURF, LAND & TTL",
+  "command": "ip.flags.mf == 1",
+  "description": "IP layer attacks abuse fragmentation, source/destination spoofing, and TTL manipulation for IDS evasion, DoS, and firewall bypass. Key attacks: fragmented Nmap scans (IDS/firewall evasion), decoy scanning (fake source IPs), random source DDoS, SMURF (broadcast ICMP amplification), LAND (src=dst), and TTL manipulation to expire before reaching security controls. All detectable via Wireshark IP header field analysis.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "IP Layer Detection",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 08: Intermediate Network Traffic Analysis",
+  "tags": ["ip-spoofing", "fragmentation", "smurf", "land-attack", "ddos", "ttl", "decoy-scan", "wireshark", "blue-team", "nta"],
+  "mitre": ["T1499", "T1040", "T1001"],
+  "notes": "=== IP HEADER FIELDS USED IN ATTACKS ===\n  Length          → IP header length\n  Total Length    → entire IP packet length (header + data)\n  Fragment Offset → reassembly order for fragmented packets\n  TTL             → decremented by 1 at each hop; drop when = 0\n  Source IP       → can be spoofed — no validation in IPv4\n  Destination IP  → can be spoofed — no validation in IPv4\n\n=== FRAGMENTATION ATTACKS ===\nPurpose:\n  → IPS/IDS Evasion: if controls don't reassemble, they miss payload\n  → Firewall Evasion: same — fragmented payload skips inspection\n  → Resource Exhaustion: tiny MTU floods reassembly buffers\n  → DoS (Ping of Death): packets >65535 bytes crash old OS\n\nNmap fragmented scan commands (attacker perspective, for detection context):\n  nmap <host>        → normal ICMP + TCP SYN scan\n  nmap -f 10 <host>  → fragment with 10-byte MTU → many tiny fragments\n\nWireshark detection:\n  ip.flags.mf == 1        → More Fragments flag set (not last fragment)\n  ip.frag_offset > 0      → non-first fragment (offset > 0)\n  ip.fragment             → all fragmented packets\n\nIOCs:\n  → Excessive fragmentation from one host to one target\n  → Very small fragment size (MTU 10-20 bytes) = evasion attempt\n  → Fragmentation followed by many RST responses = fragmented port scan\n  → Pattern: ICMP requests + fragmented TCP SYNs to many ports\n\nFix Wireshark reassembly:\n  Edit → Preferences → Protocols → IPv4 → check 'Reassemble fragmented IPv4 datagrams'\n\n=== DECOY SCANNING ===\nPurpose: attacker changes source IP to look like another host (firewall bypass)\nPattern: fragmented ICMP from fake IP, then TCP traffic from real attacker IP\nGiveaway: responses (RST for closed ports) go back to real attacker IP\n\nWireshark detection:\n  ip.src == <FAKE_DECOY_IP>     → fragmented ICMP from spoofed src\n  ip.src == <REAL_ATTACKER_IP>  → TCP SYN-ACK responses reveal real IP\n  → Look for RST packets going TO the real attacker = confirms their IP\n\nIOC: connections started by one IP, continued/responded by different IP\n\n=== RANDOM SOURCE ATTACKS (DoS) ===\nPurpose: exhaust connection table or bandwidth on victim\nICMP version:\n  → Many random source IPs sending ICMP to victim\n  → Victim replies to non-existent hosts (wasted bandwidth)\nTCP version:\n  → Random source IPs sending TCP SYN to one port\n  → Single port targeted, incremental base ports, identical packet lengths\n\nWireshark IOCs:\n  → ip.dst == <VICTIM_IP> with huge variety of different ip.src values\n  → All packets same length: identical_length + single_port + random_src = attack\n  → Many tcp.flags.syn == 1 to single port from random IPs\n\n=== SMURF ATTACKS ===\nPurpose: amplified DDoS — attacker sends ICMP with victim's spoofed src to broadcast\nFlow:\n  1. Attacker sends ICMP request to subnet broadcast (src=victim IP)\n  2. ALL live hosts reply with ICMP to victim's IP\n  3. Victim overwhelmed with ICMP replies from entire subnet\n\nWireshark IOC:\n  → Many hosts sending ICMP replies to single victim IP\n  → No corresponding ICMP requests from victim (they're spoofed)\n  → Fragmentation may appear (attacker adds data to amplify)\n\n=== LAND ATTACKS ===\nPurpose: DoS via src=dst spoofing — causes host to talk to itself, exhaust resources\nSignature: IP src == IP dst, TCP SYN to same port\n\nWireshark filter:\n  ip.src == ip.dst    → LAND attack signature\n  → Also look for: same host sending SYN to itself on same port\n\nWireshark IOC:\n  → Many TCP SYN packets where src IP = dst IP\n  → Target port matches active service\n\n=== IP TTL MANIPULATION ===\nPurpose: expire packet before it reaches firewall/IDS, not before it reaches target\nHow: attacker sets low TTL (1, 2, 3) — packet dies at intermediate router, not firewall\n\nWireshark detection:\n  → Open IPv4 header in Packet Details pane\n  → Look for unusually low TTL field values (1-5 range)\n  ip.ttl < 10        → display filter for low TTL packets\n\nIOC:\n  → Port scan traffic with very low TTL values\n  → Mix of low-TTL TCP SYN and normal SYN-ACK responses\n  → ICMP Time Exceeded messages from routers = TTL expired in transit\n\nPrevention:\n  → IDS/IPS/Firewall should reassemble all fragments before inspection\n  → Drop packets with TTL below threshold (e.g., < 10 may be suspect)\n  → Watch for connections started by one IP taken over by another (decoy scans)",
+  "examples": [
+    {
+      "label": "Show all fragmented IP packets",
+      "command": "ip.flags.mf == 1"
+    },
+    {
+      "label": "Show non-first fragments (by offset)",
+      "command": "ip.frag_offset > 0"
+    },
+    {
+      "label": "All fragments combined",
+      "command": "ip.fragment"
+    },
+    {
+      "label": "Detect LAND attack (src == dst)",
+      "command": "ip.src == ip.dst"
+    },
+    {
+      "label": "Hunt low-TTL packets (TTL manipulation)",
+      "command": "ip.ttl < 10"
+    },
+    {
+      "label": "Filter ICMP only (SMURF/random source hunting)",
+      "command": "icmp"
+    },
+    {
+      "label": "All TCP SYN packets to single port (random source DDoS)",
+      "command": "tcp.flags.syn == 1 && tcp.dstport == <TARGET_PORT>"
+    },
+    {
+      "label": "Find all source IPs talking to victim (SMURF detection)",
+      "command": "icmp && ip.dst == <VICTIM_IP>"
+    },
+    {
+      "label": "Enable Wireshark IPv4 reassembly (GUI preference)",
+      "command": "Edit → Preferences → Protocols → IPv4 → Reassemble fragmented IPv4 datagrams"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intermediate Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/229"
+    },
+    {
+      "title": "MITRE ATT&CK - Network Denial of Service (T1499)",
+      "url": "https://attack.mitre.org/techniques/T1499/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m08-arp-attacks",
+      "rel": "prereq",
+      "note": "ARP attacks often precede IP layer attacks (poisoning first, then DoS/MITM)."
+    },
+    {
+      "id": "cdsa-m08-tcp-abnormalities",
+      "rel": "next",
+      "note": "TCP scan detection — fragmentation and IP spoofing appear in Nmap TCP scans."
+    }
+  ]
+}

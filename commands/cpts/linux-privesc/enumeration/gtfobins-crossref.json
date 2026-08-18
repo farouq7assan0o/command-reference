@@ -1,0 +1,86 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "curl",
+    "jq"
+  ],
+  "tags": [
+    "gtfobins",
+    "enumeration"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Build the installed-package list",
+      "command": "apt list --installed | tr \"/\" \" \" | cut -d\" \" -f1,3 | sed 's/[0-9]://g' | tee -a installed_pkgs.list"
+    },
+    {
+      "label": "Cross-reference each package against GTFOBins",
+      "command": "for i in $(curl -s https://gtfobins.github.io/gtfobins.json | jq -r 'keys[]'); do if grep -q \"$i\" installed_pkgs.list; then echo \"Check GTFO: $i\"; fi; done"
+    }
+  ],
+  "notes": "Automates the tedious step: which installed binaries have a documented GTFOBins escape. Pair the hits with sudo -l and SUID results - a GTFOBins binary that's also SUID or sudo-allowed is an instant win.",
+  "references": [
+    {
+      "title": "GTFOBins",
+      "url": "https://gtfobins.github.io/"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "find-suid-sgid",
+      "note": "Check which GTFOBins hits are SUID.",
+      "rel": "next"
+    },
+    {
+      "id": "sudo-abuse",
+      "note": "Check which GTFOBins hits are sudo-allowed.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "gtfobins-crossref",
+  "name": "Enumeration - GTFOBins Cross-Reference",
+  "command": "for i in $(curl -s https://gtfobins.github.io/gtfobins.json | jq -r 'keys[]'); do if grep -q \"$i\" installed_pkgs.list; then echo \"Check GTFO: $i\"; fi; done",
+  "description": "Cross-references your installed-packages list against GTFOBins to auto-flag binaries with known shell-escape / SUID / sudo abuse techniques.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1518"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "GTFOBins documents Unix binaries that can be exploited via sudo, SUID, or capabilities to break out of restricted environments or escalate privileges. Cross-referencing installed packages against the GTFOBins list quickly identifies exploitable binaries present on the system.",
+    "prerequisites": "Shell access. Ability to query installed packages and access GTFOBins API or local copy.",
+    "impact": "Identifies privilege escalation vectors from legitimate installed binaries (vim, python3, find, less, tee, etc.) that can be abused with SUID bits or sudo permissions.",
+    "detection": "curl request to gtfobins.github.io API from target (unusual outbound from server). Enumeration of installed packages en masse. SIEM: rapid package listing by non-admin user.",
+    "artifacts": "Web proxy log (outbound GET to gtfobins.github.io from server) | Process log (apt list executed by non-admin)",
+    "prevention": "Audit and remove unnecessary SUID/SGID bits from binaries. Review sudo rules to ensure no GTFOBins-listed binaries are granted without restriction (NOPASSWD, ALL). Minimize installed packages (reduce attack surface). Use AppArmor/SELinux profiles to restrict what GTFOBins-listed binaries can do.",
+    "misconfiguration": "SUID bit set on binaries listed in GTFOBins (vim, python3, find, nmap, awk) without operational necessity. Sudo rules grant ALL or NOPASSWD to these binaries.",
+    "vulnerable_config": "# Over-permissive sudo rule\nhtb-student ALL=(ALL) NOPASSWD: /usr/bin/vim\n\n# Unnecessary SUID on vim\n-rwsr-xr-x 1 root root /usr/bin/vim.basic",
+    "secure_config": "# Audit SUID binaries regularly\nfind / -perm /4000 -type f 2>/dev/null\n\n# Remove unnecessary SUID\nchmod u-s /usr/bin/vim.basic\n\n# Restrict sudo to specific necessary commands only\n# Never grant unrestricted sudo to GTFOBins-listed binaries",
+    "sources": [
+      "HTB M25",
+      "MITRE T1548.001",
+      "MITRE T1548.003"
+    ]
+  }
+}

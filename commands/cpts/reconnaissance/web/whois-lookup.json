@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nWHOIS queries the domain registration database for: registrant contact, administrative/technical contacts, registrar, name servers, creation/expiration dates, and transfer lock status. Passive technique \u2014 no traffic to target.\n\n=== INTEL VALUE ===\nRegistrant name/email/phone: social engineering targets, phishing contact list. Name servers: AXFR attempt targets (especially if internally managed vs third-party). Registration date: domain age (legitimacy indicator). Expiration date: upcoming expiration = domain hijacking research. clientProhibited/serverProhibited statuses: transfer lock indicators.\n\n=== LIMITATIONS ===\nGDPR compliance and privacy proxy services (WhoisGuard, Domains By Proxy) redact registrant data for European targets and privacy-conscious registrants. Many records now show \"REDACTED FOR PRIVACY\" or proxy email addresses.\n\n=== HISTORICAL WHOIS ===\nServices like WhoisFreaks provide historical records showing ownership changes, contact changes, and infrastructure evolution over time \u2014 useful for threat intelligence and tracking acquisition patterns.",
+  "references": []
+}

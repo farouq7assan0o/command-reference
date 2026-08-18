@@ -1,0 +1,90 @@
+{
+  "id": "ad-snaffler",
+  "name": "Snaffler - Credential and Sensitive File Discovery",
+  "command": "Snaffler.exe -s -d <domain> -o snaffler.log -v data",
+  "description": "Automated sensitive file hunter — enumerates all accessible shares across a domain and searches file contents/names for credentials, keys, config files, and other sensitive data. Runs from a Windows domain-joined host. Snaffler uses a classifier system to prioritize high-confidence finds (passwords, private keys, connection strings).",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "snaffler",
+    "file-hunt",
+    "credentials",
+    "shares",
+    "enumeration",
+    "sensitive-data"
+  ],
+  "mitre": [
+    "T1083",
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT SNAFFLER FINDS ===\nSnaffler uses a tiered classifier system (Red/Yellow/Green/Black) to rank findings:\n  Red   → highest confidence: private keys (.pem, .key), KeePass databases (.kdbx),\n           wallet files, password manager exports, .rdp files with passwords\n  Yellow → high confidence: .config files with connection strings, web.config,\n           appsettings.json with DB creds, .ini files with passwords,\n           PowerShell scripts with hardcoded creds, .bat files with net commands\n  Green  → medium: .xml files, .txt files with 'password' in content,\n           .ps1 files, deployment scripts\n  Black  → noise, excluded by default\n\n=== KEY FLAGS ===\n  -s          → share enumeration (enumerate all domain shares first)\n  -d <domain> → target domain (e.g., INLANEFREIGHT.LOCAL)\n  -o <file>   → output log file\n  -v data     → verbosity: show file content matches (not just filenames)\n  -i <ip>     → target specific host instead of full domain\n  -c          → specify a specific share path\n\n=== OUTPUT FORMAT ===\nSnaffler.log entries:\n  [yyyy-MM-dd HH:mm:ss] [Red] {GP} \\\\SERVER\\Share\\path\\to\\file.kdbx\n  [yyyy-MM-dd HH:mm:ss] [Yellow] {CS} \\\\SERVER\\Share\\web.config - password=SQL_p@ssw0rd!\n\nFocus on Red first, then Yellow. Parse with:\n  Select-String -Path snaffler.log -Pattern 'password|cred|secret|key' -CaseSensitive:$false\n\n=== WHY SNAFFLER IN THE KILL CHAIN ===\nAfter gaining initial domain access, Snaffler is often faster than manual share\nenumeration for finding:\n  - Database connection strings (SQL creds → lateral movement)\n  - SSH/RDP private keys (direct access to Linux/Windows systems)\n  - Service account credentials in deployment scripts\n  - KeePass databases (crack with hashcat mode 13400)\n  - Jenkins/CI config files with stored credentials\n\n=== OPSEC ===\nLoud — touches every accessible share across the domain via SMB.\nGenerates significant network traffic and share access logs.\nRun during business hours to blend with legitimate file access.\nUse -i to scope to specific servers rather than domain-wide sweep.",
+  "examples": [
+    {
+      "label": "Full domain scan with data output",
+      "command": "Snaffler.exe -s -d INLANEFREIGHT.LOCAL -o snaffler.log -v data"
+    },
+    {
+      "label": "Target a specific host",
+      "command": "Snaffler.exe -i 172.16.5.5 -o snaffler.log -v data"
+    },
+    {
+      "label": "Parse output for passwords",
+      "command": "Select-String -Path snaffler.log -Pattern '(password|passwd|pwd|secret|cred)' -CaseSensitive:$false"
+    },
+    {
+      "label": "View Red and Yellow findings only",
+      "command": "Select-String -Path snaffler.log -Pattern '\\[Red\\]|\\[Yellow\\]'"
+    }
+  ],
+  "references": [
+    {
+      "title": "Snaffler (SnaffCon)",
+      "url": "https://github.com/SnaffCon/Snaffler"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-admodule-spn",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Snaffler crawls accessible domain shares hunting files likely to contain secrets (configs, keys, backups) using keyword/extension rules.",
+    "prerequisites": "Domain-user access and reachable file shares.",
+    "impact": "A prioritised list of secret-bearing files across the domain's shares.",
+    "detection": "[MITRE T1135/T1552.001] one host enumerating many shares and opening many files (SMB access spikes / 5145); Snaffler's fan-out pattern.",
+    "artifacts": "Mass SMB share/file access from one host; the results log.",
+    "prevention": "Least-privilege share ACLs; share-access auditing; alert on one-to-many share crawling; honeytoken files.",
+    "evasion": "Throttle and scope the crawl to fewer shares to reduce the fan-out signature.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1083",
+      "MITRE T1552.001"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "Snaffler"
+  ]
+}

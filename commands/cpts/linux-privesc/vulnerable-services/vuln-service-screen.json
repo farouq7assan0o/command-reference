@@ -1,0 +1,105 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "screen",
+    "gcc"
+  ],
+  "tags": [
+    "screen",
+    "cve-2017",
+    "ld-preload"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Vulnerable Services",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Check the screen version (4.5.0 = vulnerable)",
+      "command": "screen -v"
+    },
+    {
+      "label": "Run the exploit (ld.so.preload overwrite -> setuid root)",
+      "command": "./screen_exploit.sh"
+    },
+    {
+      "label": "Confirm root",
+      "command": "id"
+    }
+  ],
+  "notes": "PoC builds /tmp/libhax.so (chown/chmod /tmp/rootshell, unlink ld.so.preload) and /tmp/rootshell.c (setuid(0);execvp(/bin/sh)), writes \\n/tmp/libhax.so into /etc/ld.so.preload via setuid screen.",
+  "references": [
+    {
+      "title": "screen 4.5.0 LPE advisory",
+      "url": "https://lists.gnu.org/archive/html/screen-devel/2017-01/msg00025.html"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-vuln-versions",
+      "note": "Match the version against known-vuln services.",
+      "rel": "prereq"
+    },
+    {
+      "id": "ld-preload",
+      "note": "Same ld.so.preload primitive, sudo-driven.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "vuln-service-screen",
+  "name": "Vulnerable Service - GNU screen 4.5.0 root",
+  "command": "screen -v",
+  "description": "setuid GNU screen 4.5.0 lets a user overwrite /etc/ld.so.preload to load an attacker library as root. The screenroot.sh PoC compiles a libhax.so + rootshell and triggers it.",
+  "steps": [
+    {
+      "label": "1. Confirm version",
+      "command": "screen -v   # look for 4.05.00 / v4.5.0"
+    },
+    {
+      "label": "2. Run the exploit",
+      "command": "./screen_exploit.sh   # (screenroot.sh) -> drops /tmp/rootshell"
+    },
+    {
+      "label": "3. Root shell",
+      "command": "/tmp/rootshell"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "GNU Screen version 4.5.0 has a SUID root binary with a setuid-screen vulnerability. By exploiting ld.so.preload overwriting via Screen's log file creation, an attacker can cause the SUID screen binary to load a malicious shared library (/tmp/libhax.so) as root, which then creates a SUID root shell binary (/tmp/rootshell).",
+    "prerequisites": "GNU Screen 4.5.0 installed with SUID bit. Ability to write to /etc/ (via ld.so.preload path). gcc available (or pre-compiled exploit).",
+    "impact": "Local root privilege escalation via the SUID screen vulnerability. Creates a SUID root shell at /tmp/rootshell.",
+    "detection": "Unusual screen execution with -D -m -L flags logging to /etc/ld.so.preload. Unexpected .so file loaded by screen process. /tmp/rootshell with SUID bit appearing. Auditd: /etc/ld.so.preload modification by non-root.",
+    "artifacts": "Auditd: write to /etc/ld.so.preload by screen (SUID process) | File: /tmp/libhax.so and /tmp/rootshell created | SUID shell at /tmp/rootshell",
+    "prevention": "Update GNU Screen to a patched version (4.5.1+). Remove SUID bit from screen if multi-user screen sharing is not required. Audit SUID binaries for vulnerable versions.",
+    "misconfiguration": "GNU Screen 4.5.0 installed with SUID root bit. This version has a known critical vulnerability enabling local root compromise.",
+    "vulnerable_config": "# Vulnerable screen\nscreen -v\n# Screen version 4.05.00  <- vulnerable\nls -la /usr/bin/screen\n# -rwsr-sr-x 1 root utmp ... /usr/bin/screen",
+    "secure_config": "# Update screen\napt install --only-upgrade screen\n\n# If sharing not needed, remove SUID\nchmod u-s /usr/bin/screen\n\n# Verify version\nscreen -v  # should be > 4.5.0",
+    "sources": [
+      "HTB M25",
+      "MITRE T1068",
+      "MITRE T1574.006"
+    ]
+  }
+}

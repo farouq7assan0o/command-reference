@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nLoops through resolved IPs and queries shodan host for each. Returns open ports, service banners, SSL details, and CVE flags per IP \u2014 passive enrichment that provides service inventory without a single port scan.\n\n=== PASSIVE VALUE ===\nShodan data may be days/weeks old but still provides: open port inventory, software versions, known vulnerabilities flagged by Shodan. Identifies the high-value target (many open ports = complex attack surface) without touching it.",
+  "references": []
+}

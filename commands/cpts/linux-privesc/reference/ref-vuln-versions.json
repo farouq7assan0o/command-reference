@@ -1,0 +1,71 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "dpkg"
+  ],
+  "tags": [
+    "reference",
+    "versions",
+    "logrotate",
+    "screen"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Reference",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Quick version checks that map to local-root exploits",
+      "command": "screen -v; sudo -V | head -n1; pkexec --version; logrotate --version"
+    },
+    {
+      "label": "Known-vulnerable versions",
+      "command": "# screen 4.5.0 -> ld.so.preload root | logrotate 3.8.6/3.11.0/3.15.0/3.18.0 -> logrotten"
+    }
+  ],
+  "notes": "logrotate (logrotten): 3.8.6, 3.11.0, 3.15.0, 3.18.0\nGNU screen: 4.5.0 (ld.so.preload)\nNFS exports:\n  root_squash    root -> nfsnobody (safe)\n  no_root_squash root stays root (exploitable)",
+  "references": [
+    {
+      "title": "logrotten",
+      "url": "https://github.com/whotwagner/logrotten"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "vuln-service-screen",
+      "note": "screen 4.5.0 exploit.",
+      "rel": "next"
+    },
+    {
+      "id": "logrotate-logrotten",
+      "note": "logrotate race exploit.",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-vuln-versions",
+  "name": "Reference - Known-Vulnerable Service Versions",
+  "command": "# quick version checks -> known local-root exploits",
+  "description": "Version fingerprints from this module that map to public local-root exploits, plus the NFS export flag that enables SUID abuse.",
+  "opsec": "silent",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok"
+}

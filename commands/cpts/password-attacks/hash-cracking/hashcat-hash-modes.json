@@ -1,0 +1,88 @@
+{
+  "id": "hashcat-hash-modes",
+  "name": "Hashcat - Hash Mode Reference",
+  "type": "cheatsheet",
+  "command": "hashcat -a 0 -m <mode> <hash_file> /usr/share/wordlists/rockyou.txt",
+  "description": "The -m mode number tells hashcat which algorithm the hash is. Getting it wrong makes cracking silently fail, so identify the hash first (hashid) then match the mode. These are the ones the module uses; the full list is in the example-hashes wiki.",
+  "platform": "linux",
+  "requires": [],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "hashcat"
+  ],
+  "tags": [
+    "hashcat",
+    "hash-modes",
+    "reference"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Hash Cracking",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Crack NTLM (Windows) hashes",
+      "command": "hashcat -a 0 -m 1000 hashes.txt /usr/share/wordlists/rockyou.txt"
+    },
+    {
+      "label": "Crack a Linux sha512crypt shadow hash",
+      "command": "hashcat -a 0 -m 1800 unshadowed.hashes /usr/share/wordlists/rockyou.txt"
+    }
+  ],
+  "notes": "Look modes up with `hashcat --help | grep -i <algo>` or the example_hashes wiki. Wrong -m = no cracks and no error.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Hashcat Example Hashes (full mode list)",
+      "url": "https://hashcat.net/wiki/doku.php?id=example_hashes"
+    },
+    {
+      "title": "OffSec PEN-200 - Password Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hashid-identify",
+      "note": "Identify the hash before picking a mode.",
+      "rel": "prereq"
+    },
+    {
+      "id": "hashcat-dictionary",
+      "note": "Run the crack once you know the mode.",
+      "rel": "next"
+    }
+  ],
+  "variations": [
+    {
+      "label": "General hashes",
+      "command": "0     - MD5\n100   - SHA1\n1400  - SHA2-256\n1700  - SHA2-512\n900   - MD4\n500   - MD5 Crypt / Cisco-IOS(MD5) / FreeBSD MD5\n1800  - sha512crypt (Linux $6$ shadow)\n3200  - bcrypt $2*$ (Blowfish)\n6000  - RIPEMD-160\n600   - BLAKE2b-512"
+    },
+    {
+      "label": "SHA-2 / SHA-3 family",
+      "command": "1300  - SHA2-224\n1400  - SHA2-256\n10800 - SHA2-384\n1700  - SHA2-512\n17300 - SHA3-224\n17400 - SHA3-256\n17500 - SHA3-384\n17600 - SHA3-512"
+    },
+    {
+      "label": "Windows / AD",
+      "command": "1000  - NT (NTLM)\n3000  - LM\n5500  - NetNTLMv1\n5600  - NetNTLMv2\n2100  - DCC2 (Domain Cached Credentials 2 / MS Cache 2)\n13100 - Kerberoast (TGS-REP, etc/RC4)\n18200 - AS-REP roast (RC4)"
+    },
+    {
+      "label": "Files / disks",
+      "command": "22100 - BitLocker\n13400 - KeePass\n11600 - 7-Zip\n13000 - RAR5\n17210 - PKZIP\n9400  - MS Office 2007\n9600  - MS Office 2013\n10500 - PDF 1.4-1.6"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok"
+}

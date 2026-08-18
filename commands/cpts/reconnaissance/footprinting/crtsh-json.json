@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\ncrt.sh queries certificate transparency logs \u2014 public records of every TLS certificate issued by CAs. Returns JSON output containing subdomains that the company may never have intended to surface publicly.\n\n=== CHAINING ===\ncrt.sh JSON \u2192 jq to filter \u2192 deduplicate subdomains \u2192 resolve with host loop \u2192 filter to company-owned IPs \u2192 feed to Shodan/nmap for service enumeration.\n\n=== WHY PASSIVE ===\nNo connection to the target \u2014 queries a third-party database. Certificate transparency logging is mandatory for CAs, so this is a complete record. Often reveals staging, dev, and admin subdomains.\n\n=== LEGAL NOTE ===\nSubdomains resolving to third-party providers (CDN, cloud) are not within scope without explicit permission from that provider. The resolution-filtering step is legally significant.",
+  "references": []
+}

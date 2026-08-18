@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-iL reads target IPs/hostnames from a file, one per line. Enables scanning a pre-built target list from previous enumeration phases (crt.sh resolution, DNS brute force, AXFR results) without manual IP specification.\n\n=== CHAINING ===\ncrtsh resolution loop \u2192 resolved IPs to targets.txt \u2192 nmap -iL targets.txt \u2192 comprehensive scan of all discovered company hosts.\n\n=== FORMAT ===\nFile can contain IPs, ranges (10.0.0.1-10), CIDR notation (10.0.0.0/24), or hostnames. Mix formats freely.",
+  "references": []
+}

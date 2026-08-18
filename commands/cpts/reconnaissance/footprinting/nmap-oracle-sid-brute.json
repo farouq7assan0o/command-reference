@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\noracle-sid-brute NSE iterates a wordlist against the Oracle TNS listener to discover valid SIDs (System Identifiers). Without a valid SID, connection attempts fail even with correct credentials. SID discovery is the mandatory first step for Oracle enumeration.\n\n=== COMMON SIDS ===\nXE, ORCL, DB, PROD, hostname-based SIDs. Try these manually first before full brute force. odat.py sidguesser module uses a more comprehensive wordlist.\n\n=== CHAINING ===\noracle-sid-brute \u2192 valid SID \u2192 odat.py all modules \u2192 credential brute force \u2192 sysdba escalation \u2192 sys.user$ hash extraction \u2192 file upload to web root.",
+  "references": []
+}

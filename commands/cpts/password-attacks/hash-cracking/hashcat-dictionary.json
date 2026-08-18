@@ -1,0 +1,107 @@
+{
+  "id": "hashcat-dictionary",
+  "name": "Hashcat - Dictionary Attack",
+  "command": "hashcat -a 0 -m <mode> <hash> /usr/share/wordlists/rockyou.txt",
+  "description": "Runs a straight dictionary attack (-a 0): each wordlist entry is hashed and compared to the target. Add a rule file to mutate each candidate, which greatly expands coverage at low cost. -m sets the hash mode.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "hashcat"
+  ],
+  "tags": [
+    "hashcat",
+    "dictionary",
+    "wordlist",
+    "rules"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Hash Cracking",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Straight dictionary attack",
+      "command": "hashcat -a 0 -m 0 e3e3ec5831ad5e7288241960e5d4fdb8 /usr/share/wordlists/rockyou.txt"
+    },
+    {
+      "label": "Dictionary + rules",
+      "command": "hashcat -a 0 -m 0 1b0556a75770563578569ae21392630c /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule"
+    },
+    {
+      "label": "OSCP Ch15 — crack NT hash (-m 1000) from SAM/NTDS dump with best64 rule",
+      "command": "hashcat -m 1000 <nt_hash> /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule"
+    },
+    {
+      "label": "OSCP Ch15 — crack NetNTLMv2 captured hash (-m 5600, e.g. from Responder)",
+      "command": "hashcat -m 5600 <netntlmv2_hash_file> /usr/share/wordlists/rockyou.txt"
+    }
+  ],
+  "notes": "Common modes: 0 MD5, 100 SHA1, 1400 SHA-256, 1700 SHA-512, 1000 NT, 1800 sha512crypt, 2100 DCC2, 22100 BitLocker. Mode 1000 = NT (NTLM) hash from SAM or NTDS. Mode 5600 = NetNTLMv2 captured hash (Responder/ntlmrelayx). Also covered in: OSCP PEN-200 Chapter 15 (Password Attacks).",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Hashcat",
+      "url": "https://hashcat.net/hashcat/"
+    },
+    {
+      "title": "Example Hashes",
+      "url": "https://hashcat.net/wiki/doku.php?id=example_hashes"
+    },
+    {
+      "title": "OffSec PEN-200 - Password Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hashcat-mask",
+      "note": "Brute forces against a mask (-a 3) that models a known password pattern using charsets: ?u upper, ?l lower, ?d digit, ?s symbol, ?a all.",
+      "rel": "alternative"
+    },
+    {
+      "id": "hashcat-mutate",
+      "note": "Uses Hashcat rule engine with --stdout to print (rather than crack) every rule-mutated variant of a wordlist, producing a new expanded list.",
+      "rel": "next"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Plain Dictionary",
+      "command": "hashcat -a 0 -m <mode> <hash> /usr/share/wordlists/rockyou.txt"
+    },
+    {
+      "label": "With Rules",
+      "command": "hashcat -a 0 -m <mode> <hash> /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Hashcat runs a dictionary (wordlist) attack against stolen hashes, hashing each candidate and comparing - the fastest attack when the password is common.",
+    "prerequisites": "Stolen hashes (with the correct hash-mode) and a wordlist; GPU recommended.",
+    "impact": "Recovered plaintext passwords for reuse (PtH alternative) and lateral movement.",
+    "prevention": "[MITRE T1110.002 M1027 Password Policies] Long, high-entropy, unique passwords resist offline cracking; use slow, salted hashing (bcrypt/argon2/PBKDF2) so each guess is expensive. Since the hash is already stolen, the victim cannot detect the cracking - defence is making the hash uncrackable in reasonable time.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Authentication protocols store or transmit passwords in formats that are offline-crackable: NTLM hashes (no salt, fast GPU attack), NTLMv2 net hashes (slightly slower but crackable), Kerberos RC4 hashes from Kerberoasting (offline crack without network contact), MD5/SHA1 web app hashes (no key stretching). Weak passwords crack in minutes; even complex ones crack with sufficient GPU power if hashing is fast.",
+    "vulnerable_config": "# NTLM hash — no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
+    "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
+  }
+}

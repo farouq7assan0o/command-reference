@@ -1,0 +1,111 @@
+{
+  "id": "aws-account-id-iam-enum",
+  "name": "AWS - Account ID Fingerprinting & Cross-Account IAM Enumeration",
+  "command": "aws --profile <attacker_profile> sts get-access-key-info --access-key-id <target_akid>\naws --profile <attacker_profile> s3 mb s3://<dummy_bucket_name>\naws --profile <attacker_profile> s3api put-bucket-policy --bucket <dummy_bucket_name> --policy file://grant-s3-read.json",
+  "description": "Two techniques to gather intelligence about a target AWS account without valid credentials: (1) sts get-access-key-info returns the 12-digit Account ID from any Access Key ID \u2014 requires only a valid AWS profile (your own), not the target's secret. (2) Cross-account IAM user/role enumeration: create a dummy S3 bucket in your attacker account, set a bucket policy granting access to a specific IAM ARN in the target account. If the ARN is valid, the policy is accepted; if the user/role doesn't exist, AWS returns MalformedPolicy error. The s3:ResourceAccount condition in an IAM policy allows binary-search enumeration of a target's account ID.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "attacker-aws-account",
+    "target-access-key-id"
+  ],
+  "tools": [
+    "awscli"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "iam",
+    "account-id",
+    "enumeration",
+    "cross-account",
+    "s3"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.3.3, 24.3.4)",
+  "examples": [
+    {
+      "label": "Get Account ID from any AKID (no target secret needed)",
+      "command": "aws --profile attacker sts get-access-key-info --access-key-id AKIAVXWRNA7HUYFERLHS\n# Returns: {\"Account\": \"123456789012\"}"
+    },
+    {
+      "label": "Create a dummy bucket in your attacker account for IAM user probing",
+      "command": "aws --profile attacker s3 mb s3://probe-bucket-$RANDOM-$RANDOM"
+    },
+    {
+      "label": "grant-s3-read.json - bucket policy with a specific IAM ARN as Principal",
+      "command": "# If put-bucket-policy succeeds -> ARN is valid (user/role exists)\n# If it fails with MalformedPolicy -> IAM principal does not exist\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [{\n    \"Sid\": \"AllowUserToListBucket\",\n    \"Effect\": \"Allow\",\n    \"Resource\": \"arn:aws:s3:::probe-bucket-12345\",\n    \"Principal\": {\"AWS\": [\"arn:aws:iam::<target_account_id>:user/<candidate_username>\"]},\n    \"Action\": \"s3:ListBucket\"\n  }]\n}"
+    },
+    {
+      "label": "Apply the bucket policy (test if a specific IAM user exists)",
+      "command": "aws --profile attacker s3api put-bucket-policy --bucket probe-bucket-12345 --policy file://grant-s3-read.json\n# success = user exists; MalformedPolicy error = user does not exist"
+    },
+    {
+      "label": "s3:ResourceAccount trick - binary search for account ID (0-9 digit by digit)",
+      "command": "# In IAM policy attached to your enum user, use condition:\n# \"StringLike\": {\"s3:ResourceAccount\": [\"1*\"]}\n# If aws --profile enum s3 ls target-bucket succeeds -> account starts with '1'\n# If AccessDenied -> try next digit. Repeat for each position."
+    },
+    {
+      "label": "Create enum IAM user in your attacker account for the ResourceAccount trick",
+      "command": "aws --profile attacker iam create-user --user-name enum\naws --profile attacker iam create-access-key --user-name enum\naws --profile attacker iam put-user-policy --user-name enum --policy-name s3-read --policy-document file://policy-s3-read.json"
+    }
+  ],
+  "notes": "sts get-access-key-info works because the Account ID is encoded in the AKID itself and can be decoded without authentication. It requires only a valid AWS profile (any account). The cross-account IAM enumeration technique exploits the fact that AWS validates Principal ARNs in bucket/resource policies at write time \u2014 it rejects policies with invalid IAM principals. This allows you to enumerate users/roles in another account by testing whether a given ARN is accepted. The s3:ResourceAccount condition binary search works because IAM evaluates the condition against the account that owns the resource \u2014 the deny fires only when the condition doesn't match, allowing digit-by-digit account ID discovery. This requires setting up a test IAM user in your own account with a policy that uses StringLike on s3:ResourceAccount.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Enumerating AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "AWS STS - get-access-key-info",
+      "url": "https://docs.aws.amazon.com/cli/latest/reference/sts/get-access-key-info.html"
+    },
+    {
+      "title": "Rhino Security Labs - AWS IAM User Enumeration",
+      "url": "https://rhinosecuritylabs.com/aws/aws-iam-user-enumeration/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-cli-setup",
+      "rel": "prereq",
+      "note": "Configure attacker AWS profile first."
+    },
+    {
+      "id": "aws-pacu-enum",
+      "rel": "alternative",
+      "note": "Pacu iam__enum_roles automates cross-account role enumeration from a wordlist."
+    },
+    {
+      "id": "aws-iam-scope-permissions",
+      "rel": "next",
+      "note": "Once account ID is known, scope permissions of any compromised keys in that account."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1087.004",
+    "T1580"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "AWS account IDs are 12-digit numbers that are often exposed in ARNs, S3 bucket policies, or error messages. With an account ID, attackers can enumerate IAM resource names via error oracle: attempting to assume non-existent roles returns 'NoSuchEntity' while attempting a role that exists but isn't assumable returns 'AccessDenied' \u2014 enabling unauthenticated enumeration of role names. Username enumeration is possible via similar oracle attacks on SAML/SSO login pages.",
+    "prerequisites": "AWS Account ID (12 digits \u2014 often exposed). No credentials required for role name enumeration via error oracle. Valid AWS credentials for authenticated IAM enumeration. Python/boto3 or AWS CLI.",
+    "impact": "T1087.004 Account Discovery: Cloud Account + T1580 Cloud Infrastructure Discovery. Maps IAM role names in a target AWS account without authentication. Combined with credential access, enables targeted enumeration of assumable roles and privilege escalation paths.",
+    "detection": "CloudTrail: sts:AssumeRole calls for non-existent roles from external accounts \u2014 suspicious pattern of rapid sequential AssumeRole failures. CloudTrail records even failed API calls. Multiple AssumeRole failures on valid roles from external accounts indicates role enumeration.\nProcesses performing local or domain account enumeration by invoking account directory queries or security APIs followed by structured output of account lists (DET0587/AN1612).\nSuspicious shell commands or unauthorized access to /etc/passwd or /etc/shadow (AN1613).\nDirectory service queries or system utilities accessing account metadata stores, producing enumeration output (AN1614).\nCloud provider API calls where principals retrieve IAM users or roles in rapid succession (AN1615).\nESXi host account configuration or management APIs queried to retrieve user account listings (AN1617).",
+    "artifacts": "CloudTrail: sts:AssumeRole failure sequence for multiple role names | Multiple AccessDenied/NoSuchEntity for AssumeRole from external account | CloudWatch: AssumeRole failure burst",
+    "prevention": "Do not expose account IDs unnecessarily in error messages or public bucket policies. Use AWS Organizations to restrict who can enumerate roles. CloudTrail alerting on AssumeRole failure bursts. SCPs preventing role assumption from external accounts. Enable AWS Resource Access Manager trust policies carefully.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Slow the enumeration rate. Use a wordlist of common AWS role names (Administrator, OrganizationAccountAccessRole, etc.) rather than full brute force. Combine with OSINT from GitHub/docs to identify likely role names.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1087/004/",
+      "https://attack.mitre.org/techniques/T1580/"
+    ],
+    "misconfiguration": "AWS Account ID exposed in public S3 bucket policies or error messages. No CloudTrail alerting on AssumeRole failure bursts. Roles with predictable names (admin, developer, readonly) enable targeted guessing.",
+    "vulnerable_config": "# Account ID exposed in public S3 bucket policy:\naws s3api get-bucket-policy --bucket public-bucket\n# \u2192 Principal: arn:aws:iam::123456789012:root \u2192 exposes account ID\n\n# No AssumeRole failure alerting:\n# CloudWatch: no metric filter for AssumeRole ErrorCode=AccessDenied\n# \u2192 Unlimited role name brute force from external accounts",
+    "secure_config": "# Avoid account ID in public policies:\n# Use Principal: * (public) or reference by service, not account ID\n\n# CloudWatch alarm on AssumeRole failures:\n# Metric filter:\n# { $.eventName = 'AssumeRole' && $.errorCode = 'AccessDenied' }\n# Alarm: > 10 events in 5 minutes \u2192 SNS alert\n\n# SCP: restrict AssumeRole from external accounts:\n# {\n#   'Effect': 'Deny',\n#   'Action': 'sts:AssumeRole',\n#   'Resource': '*',\n#   'Condition': {\n#     'StringNotEquals': {'aws:PrincipalOrgID': 'o-xxxxxxxxxx'}\n#   }\n# }"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "id": "ad-rpcclient-null",
+  "name": "rpcclient - Null Session RPC Enumeration",
+  "command": "rpcclient -U \"\" -N <dc_ip>",
+  "description": "Connects to a domain controller via MS-RPC with a null (anonymous) session. Once connected, enables enumeration of users, groups, shares, and domain info without credentials. Works when null sessions are allowed (common on older servers, lab environments). Gives interactive prompt for follow-up RPC commands.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "rpc",
+    "null-session",
+    "enumeration",
+    "smb",
+    "unauthenticated"
+  ],
+  "mitre": [
+    "T1135",
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== FLAGS ===\n  -U \"\"  → empty username (null session)\n  -N     → no password prompt (anonymous)\n\n=== INTERACTIVE RPC COMMANDS ===\nOnce inside the rpcclient prompt:\n  enumdomusers         → list all domain users\n  enumdomgroups        → list all domain groups\n  querygroup 0x200     → query Domain Admins group (RID 0x200 = 512)\n  querygroupmem 0x200  → list Domain Admins members\n  queryuser 0x1f4      → query account RID 500 (Administrator)\n  netshareenumall      → enumerate all shares\n  srvinfo              → server info\n  lsaquery             → LSA policy (includes domain SID)\n  lookupnames <user>   → get SID for a username\n  lookupsids <sid>     → resolve SID to name\n\n=== GET DOMAIN SID ===\nrpcclient -U \"\" -N 172.16.5.5 -c 'lsaquery'\n→ Output includes 'Domain Sid: S-1-5-21-...'\n\n=== USER ENUMERATION TRICK ===\nrpcclient -U \"\" -N 172.16.5.5 -c 'enumdomusers' | awk -F'[' '{print $2}' | awk -F']' '{print $1}' > users.txt\n→ Directly extractable username list\n\n=== IF NULL SESSION FAILS ===\nWith credentials: rpcclient -U 'INLANEFREIGHT\\forend%Klmcargo2' 172.16.5.5\nFor Windows: net use \\\\<dc>\\ipc$ '' /u:''",
+  "examples": [
+    {
+      "label": "Open null session",
+      "command": "rpcclient -U \"\" -N 172.16.5.5"
+    },
+    {
+      "label": "One-liner user enum",
+      "command": "rpcclient -U \"\" -N 172.16.5.5 -c 'enumdomusers' 2>/dev/null"
+    },
+    {
+      "label": "Get domain SID",
+      "command": "rpcclient -U \"\" -N 172.16.5.5 -c 'lsaquery' 2>/dev/null | grep 'Domain Sid'"
+    },
+    {
+      "label": "List Domain Admins members",
+      "command": "rpcclient -U \"\" -N 172.16.5.5 -c 'querygroupmem 0x200' 2>/dev/null"
+    }
+  ],
+  "references": [
+    {
+      "title": "rpcclient man page (Samba)",
+      "url": "https://www.samba.org/samba/docs/current/man-html/rpcclient.1.html"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-admodule-spn",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "rpcclient with a null session queries the DC over MS-RPC (enumdomusers, querydispinfo) to enumerate users/groups without credentials.",
+    "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
+    "impact": "User/group enumeration via anonymous RPC.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "Anonymous SMB/RPC binds; enumdomusers/querydispinfo calls.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1135",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "rpcclient"
+  ]
+}

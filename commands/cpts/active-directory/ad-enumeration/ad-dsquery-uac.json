@@ -1,0 +1,84 @@
+{
+  "id": "ad-dsquery-uac",
+  "name": "dsquery - Search AD via Built-in Tool",
+  "command": "dsquery * -filter \"(&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=32))\" -attr sAMAccountName userAccountControl",
+  "description": "Built-in Windows dsquery tool for LDAP-based AD searches. Example filter finds accounts with PASSWD_NOTREQD UAC flag set. Supports all LDAP filter syntax. Available on domain-joined Windows without any imports — LOTL enumeration alternative to PowerView for UAC flag, trust, or object-class queries.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "dsquery",
+    "lotl",
+    "uac",
+    "ldap",
+    "enumeration",
+    "windows"
+  ],
+  "mitre": [
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== DSQUERY SYNTAX ===\ndsquery * -filter '<LDAP_filter>' -attr <attributes> -limit <n>\n\n  *         → search all object classes\n  -filter   → LDAP filter (full syntax supported)\n  -attr     → which attributes to return (space separated)\n  -limit 0  → return ALL results (default is 100)\n  -s <dc>   → target specific DC\n\n=== UAC BITWISE FILTER ===\n1.2.840.113556.1.4.803 = LDAP_MATCHING_RULE_BIT_AND\nChecks if a specific bit is set in userAccountControl:\n  32 = PASSWD_NOTREQD\n  65536 = DONT_EXPIRE_PASSWD\n  4194304 = DONT_REQ_PREAUTH (AS-REP roastable)\n  2 = ACCOUNTDISABLE\n\nExample: find AS-REP roastable accounts:\n  dsquery * -filter '(&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))' -attr sAMAccountName\n\n=== DSQUERY FOR TRUSTS ===\ndsquery * -filter '(objectClass=trustedDomain)' -attr trustPartner trustDirection\n\n=== WHEN TO USE DSQUERY ===\ndsquery vs PowerView:\n  dsquery → no import, built-in, LOTL, basic LDAP queries only\n  PowerView → much richer, better output, requires import\nUse dsquery when PowerView is unavailable or blocked.",
+  "examples": [
+    {
+      "label": "Find accounts with PASSWD_NOTREQD",
+      "command": "dsquery * -filter \"(&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=32))\" -attr sAMAccountName userAccountControl -limit 0"
+    },
+    {
+      "label": "Find AS-REP roastable accounts",
+      "command": "dsquery * -filter \"(&(objectCategory=person)(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))\" -attr sAMAccountName -limit 0"
+    },
+    {
+      "label": "Find all domain trusts",
+      "command": "dsquery * -filter \"(objectClass=trustedDomain)\" -attr trustPartner trustDirection"
+    }
+  ],
+  "references": [
+    {
+      "title": "dsquery (Microsoft)",
+      "url": "https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-R2-and-2012/cc732952(v=ws.11)"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-admodule-spn",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "dsquery with userAccountControl bit filters finds accounts with interesting flags (no-preauth, pw-not-required, trusted-for-delegation).",
+    "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
+    "impact": "Accounts with exploitable UAC flags (AS-REP roast, delegation, no-password).",
+    "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
+    "artifacts": "LDAP queries filtering on userAccountControl bits.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "dsquery"
+  ]
+}

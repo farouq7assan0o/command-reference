@@ -1,0 +1,114 @@
+{
+  "id": "ad-find-interesting-acl",
+  "name": "PowerView - Find Interesting ACLs",
+  "command": "Find-InterestingDomainAcl -ResolveGUIDs",
+  "description": "Searches the domain for non-default, potentially abusable ACL entries. Returns objects where controlled principals have GenericAll, GenericWrite, WriteOwner, WriteDACL, AllExtendedRights, ForceChangePassword, or AddMember rights over other AD objects. These entries are the entry points for ACL-based privilege escalation chains.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "ACL Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "acl-abuse",
+    "powerview",
+    "dacl",
+    "enumeration",
+    "privilege-escalation"
+  ],
+  "mitre": [
+    "T1222.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY ACL ENUMERATION MATTERS ===\nAD permissions are stored in Discretionary Access Control Lists (DACLs) on every\nobject. Admins often misconfigure these during delegation tasks, when adding\nservice accounts, or migrating permissions. The result: low-privilege users end\nup with powerful rights over high-privilege accounts or groups.\n\nBloodHound can show these visually, but PowerView gives raw access for targeted checks.\n\n=== KEY RIGHTS TO LOOK FOR ===\n  GenericAll       \u2192 full control over the object (can do everything below)\n  GenericWrite     \u2192 modify non-protected attributes (set fake SPN for kerberoasting;\n                     set scriptPath/logonScript for code execution)\n  WriteOwner       \u2192 change the object's owner (take ownership = GenericAll)\n  WriteDACL        \u2192 modify the object's ACL (grant yourself or others any right)\n  ForceChangePassword (AllExtendedRights) \u2192 reset the object's password without knowing it\n  AddSelf/AddMember \u2192 add members to a group\n  AllExtendedRights \u2192 all extended rights including ForceChangePassword, DCSync rights\n\n=== CRITICAL CHAIN EXAMPLE (Module 13 Lab) ===\nwley \u2192 ForceChangePassword \u2192 damundsen\n  wley has ForceChangePassword over damundsen. Reset damundsen's password.\ndamundsen \u2192 GenericWrite \u2192 Help Desk Level 1 (group)\n  damundsen can add anyone to Help Desk Level 1 group. Add yourself.\nHelp Desk Level 1 \u2192 AddSelf \u2192 IT Admins (group)\n  Members of Help Desk Level 1 can add themselves to IT Admins. Do it.\naclbuster (IT Admins member) \u2192 WriteDACL \u2192 Domain object\n  Can modify domain object's DACL. Grant yourself DCSync rights.\nDCSync everything.\n\n=== OUTPUT COLUMNS ===\n  ObjectDN       \u2192 target object (what you're gaining rights over)\n  ActiveDirectoryRights \u2192 the right (GenericAll, WriteProperty, etc.)\n  SecurityIdentifier \u2192 who has the right (SID of the holder)\n  IdentityReferenceName \u2192 human-readable name of the rights holder\n\n=== BLOODHOUND IS OFTEN BETTER ===\nFind-InterestingDomainAcl can produce massive output and takes time.\nBloodHound's pre-built query 'Find Principals with DCSync Rights' and\n'Shortest Paths to Domain Admin' are faster for overall picture.\nUse Find-InterestingDomainAcl for targeted verification and lab exercise paths. Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
+  "examples": [
+    {
+      "label": "Find all interesting ACLs",
+      "command": "Find-InterestingDomainAcl -ResolveGUIDs"
+    },
+    {
+      "label": "Filter results to specific user",
+      "command": "Find-InterestingDomainAcl -ResolveGUIDs | Where-Object { $_.IdentityReferenceName -eq 'wley' }"
+    },
+    {
+      "label": "Export to CSV for review",
+      "command": "Find-InterestingDomainAcl -ResolveGUIDs | Select-Object ObjectDN,ActiveDirectoryRights,IdentityReferenceName | Export-Csv -Path C:\\Temp\\acls.csv -NoTypeInformation"
+    },
+    {
+      "label": "Check specific object's ACL",
+      "command": "Get-DomainObjectACL -ResolveGUIDs -Identity 'damundsen' | ? {$_.SecurityIdentifier -eq (Convert-NameToSid wley)}"
+    },
+    {
+      "label": "Ch21 \u2014 Get-ObjectAcl on a user object (raw ACE output)",
+      "command": "Get-ObjectAcl -Identity <username>"
+    },
+    {
+      "label": "Ch21 \u2014 filter GenericAll on a group (find full-control ACEs)",
+      "command": "Get-ObjectAcl -Identity \"<group_name>\" | ? {$_.ActiveDirectoryRights -eq \"GenericAll\"} | select SecurityIdentifier,ActiveDirectoryRights"
+    },
+    {
+      "label": "Ch21 \u2014 pipeline-convert multiple SIDs to account names",
+      "command": "\"<SID1>\",\"<SID2>\" | Convert-SidToName"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "An ACE Up the Sleeve (BloodHound)",
+      "url": "https://specterops.io/assets/resources/an_ace_up_the_sleeve.pdf"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Active Directory Introduction and Enumeration",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-acl-forcechangepassword",
+      "rel": "next",
+      "note": "Abuse ForceChangePassword."
+    },
+    {
+      "id": "ad-acl-addgroupmember",
+      "rel": "next",
+      "note": "Abuse GenericWrite/AddMember."
+    },
+    {
+      "id": "ad-acl-targeted-kerberoast",
+      "rel": "next",
+      "note": "Targeted kerberoast via fake SPN."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Find-InterestingDomainAcl (PowerView) / BloodHound enumerates ACEs to find objects where the current principal has abusable rights (GenericAll/Write, WriteDACL, ForceChangePassword, AddMember).",
+    "prerequisites": "Valid domain credentials and LDAP access.",
+    "impact": "A list of ACL-based privilege-escalation paths (who can act on what).",
+    "detection": "[MITRE T1222.001] LDAP enumeration of object ACLs (4662; Defender for Identity recon); BloodHound collection.",
+    "artifacts": "LDAP ACL queries; BloodHound/ADACLScanner output.",
+    "prevention": "Audit ACLs regularly (ADACLScanner/BloodHound) and remove non-standard ACEs; detection-focused since reads are built-in; enable Directory Service Access auditing.",
+    "evasion": "A single scoped ACL read blends with normal LDAP; BloodHound stealth mode reduces the fan-out.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1222.001"
+    ],
+    "misconfiguration": "Non-privileged users or groups have been granted sensitive AD object permissions (WriteDACL, GenericAll, GenericWrite, ForceChangePassword, AddMember, etc.) through misconfigured delegation, 'inherited from parent' ACEs copied at provisioning time, or direct one-off grants. Because AD ACEs are not surfaced in the normal GUI, these often persist for years.",
+    "vulnerable_config": "# Example: a help-desk group has ForceChangePassword on Domain Admins members\n# Found via BloodHound 'ForceChangePassword' edge, or PowerView:\nGet-ObjectAcl -Identity 'Domain Admins' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'ResetPassword'} |\n  Select-Object IdentityReference, ActiveDirectoryRights, ObjectType\n\n# Another dangerous pattern \u2014 GenericWrite on a user (enables targeted Kerberoasting):\nGet-ObjectAcl -Identity 'svc_sql' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite'}",
+    "secure_config": "# 1. Run AD ACL audit quarterly (automated):\n# BloodHound: Mark all Domain Admins as 'High Value', find paths from low-priv users\n# PowerView batch:\nGet-DomainObjectAcl -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'} |\n  Where-Object {$_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'} |\n  Export-Csv acl_review.csv\n\n# 2. Remove dangerous ACEs:\nRemove-DomainObjectAcl -TargetIdentity 'svc_sql' \\\n    -PrincipalIdentity 'helpdesk' -Rights GenericWrite\n\n# 3. Enable AD Protected Users group for privileged accounts\n# 4. Use tiered administration (Admin Tier 0/1/2) to limit blast radius"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

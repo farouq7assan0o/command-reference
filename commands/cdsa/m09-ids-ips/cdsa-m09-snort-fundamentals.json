@@ -1,0 +1,92 @@
+{
+  "id": "cdsa-m09-snort-fundamentals",
+  "name": "Snort 3 Fundamentals \u2014 Config, Inputs, Outputs & Rules",
+  "command": "sudo snort -c /root/snorty/etc/snort/snort.lua --daq-dir /usr/local/lib/daq -r /home/htb-student/pcaps/icmp.pcap -A cmg",
+  "description": "Snort 3 (Snort++) open-source IDS/IPS. Modes: passive IDS (read-only) and inline IPS (-Q flag). Architecture: Packet Decoder \u2192 Preprocessors (http/port_scan) \u2192 Detection Engine (rules) \u2192 Logging/Alerting. Config: snort.lua (Lua format), snort_defaults.lua. Inputs: -r (PCAP), -i (live interface). Outputs: -A cmg (alert+payload), -A u2 (unified2 binary), -A csv. Rules: added via ips{} block or -R flag. LibDAQ abstracts network data sources.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "IDS/IPS",
+  "subcategory": "Snort",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 09: Working with IDS/IPS",
+  "tags": [
+    "snort",
+    "snort3",
+    "ids",
+    "ips",
+    "snort-lua",
+    "libdaq",
+    "af-packet",
+    "rule-writing",
+    "blue-team"
+  ],
+  "tools": ["snort"],
+  "mitre": ["T1040"],
+  "notes": "=== SNORT OPERATION MODES ===\nPassive (IDS):\n  \u2192 Observe and detect, cannot block\n  \u2192 -r file.pcap    \u2192 reads PCAP (passive by default)\n  \u2192 -i ens160        \u2192 listen on interface (passive by default)\n\nInline (IPS):\n  \u2192 Can block traffic\n  \u2192 Requires DAQ that supports inline + -Q flag\n  \u2192 afpacket DAQ supports inline on Linux\n  \u2192 sudo snort -Q -i ens160  \u2192 inline IPS mode\n\n=== SNORT ARCHITECTURE ===\n1. Packet Decoder (Packet Sniffer):\n   \u2192 Extracts raw packets from network\n   \u2192 Recognizes packet structure (Ethernet, IP, TCP, etc.)\n   \u2192 Forwards raw packets to Preprocessors\n\n2. Preprocessors (Modules):\n   \u2192 Identify packet type/behavior\n   \u2192 Examples:\n     - http_inspect: identifies HTTP packets\n     - port_scan: detects port scanning (thresholds + protocols)\n     - arp_spoof: detects ARP attacks\n   \u2192 Configured in snort.lua as Lua table literals\n   \u2192 Empty table = use default settings: stream = { }\n\n3. Detection Engine:\n   \u2192 Compares each packet against ruleset\n   \u2192 Match \u2192 forward to Logging/Alerting\n\n4. Logging and Alerting System:\n   \u2192 Records or triggers alerts per rule action\n   \u2192 Formats: syslog, unified2, database\n\n5. Output Modules:\n   \u2192 Configured in snort.lua\n\n=== SNORT CONFIG FILES ===\nsnort.lua (main config):\n  \u2192 Sections: network vars, decoder, detection engine, dynamic libs,\n    preprocessors, output plugins, ruleset, shared objects\n  \u2192 HOME_NET = 'any'\n  \u2192 EXTERNAL_NET = 'any'\n  \u2192 include 'snort_defaults.lua'\n  \u2192 Modules: stream={}, stream_ip={}, http_inspect={}, etc.\n\nsnort_defaults.lua:\n  \u2192 Default values for all modules\n  \u2192 Required by snort.lua via include\n\n# Browse config:\nsudo more /root/snorty/etc/snort/snort.lua\n\n# List all available modules:\nsnort --help-modules\n\n# View defaults for a module:\nsnort --help-config arp_spoof\n\n=== VALIDATE CONFIG ===\nsnort -c /root/snorty/etc/snort/snort.lua --daq-dir /usr/local/lib/daq\n  \u2192 Loads config, checks for errors, exits cleanly\n  \u2192 Output: 'Snort successfully validated the configuration (with 0 warnings).'\n  \u2192 Note: --daq-dir not required for just validation\n\n=== SNORT INPUTS ===\nOffline PCAP:\n  sudo snort -c /root/snorty/etc/snort/snort.lua \\\n    --daq-dir /usr/local/lib/daq \\\n    -r /home/htb-student/pcaps/icmp.pcap -A cmg\n\nLive interface:\n  sudo snort -c /root/snorty/etc/snort/snort.lua \\\n    --daq-dir /usr/local/lib/daq \\\n    -i ens160\n  \u2192 Default: passive mode; LibDAQ pcap DAQ configured to passive\n\n=== SNORT RULES ===\n# Load rules via snort.lua ips module:\nips = {\n  { variables = default_variables, include = '/home/htb-student/local.rules' }\n}\n\n# Load rules from CLI (single file):\n-R /home/htb-student/local.rules\n\n# Load rules from CLI (directory):\n--rule-path /home/htb-student/rules/\n\nRule file location: /home/htb-student/local.rules\nSnort 3 rule syntax similar to Suricata; check:\n  https://docs.snort.org/\n  https://docs.suricata.io/en/latest/rules/differences-from-snort.html\n\n=== SNORT OUTPUTS ===\n# List available output plugins:\nsnort --list-plugins | grep logger\n  \u2192 alert_csv, alert_fast, alert_full, alert_json, alert_syslog,\n    alert_talos, alert_unixsock, log_codecs, log_hext, log_pcap, unified2\n\n# Alert output formats via -A flag:\n-A cmg   \u2192 fast alert + packet headers + payload (combines -A fast -d -e)\n-A u2    \u2192 unified2 binary format (for post-processing tools like Barnyard2)\n-A csv   \u2192 comma-separated values (customizable fields)\n\n# CMG output example:\n06/19-08:45:56.838904 [**] [1:1000001:1] \"ICMP test\" [**] \\\n  [Classification: Generic ICMP event] [Priority: 3] \\\n  {ICMP} 192.168.158.139 -> 174.137.42.77\n  (then hex+ASCII payload dump)\n\n=== STATISTICS OUTPUT SECTIONS ===\nPacket Statistics: received, analyzed, allow, rx_bytes (from DAQ)\nModule Statistics: per-module peg counts (HTTP GETs, TCP sessions, etc.)\nFile Statistics: file types, bytes, signatures\nSummary Statistics: runtime, packets/sec, profiling data\n\n=== LIBDAQ ===\nLibDAQ = Data Acquisition Library\n  \u2192 Abstraction layer between Snort and network hardware/software\n  \u2192 Modules: pcap, afpacket, nfq, dump, ...\n  \u2192 --daq-dir specifies where to find DAQ modules\n  \u2192 afpacket: Linux zero-copy, supports inline mode\n\n=== SNORT KEY FEATURES ===\n  Deep packet inspection, packet capture, and logging\n  Intrusion detection and prevention\n  Network Security Monitoring\n  Anomaly detection\n  Multi-tenant support\n  IPv4 and IPv6 support",
+  "examples": [
+    {
+      "label": "Validate Snort config",
+      "command": "snort -c /root/snorty/etc/snort/snort.lua --daq-dir /usr/local/lib/daq"
+    },
+    {
+      "label": "Run Snort on PCAP with CMG alert output",
+      "command": "sudo snort -c /root/snorty/etc/snort/snort.lua --daq-dir /usr/local/lib/daq -r /home/htb-student/pcaps/icmp.pcap -A cmg"
+    },
+    {
+      "label": "Run Snort on PCAP with external rules file",
+      "command": "sudo snort -c /root/snorty/etc/snort/snort.lua --daq-dir /usr/local/lib/daq -r /home/htb-student/pcaps/icmp.pcap -R /home/htb-student/local.rules -A cmg"
+    },
+    {
+      "label": "Run Snort live on interface (passive IDS)",
+      "command": "sudo snort -c /root/snorty/etc/snort/snort.lua --daq-dir /usr/local/lib/daq -i ens160"
+    },
+    {
+      "label": "List all Snort modules",
+      "command": "snort --help-modules"
+    },
+    {
+      "label": "View defaults for a specific module",
+      "command": "snort --help-config arp_spoof"
+    },
+    {
+      "label": "List available Snort output plugins",
+      "command": "snort --list-plugins | grep logger"
+    },
+    {
+      "label": "Browse main Snort config",
+      "command": "sudo more /root/snorty/etc/snort/snort.lua"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Working with IDS/IPS",
+      "url": "https://academy.hackthebox.com/module/details/226"
+    },
+    {
+      "title": "Snort 3 Documentation",
+      "url": "https://docs.snort.org/"
+    },
+    {
+      "title": "Snort vs Suricata Rule Differences",
+      "url": "https://docs.suricata.io/en/latest/rules/differences-from-snort.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m09-suricata-rule-syntax",
+      "rel": "prereq",
+      "note": "Suricata rule syntax \u2014 Snort 3 rules are very similar; learn Suricata syntax first."
+    },
+    {
+      "id": "cdsa-m09-zeek-fundamentals",
+      "rel": "next",
+      "note": "Zeek NSM \u2014 behavioral detection and log-based threat hunting."
+    }
+  ],
+  "lint_ignore": [
+    "hardcoded-literal"
+  ]
+}

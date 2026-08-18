@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nwafw00f detects WAF (Web Application Firewall) presence and identifies the vendor/product by sending crafted requests and analyzing response patterns. Critical to run before active fingerprinting or scanning \u2014 a WAF can block, alter, or log subsequent probes and cause false negatives.\n\n=== WHY FIRST ===\nKnowing the WAF vendor informs: which evasion techniques apply, whether Nikto/scanner results may be manipulated by the WAF, what alerting the security team will see, and which WAF-specific bypasses to research.\n\n=== CHAINING ===\nwafw00f \u2192 if Wordfence (WP-specific): WordPress confirmed + WAF rules info available. If Cloudflare: CDN origin IP discovery needed before direct scanning. If no WAF: proceed with full active enumeration.\n\n=== FINGERPRINTING STACK ===\ncurl banner grab \u2192 wafw00f \u2192 nikto -Tuning b \u2192 technology profile complete.",
+  "references": []
+}

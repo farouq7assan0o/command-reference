@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nExtracts IP addresses from the subdomain resolution loop output to build a list suitable for Shodan enrichment. Shodan returns open ports, service banners, SSL configuration, and vulnerability flags without the tester touching the target directly.\n\n=== CHAINING ===\ncrtsh-unique-subdomains \u2192 host resolution loop \u2192 extract IPs \u2192 shodan host <IP> loop \u2192 identify high-value targets (multiple open ports, vulnerable versions) \u2192 prioritize for active scanning.",
+  "references": []
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNetcat can interact with FTP manually for situations where standard FTP clients aren't available. Sends raw FTP protocol commands over TCP. Also useful for testing FTP commands that standard clients abstract away.\n\n=== CHAINING ===\nnc TARGET 21 \u2192 read banner for version \u2192 issue USER/PASS \u2192 LIST \u2192 RETR file \u2192 useful for FTP protocol debugging or extremely restricted environments.\n\n=== BANNER INTEL ===\nFTP banner often contains software name and version: vsFTPd 3.0.3, ProFTPD, Pure-FTPd. Version fingerprint enables targeted CVE lookup without nmap.",
+  "references": []
+}

@@ -1,0 +1,98 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "https"
+  ],
+  "tools": [
+    "curl",
+    "kubeletctl",
+    "jq"
+  ],
+  "tags": [
+    "kubernetes",
+    "kubelet",
+    "enumeration"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Kubernetes",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Anonymous check on the API server",
+      "command": "curl https://10.129.10.11:6443 -k"
+    },
+    {
+      "label": "Pull the pod list from the Kubelet API",
+      "command": "curl https://10.129.10.11:10250/pods -k | jq ."
+    },
+    {
+      "label": "List pods via kubeletctl",
+      "command": "kubeletctl -i --server 10.129.10.11 pods"
+    },
+    {
+      "label": "Scan pods for command-exec (RCE)",
+      "command": "kubeletctl -i --server 10.129.10.11 scan rce"
+    }
+  ],
+  "notes": "Control-plane ports: etcd 2379/2380, API 6443, scheduler 10251, controller-mgr 10252, kubelet 10250, read-only kubelet 10255.",
+  "references": [
+    {
+      "title": "kubeletctl (cyberark)",
+      "url": "https://github.com/cyberark/kubeletctl"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "k8s-rce-token",
+      "note": "Exec into a pod and steal its service-account token.",
+      "rel": "next"
+    },
+    {
+      "id": "ref-k8s-ports",
+      "note": "Port reference for fingerprinting the control plane.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "k8s-enum",
+  "name": "Kubernetes - Enumerate API and Kubelet",
+  "command": "kubeletctl -i --server <ip> pods",
+  "description": "Probe the K8s API server (6443) for anonymous access and the Kubelet API (10250) for the pod list. kubeletctl streamlines listing pods and finding those that allow command execution.",
+  "opsec": "loud",
+  "mitre": [
+    "T1613"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Kubernetes clusters often expose the Kubelet API (port 10250) without authentication. Anonymous access to the API server or an unauthenticated Kubelet allows listing pods, executing commands, and extracting service account tokens. kubeletctl automates this enumeration without requiring cluster admin credentials.",
+    "prerequisites": "Network access to Kubernetes control plane ports (6443, 10250). Unauthenticated or weakly authenticated Kubelet API. kubeletctl tool.",
+    "impact": "Pod listing reveals workload inventory. RCE scanning identifies pods where commands can be executed. Service account token extraction provides Kubernetes API credentials for further lateral movement and privilege escalation within the cluster.",
+    "detection": "Unusual API server requests from non-cluster IPs to port 6443/10250. Anonymous auth attempts to Kubelet API. Kubectl commands using manually extracted service account tokens. SIEM: mass pod listing or exec requests from a single IP.",
+    "artifacts": "API server audit log (anonymous access attempts) | Kubelet log (exec requests) | Network: connections to port 10250 from outside cluster",
+    "prevention": "Disable Kubelet anonymous authentication: set authentication.anonymous.enabled=false in kubelet config. Enable RBAC and ensure no ClusterRoleBindings grant excessive permissions to service accounts. Restrict access to ports 6443 and 10250 via network policy / firewall. Audit RBAC permissions regularly.",
+    "misconfiguration": "Kubelet API accessible on port 10250 without authentication (anonymous=true, webhook.enabled=false). Service accounts have overbroad ClusterRole bindings allowing pod creation and exec.",
+    "vulnerable_config": "# Vulnerable kubelet config\nauthentication:\n  anonymous:\n    enabled: true  # allows unauthenticated access\n  webhook:\n    enabled: false\n\n# Overly permissive ClusterRoleBinding\nkind: ClusterRoleBinding\nsubjects:\n  - kind: ServiceAccount\n    name: default\nroleRef:\n  name: cluster-admin",
+    "secure_config": "# Secure kubelet config\nauthentication:\n  anonymous:\n    enabled: false\n  webhook:\n    enabled: true\nauthorization:\n  mode: Webhook\n\n# Restrict ClusterRoleBindings\n# Use least-privilege roles for service accounts\n# Firewall: block 10250 from external IPs",
+    "sources": [
+      "HTB M25",
+      "MITRE T1613",
+      "MITRE T1078.004"
+    ]
+  }
+}

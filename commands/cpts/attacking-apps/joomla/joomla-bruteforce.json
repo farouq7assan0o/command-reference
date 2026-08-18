@@ -1,0 +1,80 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python"
+  ],
+  "tags": [
+    "joomla",
+    "brute-force"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Joomla",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Brute-force the Joomla administrator login",
+      "command": "sudo python3 joomla-brute.py -u http://dev.inlanefreight.local -w /usr/share/metasploit-framework/data/wordlists/http_default_pass.txt -usr admin"
+    }
+  ],
+  "notes": "Joomla has no default account lockout by default, so a wordlist attack on /administrator is viable. Target admin first; the http_default_pass list catches most lab setups.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "joomla-template-webshell",
+      "note": "Use the cracked admin login to plant a template webshell.",
+      "rel": "next"
+    },
+    {
+      "id": "joomla-dirtrav",
+      "note": "Auth'd directory traversal as an alternative post-login path.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "joomla-bruteforce",
+  "name": "Joomla - Admin Brute Force",
+  "command": "python3 joomla-brute.py -u http://<url> -w <wordlist> -usr <user>",
+  "description": "Brute-forces the Joomla administrator login. Recovered admin access allows code execution via the template editor.",
+  "opsec": "loud",
+  "mitre": [
+    "T1110"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Joomla's /administrator/index.php login form does not rate-limit or lock accounts by default. joomla-brute.py submits credential pairs, checking for successful authentication redirect.",
+    "prerequisites": "Network access to /administrator/. No CAPTCHA or lockout policy. Valid wordlist matching default credentials.",
+    "impact": "Admin access grants template editing (webshell), extension installation, and complete site control.",
+    "detection": "High-volume POST requests to /administrator/index.php from one IP. PHP session creation spikes. WAF alert on login endpoint rate-limit.",
+    "artifacts": "Joomla error log (failed auth events) | Web server access log (POST /administrator/index.php at high rate)",
+    "prevention": "Enforce account lockout via Joomla Admin Tools plugin. Require 2FA for all admin accounts. Move or rename the admin URL. Block /administrator/ from public IPs.",
+    "misconfiguration": "Joomla administrator login at /administrator/ publicly reachable with no lockout, no 2FA, and a weak default password.",
+    "vulnerable_config": "# Joomla default\n# No lockout policy\n# /administrator/ accessible from 0.0.0.0",
+    "secure_config": "# Admin Tools plugin: lockout after 5 failures\n# Joomla Global Config: Two Factor Authentication required\n# Apache\n<Directory /var/www/html/administrator>\n  Require ip 10.0.0.0/8\n</Directory>",
+    "sources": [
+      "HTB M24",
+      "MITRE T1110",
+      "OWASP A07:2021"
+    ]
+  }
+}

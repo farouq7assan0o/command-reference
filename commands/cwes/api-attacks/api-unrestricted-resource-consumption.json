@@ -1,0 +1,103 @@
+{
+  "id": "api-unrestricted-resource-consumption",
+  "name": "API - Unrestricted Resource Consumption (API4:2023)",
+  "command": "dd if=/dev/urandom of=big.pdf bs=1M count=30   # upload via the vulnerable endpoint - no size/type/rate limit",
+  "description": "An API that doesn't limit file size, file type, or request rate on an upload endpoint (CWE-400) lets an attacker exhaust disk/bandwidth (DoS + financial cost), bypass extension checks to upload executables, and - when files land in a publicly served path (e.g. ASP.NET Core wwwroot) - host malware or stage a payload for social-engineering RCE.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "valid-credentials",
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "dd",
+    "curl"
+  ],
+  "tags": [
+    "api",
+    "owasp-api4",
+    "resource-consumption",
+    "unrestricted-upload",
+    "dos",
+    "cwe-400"
+  ],
+  "category": "Web Exploitation",
+  "subcategory": "API Attacks",
+  "certifications": [
+    "CWES"
+  ],
+  "primary_cert": "CWES",
+  "source": "CWES Module 18: API Attacks",
+  "examples": [
+    {
+      "label": "Get your supplier-company / object ID first",
+      "command": "curl -H \"Authorization: Bearer <jwt>\" http://<ip>:<port>/api/v1/supplier-companies/current-user"
+    },
+    {
+      "label": "Generate a 30 MB junk 'PDF' (no size limit -> storage DoS)",
+      "command": "dd if=/dev/urandom of=certificateOfIncorporation.pdf bs=1M count=30"
+    },
+    {
+      "label": "Generate an .exe (no type validation -> executable upload)",
+      "command": "dd if=/dev/urandom of=reverse-shell.exe bs=1M count=10"
+    },
+    {
+      "label": "Download it back from the public wwwroot path",
+      "command": "curl -O http://<ip>:<port>/SupplierCompaniesCertificatesOfIncorporations/reverse-shell.exe"
+    }
+  ],
+  "notes": "Three failures compound here: (1) no file-size cap -> repeat uploads exhaust disk = DoS + cloud-storage cost; (2) no file-type/extension validation -> upload a real msfvenom .exe instead of a PDF; (3) ASP.NET Core serves /wwwroot statically by default, so uploaded files are publicly downloadable - the API becomes free malware hosting, and a socially-engineered admin opening the .exe yields RCE. Enumerating filenames under wwwroot can also expose other customers' documents. The module drives the upload via the API UI/Postman; the multipart curl equivalent is: curl -H \"Authorization: Bearer <jwt>\" -F \"file=@reverse-shell.exe\" -F \"companyId=<id>\" http://<ip>:<port>/api/v1/supplier-companies/certificates-of-incorporation.",
+  "references": [
+    {
+      "title": "OWASP API4:2023 - Unrestricted Resource Consumption",
+      "url": "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
+    },
+    {
+      "title": "CWE-400: Uncontrolled Resource Consumption",
+      "url": "https://cwe.mitre.org/data/definitions/400.html"
+    },
+    {
+      "title": "HTB Academy - API Attacks",
+      "url": "https://academy.hackthebox.com/module/details/268"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "api-security-top10-ref",
+      "note": "Where this sits in the OWASP API Top 10.",
+      "rel": "prereq"
+    },
+    {
+      "id": "api-bola-sequential-enum",
+      "note": "Enumerate other objects/files once you can read wwwroot.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1499.001",
+    "T1608.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "prerequisites": "Authenticated API user with access to an upload endpoint that lacks size/type/rate controls; uploaded files served from a public path.",
+    "why_it_works": "The endpoint saves user-supplied files without validating size, extension/content-type, or request rate, and the storage directory is web-served, so arbitrary bytes and executables become publicly retrievable.",
+    "misconfiguration": "No max-file-size, no MIME/extension allowlist, no rate limiting/quota on the upload endpoint; files stored inside the web root (ASP.NET Core wwwroot served statically by default).",
+    "impact": "Denial of service via disk/bandwidth exhaustion and cloud cost; malware hosting on a trusted domain; executable delivery leading to RCE if an admin runs it; exposure of other users' uploaded documents.",
+    "detection": "Spikes in upload volume/size from one token/IP; uploads with non-document extensions; repeated identical large uploads; static requests to wwwroot upload paths; storage-utilization alarms.",
+    "artifacts": "Oversized/executable files under the upload dir (e.g. wwwroot/...); app logs of large multipart POSTs; egress logs of the public download.",
+    "vulnerable_config": "// ASP.NET Core: app.UseStaticFiles();  // wwwroot public\n// upload endpoint: no [RequestSizeLimit], no extension/MIME check, no rate limit",
+    "secure_config": "// Enforce [RequestSizeLimit(n)] + FormOptions.MultipartBodyLengthLimit\n// Allowlist extensions/MIME (PDF only) and verify magic bytes\n// Store uploads OUTSIDE wwwroot; serve via authorized controller\n// Add per-user rate limiting/quota (AddRateLimiter)",
+    "prevention": "Cap file size and total quota per user; allowlist content types and verify magic bytes; rate-limit uploads; store files outside the web root and serve through an authorization check; scan uploads with AV. [MITRE M1041, M1037, M1013]",
+    "evasion": "Stay under obvious size/volume thresholds; use a valid PDF magic-byte header on an executable-laden file; spread uploads across time to dodge rate alarms.",
+    "sources": [
+      "HTB CWES M18",
+      "OWASP API4:2023",
+      "CWE-400",
+      "MITRE T1499.001"
+    ]
+  }
+}

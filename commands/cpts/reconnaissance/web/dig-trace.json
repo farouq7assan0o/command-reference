@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n+trace follows the full DNS resolution chain from root servers through TLD servers to the authoritative nameserver. Shows every delegation hop. Valuable for understanding DNS delegation structure and spotting misconfigurations in the resolution path.\n\n=== WHAT IT REVEALS ===\nRoot \u2192 TLD \u2192 authoritative server delegation chain. Which nameservers are authoritative at each level. Delegation misconfigurations (e.g., subdomain delegated to an expired/abandoned NS). Wildcard DNS at any level in the chain.\n\n=== CHAINING ===\ndig +trace \u2192 identify authoritative NS for each subdomain \u2192 test each NS for zone transfer \u2192 if different NSes serve different subdomains, each is an individual AXFR target.",
+  "references": []
+}

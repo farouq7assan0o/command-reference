@@ -1,0 +1,86 @@
+{
+  "id": "wafw00f",
+  "name": "wafw00f – WAF Detection",
+  "command": "wafw00f <url>",
+  "platform": "linux",
+  "category": "Reconnaissance",
+  "subcategory": "Web Reconnaissance",
+  "type": "command",
+  "description": "Detect and fingerprint Web Application Firewalls (WAFs) by sending crafted HTTP requests and analysing responses. Knowing the WAF vendor helps select appropriate bypass techniques before launching attacks.",
+  "notes": "wafw00f fingerprints by looking at HTTP response headers, cookies (e.g. __cfduid for Cloudflare), and response body differences when sending malicious payloads. Use -a to test all known WAFs (slower but thorough). Install via pip3 if not present. WAF detection should happen before fuzzing or injection attempts so you can tune payloads accordingly.",
+  "variations": [
+    {
+      "command": "wafw00f https://<target> -a",
+      "caption": "Test against all known WAF signatures (thorough)",
+      "label": "wafw00f https://<target> -a"
+    },
+    {
+      "command": "wafw00f https://<target> -v",
+      "caption": "Verbose output — shows each probe and response",
+      "label": "wafw00f https://<target> -v"
+    },
+    {
+      "command": "wafw00f https://<target> -o output.json -f json",
+      "caption": "Save results to JSON",
+      "label": "JSON output"
+    },
+    {
+      "command": "pip3 install wafw00f",
+      "caption": "Install wafw00f",
+      "label": "pip3"
+    }
+  ],
+  "examples": [
+    {
+      "command": "wafw00f inlanefreight.com",
+      "caption": "CWES M04: detect WAF before launching web attacks on target"
+    }
+  ],
+  "tools": [
+    "wafw00f"
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "certifications": [
+    "CWES"
+  ],
+  "primary_cert": "CWES",
+  "source": "CWES Module 04: Information Gathering - Web Edition",
+  "references": [
+    {
+      "title": "wafw00f GitHub",
+      "url": "https://github.com/EnableSecurity/wafw00f"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nikto-fingerprint",
+      "rel": "next",
+      "note": "Follow WAF detection with nikto fingerprinting scan"
+    },
+    {
+      "id": "finalrecon",
+      "rel": "alternative",
+      "note": "FinalRecon runs multiple recon tasks including WAF-like header analysis"
+    }
+  ],
+  "defense": {
+    "why_it_works": "wafw00f sends crafted requests and analyses the responses (headers, cookies, block pages, status codes) to fingerprint the WAF vendor and product sitting in front of a site — so the tester knows what protection exists before probing further.",
+    "prerequisites": "Network access to the target web application (URL).",
+    "impact": "Identification of the WAF vendor/product (e.g. Wordfence) protecting the target, which informs the evasion techniques needed in subsequent testing and avoids false negatives.",
+    "detection": "Low to Moderate: wafw00f sends a small set of crafted probe requests. A WAF can block, alter, or log these fingerprinting attempts and may alert — the probes are few but distinctive, and a WAF is designed to notice anomalous requests.\n\n[MITRE T1595.002] The active, crafted-request pattern is loggable at the WAF and web server.",
+    "artifacts": "A handful of crafted/anomalous probe requests in web and WAF logs; WAF detection events for the fingerprinting payloads.",
+    "prevention": "Configure the WAF to return generic responses that do not reveal its vendor identity (uniform block pages, no vendor-specific headers or cookies); monitor WAF logs for fingerprinting probe patterns and known scanner signatures.\n\n[MITRE T1595.002 M1056] Minimise identifying information exposed to external parties.",
+    "evasion": "Only a few crafted requests are sent, so low-and-slow timing and a benign user-agent reduce the footprint — though a well-tuned WAF may still log the probes.",
+    "sources": [
+      "CWES M04",
+      "MITRE T1595.002"
+    ],
+    "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
+    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  }
+}

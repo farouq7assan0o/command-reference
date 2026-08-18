@@ -1,0 +1,84 @@
+{
+  "id": "ad-runas-netonly",
+  "name": "runas /netonly - Inject AD Creds on Windows",
+  "command": "runas /netonly /user:<domain>\\<user> powershell",
+  "description": "Spawns a new process (typically PowerShell) with AD credentials injected for network authentication, without requiring the machine to be domain-joined or the current user to be that account interactively. Used to run domain tools (PowerView, Mimikatz DCSync, etc.) AS a domain user from a workgroup machine or from a different user context.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Privilege Escalation",
+  "subcategory": "DCSync",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "runas",
+    "credential-injection",
+    "windows",
+    "lateral-movement",
+    "powerview"
+  ],
+  "mitre": [
+    "T1134.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY /NETONLY ===\nrunas /netonly creates a LOGON32_LOGON_NEW_CREDENTIALS logon session:\n  - The spawned process runs AS you locally (same local token)\n  - But when the process makes NETWORK connections, it uses the injected credentials\n  - Domain-joined check is bypassed — works from any Windows machine\n\nThis means you can run Mimikatz lsadump::dcsync or PowerView from a non-domain-joined\nWindows host and it will authenticate to the DC using the creds you injected.\n\n=== KEY USE CASES ===\n1. You have DA creds on a workgroup Windows machine → inject creds → DCSync\n2. You're on a low-priv domain account → inject high-priv creds → run PowerView\n3. You need to test DA creds without a Linux box available\n\n=== HOW TO USE ===\n1. Open CMD/PowerShell with your current privileges\n2. Run: runas /netonly /user:INLANEFREIGHT\\adunn powershell\n3. A password prompt appears — enter adunn's password\n4. A new PowerShell window opens\n5. In that window, your network auth goes as adunn:\n   lsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\krbtgt\n\n=== GOTCHA: VERIFY IT WORKS ===\nTest that creds work before doing sensitive actions:\n  dir \\\\172.16.5.5\\SYSVOL\nIf it lists, the creds are valid and injected correctly.\n\n=== MIMIKATZ VIA RUNAS ===\nInside the runas /netonly PowerShell:\n  .\\mimikatz.exe\n  lsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\administrator\nThis runs as your local user BUT authenticates to the DC as adunn.\n\n=== OPSEC ===\nLogon type 9 (LOGON_NEW_CREDENTIALS) on the LOCAL machine.\nNo logon event on the DC until you actually authenticate over the network.\nWhen you do, it appears as a normal Kerberos/NTLM auth from the machine IP.",
+  "examples": [
+    {
+      "label": "Inject DA creds into new PowerShell",
+      "command": "runas /netonly /user:INLANEFREIGHT\\adunn powershell"
+    },
+    {
+      "label": "Verify creds work (in the new window)",
+      "command": "dir \\\\172.16.5.5\\SYSVOL"
+    },
+    {
+      "label": "Run Mimikatz DCSync inside runas window",
+      "command": ".\\mimikatz.exe\nlsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\administrator"
+    }
+  ],
+  "references": [
+    {
+      "title": "runas /netonly (Microsoft)",
+      "url": "https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-R2-and-2012/cc771525(v=ws.11)"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-golden-ticket-mimikatz",
+      "rel": "next",
+      "note": "Forge a golden ticket."
+    }
+  ],
+  "defense": {
+    "why_it_works": "runas /netonly creates a LOGON32_LOGON_NEW_CREDENTIALS (Logon Type 9) session. The spawned process retains the caller's local token for local operations but presents the injected domain credentials for all network authentication. This bypasses domain-join requirements — any Windows host with network reach to the DC can use domain tools (Mimikatz DCSync, PowerView, net use) as a high-privilege domain account without the machine being domain-joined.",
+    "prerequisites": "Valid domain credentials in plaintext for the target account. A Windows host (need not be domain-joined) with network connectivity to DC on required ports. runas is a built-in — no additional tools needed. Subsequent network actions (DCSync, PowerView) require their own prerequisites.",
+    "impact": "Enables all domain tooling to authenticate as a high-privilege account from any Windows machine. Primarily used as a prerequisite step before DCSync, PowerView queries, or other authenticated domain operations when the attacker's machine lacks domain membership or a different user context is required.",
+    "detection": "Windows Security Event 4648 (A logon was attempted using explicit credentials) on the local host when runas is executed. Subsequent network logons using the injected credentials appear as normal Kerberos/NTLM authentication events (Event 4624 type 3) on DCs and target hosts — indistinguishable from legitimate logons by that user from that machine. EDR may flag the anomalous Logon Type 9 process creation.",
+    "artifacts": "Event 4648 on the local host with the injected account name; new process tree under the runas context; subsequent authentication events (4624 type 3) on DCs and targets attributed to the injected user from the attacker's machine IP.",
+    "prevention": "Credential hygiene — avoid exposing DA passwords in plaintext outside password vaults. Privileged Access Workstations (PAWs) that enforce no-credential-caching policies. Network segmentation limiting which hosts can reach DC RPC/Kerberos ports. Behavioural detection on Logon Type 9 from non-admin workstations (rare in normal environments).",
+    "evasion": "runas is a signed Microsoft binary (LOLBin) — unlikely to trigger AV/EDR on process creation alone. Logon Type 9 is uncommon but legitimate (used by some enterprise tools). The DC-side network auth is indistinguishable from a normal workstation logon. Verify creds with a benign read (dir \\SYSVOL) before running sensitive tools to avoid failed-logon noise.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1134.001"
+    ],
+    "misconfiguration": "User or computer accounts have been granted AD replication rights (DS-Replication-Get-Changes-All) that should belong exclusively to Domain Controllers. This right allows calling the MS-DRSR (Directory Replication Service Remote Protocol) to retrieve NTLM password hashes for any account — including krbtgt. Typically granted accidentally via WriteDACL on the domain object or through inherited ACEs.",
+    "vulnerable_config": "# Who has DCSync rights:\nGet-ObjectAcl -DistinguishedName 'DC=corp,DC=local' -ResolveGUIDs |\n    Where-Object {$_.ActiveDirectoryRights -match 'DS-Replication-Get-Changes'} |\n    Select-Object IdentityReference, ActiveDirectoryRights\n\n# Dangerous: any non-DC account appearing here\n# CORP\\svc_monitoring  DS-Replication-Get-Changes-All  <- not a DC",
+    "secure_config": "# Remove non-DC replication rights:\n# Using PowerView:\nRemove-DomainObjectAcl -TargetIdentity 'DC=corp,DC=local' \\\n    -PrincipalIdentity 'svc_monitoring' -Rights DCSync\n\n# Monitor with Event 4662 (Object access with properties):\n# Filter for: ObjectType = DS-Replication-Get-Changes-All GUID\n# {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}\n# Any 4662 from non-DC account with this GUID = DCSync in progress\n\n# Microsoft Defender for Identity: built-in 'DCSync attack' alert\n# Anomalous AD replication from non-DC IPs also caught by MDI"
+  },
+  "tools": [
+    "runas"
+  ]
+}

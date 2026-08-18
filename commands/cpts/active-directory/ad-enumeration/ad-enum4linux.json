@@ -1,0 +1,81 @@
+{
+  "id": "ad-enum4linux",
+  "name": "enum4linux - Unauthenticated SMB/RPC Enumeration",
+  "command": "enum4linux -A <dc_ip>",
+  "description": "Classic Perl-based SMB/RPC enumeration tool. The -A flag runs all checks: users, groups, shares, password policy, OS info, printer info, domain membership. Useful for initial unauthenticated enumeration when null sessions are allowed. Largely superseded by enum4linux-ng but still common on older systems.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "smb",
+    "rpc",
+    "null-session",
+    "enumeration",
+    "unauthenticated"
+  ],
+  "mitre": [
+    "T1135",
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT ENUM4LINUX CHECKS ===\n  -U → user list via RPC\n  -G → group list\n  -S → shares\n  -P → password policy\n  -o → OS information\n  -i → printer information\n  -n → NetBIOS info\n  -A → all of the above\n\n=== NULL SESSION REQUIREMENT ===\nenum4linux relies on null/anonymous SMB sessions. Modern Windows (2012+)\ndisables null sessions by default — enum4linux will get partial results.\nOlder DCs or misconfigured environments → full enumeration without credentials.\n\n=== WHAT YOU GET IF NULL SESSIONS WORK ===\n  - Full user list (including disabled and service accounts)\n  - Group memberships\n  - Password policy (lockout threshold, complexity requirements)\n  - Share names\n  - Domain name + SID\n\n=== ENUM4LINUX-NG (SUCCESSOR) ===\nUse ad-enum4linux-ng instead when possible:\n  enum4linux-ng -A <dc> → better formatting, JSON output, more reliable\n\n=== WITH CREDENTIALS ===\nenum4linux -u <user> -p <pass> -A <dc_ip>  → authenticated enumeration",
+  "examples": [
+    {
+      "label": "Full unauthenticated enum",
+      "command": "enum4linux -A 172.16.5.5"
+    },
+    {
+      "label": "Authenticated enum",
+      "command": "enum4linux -u forend -p Klmcargo2 -A 172.16.5.5"
+    }
+  ],
+  "references": [
+    {
+      "title": "enum4linux (CiscoCXSecurity)",
+      "url": "https://github.com/CiscoCXSecurity/enum4linux"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-admodule-spn",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "enum4linux enumerates users, groups, shares, and policy over SMB/RPC, often via null sessions.",
+    "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
+    "impact": "A broad SMB/RPC enumeration of the domain.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "Null-session binds; SAMR/LSARPC queries; share listing.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1135",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "enum4linux"
+  ]
+}

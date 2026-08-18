@@ -1,0 +1,65 @@
+{
+  "type": "reference",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "reg"
+  ],
+  "tags": [
+    "reference",
+    "autologon",
+    "registry"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Query the Winlogon key for stored autologon creds",
+      "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\""
+    },
+    {
+      "label": "Values that hold the plaintext password",
+      "command": "# AdminAutoLogon=1 | DefaultUserName | DefaultPassword"
+    }
+  ],
+  "notes": "=== Windows Autologon and PuTTY Registry Credentials Reference ===\nQuick reference for registry-based credential locations accessible to standard users.\n\n=== AUTOLOGON REGISTRY PATH ===\nHKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\n\nKey values:\n  DefaultUserName    → autologon username\n  DefaultDomainName  → domain (may be COMPUTER_NAME for local, or DOMAIN for domain accounts)\n  DefaultPassword    → plaintext password\n  AutoAdminLogon     → 1 = autologon enabled\n\nQuery command:\n  reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" /v DefaultPassword\n  Get-ItemProperty \"HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" | Select Default*\n\nAccess: BUILTIN\\Users has read access — any standard user can read this\n\nEncrypted alternative: Sysinternals Autologon.exe encrypts via LSA secrets (not readable without admin)\nCheck AutoAdminLogon=1 first to know if plaintext version is in use\n\n=== PUTTY PROXY CREDENTIALS ===\nHKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions\\<session_name>\n\nKey values:\n  ProxyUsername    → proxy username\n  ProxyPassword    → proxy password (plaintext)\n  HostName         → target host\n  UserName         → SSH username\n\nQuery current user:\n  reg query \"HKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions\" /s\n\nQuery all users (requires admin or access to HKEY_USERS):\n  reg query \"HKU\\\" → list SIDs\n  reg query \"HKU\\<SID>\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions\" /s\n\n=== CHAINING CONTEXT ===\nAutologon credentials on domain-joined machine → domain account → lateral movement\nPuTTY proxy credentials → proxy server access → network pivot through corporate proxy\nAutologon on kiosk/service machines → often high-privilege accounts for automated tasks\nAfter local admin escalation → sweep all users' HKU hives for PuTTY sessions\n\n=== WHAT TO LOOK FOR ===\nDefaultPassword value present = immediate credential\nAutoAdminLogon=1 with DefaultPassword = definitely in use and readable\nPuTTY session proxy credentials = often forgotten and never rotated\nMultiple PuTTY sessions per user = each session is a separate credential store to enumerate",
+  "references": [
+    {
+      "title": "Microsoft - Autologon",
+      "url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/user-profiles-and-logon/turn-on-automatic-logon"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "reg-stored-creds",
+      "note": "Full registry credential-hunting workflow.",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-autologon-keys",
+  "name": "Reference - Autologon Registry Keys",
+  "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\"",
+  "description": "Registry values that store cleartext autologon credentials when AdminAutoLogon is enabled.",
+  "opsec": "silent",
+  "mitre": [
+    "T1552.002"
+  ],
+  "exam": "exam-ok"
+}

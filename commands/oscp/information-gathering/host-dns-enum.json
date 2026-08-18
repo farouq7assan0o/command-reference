@@ -1,0 +1,157 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "host"
+  ],
+  "tags": [
+    "dns",
+    "enumeration",
+    "forward-lookup",
+    "reverse-lookup",
+    "brute-force"
+  ],
+  "category": "Information Gathering",
+  "subcategory": "DNS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 6: Information Gathering",
+  "id": "host-dns-enum",
+  "name": "host - DNS Forward/Reverse Lookup and Brute Force",
+  "description": "DNS lookups using the host command: forward lookups, specific record type queries (MX, TXT, NS), forward brute force, and reverse PTR sweeps.",
+  "command": "host <domain>",
+  "variations": [
+    {
+      "description": "Forward DNS lookup (A record)",
+      "command": "host <domain>",
+      "label": "host lookup"
+    },
+    {
+      "description": "MX record lookup",
+      "command": "host -t mx <domain>",
+      "label": "MX records"
+    },
+    {
+      "description": "TXT record lookup (SPF, DMARC, verification tokens)",
+      "command": "host -t txt <domain>",
+      "label": "TXT records"
+    },
+    {
+      "description": "NS record lookup",
+      "command": "host -t ns <domain>",
+      "label": "NS records"
+    },
+    {
+      "description": "Forward brute force — append prefix list to domain",
+      "command": "for ip in $(cat <wordlist>); do host $ip.<domain>; done",
+      "label": "Batch loop"
+    },
+    {
+      "description": "Forward brute force — filter resolved hosts only",
+      "command": "for ip in $(cat <wordlist>); do host $ip.<domain>; done | grep -v 'not found'",
+      "label": "Batch loop"
+    },
+    {
+      "description": "Reverse sweep — PTR lookups across address range",
+      "command": "for ip in $(seq <start> <end>); do host <prefix>.$ip; done | grep -v 'not found'",
+      "label": "Batch loop"
+    },
+    {
+      "description": "Lookup specific IP via reverse DNS",
+      "command": "host <ip>",
+      "label": "host lookup"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Basic forward lookup",
+      "command": "host www.megacorpone.com"
+    },
+    {
+      "label": "MX record query",
+      "command": "host -t mx megacorpone.com"
+    },
+    {
+      "label": "TXT record query (SPF, DMARC)",
+      "command": "host -t txt megacorpone.com"
+    },
+    {
+      "label": "Forward brute force with wordlist",
+      "command": "for ip in $(cat list.txt); do host $ip.megacorpone.com; done"
+    },
+    {
+      "label": "Forward brute force — show only resolved hosts",
+      "command": "for ip in $(cat list.txt); do host $ip.megacorpone.com; done | grep -v 'not found'"
+    },
+    {
+      "label": "Reverse PTR sweep over /24 range",
+      "command": "for ip in $(seq 200 254); do host 51.222.169.$ip; done | grep -v 'not found'"
+    },
+    {
+      "label": "Reverse lookup single IP",
+      "command": "host 38.100.193.70"
+    }
+  ],
+  "notes": "host is a simple, clean DNS utility — good for quick record queries and loop-based brute force scripts. For forward brute force: build a wordlist of common hostnames (admin, mail, vpn, dev, test, staging, etc.) and iterate `host $prefix.<domain>`. Filter NXDOMAIN responses with `grep -v 'not found'`. For reverse sweeps: iterate a range of the last octet over the known netblock prefix and filter results. Reverse PTR records often reveal internal naming conventions (srv01, dc01, sql-prod) that expose infrastructure layout. TXT records may expose SPF sources (third-party services), DKIM selectors, or verification tokens revealing cloud providers. Chaining: host for quick forward/reverse lookups → dnsenum for comprehensive automated enumeration → nmap against discovered hosts.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1018",
+    "T1590.002"
+  ],
+  "exam": "exam-ok",
+  "references": [
+    {
+      "title": "host man page - BIND utilities",
+      "url": "https://linux.die.net/man/1/host"
+    },
+    {
+      "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Remote System Discovery",
+      "url": "https://attack.mitre.org/techniques/T1018/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "whois-lookup",
+      "rel": "prereq",
+      "note": "Run WHOIS first to get netblock ranges and nameservers to target."
+    },
+    {
+      "id": "dnsenum-full",
+      "rel": "next",
+      "note": "Follow up with dnsenum for comprehensive automated DNS enumeration including AXFR attempts."
+    },
+    {
+      "id": "nmap-host-discovery-sweep",
+      "rel": "next",
+      "note": "Feed discovered IPs from PTR sweep to nmap for port scanning."
+    }
+  ],
+  "defense": {
+    "why_it_works": "DNS is an open directory by design. PTR records in reverse zones and subdomain brute force against public resolvers require no authentication — if DNS zones are not carefully curated, internal topology is exposed.",
+    "prerequisites": "DNS resolver reachable. Target domain known. For reverse sweeps: netblock range known (from WHOIS).",
+    "misconfiguration": "Reverse PTR zone populated with internal server names. Internal hostnames resolvable via public DNS. No DNS firewall/RPZ to block external subdomain brute force queries.",
+    "vulnerable_config": "# Reverse zone exposing internal naming\n$ORIGIN 169.222.51.in-addr.arpa.\n200 PTR dc01.corp.megacorpone.com.\n201 PTR sql-prod.corp.megacorpone.com.",
+    "secure_config": "# Remove PTR records for internal hosts from public-facing reverse zones\n# Use split-horizon DNS: internal zone has full records, external zone has only public IPs",
+    "impact": "Reveals internal hostname conventions, number of servers, server roles (dc, sql, vpn, mail) — accelerates lateral movement planning.",
+    "detection": "High NXDOMAIN rate from single source (subdomain brute force). Sequential PTR lookups across a /24 range. Both visible in DNS server query logs.",
+    "artifacts": "DNS query logs, passive DNS databases recording the brute force patterns.",
+    "prevention": "Split-horizon DNS. Remove PTR records for internal hosts from external reverse zones. Implement DNS firewall / Response Policy Zones to flag or block known brute-force patterns.",
+    "evasion": "Use slow request rate to stay below NXDOMAIN threshold alerts. Query from multiple source IPs.",
+    "sources": [
+      "OSCP Ch06",
+      "MITRE T1018"
+    ]
+  }
+}

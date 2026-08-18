@@ -1,0 +1,125 @@
+{
+  "id": "protected-2john",
+  "name": "JtR - Crack Password-Protected Files (2john)",
+  "command": "ssh2john.py <file> > file.hash && john --wordlist=/usr/share/wordlists/rockyou.txt file.hash",
+  "description": "The *2john helpers convert a protected artifact (SSH key, Office doc, PDF, ZIP) into a John-crackable hash. Extract the hash, crack it with a wordlist, then reveal the password with --show. Locate all helpers with 'locate *2john*'.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "john",
+    "ssh2john",
+    "office2john",
+    "pdf2john",
+    "zip2john"
+  ],
+  "tags": [
+    "john",
+    "ssh-key",
+    "office",
+    "pdf",
+    "zip",
+    "crack"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Cracking Protected Files",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "SSH key -> hash (system tool, preferred over ssh2john.py script)",
+      "command": "ssh2john id_rsa > ssh.hash"
+    },
+    {
+      "label": "CAUTION: hashcat fails for SSH hashes with 'Token length exception' — use john instead",
+      "command": "# hashcat -m 22921 ssh.hash wordlist   ← may fail: 'Token length exception / No hashes loaded'\n# john --wordlist=ssh.passwords --rules=sshRules ssh.hash   ← john handles SSH correctly"
+    },
+    {
+      "label": "Office doc -> hash",
+      "command": "office2john.py Protected.docx > protected-docx.hash"
+    },
+    {
+      "label": "PDF -> hash",
+      "command": "pdf2john.py PDF.pdf > pdf.hash"
+    },
+    {
+      "label": "ZIP -> hash",
+      "command": "zip2john ZIP.zip > zip.hash"
+    },
+    {
+      "label": "Crack the resulting hash",
+      "command": "john --wordlist=rockyou.txt ssh.hash"
+    }
+  ],
+  "notes": "Check whether an SSH key is even encrypted first: ssh-keygen -yf <keyfile> prompts for a passphrase only if it is. Also covered in: OSCP PEN-200 Chapter 15 (Password Attacks).",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "John the Ripper",
+      "url": "https://www.openwall.com/john/"
+    },
+    {
+      "title": "OffSec PEN-200 - Password Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "john-crack",
+      "note": "Cracks hashes with John the Ripper.",
+      "rel": "next"
+    },
+    {
+      "id": "hashcat-dictionary",
+      "note": "Runs a straight dictionary attack (-a 0): each wordlist entry is hashed and compared to the target.",
+      "rel": "alternative"
+    }
+  ],
+  "variations": [
+    {
+      "label": "SSH Key",
+      "command": "ssh2john.py <keyfile> > ssh.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt ssh.hash\njohn ssh.hash --show"
+    },
+    {
+      "label": "Office Doc",
+      "command": "office2john.py <file.docx> > office.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt office.hash\njohn office.hash --show"
+    },
+    {
+      "label": "PDF",
+      "command": "pdf2john.py <file.pdf> > pdf.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt pdf.hash\njohn pdf.hash --show"
+    },
+    {
+      "label": "ZIP Archive",
+      "command": "zip2john <file.zip> > zip.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt zip.hash\njohn zip.hash --show"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The *2john tools (zip2john, office2john, ssh2john, pdf2john, etc.) extract a crackable hash from a password-protected file for offline attack.",
+    "prerequisites": "The protected file and the matching *2john extractor + a wordlist.",
+    "impact": "A hash whose cracking reveals the file's password and contents.",
+    "prevention": "Strong passphrases on protected files; the attack is offline and undetectable, so passphrase strength is the only defence.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Authentication protocols store or transmit passwords in formats that are offline-crackable: NTLM hashes (no salt, fast GPU attack), NTLMv2 net hashes (slightly slower but crackable), Kerberos RC4 hashes from Kerberoasting (offline crack without network contact), MD5/SHA1 web app hashes (no key stretching). Weak passwords crack in minutes; even complex ones crack with sufficient GPU power if hashing is fast.",
+    "vulnerable_config": "# NTLM hash — no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
+    "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
+  }
+}

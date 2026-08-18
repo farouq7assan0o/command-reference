@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nsslscan tests SSL/TLS configurations for weaknesses: protocol versions (SSLv2/3, TLS 1.0/1.1 deprecated), weak cipher suites (RC4, 3DES, EXPORT), certificate validity/expiry, and BEAST/POODLE/HEARTBLEED vulnerability indicators.\n\n=== CHAINING ===\nTarget enumeration reveals HTTPS services \u2192 sslscan target:443 \u2192 identify weak protocols/ciphers \u2192 report findings: TLS 1.0/1.1 = Medium, SSLv3 = High, EXPORT ciphers = Critical (DROWN).\n\n=== COMMON FINDINGS ===\nTLS 1.0/1.1 still enabled (common in legacy apps), RC4 cipher suites (deprecated), self-signed certificates (no identity validation), certificate CN mismatch.",
+  "references": []
+}

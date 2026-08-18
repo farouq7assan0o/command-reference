@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl"
+  ],
+  "tags": [
+    "joomla",
+    "fingerprinting"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Joomla",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Fingerprint Joomla in the page source",
+      "command": "curl -s http://dev.inlanefreight.local/ | grep Joomla"
+    },
+    {
+      "label": "Read the first lines of README.txt for a version band",
+      "command": "curl -s http://dev.inlanefreight.local/README.txt | head -n 5"
+    },
+    {
+      "label": "Pull the exact version from the manifest XML",
+      "command": "curl -s http://dev.inlanefreight.local/administrator/manifests/files/joomla.xml | xmllint --format -"
+    }
+  ],
+  "notes": "administrator/manifests/files/joomla.xml gives the exact version even when README is scrubbed. The Joomla stats API can corroborate the version band.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "droopescan-joomla",
+      "note": "Automate Joomla enumeration.",
+      "rel": "next"
+    },
+    {
+      "id": "joomla-bruteforce",
+      "note": "Go straight for the admin panel if enumeration stalls.",
+      "rel": "next"
+    }
+  ],
+  "id": "joomla-detect",
+  "name": "Joomla - Detect and Version Enumeration",
+  "command": "curl -s http://<url>/ | grep Joomla",
+  "description": "Confirms Joomla and pulls the version from README.txt or the administrator manifest XML. robots.txt reveals the /administrator path.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Joomla exposes its identity through the generator meta tag, /administrator/ login path, /README.txt, /administrator/manifests/files/joomla.xml, and robots.txt disallow entries. These are unauthenticated and reliably reveal Joomla version.",
+    "prerequisites": "HTTP access to the target. No credentials required.",
+    "impact": "Attacker identifies Joomla version enabling precise CVE lookup. The /administrator/ path is confirmed for credential attacks. robots.txt reveals internal paths.",
+    "detection": "Sequential GET requests to /README.txt, /administrator/manifests/files/joomla.xml, /robots.txt in rapid succession. Web scanner signatures for Joomla fingerprinting.",
+    "artifacts": "Web server access logs (enumeration GETs) | WAF alerts for CMS fingerprinting UA strings",
+    "prevention": "Remove README.txt, LICENSE.txt from production. Restrict /administrator/ to known IP ranges. Suppress generator meta tag via Joomla Global Configuration.",
+    "misconfiguration": "Joomla deployed with default readme/license files and a public administrator login path, with no IP restriction or banner suppression.",
+    "vulnerable_config": "# Joomla default\n# README.txt, LICENSE.txt at webroot\n# /administrator/ accessible from any IP\n# Generator meta: <meta name=\"generator\" content=\"Joomla!...\"/>",
+    "secure_config": "# Remove fingerprinting files\nrm /var/www/html/README.txt /var/www/html/LICENSE.txt\n# Apache\n<Directory /var/www/html/administrator>\n  Require ip 10.0.0.0/8\n</Directory>\n# Joomla Global Config: disable generator tag",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595.002",
+      "OWASP A05:2021"
+    ]
+  },
+  "variations": [
+    {
+      "label": "Corroborate version via Joomla stats API",
+      "command": "curl -s https://developer.joomla.org/stats/cms_version | python3 -m json.tool"
+    }
+  ]
+}

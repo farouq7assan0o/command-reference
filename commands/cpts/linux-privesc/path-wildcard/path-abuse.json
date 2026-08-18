@@ -1,0 +1,100 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "bash"
+  ],
+  "tags": [
+    "path-abuse",
+    "privilege-escalation"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Path & Wildcard Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Inspect the current PATH",
+      "command": "echo $PATH"
+    },
+    {
+      "label": "Prepend the current directory to PATH",
+      "command": "PATH=.:${PATH}; export PATH"
+    },
+    {
+      "label": "Plant a malicious 'ls' the root program will call",
+      "command": "echo 'echo \"PATH ABUSE!!\"' > ls; chmod +x ls"
+    }
+  ],
+  "notes": "For real escalation the payload should do something useful (copy bash to /tmp and setuid, add sudoers line, etc.) rather than echo.",
+  "references": [
+    {
+      "title": "PATH environment variable",
+      "url": "http://www.linfo.org/path_env_var.html"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "find-suid-sgid",
+      "note": "Needs a SUID/root program that calls a binary by relative name.",
+      "rel": "prereq"
+    },
+    {
+      "id": "restricted-shell-escape",
+      "note": "Related environment-abuse trick.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "path-abuse",
+  "name": "Path Abuse - Hijack a Relative Binary Call",
+  "command": "PATH=.:${PATH}",
+  "description": "If a privileged script/binary calls another command by name (not full path), prepend a writable dir to PATH and drop a malicious binary with that name so it runs instead.",
+  "steps": [
+    {
+      "label": "1. Inspect and extend PATH",
+      "command": "echo $PATH\nenv | grep PATH\nPATH=.:${PATH}\nexport PATH\necho $PATH"
+    },
+    {
+      "label": "2. Plant malicious replacement (e.g. ls)",
+      "command": "touch ls\necho 'echo \"PATH ABUSE!!\"' > ls\nchmod +x ls"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1574.007"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "If . (current directory) or a user-controlled directory appears early in $PATH, commands without full paths are resolved from the attacker's directory first. When a privileged script (cron, sudo, SUID) runs a command by name only (e.g., 'ls' or 'id'), the attacker's malicious binary in their controlled PATH entry is executed instead of the system binary.",
+    "prerequisites": "A PATH entry controlled by the attacker (current dir in PATH, writable directory before /usr/bin). A privileged script that calls commands without full absolute paths.",
+    "impact": "Code execution as the privileged user running the script (root). Can be leveraged to add sudoers entries, create SUID shells, or execute reverse shells as root.",
+    "detection": "Unexpected binary names in home directory or /tmp matching system command names. Unusual process execution where 'ls' or 'id' runs from an unexpected path. Auditd: execve of command from non-standard path.",
+    "artifacts": "Auditd: execve('/home/user/ls') called by root cron | Process audit: command executed from unexpected directory",
+    "prevention": "Always use absolute paths in scripts and cron jobs (/usr/bin/ls, /bin/id). Never include . or user-writable directories in root's PATH. Audit PATH in cron jobs and sudo scripts. Use 'secure_path' in /etc/sudoers to override user PATH for sudo commands.",
+    "misconfiguration": "Root-executed script or cron job calls commands without absolute paths. Root's PATH or the script's runtime PATH includes . (current directory) or user-controlled directories before /usr/bin.",
+    "vulnerable_config": "# Insecure script (no absolute paths)\n#!/bin/bash\nbackup_files=$(ls -la /backup/)\nid\n\n# PATH with . first (extremely dangerous)\nPATH=.:$PATH",
+    "secure_config": "# Always use absolute paths in privileged scripts\n#!/bin/bash\nbackup_files=$(/bin/ls -la /backup/)\n/usr/bin/id\n\n# /etc/sudoers -- enforce secure PATH\nDefaults secure_path=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n\n# Never set PATH=.:$PATH for root",
+    "evasion": "Create malicious binary with the same name as a command used in the target script. Ensure it's in a directory that appears before /usr/bin in PATH.",
+    "sources": [
+      "HTB M25",
+      "MITRE T1574.007",
+      "MITRE T1548"
+    ]
+  }
+}

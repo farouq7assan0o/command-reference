@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nsamrdump.py (Impacket) queries the SAMR (Security Account Manager Remote) protocol to enumerate domain users, groups, and password policy via null session or credentials. Automates what rpcclient does manually.\n\n=== CHAINING ===\nsamrdump \u2192 user list \u2192 password policy \u2192 plan spray attack \u2192 use enum4linux-ng if samrdump misses data (tool implementations differ, complement each other).\n\n=== vs RPCCLIENT ===\nsamrdump.py outputs clean structured data automatically. rpcclient requires manual command entry. Both use SAMR protocol. Use both \u2014 one may return results the other misses due to implementation differences.",
+  "references": []
+}

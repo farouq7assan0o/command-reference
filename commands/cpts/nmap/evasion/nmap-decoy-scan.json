@@ -1,0 +1,88 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "decoy",
+    "evasion"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Firewall & IDS/IPS Evasion",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "Custom decoys + your IP",
+      "command": "sudo nmap 10.129.2.28 -p 80 -sS -D 10.0.0.1,10.0.0.2,ME"
+    },
+    {
+      "label": "Lab example",
+      "command": "sudo nmap 10.129.2.28 -p 80 -sS -Pn -n --disable-arp-ping --packet-trace -D RND:5"
+    }
+  ],
+  "notes": "`-D RND:5` hides your real IP among 5 decoys so the target logs multiple sources. Decoys must be live or you stand out. Pair with `-e` and `-S` for source control. Pure evasion - the scan itself is unchanged.",
+  "references": [
+    {
+      "title": "Nmap Firewall/IDS Evasion",
+      "url": "https://nmap.org/book/man-bypass-firewalls-ids.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nmap-tcp-connect-scan",
+      "rel": "alternative",
+      "note": "The underlying scan being masked."
+    },
+    {
+      "id": "nmap-firewall-scan-types",
+      "rel": "prereq",
+      "note": "Confirm filtering with SYN/ACK scans before deploying decoys"
+    }
+  ],
+  "id": "nmap-decoy-scan",
+  "name": "Evasion - Decoy Scan (-D)",
+  "command": "sudo nmap <ip> -p 80 -sS -Pn -n --disable-arp-ping --packet-trace -D RND:5",
+  "description": "Decoys hide your real IP among spoofed sources so the target/IDS sees the scan coming from many addresses. RND:5 generates five random decoys.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Nmap inserts randomly generated IP addresses into the IP header to disguise the real origin of scan packets. The attacker's real IP is placed randomly among the decoys, making attribution difficult.",
+    "prerequisites": "Network access to the target and a set of decoy IPs to interleave with the real source.",
+    "impact": "Open-port/service data collected while the true origin is hidden among decoy addresses.",
+    "detection": "Spoofed decoy packets are often filtered out by ISPs and routers. Defenders can cross-reference scan source IPs against geolocation and known-good ranges; decoy IPs that are unreachable or inconsistent indicate a decoy scan. Decoys must be alive hosts — dead decoy IPs trigger SYN-flooding defenses.\n\n[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "Scan traffic showing many apparent sources in IDS/firewall logs — the real IP is present but buried among the decoys.",
+    "prevention": "[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "evasion": "Decoy IPs must be active hosts on the network. Using dead IPs as decoys can trigger SYN-flood protection mechanisms on the target, blocking the scan.",
+    "sources": [
+      "HTB M03",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Network perimeters that do not filter ICMP, do not use egress filtering, or expose unnecessary services (all ports open) allow comprehensive port scanning. Systems without host-based firewalls or IDS/IPS allow scan traffic to enumerate every open service, revealing attack surface. No rate-limiting on inbound probes means stealth scans complete quickly.",
+    "vulnerable_config": "# No firewall between attacker and target (or overly permissive rules):\n# iptables -L  ->  Chain INPUT (policy ACCEPT)  [no rules]\n# Or: Windows Firewall disabled\n# Every service's port is reachable from any source\n\n# No IDS/IPS:\n# Snort/Suricata not deployed; no AWS GuardDuty / Azure Defender\n# Nmap SYN scan completes in seconds with no alert generated",
+    "secure_config": "# Linux host-based firewall — default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
+  }
+}

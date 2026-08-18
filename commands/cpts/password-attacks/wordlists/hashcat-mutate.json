@@ -1,0 +1,75 @@
+{
+  "id": "hashcat-mutate",
+  "name": "Hashcat - Generate Mutated Wordlist",
+  "command": "hashcat --force <wordlist> -r <rule_file> --stdout | sort -u > mutated.list",
+  "description": "Uses Hashcat rule engine with --stdout to print (rather than crack) every rule-mutated variant of a wordlist, producing a new expanded list. Rule functions: c capitalize, sXY substitute X with Y, $x append character.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "hashcat"
+  ],
+  "tags": [
+    "hashcat",
+    "rules",
+    "wordlist",
+    "mutation"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Wordlist Generation",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Apply rules to a wordlist and save it",
+      "command": "hashcat --force password.list -r custom.rule --stdout | sort -u > mut_password.list"
+    }
+  ],
+  "notes": "Expand a wordlist with rules (`-r best64.rule`) to cover capitalization, leet, and appended digits/years - turns a small list into millions of realistic candidates.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Rule-Based Attack",
+      "url": "https://hashcat.net/wiki/doku.php?id=rule_based_attack"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hashcat-dictionary",
+      "rel": "next",
+      "note": "Crack with the mutated wordlist."
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Hashcat rules (or --stdout) mutate a base wordlist (leetspeak, appends, case) to generate realistic password variants for cracking.",
+    "prerequisites": "A base wordlist and a rule file.",
+    "impact": "An expanded candidate list that captures human password patterns - offline processing.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Authentication protocols store or transmit passwords in formats that are offline-crackable: NTLM hashes (no salt, fast GPU attack), NTLMv2 net hashes (slightly slower but crackable), Kerberos RC4 hashes from Kerberoasting (offline crack without network contact), MD5/SHA1 web app hashes (no key stretching). Weak passwords crack in minutes; even complex ones crack with sufficient GPU power if hashing is fast.",
+    "vulnerable_config": "# NTLM hash \u2014 no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
+    "secure_config": "# Web apps \u2014 use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python \u2014 Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
+  }
+}

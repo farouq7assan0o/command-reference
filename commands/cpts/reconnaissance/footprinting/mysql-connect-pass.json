@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nConnects to MySQL with a password. Used after discovering credentials from config files (mysqld.cnf with plaintext credentials), web app configs (wp-config.php), or other sources.\n\n=== CHAINING ===\nFind MySQL credentials in config file \u2192 mysql -u user -pPASSWORD -h target \u2192 enumerate databases \u2192 harvest application data \u2192 check privileges for file read/write.\n\n=== WORDPRESS ===\nwp-config.php contains DB_NAME, DB_USER, DB_PASSWORD in plaintext. MySQL access with these credentials \u2192 wp_users table \u2192 admin password hash \u2192 crack or reset admin password \u2192 WordPress admin panel \u2192 plugin upload \u2192 RCE.",
+  "references": []
+}

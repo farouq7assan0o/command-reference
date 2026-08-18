@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n--min-rate N sets a floor on packets per second. When network bandwidth and detection threshold are known (white-box test with whitelisted scanning), this can cut scan time to ~1/3 without missing results. In example: 29s \u2192 8s, same port count.\n\n=== RISK ===\nOn unknown/monitored networks, high rates trigger IDS/IPS blocks. --min-rate is most appropriate when scanner is whitelisted in IPS rules, or in internal trusted environments. High rates generate traffic anomalies visible to NOC/SOC.\n\n=== vs TIMING TEMPLATES ===\n--min-rate overrides the per-packet rate floor regardless of -T setting. More granular than -T templates but requires knowledge of the network capacity.",
+  "references": []
+}

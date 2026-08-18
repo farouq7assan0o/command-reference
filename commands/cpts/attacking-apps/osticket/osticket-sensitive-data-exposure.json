@@ -1,0 +1,123 @@
+{
+  "id": "osticket-sensitive-data-exposure",
+  "name": "osTicket - Email Harvesting & Sensitive Data Exposure",
+  "command": "# 1) create a ticket at /open.php -> get a company email  2) reuse leaked creds at /scp/login.php  3) read tickets for leaked passwords",
+  "description": "osTicket has few direct CVEs, so it is abused for what it exposes: submitting a ticket assigns a valid company email (usable to register on other gated services like Slack/GitLab), and reusing credentials harvested via OSINT (Dehashed) to log into the staff panel reveals passwords leaked inside support tickets - a classic sensitive-data-exposure chain.",
+  "type": "attack-chain",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "dehashed",
+    "curl",
+    "browser"
+  ],
+  "tags": [
+    "osticket",
+    "sensitive-data-exposure",
+    "osint",
+    "credential-reuse",
+    "email-harvesting",
+    "helpdesk"
+  ],
+  "category": "Exploitation",
+  "subcategory": "osTicket",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "steps": [
+    {
+      "label": "Step 1 - fingerprint osTicket (OSTSESSID cookie, 'powered by osTicket' footer)",
+      "command": "curl -sI http://<url>/ | grep -i OSTSESSID"
+    },
+    {
+      "label": "Step 2 - open a ticket to get assigned a valid internal company email",
+      "command": "# http://<url>/open.php  -> ticket #940288 -> 940288@<domain> (reusable to register elsewhere)"
+    },
+    {
+      "label": "Step 3 - harvest leaked credentials for the domain via OSINT",
+      "command": "sudo python3 dehashed.py -q <domain> -p"
+    },
+    {
+      "label": "Step 4 - reuse creds at the staff/agent login (accepts username OR email)",
+      "command": "# http://<url>/scp/login.php   try  <user>:<password>  then  <email>:<password>"
+    },
+    {
+      "label": "Step 5 - read open/closed tickets for leaked passwords (new-joiner / reset passwords)",
+      "command": "# Dashboard -> Tickets -> read agent replies; export the address book of emails/usernames"
+    },
+    {
+      "label": "Step 6 - reuse the leaked password against exposed portals (e.g. VPN)",
+      "command": "# spray the standard/new-joiner password vs vpn.<domain>; build a userlist with linkedin2username"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Dehashed cleartext creds (fictional sample from the module)",
+      "command": "jclayton:JulieC8765!\nkgrimes:Fish1ng_s3ason!   # login worked as kevin@inlanefreight.local"
+    },
+    {
+      "label": "Subdomains found alongside - support + vpn are live",
+      "command": "support.inlanefreight.local\nvpn.inlanefreight.local   # Barracuda SSL VPN, no MFA"
+    }
+  ],
+  "notes": "osTicket 1.14.1 has CVE-2020-24881 (SSRF) but the module's taught path is abuse, not a CVE: (1) a submitted ticket hands you a real company email address to pass email-verification on other services; (2) the staff login at /scp/login.php accepts an email OR a username, so a Dehashed hit that fails as a username may succeed as the email; (3) inside the queue, agents frequently leak the standard new-joiner/reset password in a ticket reply - reuse it against the VPN. Also export the address book (emails/usernames) to feed password spraying. Root causes: external exposure, no MFA, password reuse, emailing passwords. Not an OSCP-listed app, so no OffSec reference is claimed.",
+  "references": [
+    {
+      "title": "osTicket - official site",
+      "url": "https://osticket.com/"
+    },
+    {
+      "title": "Intigriti - Hacking companies through their helpdesk",
+      "url": "https://medium.com/intigriti/how-i-hacked-hundreds-of-companies-through-their-helpdesk-b7680ddc2d4c"
+    },
+    {
+      "title": "NVD - CVE-2020-24881 (osTicket SSRF)",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-24881"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "eyewitness",
+      "note": "The screenshot sweep that flags the osTicket instance to attack.",
+      "rel": "prereq"
+    },
+    {
+      "id": "other-apps-defaults",
+      "note": "Reuse harvested creds/emails against other exposed apps.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1078",
+    "T1213"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "prerequisites": "An externally exposed osTicket portal that allows ticket creation, plus either leaked/reused credentials (OSINT) or sensitive data sitting in the ticket queue. Staff login reachable at /scp/login.php.",
+    "why_it_works": "Helpdesk workflows assign real, routable company email addresses to tickets and store free-form agent replies; combined with password reuse and the login accepting email-or-username, an attacker turns public support functionality into a credential and data-access foothold.",
+    "misconfiguration": "Portal exposed externally without MFA; agents email/store passwords in tickets; corporate emails reused on third-party services; weak/standard new-joiner passwords not force-changed.",
+    "impact": "A valid company email for bypassing email verification elsewhere, staff-panel access via reused creds, and leaked passwords (e.g. VPN) enabling a network foothold - a stepping stone to internal access.",
+    "detection": "Staff logins from unusual IPs/geos; a single account trying username then email; bulk ticket reads/exports; new external account registrations tied to a ticket email; spray attempts against the VPN shortly after portal access.",
+    "artifacts": "osTicket auth logs (successful staff login, new IP); ticket-view/export events; VPN auth logs showing the leaked password; Dehashed queries are attacker-side (no target artifact).",
+    "prevention": "Enforce MFA on all external portals. Never send passwords through tickets. Ban corporate-email signups on third-party services. Enforce a strong AD/app password policy and force change-at-first-login. Limit what is exposed externally. [MITRE M1032, M1017, M1027]",
+    "evasion": "Blend in: create a normal-looking ticket, authenticate with valid creds (looks legitimate), and pace VPN spraying under lockout thresholds (osTicket account lockout / VPN throttling).",
+    "sources": [
+      "HTB M24",
+      "MITRE T1078",
+      "MITRE T1213",
+      "CVE-2020-24881"
+    ]
+  }
+}

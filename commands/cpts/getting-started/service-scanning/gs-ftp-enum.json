@@ -1,0 +1,77 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "ftp"
+  ],
+  "tools": [
+    "ftp"
+  ],
+  "tags": [
+    "ftp",
+    "anonymous"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Service Scanning",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Anonymous login + grab a file",
+      "command": "# login: anonymous\nls\ncd pub\nget login.txt\nexit"
+    },
+    {
+      "label": "Read the retrieved file",
+      "command": "cat login.txt"
+    }
+  ],
+  "notes": "Try anonymous:anonymous first; note the banner for CVEs; `ls -la` for hidden files. This is the Getting-Started intro - Module 04 covers FTP enumeration in depth.",
+  "references": [
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ftp-enum",
+      "rel": "next",
+      "note": "Full FTP enumeration (Module 04)."
+    }
+  ],
+  "id": "gs-ftp-enum",
+  "name": "FTP - Anonymous Enumeration",
+  "command": "ftp -p <ip>",
+  "description": "Connect to FTP and try the anonymous login - open FTP frequently exposes files (configs, credentials, backups).",
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Anonymous FTP authentication is enabled by default or left misconfigured, requiring no credentials. The FTP control connection is plaintext, transmitting commands and credentials in the clear.",
+    "prerequisites": "Network access to an FTP service (TCP 21) that permits anonymous or guest login.",
+    "impact": "A directory listing and downloadable files — potentially sensitive data or credentials — plus the server version for CVE matching.",
+    "detection": "[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "An FTP connection and 'USER anonymous' in the FTP server log; plaintext control-channel traffic visible to network monitoring.",
+    "prevention": "Disable anonymous FTP access unless explicitly required. Use SFTP or FTPS to encrypt data in transit instead of plain FTP.\n\n[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "sources": [
+      "HTB M02",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

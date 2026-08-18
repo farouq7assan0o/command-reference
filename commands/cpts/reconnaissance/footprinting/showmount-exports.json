@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nshowmount -e queries the NFS server's export list via RPC before any mount attempt. Returns each exported path and the allowed source subnet/host. Confirms what is exported and whether the attacker's IP falls within the allowed network.\n\n=== CHAINING ===\nshowmount -e \u2192 if IP in allowed subnet: mount share \u2192 ls -n for UIDs \u2192 UID matching or no_root_squash exploitation.\n\n=== ACCESS CONTROL ===\nExport showing * (wildcard) or the attacker's subnet = accessible. Single-host exports to specific IPs require IP spoofing to circumvent (complex). Subnet exports (e.g., 10.0.0.0/8) are commonly overly permissive.",
+  "references": []
+}

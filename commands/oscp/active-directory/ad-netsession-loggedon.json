@@ -1,0 +1,115 @@
+{
+  "id": "ad-netsession-loggedon",
+  "name": "AD Enumeration - Logged-On Users & Session Hunting",
+  "command": "Get-NetSession -ComputerName <target>\nFind-LocalAdminAccess",
+  "description": "Identify where privileged users are currently logged on — critical for planning lateral movement and credential harvesting. Get-NetSession queries a host's NetSessionEnum API to list active SMB sessions. Find-LocalAdminAccess tests admin rights across all domain computers. PsLoggedon.exe queries the registry and NetSessionEnum to show interactively logged-on users. These together map out where high-value accounts are active.",
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "domain-joined"
+  ],
+  "tools": [
+    "powerview",
+    "psloggedon"
+  ],
+  "tags": [
+    "active-directory",
+    "ad-enum",
+    "session-hunting",
+    "logged-on",
+    "lateral-movement-prep",
+    "powerview"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Active Directory",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 21: Active Directory Introduction and Enumeration (21.3.2)",
+  "examples": [
+    {
+      "label": "Check sessions on a specific host",
+      "command": "Get-NetSession -ComputerName files04"
+    },
+    {
+      "label": "Verbose mode to see why it fails (Access is denied = normal on modern Windows)",
+      "command": "Get-NetSession -ComputerName files04 -Verbose"
+    },
+    {
+      "label": "Check registry ACL to confirm if GetNetSession is blocked (Windows 10 v1709+)",
+      "command": "Get-Acl -Path HKLM:SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\DefaultSecurity | select -ExpandProperty Access"
+    },
+    {
+      "label": "Find all machines where current user has local admin",
+      "command": "Find-LocalAdminAccess"
+    },
+    {
+      "label": "PsLoggedon - show interactively logged-on users on a remote host",
+      "command": ".\\PsLoggedon.exe \\\\<target>"
+    },
+    {
+      "label": "Combine OS enum with session hunting: find computers running older OS first",
+      "command": "Get-NetComputer | Select-Object dnshostname,operatingsystem | Where-Object {$_.operatingsystem -like '*2019*' -or $_.operatingsystem -like '*2016*'}"
+    }
+  ],
+  "notes": "Windows 10 1709+ and Server 2019+ restrict NetSessionEnum to admins by default — Get-NetSession will return 'Access is denied' on patched hosts. The registry key HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\DefaultSecurity\\SrvsvcSessionInfo controls this ACL. On older/misconfigured hosts, Get-NetSession works without admin. PsLoggedon requires the Remote Registry service to be running on the target (often disabled). Find-LocalAdminAccess generates a lot of SMB traffic across all domain computers — noisy but very useful for mapping your attack path before lateral movement.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Active Directory Introduction and Enumeration",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "PowerView - GitHub (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "Sysinternals PsLoggedon",
+      "url": "https://learn.microsoft.com/en-us/sysinternals/downloads/psloggedon"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-powerview-test-adminaccess",
+      "rel": "alternative",
+      "note": "Test-AdminAccess is the targeted equivalent of Find-LocalAdminAccess on a specific host."
+    },
+    {
+      "id": "ad-cme-loggedon",
+      "rel": "alternative",
+      "note": "CrackMapExec --loggedon-users achieves the same from Linux without PowerView."
+    },
+    {
+      "id": "pth-evilwinrm",
+      "rel": "escalation",
+      "note": "Once you know where admin access exists, pivot there with evil-winrm or psexec."
+    },
+    {
+      "id": "ad-find-domainshare",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1049",
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "NetSessionEnum (RPC call via \\PIPE\\srvsvc) and NetWkstaUserEnum list active sessions and logged-on users on remote hosts without requiring admin rights (by default). This maps where domain users are currently authenticated — pinpointing DA session locations for targeted credential theft or token impersonation.",
+    "prerequisites": "Any domain user (NetSessionEnum accessible to all by default unless RestrictRemoteSam is set). SMB port 445 access to target hosts. PowerView or custom RPC calls.",
+    "impact": "T1049 System Network Connections Discovery + T1087.002 Account Discovery: Domain Account. Maps which privileged users are currently logged on to which hosts — converts DA credential theft from guesswork to a targeted operation.",
+    "detection": "Rapid \\PIPE\\srvsvc NetSessionEnum RPC calls to many hosts from a single workstation. Sysmon Event 3: rapid port 445 connections to many hosts. MDI: 'SMB session enumeration reconnaissance'. Event 4104 SBL: PowerView session-hunting functions.\nMonitor for invocation of tools associated with network connection discovery (netstat, ss, net use, who -a, arp). System and network discovery typically occur early in an operation. Correlate discovery commands with other suspicious activity to identify attack patterns. Baseline normal network connection monitoring activities by administrators.",
+    "artifacts": "Sysmon Event 3: rapid 445 connections to many hosts | MDI: session enumeration recon | Event 4104: Find-DomainUserLocation / NetSessionEnum calls | Netflow: single source → many hosts TCP 445",
+    "prevention": "Restrict NetSessionEnum to admins only via RestrictRemoteSam registry key. DA logon only from PAWs. Protected Users group for DA accounts. MDI deployment.\nThis technique is difficult to mitigate as it uses legitimate OS utilities. Focus on limiting unnecessary network connectivity and maintaining least privilege.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Target specific known high-value hosts rather than sweeping all hosts. Use delays between queries. Use from a host that legitimately generates high SMB traffic.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1049/",
+      "https://attack.mitre.org/techniques/T1087/002/"
+    ],
+    "misconfiguration": "RestrictRemoteSam not configured (default — any auth user can enumerate sessions). DAs log on to regular workstations. No MDI. No PAW model.",
+    "vulnerable_config": "# RestrictRemoteSam not set:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RestrictRemoteSam  # $null\n\n# Any auth user can see who's logged on where:\nnet session \\\\workstation01\n# → CORP\\DomainAdmin1 logged on → target for PtH/token theft",
+    "secure_config": "# Restrict NetSessionEnum to Administrators:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RestrictRemoteSam -Value 'O:BAG:BAD:(A;;RC;;;BA)'\n\n# Via GPO:\n# Computer Config → Windows Settings → Security Settings → Local Policies → Security Options\n# → Network access: Restrict clients allowed to make remote calls to SAM\n\n# Add DAs to Protected Users:\nAdd-ADGroupMember 'Protected Users' 'DomainAdmin1'"
+  }
+}

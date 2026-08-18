@@ -1,0 +1,83 @@
+{
+  "id": "crtp-llmnr-poisoning",
+  "name": "LLMNR/NBT-NS Poisoning (Responder)",
+  "command": "sudo responder -I <interface> -dwv",
+  "description": "Poison LLMNR and NBT-NS broadcast name resolution to capture NTLMv2 hashes from domain hosts. No credentials required.",
+  "platform": "linux",
+  "category": "Active Directory",
+  "subcategory": "Foothold",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS",
+    "OSCP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1557.001"
+  ],
+  "tools": [
+    "Responder"
+  ],
+  "tags": [
+    "llmnr",
+    "nbns",
+    "poisoning",
+    "hash-capture",
+    "mitm"
+  ],
+  "examples": [
+    {
+      "label": "Poison on eth0",
+      "command": "sudo responder -I eth0 -dwv"
+    },
+    {
+      "label": "Analyze mode (no poison)",
+      "command": "sudo responder -I eth0 -A"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-responder-crack",
+      "note": "Crack captured NTLMv2 hash with hashcat",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-password-spray",
+      "note": "Spray cracked credential across domain",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-user-enumeration",
+      "note": "Validate captured usernames",
+      "rel": "next"
+    }
+  ],
+  "notes": "Best during business hours. Disable SMB/HTTP in Responder.conf if only capturing, not responding.",
+  "references": [
+    {
+      "title": "CRTP - LLMNR Poisoning",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "When Windows fails DNS resolution, it falls back to LLMNR (UDP 5355) and NBT-NS (UDP 137) multicast queries on the local subnet. Any host on the same broadcast domain can respond with a spoofed IP. Windows then connects to that IP via SMB or HTTP, sending NTLMv2 challenge-response hashes. Responder automates spoofed responses and captures/relays these hashes.",
+    "prerequisites": "Attacker on same L2 broadcast domain as victim. LLMNR or NBT-NS not disabled by GPO. Responder or Inveigh running. For relay: SMB signing disabled on target hosts (default on workstations).",
+    "impact": "T1557.001 Adversary-in-the-Middle: LLMNR/NBT-NS Poisoning and SMB Relay. Captures Net-NTLMv2 hashes for offline cracking, or relays to authenticate to other hosts without cracking.",
+    "detection": "LLMNR/NBT-NS queries followed by responses from unexpected IPs. IDS/NDR: unexpected LLMNR response from non-DC. Sysmon Event 3: SMB connection to unexpected IP after name resolution failure. Event 4624 on relay target sourced from attacker IP. MDI: NTLM relay detection. Zeek: LLMNR response from non-authoritative source.\nDetect suspicious DNS/ARP poisoning attempts, unauthorized modifications to registry/network configuration, or abnormal TLS downgrade activity; correlate with subsequent unusual network flows or authentication events (DET0296/AN0823). Unauthorized edits to /etc/hosts, /etc/resolv.conf, or suspicious ARP broadcasts correlated with unexpected network sessions (AN0824). Unauthorized edits to system configuration profiles, unexpected certificate trust changes, or abnormal ARP/DNS interception patterns (AN0825). Unauthorized firmware/configuration changes enabling AiTM positioning: route injection, DNS spoofing, SSL downgrade; sudden changes to routing tables or image file integrity failures (AN0826).",
+    "artifacts": "IDS alert: LLMNR response from non-DC | Event 4624 on relay target with source = attacker IP | Zeek llmnr.log: unexpected responder | Responder.db on attacker (captured hashes) | SMB connection to attacker IP in netflow",
+    "prevention": "Disable LLMNR via GPO: Computer Config → Admin Templates → Network → DNS Client → Turn off multicast name resolution: Enabled. Disable NBT-NS via NIC settings or GPO. Require SMB signing on all hosts to prevent relay. Deploy MDI.\nDisable or Remove Feature or Program: Disable legacy network protocols that may be used to intercept traffic if not needed.\nEncrypt Sensitive Information: Ensure all wired/wireless traffic is encrypted; use Kerberos; protect web traffic containing credentials with SSL/TLS.\nFilter Network Traffic: Use network appliances and host-based security to block unnecessary traffic, including legacy protocols leveraged for AiTM.\nLimit Access to Resource Over Network: Limit access to network infrastructure that can reshape traffic or produce AiTM conditions.\nNetwork Intrusion Prevention: Use IDS/IPS to identify AiTM traffic patterns.\nNetwork Segmentation: Isolate infrastructure components that do not require broad network access.\nUser Training: Train users to be suspicious about certificate errors; adversaries may use their own certs to intercept HTTPS.",
+    "evasion": "Use Responder --analyze first to observe without poisoning. HTTPS relay for environments with SMB signing. Run during high-activity hours when DNS failures are frequent.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1557/001/"
+    ],
+    "misconfiguration": "LLMNR enabled (default on all Windows). NBT-NS enabled. SMB signing not required on workstations (default). No IDS rule for unexpected LLMNR responses.",
+    "vulnerable_config": "# LLMNR enabled (Windows default):\n# GPO: Computer Config → Admin Templates → Network → DNS Client\n# → Turn off multicast name resolution: NOT CONFIGURED\n\n# SMB signing not required on workstations:\nGet-SmbServerConfiguration | Select-Object RequireSecuritySignature  # False = relay possible\n\n# NBT-NS enabled (default Windows NIC binding)",
+    "secure_config": "# Disable LLMNR via GPO:\n# Computer Config → Admin Templates → Network → DNS Client\n# → Turn off multicast name resolution: Enabled\n\n# Disable NBT-NS:\n$adapters = Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True'\nforeach ($a in $adapters) { $a.SetTcpipNetbios(2) }  # 2 = Disable\n\n# Require SMB signing everywhere:\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\n\n# GPO equivalent:\n# Computer Config → Windows Settings → Security Settings → Local Policies → Security Options\n# → Microsoft network client: Digitally sign communications (always): Enabled\n# → Microsoft network server: Digitally sign communications (always): Enabled"
+  }
+}

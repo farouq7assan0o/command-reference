@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nReconSpider is a custom Scrapy-based spider that crawls a target domain and outputs structured intelligence to results.json. Automatically collects: emails, links, external_files, js_files, form_fields, images, comments.\n\n=== HIGH-VALUE OUTPUT ===\nemails: direct social engineering/phishing target list. js_files: often contain API endpoints, hardcoded tokens, internal logic, third-party integrations. comments: developer notes, disabled code, internal path references, version strings. external_files: PDFs with metadata, internal info, credentials.\n\n=== ANALYTICAL APPROACH ===\nCross-reference keys: comment referencing internal path + JS file with API endpoint + PDF leaking employee names = composite picture. No single key is conclusive \u2014 value comes from correlation.\n\n=== CHAINING ===\nReconSpider crawl \u2192 analyze results.json \u2192 interesting JS files \u2192 JS analysis for API keys/endpoints \u2192 interesting emails \u2192 phishing target list \u2192 interesting comments \u2192 path leads for fuzzing.",
+  "references": []
+}

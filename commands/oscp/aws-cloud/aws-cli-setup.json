@@ -1,0 +1,105 @@
+{
+  "id": "aws-cli-setup",
+  "name": "AWS CLI - Configure Profile & Verify Identity",
+  "command": "aws configure --profile <profile_name>\naws --profile <profile_name> sts get-caller-identity",
+  "description": "Configure the AWS CLI with stolen/leaked access keys and verify what identity they belong to. aws configure stores the Access Key ID and Secret Access Key in ~/.aws/credentials under a named profile. sts get-caller-identity returns the UserId, Account ID, and ARN \u2014 the first thing to run after obtaining any AWS keys. get-access-key-info extracts the Account ID from any AKID without requiring any permissions (useful to fingerprint whose account a key belongs to from a different account).",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "aws-access-key-id",
+    "aws-secret-access-key"
+  ],
+  "tools": [
+    "awscli"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "initial-access",
+    "identity",
+    "credentials",
+    "iam"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.3.1, 24.4.2)",
+  "examples": [
+    {
+      "label": "Configure profile with stolen keys",
+      "command": "aws configure --profile target\n# Enter: AWS Access Key ID, Secret Access Key, region (us-east-1), output format (json)"
+    },
+    {
+      "label": "Verify identity - who am I in this account?",
+      "command": "aws --profile target sts get-caller-identity\n# Returns: UserId, Account (12-digit account ID), Arn (full IAM ARN)"
+    },
+    {
+      "label": "Get Account ID from any AKID (works cross-account, no target perms needed)",
+      "command": "aws --profile attacker sts get-access-key-info --access-key-id AKIAVXWRNA7HUYFERLHS"
+    },
+    {
+      "label": "Test in a different region (some resources are region-scoped)",
+      "command": "aws --profile target sts get-caller-identity --region us-east-2"
+    },
+    {
+      "label": "Probe a permission blindly - error message reveals the full IAM ARN",
+      "command": "aws --profile target lambda invoke --function-name arn:aws:lambda:us-east-1:<account_id>:function:nonexistent-function outfile\n# Error: not authorized to perform: lambda:InvokeFunction... User: arn:aws:iam::<account_id>:user/<path>/<user>"
+    },
+    {
+      "label": "Install awscli on Kali if missing",
+      "command": "sudo apt update && sudo apt install -y awscli"
+    }
+  ],
+  "notes": "Access Key IDs starting with AKIA are long-term credentials (IAM user keys). AKIDs starting with ASIA are temporary STS credentials (from AssumeRole or instance metadata). The account ID is 12 digits and appears in the ARN as the 5th colon-separated segment: arn:aws:iam::<account_id>:user/<name>. sts get-access-key-info only requires a valid AWS profile (even your own attacker account) and returns the account ID the target AKID belongs to \u2014 useful for mapping which company/account a leaked key came from. Credentials are stored in ~/.aws/credentials (keys) and ~/.aws/config (region/output). Multiple profiles can coexist; switch with --profile.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Enumerating AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "AWS CLI - configure command",
+      "url": "https://docs.aws.amazon.com/cli/latest/reference/configure/"
+    },
+    {
+      "title": "AWS STS - get-caller-identity",
+      "url": "https://docs.aws.amazon.com/cli/latest/reference/sts/get-caller-identity.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-iam-scope-permissions",
+      "rel": "next",
+      "note": "After confirming identity, scope what permissions the compromised key has."
+    },
+    {
+      "id": "aws-account-id-iam-enum",
+      "rel": "alternative",
+      "note": "get-access-key-info is one of several techniques to enumerate the target account ID."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1078.004",
+    "T1526"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Once AWS credentials are obtained (from IMDS, exposed .env, git history, or compromised CI/CD), the AWS CLI provides full API access to all services the credential's IAM principal has access to. AWS CLI stores credentials in ~/.aws/credentials with named profiles \u2014 enabling persistent access using stolen long-term access keys or temporary session tokens. The CLI is the primary tool for cloud enumeration and exploitation.",
+    "prerequisites": "AWS Access Key ID (AKIA.../ASIA...) and Secret Access Key. Optional: Session Token (for temporary credentials from IMDS/AssumeRole). AWS CLI installed. Network access to AWS API endpoints.",
+    "impact": "T1078.004 Valid Accounts: Cloud Accounts + T1526 Cloud Service Discovery. Establishes authenticated access to the AWS environment using stolen credentials. All subsequent AWS attacks require this initial setup.",
+    "detection": "AWS CloudTrail: GetCallerIdentity call from unexpected IP/region. IAM Access Analyzer: unusual API call patterns. CloudWatch Logs: new source IP for existing IAM user. GuardDuty: 'Credential Access: IAMUser/AnomalousBehavior' or 'UnauthorizedAccess:IAMUser/UnusualASNCalled'.\nAnomalous logon patterns, abnormal logon types, and inconsistent geographic or time-based activity across Windows endpoints (DET0560/AN1543).\nSSH logins, sudo/su abuse, and service account anomalies outside expected patterns (AN1544).\nInteractive and remote logins by service accounts or users at unusual times with unexpected child process activity (AN1545).\nIdP logs showing geographic anomalies, impossible travel, risky sign-ins, multiple MFA attempts or failures (AN1546).",
+    "artifacts": "CloudTrail: sts:GetCallerIdentity call | CloudTrail: API calls from new source IP | GuardDuty finding: anomalous credential use | IAM: last used timestamp updated for credential",
+    "prevention": "No long-term access keys (AKIA): use IAM roles for EC2/Lambda, AWS SSO for human users. If keys must exist: rotate every 90 days, enforce via IAM credential report. Enable AWS GuardDuty (detects anomalous credential use). CloudTrail in all regions. SCPs limiting API calls to approved regions. IP-based condition policies restricting credential use to corporate IPs.\nAccount Use Policies: Use conditional access policies to block logins from non-compliant devices or outside defined IP ranges.\nActive Directory Configuration: Disable legacy authentication; require modern authentication protocols with MFA support.\nMulti-factor Authentication: Implement MFA across all account types (default, local, domain, cloud accounts).\nPassword Policies: Change default credentials immediately after installation; minimize password reuse across accounts.",
+    "evasion": "Use credentials from the same region as the legitimate user. Call APIs consistent with the credential's normal usage pattern. Avoid high-volume enumeration (use targeted calls). Use IMDS credentials (temporary, region-consistent, harder to flag as external).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1078/004/",
+      "https://attack.mitre.org/techniques/T1526/"
+    ],
+    "misconfiguration": "Long-term IAM access keys created and not rotated. Keys embedded in code, .env files, or CI/CD pipelines. No CloudTrail in all regions. GuardDuty not enabled. No IP-condition policy on sensitive credentials.",
+    "vulnerable_config": "# IAM user with long-term access keys:\naws iam list-access-keys --user-name developer\n# \u2192 AccessKeyId: AKIAIOSFODNN7EXAMPLE, Status: Active, CreateDate: 2020-01-01\n# Created in 2020, never rotated = long-lived credential risk\n\n# No credential policy restricting source IP:\n# Policy missing Condition: IpAddress aws:SourceIp restriction\n# \u2192 Key works from any IP worldwide",
+    "secure_config": "# Enforce MFA + IP restriction on IAM user:\n# IAM policy condition:\n# {\n#   'Condition': {\n#     'Bool': {'aws:MultiFactorAuthPresent': 'true'},\n#     'IpAddress': {'aws:SourceIp': ['10.0.0.0/8', '203.0.113.0/24']}\n#   }\n# }\n\n# AWS Config rule: no long-term access keys for root:\naws configservice put-config-rule --config-rule file://no-root-access-key.json\n\n# Prefer IAM roles over access keys:\n# For EC2: attach IAM role \u2192 credentials via IMDS (auto-rotated)\n# For humans: AWS SSO with SAML \u2192 temporary credentials only\n\n# Alert on credential report: keys older than 90 days:\naws iam generate-credential-report\naws iam get-credential-report | base64 -d | grep AKIA | awk -F, '$10>90{print $1,$10}'"
+  }
+}

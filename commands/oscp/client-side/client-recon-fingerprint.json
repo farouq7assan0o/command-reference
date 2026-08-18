@@ -1,0 +1,97 @@
+{
+  "id": "client-recon-fingerprint",
+  "name": "Client-Side Recon - Fingerprint the Target",
+  "command": "python3 -m http.server 80   # watch the User-Agent of the machine that connects",
+  "description": "Before building a client-side payload you need to know what the victim runs - OS build, browser, and Office version - so you don't burn a pretext with a payload that won't fire. Host a benign resource (tracking image or HTML), embed its link in an email, and read the incoming request's User-Agent and source IP to fingerprint the client stack.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python",
+    "apache",
+    "exiftool"
+  ],
+  "tags": [
+    "client-side",
+    "recon",
+    "fingerprint",
+    "phishing",
+    "user-agent"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Client-Side Attacks",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 11: Client-Side Attacks",
+  "variations": [
+    {
+      "label": "Passive: read metadata from a document the target sent you",
+      "command": "exiftool -a -u <document>"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Simple listener that logs User-Agent + IP",
+      "command": "python3 -m http.server 80"
+    },
+    {
+      "label": "Tracking pixel to embed in the phishing email",
+      "command": "<img src=\"http://192.168.49.128/logo.png\" width=\"1\" height=\"1\">"
+    },
+    {
+      "label": "Read what connected",
+      "command": "# e.g. 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Office/16.0' -> Win10 x64, Office 2016"
+    },
+    {
+      "label": "Passive: read metadata from a PDF/doc the target sent (no network required)",
+      "command": "exiftool -a -u brochure.pdf"
+    }
+  ],
+  "notes": "Two methods:\nACTIVE: Host a resource (python3 -m http.server 80), embed a tracking pixel in a phishing email, read the incoming User-Agent + IP. The UA string reveals Windows build (NT 10.0 = Win10/11), architecture (Win64/x64), browser engine, and Office version.\nPASSIVE: Run exiftool -a -u <file> on a document the target sent you (CV, brochure, etc.) to read metadata without any network interaction. Look for Author, Software, Creator fields - 'Microsoft Word 16.0' reveals Office 2016, Windows OS. No network exposure, so no chance of pre-alert.\nEither method gives you enough to choose between a macro (.doc), HTA (mshta.exe), or Library-ms chain. Keep the active hosted resource genuinely harmless so this step doesn't trip alarms before the real payload.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Client-Side Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MDN - User-Agent header",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/User-Agent"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "office-macro-payload",
+      "rel": "next",
+      "note": "Once you confirm Office, craft the matching macro document."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1592.002",
+    "T1598.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Before launching client-side attacks, gathering information about the target's browser, plugins, and AV solution enables targeted payload selection. Browser fingerprinting via JavaScript exposes User-Agent (browser version, OS), installed plugins (Java, Flash, PDF reader), screen resolution, and timezone. This guides the attacker to select exploits and payloads compatible with the exact client configuration and most likely to evade the installed AV.",
+    "prerequisites": "Target visits a controlled web page (phishing link). JavaScript execution in browser. Attacker-controlled web server with fingerprinting code.",
+    "impact": "T1592.002 Gather Victim Host Information: Software + T1598.002 Phishing for Information: Spearphishing Link. Maps target's attack surface \u2014 identifies exploitable browser vulnerabilities, allows AV-targeted payload selection, and helps choose the most effective client-side attack vector.",
+    "detection": "Web proxy log: target visiting external fingerprinting domain. Browser extension: content security policy violations. EDR: unusual JavaScript execution patterns. Network: outbound connection to attacker-controlled fingerprinting endpoint.\nInternet scanners may be used to detect patterns associated with malicious content collecting host information from visitors. Much of this activity occurs outside target visibility with high false positive rates. Focus detection on related stages such as Initial Access (DET0826/AN1958).",
+    "artifacts": "Proxy log: target browser making request to attacker domain | DNS query for fingerprinting domain | Browser dev tools: JS fingerprinting requests | EDR: browser subprocess spawning after fingerprint page",
+    "prevention": "DNS filtering (block malicious domains at DNS resolver). Web proxy with category filtering (block newly registered domains, phishing categories). Browser extension: uBlock Origin or strict content security. Disable JavaScript where possible for sensitive browsing. Anti-phishing email gateway. User awareness training.\nPre-compromise: Cannot be easily mitigated with preventive controls as it occurs outside enterprise defenses. Focus on minimizing the amount and sensitivity of host data available to external parties.",
+    "evasion": "Use legitimate hosting for fingerprinting page (GitHub Pages, Cloudflare). Fingerprinting JS looks identical to normal web analytics code. Use HTTPS to evade content inspection.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1592/002/",
+      "https://attack.mitre.org/techniques/T1598/002/"
+    ],
+    "misconfiguration": "No DNS filtering. Web proxy without category-based blocking. No user training on phishing identification. Browser plugins enabled (Flash, Java \u2014 each increases attack surface).",
+    "vulnerable_config": "# No DNS filtering:\n# Users can resolve any domain \u2192 attacker fingerprinting domain accessible\n\n# Browser plugins enabled (each is an attack surface):\n# Java plugin: enables Java applet exploits\n# Flash: CVE-2018-15982 and hundreds more\n# PDF reader plugins: numerous exploits\n\n# No web proxy content filtering for newly registered domains",
+    "secure_config": "# DNS filtering (Cisco Umbrella, Cloudflare Gateway, or internal RPZ):\n# Block: newly registered domains, phishing categories, malware categories\n\n# Disable browser plugins:\n# Group Policy: disable Java, Flash, and other NPAPI plugins in Chrome/Firefox\n# Chrome: chrome://settings/content/plugins \u2192 Block all plugins\n\n# Web proxy: block uncategorized and newly registered domains for 30 days\n\n# User awareness: report phishing training program (GoPhish, KnowBe4)"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nFilters crt.sh certificate transparency log output to find subdomains matching a specific string (e.g., \"dev\", \"staging\", \"admin\", \"api\", \"vpn\"). CT logs record every publicly trusted TLS certificate ever issued \u2014 including for decommissioned subdomains still running outdated software.\n\n=== WHY CT LOGS ===\nUnlike brute-forcing (bounded by wordlist quality), CT logs are a factual historical record of every certificate issued for a domain. Reveals subdomains with unusual/non-guessable names that no wordlist would find. Expired certificate subdomains may still be live and running unpatched software.\n\n=== CHAINING ===\ncrtsh-json (get all certs) \u2192 jq filter for substring \u2192 unique subdomains \u2192 resolve to IPs \u2192 nmap scan targets.\n\n=== PASSIVE ===\nNo traffic reaches the target \u2014 all queries go to crt.sh API. One of the lowest-risk recon techniques available.",
+  "references": []
+}

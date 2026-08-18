@@ -1,0 +1,90 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "discovery",
+    "web",
+    "scanning"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Application Discovery",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Scan the common web-app ports across the whole scope list",
+      "command": "sudo nmap -p 80,443,8000,8080,8180,8888,10000 --open -oA web_discovery -iL scope_list"
+    },
+    {
+      "label": "Quick single-host service/version sweep",
+      "command": "sudo nmap --open -sV 10.129.201.50"
+    }
+  ],
+  "notes": "Feed the results into EyeWitness/Aquatone rather than clicking each host - vhosts on the same IP look identical by port alone. Add the scope's vhosts to /etc/hosts first or name-based apps won't resolve.",
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "eyewitness",
+      "note": "Screenshot every live web app the scan found.",
+      "rel": "next"
+    },
+    {
+      "id": "aquatone",
+      "note": "Alternative screenshotting/report tool from the same nmap XML.",
+      "rel": "next"
+    }
+  ],
+  "id": "app-discovery-nmap",
+  "name": "Application Discovery - Nmap Web Ports",
+  "command": "nmap -p 80,443,8000,8080,8180,8888,10000 --open -oA web_discovery -iL <scope_file>",
+  "description": "Scans a scope list for the common web/application ports (including alternate HTTP ports like 8080/8180/8500) and saves all output formats. The XML feeds screenshotting tools like EyeWitness/Aquatone.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Web-facing services expose version banners and default paths. Nmap service probes retrieve HTTP Server headers and SSL certificates, reliably fingerprinting CMS platforms, app servers, and middleware without authentication.",
+    "prerequisites": "The target ports must be reachable; no credentials required. Banner grabbing works against any unfiltered TCP service.",
+    "impact": "Attacker maps the full application footprint — web servers, CMS versions, management interfaces — enabling precise CVE selection before attempting exploitation.",
+    "detection": "Log Nmap's TCP SYN + service-probe traffic (rapid sequential connections from one source IP across many ports). IDS signatures for Nmap version-scan probes (Snort SID 1-469). Host-based: correlate rapid new connections in netflow.",
+    "artifacts": "IDS/IPS alerts for port scan patterns | Web server access logs showing version-probe GET requests | Firewall connection logs (high connection rate from single IP)",
+    "prevention": "Run all management interfaces on non-standard ports behind a VPN or ACL. Suppress version banners: set ServerTokens Prod (Apache), server_tokens off (nginx). Use a WAF that blocks scanner fingerprints.",
+    "misconfiguration": "Default Nmap scan hits open port 8080/8443 with verbose banners (e.g., Apache Tomcat/9.0.30) and exposed /manager, /admin, /console paths because no server-token suppression or network ACL exists.",
+    "vulnerable_config": "# Apache default\nServerTokens Full\nServerSignature On\n# Tomcat server.xml default\n<Connector port=\"8080\" Server=\"Apache-Coyote/1.1\"/>",
+    "secure_config": "# Apache\nServerTokens Prod\nServerSignature Off\n# Nginx\nserver_tokens off;\n# Tomcat server.xml\n<Connector port=\"8080\" Server=\" \"/>\n# Network: restrict /manager, /admin to internal IPs only",
+    "evasion": "Slow-rate scan (--scan-delay 5s, -T1). Fragment packets (-f). Use --randomize-hosts. Decoy scanning (-D RND:10).",
+    "sources": [
+      "HTB M24",
+      "MITRE T1046",
+      "MITRE T1595.002"
+    ]
+  }
+}

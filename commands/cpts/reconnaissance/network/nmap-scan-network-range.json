@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nScans a network range (CIDR or octet range) for host discovery and open ports. Combined with -sn (ping scan only) for initial host discovery or with port flags for full scanning.\n\n=== HOST DISCOVERY FIRST ===\nAlways run host discovery (-sn) before port scanning a range \u2014 identify live hosts, then target only those for service enumeration. Scanning 65535 ports against 254 dead hosts wastes time.\n\n=== ARP vs ICMP ===\nOn local segments: Nmap uses ARP first (Layer 2, bypasses firewall rules). Cross-segment: ICMP echo. Use --disable-arp-ping to force ICMP if ARP results differ from expected.",
+  "references": []
+}

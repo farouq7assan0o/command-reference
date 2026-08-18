@@ -1,0 +1,67 @@
+{
+  "id": "cdsa-m07-tcpdump-fundamentals",
+  "name": "TCPDump — Fundamentals, Switches & File I/O",
+  "command": "sudo tcpdump -i eth0 -nnvXX",
+  "description": "TCPDump is a command-line packet sniffer that captures and interprets network traffic using libpcap. Requires root/sudo. Supports live capture and reading from PCAP files. Key switches modify verbosity, output format, name resolution, and file I/O. Combine switches for best results: -nnvXX for full output without resolution.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "TCPDump",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 07: Intro to Network Traffic Analysis",
+  "tags": ["tcpdump", "pcap", "packet-capture", "network-analysis", "blue-team", "nta"],
+  "mitre": ["T1040"],
+  "notes": "=== INSTALLATION & VALIDATION ===\nwhich tcpdump                          # check if installed\nsudo apt install tcpdump               # install if missing\nsudo tcpdump --version                 # verify version\nman tcpdump                            # full documentation\n\n=== KEY SWITCHES ===\n-D        List all available interfaces\n-i eth0   Select interface to capture from\n-n        Do not resolve IP addresses to hostnames\n-nn       Do not resolve IPs or port numbers\n-e        Include ethernet (layer 2) header in output\n-X        Show packet contents in Hex + ASCII\n-XX       Same as -X but also includes ethernet header (= -Xe)\n-v        Verbose output (more protocol detail)\n-vv       More verbose\n-vvv      Maximum verbosity\n-c 100    Capture only 100 packets then exit\n-s 0      Capture entire packet (no truncation)\n-S        Show absolute sequence numbers (default: relative)\n-q        Quiet — less protocol info\n-A        Show only ASCII (no hex)\n-l        Line-buffer output (enables pipe to grep)\n-r file   Read from PCAP file\n-w file   Write capture to PCAP file\n\n=== COMMON SWITCH COMBINATIONS ===\nsudo tcpdump -i eth0                   # basic live capture\nsudo tcpdump -i eth0 -nn              # no name/port resolution\nsudo tcpdump -i eth0 -e               # include MAC addresses\nsudo tcpdump -i eth0 -X               # hex + ASCII output\nsudo tcpdump -i eth0 -nnvXX           # full detail, no resolution\nsudo tcpdump -i eth0 -c 50 -nn        # capture 50 packets\n\n=== FILE I/O ===\n# Write capture to file (output doesn't scroll terminal)\nsudo tcpdump -i eth0 -w ~/output.pcap\n\n# Write with no resolution + verbose\nsudo tcpdump -i eth0 -nvw /tmp/capture.pcap\n\n# Read from file\nsudo tcpdump -r ~/output.pcap\n\n# Read file with full detail switches\nsudo tcpdump -nnSXr /tmp/capture.pcap\n  # -nn = no resolution, -S = absolute seq nums, -X = hex+ASCII\n\n# Read ASCII only (pipe-friendly)\nsudo tcpdump -Ar telnet.pcap\n\n# Pipe to grep (requires -l for line buffering)\nsudo tcpdump -Ar http.cap -l | grep 'mailto:*'\n\n=== TCPDUMP OUTPUT FIELDS ===\nTimestamp  | Protocol | Source.Port > Destination.Port | Flags | Seq/Ack | Options | Length\nExample:\n10:58:33.719241 IP 172.16.146.2.55260 > 172.67.1.1.https: Flags [P.], seq 1953742992:1953743073, ack 2034210498, win 501, length 81\n  → Timestamp: 10:58:33.719241\n  → Source: 172.16.146.2 port 55260\n  → Destination: 172.67.1.1 port https (443)\n  → Flags: [P.] = PSH + ACK\n  → seq/ack: TCP sequence/acknowledgment numbers\n  → length: payload bytes\n\n=== TCP FLAGS IN OUTPUT ===\n[S]    SYN  — connection request\n[S.]   SYN-ACK — server response\n[.]    ACK  — acknowledgment only\n[P.]   PSH+ACK — data push with ack\n[F.]   FIN+ACK — connection teardown\n[R.]   RST  — reset (abrupt close)",
+  "examples": [
+    {
+      "label": "List available network interfaces",
+      "command": "sudo tcpdump -D"
+    },
+    {
+      "label": "Basic live capture on eth0",
+      "command": "sudo tcpdump -i eth0"
+    },
+    {
+      "label": "No name/port resolution",
+      "command": "sudo tcpdump -i eth0 -nn"
+    },
+    {
+      "label": "Full detail: no resolution, verbose, hex+ASCII, ethernet header",
+      "command": "sudo tcpdump -i eth0 -nnvXX"
+    },
+    {
+      "label": "Write capture to file (no output to terminal)",
+      "command": "sudo tcpdump -i eth0 -nvw /tmp/capture.pcap"
+    },
+    {
+      "label": "Read PCAP with full detail",
+      "command": "sudo tcpdump -nnSXr /tmp/capture.pcap"
+    },
+    {
+      "label": "Capture 100 packets then stop",
+      "command": "sudo tcpdump -i eth0 -c 100 -nn"
+    },
+    {
+      "label": "Pipe ASCII output to grep",
+      "command": "sudo tcpdump -Ar http.cap -l | grep 'GET'"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intro to Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/81"
+    },
+    {
+      "title": "TCPDump Man Page",
+      "url": "https://www.tcpdump.org/manpages/tcpdump.1.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m07-tcpdump-filters",
+      "rel": "next",
+      "note": "BPF filters for tcpdump — host, port, protocol, and logical operators."
+    }
+  ]
+}

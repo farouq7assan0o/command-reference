@@ -1,0 +1,99 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl",
+    "grep"
+  ],
+  "tags": [
+    "wordpress",
+    "fingerprinting"
+  ],
+  "category": "Enumeration",
+  "subcategory": "WordPress",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Fingerprint WordPress in the page source",
+      "command": "curl -s http://blog.inlanefreight.local | grep WordPress"
+    },
+    {
+      "label": "List referenced plugins (paths leak plugin + version)",
+      "command": "curl -s http://blog.inlanefreight.local/ | grep plugins"
+    },
+    {
+      "label": "Read a plugin readme.txt to confirm its exact version",
+      "command": "http://blog.inlanefreight.local/wp-content/plugins/mail-masta/readme.txt"
+    }
+  ],
+  "notes": "Login at /wp-login.php. Check robots.txt and /wp-content/uploads/.",
+  "references": [
+    {
+      "title": "WPScan - WordPress Security",
+      "url": "https://wpscan.com/"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "wpscan-enum",
+      "note": "Automate full user/plugin/theme enumeration.",
+      "rel": "next"
+    },
+    {
+      "id": "wp-mailmasta-lfi",
+      "note": "If the Mail Masta plugin is present, go straight for its LFI.",
+      "rel": "alternative"
+    },
+    {
+      "id": "wp-wpdiscuz-rce",
+      "note": "If wpDiscuz is present, target its unauthenticated RCE.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "wp-detect",
+  "name": "WordPress - Detect and Enumerate via cURL",
+  "command": "curl -s http://<url>/ | grep -E 'WordPress|themes|plugins'",
+  "description": "Confirms a WordPress install and passively enumerates active themes and plugins from asset links in the page source. Plugin readme.txt files often leak versions for CVE matching.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "WordPress embeds version-revealing strings in page source (/wp-content/ paths, generator meta tag, readme.html, /wp-login.php). Plugin readme.txt files expose exact plugin versions. All are publicly readable without authentication.",
+    "prerequisites": "HTTP access to the WordPress site. No credentials required.",
+    "impact": "Attacker confirms CMS type and version, discovers active plugins and themes, and maps exact CVE candidates before any active exploitation attempt.",
+    "detection": "Automated requests to /wp-login.php, /readme.html, /wp-content/plugins/*/readme.txt in rapid succession. IDS signatures for WPScan-style probing.",
+    "artifacts": "Web server access logs (GET /wp-login.php, /readme.html from single IP) | WAF alerts for CMS fingerprinting patterns",
+    "prevention": "Remove readme.html, license.txt from the web root. Suppress WordPress version in the generator meta tag (remove_action). Block /wp-content/ direct file access where possible. Use WordFence to detect enumeration attempts.",
+    "misconfiguration": "WordPress served with default readme.html and no version suppression, exposing exact version in the generator tag and /wp-includes/version.php readable via direct access.",
+    "vulnerable_config": "# WordPress default\n# <meta name=\"generator\" content=\"WordPress 5.8.1\"/>\n# readme.html accessible at webroot\n# /wp-includes/version.php readable",
+    "secure_config": "# functions.php\nremove_action('wp_head', 'wp_generator');\n# .htaccess\n<FilesMatch \"(readme|license|wp-config-sample)\\.\\w+$\">\n  Require all denied\n</FilesMatch>",
+    "evasion": "Read plugin list from page source JS (no direct /readme.txt hits). Use Google dorking (site:target.com inurl:wp-content) instead of active probing.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595.002",
+      "OWASP A05:2021"
+    ]
+  }
+}

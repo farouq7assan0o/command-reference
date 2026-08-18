@@ -1,0 +1,121 @@
+{
+  "id": "aws-domain-cloud-recon",
+  "name": "AWS Pre-Auth Recon - DNS & Cloud Service Discovery",
+  "command": "host -t ns <domain>\nhost <ip>\ncloud_enum -k <keyword> --quickscan --disable-azure --disable-gcp",
+  "description": "Identify AWS infrastructure before obtaining credentials. DNS NS record lookups for awsdns-XX.* nameservers confirm Route 53 usage. Reverse IP lookups confirm EC2 instances. dnsenum finds subdomains referencing AWS services. cloud_enum brute-forces cloud service names (S3 buckets, CloudFront, Elastic Beanstalk, Lambda URLs) using a keyword derived from the target's domain/brand name. Publicly exposed S3 buckets often contain sensitive files and can reveal the account ID.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "target-domain"
+  ],
+  "tools": [
+    "host",
+    "whois",
+    "dnsenum",
+    "cloud_enum"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "recon",
+    "s3",
+    "dns",
+    "passive",
+    "osint"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.2.2, 24.2.3)",
+  "examples": [
+    {
+      "label": "Check NS records to identify AWS Route 53 usage",
+      "command": "host -t ns offseclab.io\n# Look for ns-*.awsdns-*.{com,net,org,co.uk} = Route 53"
+    },
+    {
+      "label": "Confirm EC2 from reverse PTR record",
+      "command": "host 52.70.117.69\n# ec2-52-70-117-69.compute-1.amazonaws.com = EC2 us-east-1"
+    },
+    {
+      "label": "Confirm AWS IP ownership via whois",
+      "command": "whois 52.70.117.69 | grep 'OrgName'\nwhois awsdns-00.com | grep 'Registrant Organization'"
+    },
+    {
+      "label": "Subdomain enumeration with dnsenum (finds AWS service subdomains)",
+      "command": "dnsenum <domain> --threads 100"
+    },
+    {
+      "label": "cloud_enum - find S3 buckets with a single keyword",
+      "command": "cloud_enum -k <company_name> --quickscan --disable-azure --disable-gcp"
+    },
+    {
+      "label": "cloud_enum - try keyword variations from a file",
+      "command": "for key in \"public\" \"private\" \"dev\" \"prod\" \"assets\" \"backup\" \"data\"; do echo \"<company_name>-$key\"; done | tee /tmp/keyfile.txt\ncloud_enum -kf /tmp/keyfile.txt -qs --disable-azure --disable-gcp"
+    },
+    {
+      "label": "Extract S3 bucket name embedded in website HTML",
+      "command": "curl -s <target_url> | grep -o -P '<company_name>-assets-[\\w-]+'"
+    },
+    {
+      "label": "Install cloud_enum if missing",
+      "command": "sudo apt update && sudo apt install cloud-enum"
+    }
+  ],
+  "notes": "AWS Route 53 nameservers always follow the pattern ns-NUMBER.awsdns-NUMBER.{com|net|org|co.uk}. An EC2 PTR record follows ec2-A-B-C-D.compute-1.amazonaws.com (us-east-1) or ec2-A-B-C-D.REGION.compute.amazonaws.com. cloud_enum uses a wordlist of cloud-specific suffixes (s3.amazonaws.com, cloudapp.net, etc.) combined with your keyword to brute-force bucket/resource names. --quickscan skips the mutation list (faster, less noise); for a thorough run omit it. OPEN S3 BUCKET means the bucket exists AND is publicly listable \u2014 check its contents. An accessible-but-not-listable bucket will show a 403 with the bucket ARN \u2014 confirm it exists but access is denied. S3 bucket names must be globally unique, so companies often include a random suffix (e.g., company-assets-x7f3b2a1) \u2014 scrape the website HTML/JS for embedded bucket URLs first.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Enumerating AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "cloud_enum - GitHub",
+      "url": "https://github.com/initstring/cloud_enum"
+    },
+    {
+      "title": "MITRE ATT&CK - Cloud Infrastructure Discovery",
+      "url": "https://attack.mitre.org/techniques/T1580/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-s3-ec2-public-enum",
+      "rel": "next",
+      "note": "Once you have a bucket name or AWS credential, enumerate S3 and EC2 public resources."
+    },
+    {
+      "id": "cloud-recon",
+      "rel": "alternative",
+      "note": "Google dork inurl:amazonaws.com for passive S3 bucket discovery without tools."
+    },
+    {
+      "id": "aws-cli-setup",
+      "rel": "next",
+      "note": "Configure the AWS CLI with any keys found in public buckets or HTML source."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1580",
+    "T1596"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Passive cloud reconnaissance maps AWS assets without touching the target's systems: WHOIS for domain ownership and registrar, DNS enumeration (A, CNAME, MX, TXT records) to identify AWS services (EC2 IPs, S3 endpoints, CloudFront, SES), certificate transparency logs to discover subdomains, and Shodan/Censys for internet-exposed AWS assets. This maps the attack surface before any active interaction.",
+    "prerequisites": "Target domain name. Tools: amass, subfinder, dnsx, whois, crt.sh, Shodan API. No credentials required \u2014 all passive OSINT.",
+    "impact": "T1580 Cloud Infrastructure Discovery + T1596 Search Open Technical Databases. Maps the target's AWS infrastructure from public sources: exposed S3 buckets, EC2 instances, CloudFront distributions, API Gateway endpoints. Identifies attack surface without alerting the target.",
+    "detection": "Difficult to detect \u2014 passive OSINT uses public sources. Only active enumeration (DNS zone transfer attempts, Shodan-triggered port scans) would appear in logs. Certificate transparency queries against crt.sh are entirely passive.\nMonitor for suspicious enumeration of cloud infrastructure via APIs or CLI: repeated listing/description operations for compute instances, snapshots, storage buckets, and volumes; new/untrusted identities making discovery calls (DescribeInstances, ListBuckets, az vm list, gcloud compute instances list); enumeration from unusual geolocations or IPs; rapid multi-service discovery in sequence; correlate with later snapshot creation or instance modification (DET0169/AN0481).",
+    "artifacts": "DNS query logs: amass/subfinder querying target DNS (only if monitoring recursive resolvers) | Shodan: no artifact on target | crt.sh: no artifact on target | Passive = minimal/no detection artifacts",
+    "prevention": "Cannot prevent passive OSINT. Reduce attack surface: remove unused DNS records, disable public S3 buckets (Block Public Access), don't expose internal service subdomains in public DNS. Monitor certificate transparency for new certs issued for your domains (CertSpotter, Facebook CT Monitor). Use private hostnames for internal services.\nUser Account Management: Limit permissions to discover cloud infrastructure per least privilege; limit IAM roles with admin privileges, reduce permanent privileged assignments, conduct periodic entitlement reviews.",
+    "evasion": "Entirely passive \u2014 no network traffic to target. Enumerate from a VPS or TOR to avoid IP reputation blocking on some OSINT services. Use multiple certificate transparency sources.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1580/",
+      "https://attack.mitre.org/techniques/T1596/"
+    ],
+    "misconfiguration": "Internal service subdomains in public DNS (staging.internal.corp.com resolves publicly). Unused S3 bucket CNAMEs still in DNS. Test/dev environments exposed via DNS. No monitoring of certificate transparency for unauthorized certs.",
+    "vulnerable_config": "# Internal subdomains visible in public DNS:\ndig +short internal-api.corp.com\n# \u2192 10.0.1.5 (internal IP leaked in public DNS)\n\n# S3 bucket in DNS (potentially public):\nnslookup assets.corp.com\n# \u2192 CNAME: assets.corp.com.s3.amazonaws.com\n# \u2192 Check if bucket is public: aws s3 ls s3://assets.corp.com --no-sign-request",
+    "secure_config": "# Monitor your certificate transparency exposure:\n# CertSpotter alerting (sslmate.com/certspotter):\n# Subscribe to alerts for *.corp.com\n# \u2192 Alert when any new cert issued for your domain\n\n# Audit public DNS records:\n# amass enum -passive -d corp.com > public_subdomains.txt\n# Review: remove internal/unused entries from public DNS\n\n# Split-horizon DNS: internal names only resolve on internal DNS\n# Public DNS: only expose intentionally public endpoints\n\n# Enable Block Public Access at AWS account level (prevents all public S3)"
+  }
+}

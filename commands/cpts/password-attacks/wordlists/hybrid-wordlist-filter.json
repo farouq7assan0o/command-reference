@@ -1,0 +1,91 @@
+{
+  "id": "hybrid-wordlist-filter",
+  "name": "Build Hybrid Wordlist (Policy Filtering)",
+  "command": "grep -E '^.{8,}$' <wordlist> | grep -E '[A-Z]' | grep -E '[a-z]' | grep -E '[0-9]' > filtered.txt",
+  "description": "Trims a large password list down to only candidates that satisfy a known password policy, shrinking the keyspace and attack time. Chain grep -E filters for minimum length, upper, lower, digit, and symbol requirements to match the target's rules.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "grep"
+  ],
+  "tags": [
+    "wordlist",
+    "password-policy",
+    "hybrid",
+    "brute-force"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Wordlist Generation",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 16: Login Brute Forcing",
+  "examples": [
+    {
+      "label": "policy filter",
+      "command": "grep -E '^.{8,}$' darkweb2017-top10000.txt > darkweb2017-minlength.txt"
+    },
+    {
+      "label": "policy filter",
+      "command": "grep -E '^.{6,}$' names.txt | grep -E '[A-Z]' | grep -E '[a-z]' | grep -E '[0-9]' | grep -E '([!@#$%^&*].*){2,}' > filtered.txt"
+    }
+  ],
+  "notes": "Filter a big wordlist to match the target's password POLICY (min length, complexity) so you don't waste attempts on candidates that can't be valid. `grep -E` for length/charset rules.",
+  "references": [
+    {
+      "title": "HTB Academy - Login Brute Forcing",
+      "url": "https://academy.hackthebox.com/module/details/57"
+    },
+    {
+      "title": "SecLists",
+      "url": "https://github.com/danielmiessler/SecLists"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hydra-http-post-form",
+      "note": "Feed the policy-filtered wordlist into a form attack.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Password policies (minimum length, required character classes) publicly constrain what valid passwords look like. A 14-million entry rockyou.txt wordlist contains mostly short, simple passwords that a policy-enforcing application will immediately reject. Filtering the wordlist through grep/awk to retain only entries that satisfy all policy constraints eliminates ~99% of candidates, leaving only those the application will actually evaluate. This reduces total brute-force attempts by orders of magnitude and focuses effort on policy-compliant, humanly plausible passwords — the exact intersection where real user passwords exist.",
+    "prerequisites": "Source wordlist (rockyou.txt or similar). Knowledge of the target's password policy (often displayed on registration/login pages, or leaked via error messages). grep/awk on the attacker's system.",
+    "impact": "Policy-compliant targeted wordlist that dramatically improves brute-force efficiency — fewer attempts, faster results, lower detection footprint. Used to feed Hydra, Medusa, ffuf, or any brute-force tool in the next attack phase.",
+    "detection": "No network activity — runs locally. Detection only possible in the subsequent brute-force phase.",
+    "artifacts": "Filtered wordlist file on attacker's disk. No target-side artifacts.",
+    "prevention": "Displaying password policy on the login page assists attackers in wordlist filtering. Consider not advertising policy details. More importantly: policies alone do not prevent brute-force — lockout, rate limiting, MFA, and monitoring are the effective controls. Use a breach password blocklist (Have I Been Pwned API) to reject known leaked passwords regardless of policy compliance.",
+    "evasion": "The filtering step runs entirely offline — invisible to all monitoring. Produces a smaller wordlist that generates fewer failed attempts during the attack phase, reducing detection signal.",
+    "sources": [
+      "HTB CPTS M16",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
+    "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
+    "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+  },
+  "variations": [
+    {
+      "label": "Policy with symbols",
+      "command": "grep -E '^.{8,}$' <wordlist> | grep -E '[A-Z]' | grep -E '[a-z]' | grep -E '[0-9]' | grep -E '([!@#$%^&*].*){2,}' > filtered.txt",
+      "description": "Adds a symbols filter requiring 2+ special characters (!@#$%^&*) on top of the standard length/upper/lower/digit filters. Use when the target policy mandates special characters."
+    }
+  ]
+}

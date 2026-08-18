@@ -1,0 +1,114 @@
+{
+  "id": "aws-s3-ec2-public-enum",
+  "name": "AWS - Enumerate Public S3 Buckets & EC2 Shared Resources",
+  "command": "aws --profile <profile> s3 ls <bucket_name>\naws --profile <profile> ec2 describe-images --executable-users all --filters \"Name=name,Values=*<keyword>*\"\naws --profile <profile> ec2 describe-snapshots --filters \"Name=description,Values=*<keyword>*\"",
+  "description": "Discover publicly accessible or broadly shared AWS resources using the CLI. S3: list a known bucket's contents with aws s3 ls (no auth needed for public buckets). EC2: describe-images with --executable-users all lists AMIs the account has permission to launch (public AMIs shared by AWS or others); filter by name/description to find target-specific images. describe-snapshots finds publicly shared EBS snapshots which can be mounted to extract sensitive data. These are common misconfigurations that expose sensitive infrastructure.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "aws-cli-profile"
+  ],
+  "tools": [
+    "awscli"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "s3",
+    "ec2",
+    "enumeration",
+    "public-resource",
+    "misconfiguration"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.3.2, 24.3.3)",
+  "examples": [
+    {
+      "label": "List contents of a public S3 bucket (no credentials needed)",
+      "command": "aws --profile attacker s3 ls offseclab-assets-public-kaykoour"
+    },
+    {
+      "label": "List all AMIs you have permission to launch (all public shared AMIs)",
+      "command": "aws --profile attacker ec2 describe-images --owners amazon --executable-users all"
+    },
+    {
+      "label": "Find target-specific public AMIs by name keyword",
+      "command": "aws --profile attacker ec2 describe-images --executable-users all --filters \"Name=name,Values=*Offseclab*\""
+    },
+    {
+      "label": "Find public EBS snapshots by description keyword",
+      "command": "aws --profile attacker ec2 describe-snapshots --filters \"Name=description,Values=*offseclab*\""
+    },
+    {
+      "label": "Filter public snapshots by owner (own account) to find misconfigured ones",
+      "command": "aws --profile target ec2 describe-snapshots --owner-ids self --filters \"Name=status,Values=completed\""
+    },
+    {
+      "label": "Download files from a public S3 bucket",
+      "command": "aws --profile attacker s3 cp s3://<bucket_name>/<path> . --recursive"
+    },
+    {
+      "label": "Try to list a private bucket (will get AccessDenied if private)",
+      "command": "aws --profile attacker s3 ls <bucket_name>\n# AccessDenied = exists but private; NoSuchBucket = does not exist"
+    }
+  ],
+  "notes": "S3 bucket ACLs: 'public' means s3:ListBucket is granted to AllUsers or AuthenticatedUsers. A 403 on aws s3 ls means the bucket exists but you lack permission (still confirms the bucket name). A NoSuchBucket error means it truly doesn't exist. EC2 AMIs: --executable-users all returns AMIs that are publicly available (Public=true). --executable-users self returns AMIs the current account owns and can launch. EBS snapshots with --executable-users all list publicly shared snapshots \u2014 attackers can create a volume from them and mount in their own account. describe-images with no filter returns thousands of results; always filter by name/description/keyword. Public AMIs may contain hard-coded credentials, SSH keys, or other sensitive data embedded in the image.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Enumerating AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "AWS EC2 describe-images",
+      "url": "https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-images.html"
+    },
+    {
+      "title": "MITRE ATT&CK - Cloud Storage Object Discovery",
+      "url": "https://attack.mitre.org/techniques/T1619/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-cli-setup",
+      "rel": "prereq",
+      "note": "Configure aws profile with attacker or compromised keys before running these commands."
+    },
+    {
+      "id": "aws-account-id-iam-enum",
+      "rel": "next",
+      "note": "Use the bucket to fingerprint the target account ID via s3:ResourceAccount policy trick."
+    },
+    {
+      "id": "aws-iam-scope-permissions",
+      "rel": "next",
+      "note": "Once you have any valid creds (found in S3 bucket), scope their IAM permissions."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1619",
+    "T1580"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "AWS S3 bucket names in global namespace \u2014 guessable from company name + common patterns (backup, logs, dev, prod, assets). EC2 instances without security groups blocking 0.0.0.0/0 are internet-accessible. AWS CLI without credentials can enumerate public S3 buckets (--no-sign-request). Shodan indexes EC2 instances by IP and port. Combining public S3 enumeration with EC2 port scanning maps the accessible cloud attack surface.",
+    "prerequisites": "Target company name for S3 bucket guessing. AWS CLI (no credentials for public bucket enum). nmap/masscan for EC2 port scanning. Shodan/Censys API for passive EC2 discovery.",
+    "impact": "T1619 Cloud Storage Object Discovery + T1580 Cloud Infrastructure Discovery. Maps publicly accessible S3 buckets (data exposure) and EC2 instances (potential exploitation targets). Public S3 buckets are a top cloud data breach vector.",
+    "detection": "S3 access logs: ListBucket/GetObject from unknown IPs (if access logging enabled). GuardDuty: 'Discovery:S3/MaliciousIPCaller.Custom'. EC2: port scan visible in VPC Flow Logs as SYN without SYN-ACK (dropped). Shodan indexing: no target-side detection.\nDetect suspicious enumeration of cloud storage objects via API calls (AWS S3 ListObjectsV2, Azure List Blobs, GCP ListObjects). Correlate access with account role, user context, and prior authentication to identify anomalous usage (unusual account, unexpected regions, large-scale enumeration in short time windows) (DET0578/AN1594).",
+    "artifacts": "S3 access log: ListBucket attempts from scanning IPs | GuardDuty: S3 discovery finding | VPC Flow Logs: inbound port scan pattern (multiple ports, same source IP) | CloudTrail: ListBuckets without credentials",
+    "prevention": "S3: Block Public Access at account level. Default-deny security groups for all EC2 \u2014 only open required ports. No 0.0.0.0/0 inbound rules. Use ALB/NLB or CloudFront in front of EC2 (hides EC2 IPs). VPC Flow Logs for detection. GuardDuty for S3 discovery detection. AWS Macie for sensitive data in S3.\nUser Account Management: Restrict permissions for listing objects in cloud storage to necessary accounts only.\nUser Account Management: Limit permissions to discover cloud infrastructure per least privilege; limit IAM roles with admin privileges, reduce permanent privileged assignments, conduct periodic entitlement reviews.",
+    "evasion": "Use a list of common S3 naming patterns rather than sequential brute force. Access public S3 over HTTP without AWS CLI (no credentials logged). Combine passive Shodan data with targeted port scanning.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1619/",
+      "https://attack.mitre.org/techniques/T1580/"
+    ],
+    "misconfiguration": "S3 Block Public Access not enabled. EC2 security groups allow 0.0.0.0/0 inbound on all ports. No VPC Flow Logs. No S3 access logging. GuardDuty not enabled.",
+    "vulnerable_config": "# Public S3 bucket:\naws s3 ls s3://company-backup --no-sign-request\n# \u2192 Lists bucket contents without credentials = public read\n\n# EC2 security group allowing all:\naws ec2 describe-security-groups --query 'SecurityGroups[?IpPermissions[?IpRanges[?CidrIp==`0.0.0.0/0`]]]'\n# \u2192 All ports open from internet on EC2 instance",
+    "secure_config": "# Block Public Access (account level):\naws s3control put-public-access-block --account-id ACCOUNT_ID \\\n  --public-access-block-configuration 'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'\n\n# Default-deny security groups:\n# Remove 0.0.0.0/0 inbound rules:\naws ec2 revoke-security-group-ingress --group-id sg-xxx --protocol all --cidr 0.0.0.0/0\n# Add only required ports from specific sources:\naws ec2 authorize-security-group-ingress --group-id sg-xxx --protocol tcp --port 443 --cidr 0.0.0.0/0\n\n# Enable GuardDuty + Macie for S3 data discovery detection\naws guardduty create-detector --enable\naws macie2 enable-macie"
+  }
+}

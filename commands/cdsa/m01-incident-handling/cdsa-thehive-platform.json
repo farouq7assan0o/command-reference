@@ -1,0 +1,51 @@
+{
+  "id": "cdsa-thehive-platform",
+  "name": "TheHive - Case Management Platform",
+  "command": "http://<TARGET_IP>:9000",
+  "description": "TheHive is the SOC's case management system. Used to triage alerts, create/manage incident cases, assign tasks, enrich IOCs via Cortex, and document investigation findings.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Incident Response",
+  "subcategory": "Case Management",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 01: Incident Handling Process",
+  "tags": ["thehive", "case-management", "soc", "platform", "cortex"],
+  "notes": "HTB lab credentials: htb-analyst / P3n#31337@LOG\n\nKey TheHive concepts:\n• Alert — inbound detection from SIEM/sensor, not yet a case. Triage first.\n• Case — confirmed incident being actively investigated. Has tasks, IOCs, observables, timeline.\n• Observable — any IOC attached to a case (IP, hash, domain, filename). Cortex can auto-enrich.\n• Task — discrete action assigned to an analyst (e.g. 'collect forensic image from DEV-021').\n\nAlert lifecycle: Alert → Triage → Create Case → Assign Tasks → Investigate → Close.\n\nCortex integration: right-click any observable → Analyze → select analyser (VirusTotal, AbuseIPDB, etc.).\n\nCase severity: P1=Critical, P2=High, P3=Medium, P4=Low — set at case creation, adjust as scope expands.",
+  "mitre": ["T1595", "T1071"],
+  "examples": [
+    {
+      "label": "Access TheHive (HTB lab)",
+      "command": "http://<TARGET_IP>:9000  # login: htb-analyst / P3n#31337@LOG"
+    },
+    {
+      "label": "Create case from alert",
+      "command": "# Alerts → select alerts → 'Create Case' → set title, severity, tags → link all related alerts"
+    },
+    {
+      "label": "Add IOC observable to case",
+      "command": "# Case → Observables tab → Add Observable → type: IP/Hash/Domain/URL → paste value → Save"
+    },
+    {
+      "label": "Enrich observable with Cortex",
+      "command": "# Observable → right-click → Analyze → select analyser (e.g. VirusTotal_GetReport) → Run"
+    }
+  ],
+  "references": [
+    {
+      "title": "TheHive Project Documentation",
+      "url": "https://docs.strangebee.com/thehive/"
+    },
+    {
+      "title": "HTB Academy - Incident Handling Process",
+      "url": "https://academy.hackthebox.com/module/details/148"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-ir-lifecycle",
+      "rel": "prereq",
+      "note": "IR lifecycle context for when and how TheHive is used."
+    }
+  ]
+}

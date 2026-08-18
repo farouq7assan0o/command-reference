@@ -1,0 +1,97 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python"
+  ],
+  "tags": [
+    "wordpress",
+    "rce",
+    "cve"
+  ],
+  "category": "Exploitation",
+  "subcategory": "WordPress",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Run the wpDiscuz unauth upload exploit to drop a shell",
+      "command": "python3 wp_discuz.py -u http://blog.inlanefreight.local -p /?p=1"
+    },
+    {
+      "label": "Execute commands through the uploaded webshell",
+      "command": "curl -s http://blog.inlanefreight.local/wp-content/uploads/2021/08/<shell>.php?cmd=id"
+    }
+  ],
+  "notes": "The upload bypasses the MIME check by appending a valid image header; the shell lands under wp-content/uploads/<year>/<month>/. Grab the exact filename the exploit prints - it's randomized.",
+  "references": [
+    {
+      "title": "wpDiscuz RCE (CVE-2020-24186)",
+      "url": "https://www.exploit-db.com/exploits/49967"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "wp-detect",
+      "note": "Confirms the vulnerable plugin/version.",
+      "rel": "prereq"
+    },
+    {
+      "id": "wp-mailmasta-lfi",
+      "note": "Another vulnerable-plugin path on the same target.",
+      "rel": "alternative"
+    },
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Upgrade the webshell to an interactive reverse shell.",
+      "rel": "escalation"
+    }
+  ],
+  "id": "wp-wpdiscuz-rce",
+  "name": "WordPress - wpDiscuz Unauthenticated RCE",
+  "command": "python3 wp_discuz.py -u http://<url> -p /?p=1",
+  "description": "Exploits the wpDiscuz 7.0.4 arbitrary file upload (CVE-2020-24186) to drop a webshell without authentication, then execute commands via the uploaded file.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The wpDiscuz comment plugin (< 7.0.5) validates uploaded file MIME types client-side only, trusting the Content-Type header. An attacker can upload a PHP webshell with .php extension — the server stores and executes it.",
+    "prerequisites": "wpDiscuz plugin installed and activated. Comments enabled on at least one post. No server-side file-type enforcement.",
+    "impact": "Unauthenticated RCE as the web server user (www-data). Full webshell access enabling data exfiltration, lateral movement, and persistence.",
+    "detection": "POST request to wpdiscuz-ajax.php with a PHP file. New .php file in /wp-content/uploads/. Access log shows GET to newly created PHP file shortly after upload.",
+    "artifacts": "Web server access logs (POST to wpdiscuz-ajax.php, GET to .php) | File system: .php files in /wp-content/uploads/ | WordPress audit log (new comment from attacker IP)",
+    "prevention": "Update wpDiscuz to 7.0.5+. Validate file extension and MIME via php_fileinfo, not Content-Type. Deny PHP execution in uploads directory.",
+    "misconfiguration": "wpDiscuz < 7.0.5 trusts client-supplied Content-Type for validation. Web server has no upload directory execution restriction.",
+    "vulnerable_config": "# wpDiscuz < 7.0.4 -- relies on JS/Content-Type check only (bypassable)\n# /wp-content/plugins/wpdiscuz/utils/class.WpdiscuzUCF.php\n# Only checks $_FILES['wmuAttachment']['type'] -- client-supplied MIME\n# No server-side extension whitelist, no real content inspection\n\n# Apache -- no php_flag engine off in uploads dir\n# /wp-content/uploads/ -- PHP execution enabled (default)\n<Directory /var/www/html/wp-content/uploads>\n    # No php engine off directive = uploaded PHP files execute\n</Directory>",
+    "secure_config": "# WordPress -- disable PHP execution in uploads directory\n# /wp-content/uploads/.htaccess\n<Files *.php>\n    deny from all\n</Files>\n# Also add to Apache vhost:\n<Directory /var/www/html/wp-content/uploads>\n    php_flag engine off\n    Options -ExecCGI\n    AddHandler cgi-script .php .pl .py .jsp .asp .sh .cgi\n</Directory>\n\n# wp-config.php -- harden file permissions\ndefine('DISALLOW_FILE_EDIT', true);\ndefine('DISALLOW_FILE_MODS', true);\n\n# Update or remove wpDiscuz -- patch available in 7.0.5+\n# wp plugin update wpdiscuz",
+    "evasion": "Alternate PHP extensions (.php5, .phtml) if extension blacklist is incomplete. Change Content-Type to image/gif.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "MITRE T1505.003",
+      "OWASP A04:2021"
+    ]
+  }
+}

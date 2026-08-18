@@ -1,0 +1,79 @@
+{
+  "id": "ad-cme-shares",
+  "name": "CrackMapExec - Enumerate SMB Shares",
+  "command": "crackmapexec smb <dc_ip> -u <user> -p <password> --shares",
+  "description": "Enumerates all accessible SMB shares on a target with read/write access indicators. Faster than smbmap for quick enumeration across multiple hosts. Identify non-default shares for credential hunting. Combine with --spider-folder or smbmap -r for content inspection.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "crackmapexec",
+    "smb",
+    "shares",
+    "enumeration",
+    "file-share"
+  ],
+  "mitre": [
+    "T1135"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== SHARES OUTPUT ===\n  Share          Permissions  Remark\n  -----          -----------  ------\n  ADMIN$         NO ACCESS    Remote Admin\n  C$             NO ACCESS    Default Share\n  Department Shares READ       \n  IPC$           READ\n  NETLOGON       READ         Logon server share\n  SYSVOL         READ         Logon server share\n  user_share     READ, WRITE  User files\n\n=== WHAT'S INTERESTING ===\n  Non-default shares     → Department Shares, user_share, IT, Finance\n  READ access            → explore contents for credentials, configs\n  WRITE access           → drop SCF/LNK files to capture hashes, or plant payloads\n  SYSVOL                 → always explore for GPP passwords and logon scripts\n\n=== WRITE ACCESS ATTACK ===\nIf you have WRITE to a share: place a malicious SCF/LNK file.\nWhen a user browses the share, Windows auto-sends NTLM auth to the attacker.\nUse Responder to capture the NTLMv2 hash.\n\n=== SPIDER CONTENTS ===\ncrackmapexec smb <dc> -u user -p pass -M spider_plus -o READ_ONLY=False\n→ Spiders all accessible share content",
+  "examples": [
+    {
+      "label": "List shares",
+      "command": "crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --shares"
+    },
+    {
+      "label": "Enumerate shares across subnet",
+      "command": "crackmapexec smb 172.16.5.0/23 -u forend -p Klmcargo2 --shares | grep -v 'NO ACCESS'"
+    }
+  ],
+  "references": [
+    {
+      "title": "CrackMapExec wiki",
+      "url": "https://wiki.porchetta.industries/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-cme-groups",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "nxc --shares enumerates accessible SMB shares across hosts, revealing readable/writable data stores.",
+    "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
+    "impact": "A map of accessible shares to pillage.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "SMB tree-connects across hosts (5140).",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1135"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "crackmapexec"
+  ]
+}

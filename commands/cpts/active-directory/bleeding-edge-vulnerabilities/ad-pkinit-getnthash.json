@@ -1,0 +1,77 @@
+{
+  "id": "ad-pkinit-getnthash",
+  "name": "getnthash.py - Get NT Hash from PKINIT TGT",
+  "command": "python /opt/PKINITtools/getnthash.py -key <as_rep_key> <domain>/<dc_host>$",
+  "description": "Extracts the NT hash of the DC machine account from the PKINIT TGT. Uses the AS-REP encryption key output by gettgtpkinit.py. The NT hash can then be used for pass-the-hash DCSync without needing to use the ccache directly. Second step after gettgtpkinit in the PetitPotam chain.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Credential Access",
+  "subcategory": "Bleeding Edge Vulnerabilities",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "pkinit",
+    "nt-hash",
+    "kerberos",
+    "adcs",
+    "petitpotam",
+    "credential-dumping"
+  ],
+  "mitre": [
+    "T1649",
+    "T1003.006"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY EXTRACT THE NT HASH ===\nYou already have a TGT for DC01$ via PKINIT. You can DCSync directly with the\nccache (secretsdump -k -no-pass). But extracting the NT hash gives you:\n  1. Pass-the-hash for more flexible auth (works from any context)\n  2. Persistence reference \u2014 NT hash is stable until password changes\n  3. Alternative if Kerberos-based auth fails (e.g., time skew, ccache issues)\n\n=== HOW IT WORKS ===\ngetnthash.py performs a U2U (User-to-User) Kerberos exchange:\n  1. Uses the existing TGT (KRB5CCNAME must be set)\n  2. Requests a service ticket from the KDC where the service is the DC account itself\n  3. The service ticket is encrypted with the DC account's NT hash (known key)\n  4. With the AS-REP key from PKINIT, decrypts the service ticket \u2192 recovers NT hash\n\n=== REQUIRED ===\n  - KRB5CCNAME set to the DC01$ ccache from gettgtpkinit.py\n  - -key <as_rep_key> from the gettgtpkinit.py output (hex string printed during TGT request)\n\n=== FULL PKINIT \u2192 NT HASH PROCEDURE ===\n# After gettgtpkinit.py outputs the TGT and AS-REP key:\nexport KRB5CCNAME=dc01.ccache\npython3 /opt/PKINITtools/getnthash.py -key <as_rep_key_hex> INLANEFREIGHT.LOCAL/ACADEMY-EA-DC01$\n# Output: NT hash of DC01$\n\n# DCSync using NT hash:\nsecretsdump.py -just-dc-user administrator -hashes :<dc_nt_hash> INLANEFREIGHT/ACADEMY-EA-DC01$@172.16.5.5",
+  "examples": [
+    {
+      "label": "Extract NT hash from DC TGT",
+      "command": "python3 /opt/PKINITtools/getnthash.py -key <as_rep_encryption_key> INLANEFREIGHT.LOCAL/ACADEMY-EA-DC01$"
+    },
+    {
+      "label": "DCSync using the DC NT hash",
+      "command": "secretsdump.py -just-dc-user administrator -hashes :b3823c8d42c27cba4e6726b9b4b3f90f INLANEFREIGHT/ACADEMY-EA-DC01$@172.16.5.5"
+    }
+  ],
+  "references": [
+    {
+      "title": "PKINITtools (dirkjanm)",
+      "url": "https://github.com/dirkjanm/PKINITtools"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-secretsdump-dcsync",
+      "rel": "next",
+      "note": "DCSync once elevated."
+    }
+  ],
+  "defense": {
+    "why_it_works": "After gettgtpkinit.py completes, the AS-REP was encrypted with a session key derived from the certificate's private key (PKINIT-specific key material). getnthash.py (part of PKINITtools) uses this AS-REP key to request a U2U (user-to-user) Kerberos service ticket \u2014 a mechanism where a client requests a ticket to itself, encrypted with the TGT's session key. The returned ticket contains the account's NT hash in the PAC, which getnthash.py extracts. This is the 'UnPAC-the-hash' technique \u2014 obtaining the NT hash purely from a PKINIT authentication session without any offline cracking.",
+    "prerequisites": "The AS-REP encryption key output by gettgtpkinit.py (stored in the tool's output). KRB5CCNAME set to the ccache from gettgtpkinit. Network access to DC (TCP 88). PKINITtools installed.",
+    "impact": "NT hash of the DC machine account \u2014 enables pass-the-hash via secretsdump.py -hashes for DCSync without needing to use the ccache directly. Provides a more portable credential (NT hash) that works in pass-the-hash scenarios where ccache is inconvenient. Completes the PetitPotam/NoPac \u2192 PKINIT \u2192 DCSync kill chain.",
+    "detection": "Kerberos U2U (user-to-user) exchange following the PKINIT TGT \u2014 Event 4769 (TGS request) with a U2U service ticket request, which is uncommon in normal environments (typically only used by a few enterprise applications). The sequence PKINIT AS-REQ \u2192 U2U TGS-REQ in rapid succession from the same source IP is a strong indicator. MDI may flag the unusual Kerberos exchange.",
+    "artifacts": "Event 4768 (TGT) + 4769 (U2U TGS) on DC from same source in rapid succession; ccache and AS-REP key files on attacker's disk; subsequent DCSync indicators if the NT hash is used.",
+    "prevention": "Preventing gettgtpkinit (upstream PKINIT step) prevents this step \u2014 the NT hash extraction requires the AS-REP key from the PKINIT TGT. Revoke abused certificates. Monitor for U2U Kerberos exchanges from non-standard sources \u2014 these are rare enough to alert on. MDI monitoring for PKINIT chain abuse.",
+    "evasion": "Uses standard Kerberos protocol extensions (U2U) \u2014 network-level detection requires understanding of Kerberos ticket type anomalies. Entirely Linux-side execution, no Windows memory artifacts. The U2U exchange is brief (single round-trip).",
+    "sources": [
+      "HTB M13",
+      "MITRE T1649",
+      "MITRE T1003.006"
+    ],
+    "misconfiguration": "PKINIT (Public Key Cryptography for Initial Authentication in Kerberos) allows certificate-based Kerberos authentication. When an attacker obtains a valid certificate for a machine account (e.g., via ADCS ESC8/ESC1 or after NoPac), they can use it to request a TGT and then use S4U2Self to get a TGS as any user \u2014 including Domain Admins. The machine account's NTLM hash can also be recovered via PKINIT's AS-REP for offline cracking or PtH.",
+    "vulnerable_config": "# Scenario: attacker has a cert for DC$ (obtained via PetitPotam + ADCS ESC8)\n# PKINIT is enabled by default on all AD environments with ADCS\n# impacket-gettgt using the cert:\n#   openssl pkcs12 -in dc.pfx -nocerts -out dc.key (extract key)\n#   gettgt.py -cert-pem dc.crt -key-pem dc.key corp.local/DC$\n# -> returns TGT for DC machine account\n# -> use S4U2Self for impersonation of any user",
+    "secure_config": "# Prevent ADCS misconfigs that enable cert theft (see ESC1/ESC8 cards)\n# Patch NoPac (KB5008102 + KB5008380)\n\n# Monitor PKINIT authentication:\n# Event 4768 with Certificate Info section populated (non-empty)\n# Certificates issued to machine accounts by unexpected CAs\n\n# Enable Strong Certificate Mapping (Windows Server 2022+):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\Kdc\n#   StrongCertificateBindingEnforcement = 2 (full enforcement)\n# This prevents certificate-to-account mapping abuse\n\n# CA hardening: restrict which templates allow machine account enrollment\n# Require Manager Approval on sensitive templates"
+  },
+  "tools": [
+    "PKINITtools"
+  ]
+}

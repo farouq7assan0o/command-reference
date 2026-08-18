@@ -1,0 +1,86 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "grep",
+    "find"
+  ],
+  "tags": [
+    "enumeration",
+    "flag",
+    "exam"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Grep the whole filesystem for the flag format",
+      "command": "grep -r 'HTB{' / 2>/dev/null"
+    },
+    {
+      "label": "Find files containing 'flag' under the cwd",
+      "command": "find . -type f -exec grep -l \"flag\" {} \\;"
+    },
+    {
+      "label": "Search a specific app's logs",
+      "command": "grep -r \"flag\" /var/log/apache2/"
+    }
+  ],
+  "notes": "Fast way to grab a lab flag or spot leaked secrets once you have any elevated read. Redirect stderr to /dev/null so permission-denied noise doesn't bury the hit.",
+  "references": [
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting",
+      "note": "Broaden to configs/keys/secrets, not just flags.",
+      "rel": "alternative"
+    },
+    {
+      "id": "linux-enum-world-writable",
+      "rel": "prereq",
+      "note": "Confirm/enumerate this first"
+    }
+  ],
+  "id": "flag-search",
+  "name": "Enumeration - Flag / Keyword Search",
+  "command": "grep -r 'HTB{' / 2>/dev/null",
+  "description": "Recursively hunt for flags or a keyword across the filesystem or a specific directory - handy on exam/lab boxes once you have read access.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1083"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "After gaining elevated access, sensitive files (flags, credentials, private keys) may be stored anywhere on the filesystem. find / with -name and -type traverses the entire filesystem including directories inaccessible before privilege escalation, locating files by name pattern that were previously hidden.",
+    "prerequisites": "Root or elevated access. Filesystem traversal capability.",
+    "impact": "Sensitive data discovery: flags, private keys, credentials, database dumps, backup files -- all discoverable once root access is obtained.",
+    "detection": "Auditd: find command traversing sensitive directories (/root, /etc, /var/backups). Unusual read access to /root/ by non-root account. SIEM: mass file open events from a single process.",
+    "artifacts": "Auditd: mass file stat/open syscalls across filesystem | Process audit log (find executed with / as root)",
+    "prevention": "Encrypt sensitive files at rest. Apply DAC (file permissions) and MAC (SELinux/AppArmor) to limit access even for root. Segregate secrets using secrets managers. Ensure flag/credential files are not placed in predictable locations.",
+    "misconfiguration": "Sensitive files (credentials, flags, backups) stored as world-readable or in directories accessible post-escalation with predictable names.",
+    "vulnerable_config": "# Insecure storage of sensitive data\n-rw-r--r-- 1 root root /root/flag.txt\n-rw-r--r-- 1 root root /var/backups/db_backup.sql",
+    "secure_config": "# Restrict sensitive file access\nchmod 600 /root/flag.txt\nchmod 700 /root/\n# Enable SELinux\nsetenforce 1\n# Use encrypted storage for secrets (LUKS, Vault)",
+    "sources": [
+      "HTB M25",
+      "MITRE T1083"
+    ]
+  }
+}

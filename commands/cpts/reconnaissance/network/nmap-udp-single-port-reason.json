@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-sU against single UDP port with --reason shows exactly why Nmap assigned the state it did: 'udp-response' (service responded), 'port-unreach' (ICMP unreachable = closed), 'no-response' (filtered or open with no applicable probe).\n\n=== DIAGNOSTIC ===\n--reason removes ambiguity from 'open|filtered' state \u2014 shows whether it's silence (could be filtered or open) vs an actual ICMP error (definitive closed). Critical for understanding what's blocking vs what's listening.",
+  "references": []
+}

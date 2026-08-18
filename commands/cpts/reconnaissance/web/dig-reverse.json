@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-x performs reverse DNS lookup: IP address \u2192 hostname. Reveals the canonical hostname associated with an IP, which may differ from the domain being investigated. Reveals: virtual host configurations, infrastructure owner, internal naming conventions.\n\n=== CHAINING ===\nShodan/crt.sh reveals IP \u2192 dig -x IP \u2192 hostname may reveal other services or owner \u2192 additional nmap scan targets.\n\n=== PTR RECORDS ===\nPTR records are in the in-addr.arpa zone. Reverse lookup may reveal internal hostnames for IPs acquired during enumeration. Missing PTR = no reverse DNS configured (common for CDN IPs).",
+  "references": []
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nSOA (Start of Authority) record reveals the primary nameserver, the zone administrator's email address (encoded: first dot is @), serial number, and refresh/retry/expire timers.\n\n=== CHAINING ===\ndig soa \u2192 extract admin email for OSINT/phishing context \u2192 extract primary NS for AXFR attempt \u2192 serial number timestamps indicate last zone change.\n\n=== ADMIN EMAIL ===\nThe RNAME field contains the zone admin email with the @ replaced by a dot. Converting back gives a real contact useful for social engineering context and correlating with other findings (SNMP contact, cert email).",
+  "references": []
+}

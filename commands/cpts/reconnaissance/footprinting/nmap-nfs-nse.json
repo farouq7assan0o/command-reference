@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nnfs* NSE wildcard runs nfs-ls (lists share contents with permissions/UIDs), nfs-showmount (export list), nfs-statfs (share stats), and rpcinfo in one pass. nfs-ls shows id_rsa files with UIDs without requiring a manual mount \u2014 immediate critical finding identification.\n\n=== CHAINING ===\nnmap nfs* \u2192 nfs-ls reveals sensitive files \u2192 nfs-showmount confirms export paths \u2192 mount share \u2192 UID matching attack \u2192 access private keys or sensitive data.",
+  "references": []
+}

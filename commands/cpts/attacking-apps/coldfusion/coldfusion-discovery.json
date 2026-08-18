@@ -1,0 +1,86 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "nmap",
+    "curl"
+  ],
+  "tags": [
+    "coldfusion",
+    "fingerprinting"
+  ],
+  "category": "Enumeration",
+  "subcategory": "ColdFusion",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Full scan looking for ColdFusion (8500) and friends",
+      "command": "nmap -p- -sC -Pn 10.129.54.88 --open"
+    },
+    {
+      "label": "Hit the ColdFusion admin panel once found",
+      "command": "http://10.129.247.30:8500/CFIDE/administrator/index.cfm"
+    }
+  ],
+  "notes": "Port 8500 and /CFIDE/administrator/index.cfm are the tells. Old ColdFusion admin panels are riddled with auth-bypass/LFI CVEs, so version-fingerprint before attacking.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "app-discovery-nmap",
+      "note": "Broader web-app port sweep that surfaces ColdFusion.",
+      "rel": "prereq"
+    },
+    {
+      "id": "other-apps-defaults",
+      "note": "Try default creds against the admin panel.",
+      "rel": "next"
+    }
+  ],
+  "id": "coldfusion-discovery",
+  "name": "ColdFusion - Discovery and Admin Panel",
+  "command": "nmap -p- -sC -Pn <ip> --open   # look for 8500, then /CFIDE/administrator/index.cfm",
+  "description": "ColdFusion listens on 8500 (and 80/443/1935/5500). The admin panel at /CFIDE/administrator/index.cfm and /CFIDE/, /cfdocs/ directories are the entry points; .cfm/.cfc are the app extensions. Known CVEs (e.g. CVE-2010-2861 LFI, CVE-2009-2265 upload) target older versions.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595",
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "ColdFusion exposes version information through its administrator panel at /CFIDE/administrator/index.cfm, default error pages, and known file extensions (.cfm, .cfc). Nmap probes and directory enumeration reliably identify ColdFusion version.",
+    "prerequisites": "Network access to the ColdFusion server. No credentials required for fingerprinting.",
+    "impact": "ColdFusion version identification enables targeting of known vulnerabilities: directory traversal (CVE-2010-2861), file upload bypass, authentication bypass.",
+    "detection": "GET requests to /CFIDE/administrator/index.cfm, /CFIDE/, /cfdocs/ from unauthenticated IPs.",
+    "artifacts": "Web server access log (GET /CFIDE/administrator/) | IDS alert for ColdFusion scanner patterns",
+    "prevention": "Remove or restrict /CFIDE/ and /cfdocs/ from public access. Restrict the admin console to localhost or internal IPs. Suppress version in error pages.",
+    "misconfiguration": "ColdFusion admin console at /CFIDE/administrator/ publicly accessible, with version information disclosed via error pages and the console login.",
+    "vulnerable_config": "# ColdFusion default\n# /CFIDE/administrator/index.cfm accessible from 0.0.0.0\n# Server header: Adobe ColdFusion 2016 Update 3",
+    "secure_config": "# IIS -- restrict CFIDE to internal IPs\n<location path=\"CFIDE/administrator\">\n  <system.webServer>\n    <security>\n      <ipSecurity allowUnlisted=\"false\">\n        <add ipAddress=\"10.0.0.0\" subnetMask=\"255.0.0.0\" allowed=\"true\"/>\n      </ipSecurity>\n    </security>\n  </system.webServer>\n</location>",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595.002",
+      "OWASP A05:2021"
+    ]
+  }
+}

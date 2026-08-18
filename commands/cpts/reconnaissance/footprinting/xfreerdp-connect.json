@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nxfreerdp connects to Windows RDP from Linux. /cert:ignore bypasses self-signed certificate warnings (common in internal environments). Full desktop session enables GUI-based enumeration and tool execution.\n\n=== CHAINING ===\nDiscover RDP open (nmap-rdp-scan) \u2192 obtain credentials \u2192 xfreerdp connect \u2192 GUI desktop \u2192 run tools interactively \u2192 /drive flag for file transfer (mounts local dir as network share).\n\n=== NLA DETECTION ===\nIf NLA required: xfreerdp will prompt for credentials before desktop loads. Without NLA: desktop loads immediately, credentials entered on the Windows login screen (legacy security layer).\n\n=== DRIVE MOUNT ===\nxfreerdp /v:TARGET /u:user /p:pass /drive:share,/tmp/tools \u2192 mounts /tmp/tools as a shared drive in the RDP session \u2192 drag-and-drop file transfer without HTTP/SMB server setup.",
+  "references": []
+}

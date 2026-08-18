@@ -1,0 +1,83 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "gitlab"
+  ],
+  "tags": [
+    "gitlab",
+    "user-enumeration"
+  ],
+  "category": "Enumeration",
+  "subcategory": "GitLab",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Enumerate valid users with the bash exploit-db script",
+      "command": "./gitlab_userenum.sh --url http://gitlab.inlanefreight.local:8081/ --userlist users.txt"
+    },
+    {
+      "label": "Python variant against a SecLists username wordlist",
+      "command": "./gitlab_userenum.py --url http://gitlab.inlanefreight.local:8081/ --wordlist /usr/share/seclists/Usernames/cirt-default-usernames.txt"
+    }
+  ],
+  "notes": "Valid-user oracle via sign-in/sign-up responses lets you build a target list before brute-forcing. GitLab locks accounts after ~10 failures, so enumerate first, spray sparingly.",
+  "references": [
+    {
+      "title": "GitLab User Enumeration (Exploit-DB 49821)",
+      "url": "https://www.exploit-db.com/exploits/49821"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gitlab-rce",
+      "note": "Feed a valid low-priv account into the authenticated RCE.",
+      "rel": "next"
+    }
+  ],
+  "id": "gitlab-userenum",
+  "name": "GitLab - User Enumeration",
+  "command": "./gitlab_userenum.sh --url http://<url>:8081/ --userlist <userlist>",
+  "description": "Enumerates valid GitLab usernames (via the sign-up/internal endpoints) to build a target list. Sign-up may be open at /users/sign_up. Version is exposed at /help.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1087"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "GitLab returns different HTTP responses for existing vs non-existing usernames on registration and profile endpoints. Scripts exploit these differences to enumerate valid accounts for targeted credential attacks.",
+    "prerequisites": "Network access to GitLab instance. Open registration or public user profile pages (default in GitLab CE).",
+    "impact": "Valid username list for targeted brute-force. Identifies admin and developer accounts for higher-value targeting. Maps the organization's developer roster.",
+    "detection": "Rapid sequential GET/POST requests to /users/<username> or registration endpoint. GitLab production.log showing sequential probes. Rack::Attack rate-limit triggers if configured.",
+    "artifacts": "GitLab production.log (sequential /users/ requests) | Rack::Attack log (rate-limit triggers) | Web server access log (sequential user profile GETs)",
+    "prevention": "Enable Rack::Attack rate limiting in GitLab configuration. Disable public user profile visibility for non-logged-in users. Enable account lockout after failed login attempts.",
+    "misconfiguration": "GitLab instance is public with no rate limiting on user enumeration endpoints, and profile pages return distinct responses for valid vs invalid usernames.",
+    "vulnerable_config": "# GitLab default -- public user profiles\n# No rate limiting on /users/<username>\n# config/initializers/rack_attack.rb not configured",
+    "secure_config": "# gitlab.rb\ngitlab_rails['rack_attack_git_basic_auth'] = {\n  'enabled' => true,\n  'maxretry' => 10,\n  'findtime' => 60,\n  'bantime' => 3600\n}\n# Admin Area: set Visibility to internal/private",
+    "sources": [
+      "HTB M24",
+      "MITRE T1589",
+      "OWASP A07:2021"
+    ]
+  }
+}

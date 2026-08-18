@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nOpenVAS (Greenbone Vulnerability Manager) is an open-source vulnerability scanner. Setup involves: installing GVM packages, running gvm-setup (downloads NVT feed ~100k checks), creating admin account, starting services. Initial feed download can take 30+ minutes.\n\n=== CHAINING ===\nSetup \u2192 gvm-start \u2192 web UI (port 9392) \u2192 create scan target \u2192 create scan task \u2192 run \u2192 export report \u2192 prioritize by CVSS/NVT severity \u2192 recommend remediation.\n\n=== vs NESSUS ===\nOpenVAS is free and open-source with a large NVT (Network Vulnerability Test) database. Nessus has a more polished UI and more compliance checks. Both generate similar output; choice depends on budget and organizational preference.",
+  "references": []
+}

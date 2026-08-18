@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\ncurl -I (HEAD request) returns only HTTP headers without downloading page body. Following the redirect chain manually reveals technology stack at each hop: initial HTTP response shows server type + redirect; HTTPS response may expose X-Redirect-By: WordPress; final destination reveals framework-specific headers.\n\n=== FINGERPRINTING CHAIN ===\nHTTP response: Apache version \u2192 redirects to HTTPS\nHTTPS response: X-Redirect-By: WordPress (CMS exposed)\nFinal headers: Link: wp-json \u2192 confirms WordPress REST API\n\n=== KEY HEADERS ===\nServer: Apache/2.4.41 (outdated version \u2192 CVE lookup)\nX-Powered-By: PHP/7.4.3 (language + version)\nX-Redirect-By: WordPress (CMS identification)\nSet-Cookie: wordpress_* (CMS confirmation via cookie names)\nStrict-Transport-Security: missing \u2192 HTTPS not enforced (security finding)\n\n=== DETECTION ===\nHEAD requests are low-volume and blend with normal traffic. Lower detection risk than -sV Nmap or Nikto scans.",
+  "references": []
+}

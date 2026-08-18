@@ -1,0 +1,87 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "sessiongopher"
+  ],
+  "tags": [
+    "sessiongopher",
+    "putty",
+    "winscp",
+    "rdp"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Import the module",
+      "command": "Import-Module .\\SessionGopher.ps1"
+    },
+    {
+      "label": "Run it against a target/host",
+      "command": "Invoke-SessionGopher -Target WINLPE-SRV01"
+    }
+  ],
+  "notes": "=== SessionGopher — Remote Access Tool Credential Extraction ===\nSweeps PuTTY, WinSCP, FileZilla, SuperPuTTY, and RDP saved session credentials from registry.\n\n=== WHAT SESSIONGOPHER EXTRACTS ===\nPuTTY: HKCU\\Software\\SimonTatham\\PuTTY\\Sessions → hostname, username, proxy credentials\nWinSCP: HKCU\\Software\\Martin Prikryl\\WinSCP 2\\Sessions → hostname, username, password (encrypted with reversible key)\nFileZilla: %APPDATA%\\FileZilla\\sitemanager.xml and recentservers.xml → hostname, user, plaintext passwords\nSuperPuTTY: %APPDATA%\\SuperPuTTY\\Sessions.XML → decrypted session data\nRDP: HKCU\\Software\\Microsoft\\Terminal Server Client\\Servers → recently connected RDP hosts\n\n=== USAGE ===\nWithout local admin (current user only):\n  Import-Module .\\SessionGopher.ps1\n  Invoke-SessionGopher\n\nWith local admin (all users on system):\n  Invoke-SessionGopher -AllDomain   → searches HKEY_USERS for all user SIDs\n  Invoke-SessionGopher -Thorough    → also searches drives for .ppk, .rdp, .sdtid files\n\nRemote sweep (with credentials):\n  Invoke-SessionGopher -Target dc01 -u domain\\admin -p Password123\n\n=== KEY CREDENTIAL STORES ===\n.ppk files (PuTTY Private Key) → SSH key material → convert with puttygen → SSH access\n.rdp files → saved RDP connections, may contain encoded credentials\n.sdtid files (RSA SecurID) → MFA tokens for VPN/authentication systems\n\n=== CHAINING CONTEXT ===\nSessionGopher on admin workstation → PuTTY sessions to servers → SSH credentials\nWinSCP credentials → FTP/SFTP access to file servers → data access or further lateral movement\nRDP saved sessions list → map of what servers this user accesses → priority targets for lateral movement\nAfter local admin escalation → run with -AllDomain to sweep all users on the system\n\n=== WHAT TO LOOK FOR ===\nPuTTY sessions saved by sysadmins → SSH access to Linux/Unix servers\nWinSCP saved sessions → file transfer to/from servers (often includes credentials for SFTP)\nFileZilla XML files → plaintext credentials (FileZilla stores in cleartext by design)\nPPK files anywhere on filesystem → SSH key material without passphrase = immediate access",
+  "references": [
+    {
+      "title": "SessionGopher (Arvanaghi)",
+      "url": "https://github.com/Arvanaghi/SessionGopher"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "reg-stored-creds",
+      "note": "Manual registry equivalent.",
+      "rel": "alternative"
+    },
+    {
+      "id": "cmdkey-runas-savecred",
+      "note": "Reuse any saved Windows creds you find.",
+      "rel": "next"
+    }
+  ],
+  "id": "sessiongopher",
+  "name": "Credential Hunting - SessionGopher",
+  "command": "Invoke-SessionGopher -Target <hostname>",
+  "description": "SessionGopher extracts saved session secrets for PuTTY, WinSCP, FileZilla, SuperPuTTY, and RDP from the registry and user profiles.",
+  "opsec": "loud",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SessionGopher queries registry keys and files used by remote administration tools (PuTTY, WinSCP, SuperPuTTY, FileZilla, RDP) to extract saved session parameters and credentials. These tools often store credentials in the HKCU registry or in app-specific configuration files, recoverable without cracking.",
+    "prerequisites": "Shell access as the target user (HKCU keys accessible). SessionGopher.ps1 loaded. For domain-wide sweep: admin rights for remote WMI access to other machines.",
+    "impact": "Mass recovery of saved SSH, SFTP, FTP, and RDP credentials from all remote admin tools used by the compromised user. May reveal credentials for servers, jump hosts, and network equipment.",
+    "detection": "SessionGopher.ps1 import and execution. Registry reads across PuTTY/WinSCP/FileZilla HKCU paths. SIEM: alert on SessionGopher execution by standard user. EDR: script execution with credential harvesting behavior.",
+    "artifacts": "PowerShell: Import-Module SessionGopher.ps1 | HKCU registry reads across multiple remote-tool paths | Process log: Invoke-SessionGopher executed",
+    "prevention": "Avoid saving credentials in remote management tools — use password managers or SSH agent forwarding instead. Apply HKCU registry auditing on PuTTY/WinSCP paths. Use endpoint protection to block known credential harvesting scripts.",
+    "misconfiguration": "PuTTY or WinSCP sessions saved with passwords for convenience on a workstation accessible to low-privileged users. No restriction on accessing other users' session data.",
+    "vulnerable_config": "# SessionGopher extracts from PuTTY, WinSCP, FileZilla:\nImport-Module .\\SessionGopher.ps1\nInvoke-SessionGopher -Target WINLPE-SRV01\n# Output: SSH session to 10.129.1.10 as root, password: Sup3rS3cur3!",
+    "secure_config": "# Do not save passwords in PuTTY/WinSCP\n# Use SSH key authentication instead\n# PuTTY: Connection > SSH > Auth > Private key file\n\n# Remove saved passwords\nreg delete HKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions /va /f\n\n# Enforce SSH key-only authentication on servers:\n# sshd_config: PasswordAuthentication no",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552.001",
+      "MITRE T1555"
+    ]
+  }
+}

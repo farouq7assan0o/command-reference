@@ -1,0 +1,69 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "reference",
+    "kubernetes",
+    "ports"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Reference",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Control-plane / node port map",
+      "command": "# 6443 API server | 10250 Kubelet API | 10255 read-only Kubelet | 2379-2380 etcd | 10251 scheduler | 10252 controller"
+    },
+    {
+      "label": "Probe the API server",
+      "command": "curl -k https://<ip>:6443/"
+    },
+    {
+      "label": "Probe the Kubelet",
+      "command": "curl -k https://<ip>:10250/pods | jq ."
+    }
+  ],
+  "notes": "etcd                2379, 2380\nAPI server          6443\nScheduler           10251\nController Manager   10252\nKubelet API         10250\nRead-Only Kubelet   10255",
+  "references": [
+    {
+      "title": "Kubernetes",
+      "url": "https://kubernetes.io/"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "k8s-enum",
+      "note": "Full enumeration workflow using these ports.",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-k8s-ports",
+  "name": "Reference - Kubernetes Control-Plane Ports",
+  "command": "# scan these ports to fingerprint a K8s control plane / node",
+  "description": "Default Kubernetes component ports - useful for identifying an attackable cluster during enumeration.",
+  "opsec": "silent",
+  "mitre": [
+    "T1613"
+  ],
+  "exam": "exam-ok"
+}

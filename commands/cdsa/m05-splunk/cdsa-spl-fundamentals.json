@@ -1,0 +1,76 @@
+{
+  "id": "cdsa-spl-fundamentals",
+  "name": "SPL - Splunk Processing Language Fundamentals",
+  "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | stats count by ParentImage, Image",
+  "description": "Splunk Processing Language (SPL) cheatsheet covering all core commands used in SOC threat hunting and intrusion detection. Covers search, fields, table, stats, chart, eval, rex, lookup, transaction, and subsearch patterns against Windows Security and Sysmon indexes.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "SIEM",
+  "subcategory": "Splunk",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 05: Understanding Log Sources & Investigating with Splunk",
+  "tags": ["splunk", "spl", "siem", "hunting", "detection", "blue-team"],
+  "notes": "Splunk URL: http://<TARGET_IP>:8000 → Search & Reporting\nIndex used in examples: main (Windows Security + Sysmon logs)\n\n=== Basic Search ===\n  index=\"main\" \"UNKNOWN\"                    keyword search (implicit AND)\n  index=\"main\" \"*UNKNOWN*\"                  wildcard (SLOW — avoid leading *)\n  index=\"main\" ComputerName=\"*uniwaldo.local\"  field-targeted (FAST)\n  index=\"main\" EventCode!=1                 comparison operator\n  index=\"main\" earliest=-7d EventCode!=1    time-relative filter\n  index=\"main\" earliest=0                   all time\n\n=== fields — include/exclude columns ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | fields - User\n  (minus = exclude; no minus = include only those fields)\n\n=== table — format output as table ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | table _time, host, Image\n\n=== rename — rename a field ===\n  ... | rename Image as Process\n\n=== dedup — remove duplicates ===\n  ... EventCode=1 | dedup Image\n  ... | dedup filename, is_malware\n\n=== sort — sort results ===\n  ... | sort - _time           descending by time\n  ... | sort - count           descending by count\n\n=== stats — aggregate statistics ===\n  ... EventCode=1 | stats count by ParentImage, Image\n  ... EventCode=3 | stats count by _time, Image\n  ... | stats count by sourcetype\n\n=== chart — pivot-style table ===\n  ... EventCode=3 | chart count by _time, Image\n  (each Image gets its own column)\n\n=== eval — create/modify fields ===\n  ... EventCode=1 | eval Process_Path=lower(Image)\n  ... Image=*cmd.exe | eval len=len(CommandLine) | table User, len, CommandLine | sort - len\n\n=== rex — regex field extraction ===\n  index=\"main\" EventCode=4662 | rex max_match=0 \"[^%](?<guid>{.*})\" | table guid\n  (max_match=0 = extract all occurrences)\n\n=== lookup — enrich with CSV data ===\n  ... EventCode=1 | rex field=Image \"(?P<filename>[^\\\\\\\\]+)$\" | eval filename=lower(filename) | lookup malware_lookup.csv filename OUTPUTNEW is_malware | table filename, is_malware\n  ... EventCode=1 | eval filename=mvindex(mvdedup(split(Image,\"\\\\\\\\\")), -1) | eval filename=lower(filename) | lookup malware_lookup.csv filename OUTPUTNEW is_malware | table filename, is_malware | dedup filename, is_malware\n\n=== inputlookup — read lookup file directly ===\n  | inputlookup malware_lookup.csv\n\n=== transaction — group related events into sessions ===\n  ... (EventCode=1 OR EventCode=3) | transaction Image startswith=eval(EventCode=1) endswith=eval(EventCode=3) maxspan=1m | table Image | dedup Image\n  # Groups process-create + network-connect by same Image within 1 minute\n\n=== subsearch — nested search ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 NOT [ search index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | top limit=100 Image | fields Image ] | table _time, Image, CommandLine, User, ComputerName\n  # Returns rare/unusual processes (not in top 100)\n\n=== Splunk Sourcetypes (Windows) ===\n  WinEventLog:Security    → Windows Security events (4624, 4625, 4662, etc.)\n  WinEventLog:Sysmon      → Sysmon events (EventCode 1-25)\n  WinEventLog:System      → System events (7045)\n  WinEventLog:Application → Application events\n  linux:syslog            → Linux syslog\n\n=== Performance Tips ===\n  Use field= searches over wildcards: ComputerName=\"*x\" is MUCH faster than searching *x*\n  Target specific sourcetype to narrow scope early in the pipeline\n  Use earliest= to limit time range before piping",
+  "mitre": ["T1059.001", "T1055", "T1003.001", "T1087.002"],
+  "examples": [
+    {
+      "label": "List all Sysmon EventCodes in the index",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" | stats count by EventCode"
+    },
+    {
+      "label": "All sourcetypes available in the main index",
+      "command": "index=\"main\" | stats count by sourcetype"
+    },
+    {
+      "label": "All parent-child process creation events (Sysmon Event 1)",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | stats count by ParentImage, Image"
+    },
+    {
+      "label": "Filter parent-child to cmd.exe and powershell.exe children only",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 (Image=\"*cmd.exe\" OR Image=\"*powershell.exe\") | stats count by ParentImage, Image"
+    },
+    {
+      "label": "Transaction: correlate process create → network connect within 1 minute",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" (EventCode=1 OR EventCode=3) | transaction Image startswith=eval(EventCode=1) endswith=eval(EventCode=3) maxspan=1m | table Image | dedup Image"
+    },
+    {
+      "label": "Rare/unusual processes — NOT in top 100 most common",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 NOT [ search index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | top limit=100 Image | fields Image ] | table _time, Image, CommandLine, User, ComputerName"
+    },
+    {
+      "label": "Rex: extract GUIDs from Event 4662 (DCSync detection)",
+      "command": "index=\"main\" EventCode=4662 | rex max_match=0 \"[^%](?<guid>{.*})\" | table guid"
+    },
+    {
+      "label": "Lookup: match process names against malware CSV list",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | rex field=Image \"(?P<filename>[^\\\\]+)$\" | eval filename=lower(filename) | lookup malware_lookup.csv filename OUTPUTNEW is_malware | table filename, is_malware"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Understanding Log Sources & Investigating with Splunk",
+      "url": "https://academy.hackthebox.com/module/details/218"
+    },
+    {
+      "title": "Splunk SPL Search Reference",
+      "url": "https://docs.splunk.com/Documentation/SCS/current/SearchReference/Introduction"
+    },
+    {
+      "title": "Splunk Search Tutorial",
+      "url": "https://docs.splunk.com/Documentation/SplunkCloud/latest/Search/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-splunk-data-exploration",
+      "rel": "next",
+      "note": "How to enumerate available data sources in Splunk before hunting."
+    },
+    {
+      "id": "cdsa-splunk-intrusion-detection",
+      "rel": "next",
+      "note": "Apply SPL for real intrusion detection scenarios."
+    }
+  ]
+}

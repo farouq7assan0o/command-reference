@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nWhen FTP uses TLS (FTPS), openssl s_client with -starttls ftp negotiates the upgrade and exposes the full certificate chain. Certificate commonly contains internal hostname and administrator email address \u2014 passive intelligence without touching the target's FTP data directly.\n\n=== CHAINING ===\nDiscover FTPS on port 21 or 990 \u2192 openssl s_client \u2192 extract cert CN (internal hostname) and email (admin contact) \u2192 cross-reference with other findings \u2192 use standard FTP client with TLS for actual file operations.\n\n=== CERTIFICATE INTEL ===\nSubject CN: internal hostname (may differ from DNS name). Subject Alt Names: additional hostnames. Issuer: internal CA indicates Active Directory Certificate Services. Email: zone admin / system admin contact.",
+  "references": []
+}

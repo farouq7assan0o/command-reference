@@ -1,0 +1,99 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "findstr",
+    "powershell"
+  ],
+  "tags": [
+    "credential-hunting",
+    "files"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Recurse for password strings across config types",
+      "command": "findstr /SIM /C:\"password\" *.txt *.ini *.cfg *.config *.xml"
+    },
+    {
+      "label": "Broad findstr across everything",
+      "command": "findstr /spin \"password\" *.*"
+    },
+    {
+      "label": "dir for filenames hinting at creds",
+      "command": "dir /S /B *pass*.txt == *pass*.xml == *cred* == *vnc* == *.config*"
+    },
+    {
+      "label": "PowerShell recurse for cred file types",
+      "command": "Get-ChildItem C:\\ -Recurse -Include *.rdp, *.config, *.vnc, *.cred -ErrorAction Ignore"
+    }
+  ],
+  "notes": "=== File System Credential Hunting with findstr ===\nRecursively search configuration files, scripts, and deployment files for embedded credentials.\n\n=== FINDSTR COMMAND VARIANTS ===\nFilename-only sweep (fast initial pass):\n  findstr /SIM /C:\"password\" *.xml *.ini *.txt *.config *.cfg\n  /S = recursive, /I = case-insensitive, /M = filename only\n\nShow matching lines:\n  findstr /SIN /C:\"password\" *.xml *.ini *.txt *.config\n\nSkip binary files:\n  findstr /SPIN /C:\"password\" *.*\n  /P = skip files with non-printable characters\n\nPowerShell equivalent:\n  Select-String -Path C:\\Users\\*.txt -Pattern password\n  Get-ChildItem -Recurse -Include *.config,*.xml,*.ini | Select-String -Pattern \"password\"\n\n=== HIGH-VALUE TARGET LOCATIONS ===\nIIS web.config files (database connection strings):\n  C:\\inetpub\\wwwroot\\web.config\n  findstr /si password *.config in C:\\inetpub\n\nUnattended installation files (plaintext or base64 passwords):\n  C:\\Windows\\Panther\\unattend.xml\n  C:\\Windows\\Panther\\unattend\\unattend.xml\n  C:\\Windows\\system32\\sysprep\\sysprep.xml\n  C:\\Windows\\system32\\sysprep.inf\n  C:\\Windows\\Setup\\Scripts\\\n\nApplication-specific directories:\n  C:\\scripts\\, C:\\tools\\, C:\\backup\\ (admin-created script directories)\n  Service application directories under Program Files\n\nChrome dictionary file (user-added passwords to spellcheck):\n  C:\\Users\\<user>\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Custom Dictionary.txt\n\n=== CHAINING CONTEXT ===\nweb.config credentials → database access → data exfil or lateral movement via DB server\nUnattended install files → local admin password → immediate admin access\nScript directories → embedded service account credentials → lateral movement\nSnaffler automates this across network shares: .\\Snaffler.exe -s -d <domain> -o snaffler.log -v data\n\n=== WHAT TO LOOK FOR ===\nbase64 strings in config files (easily decoded: [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\"<b64>\"))\nPassword= Password: pwd= pass= patterns in any file type\nConnection strings containing User ID= and Password= or UID= PWD=\n.sav files in Windows directories (backup registry hive copies)",
+  "references": [
+    {
+      "title": "ss64 - findstr",
+      "url": "https://ss64.com/nt/findstr.html"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "powershell-history",
+      "note": "Check PowerShell history for typed secrets.",
+      "rel": "next"
+    },
+    {
+      "id": "reg-stored-creds",
+      "note": "Check the registry for stored creds.",
+      "rel": "next"
+    },
+    {
+      "id": "lazagne-all",
+      "note": "Automate the whole credential sweep.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "cred-hunting-findstr",
+  "name": "Credential Hunting - Search Files for Passwords",
+  "command": "findstr /SIM /C:\"password\" *.txt *.ini *.cfg *.config *.xml",
+  "description": "Recursively grep the filesystem for credentials in config, script, and note files, and hunt files by name/extension (.config, .rdp, .vnc, .cred, unattend.xml, web.config).",
+  "opsec": "loud",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Windows configuration files, scripts, and logs frequently contain plaintext passwords, API keys, and connection strings. findstr with recursive search across common config file extensions (*.txt, *.ini, *.cfg, *.config, *.xml) quickly identifies files containing password-related strings that were not intended to be user-readable.",
+    "prerequisites": "Shell access. Read permissions on the filesystem (standard user can read most non-protected directories). Knowledge of common credential-containing extensions.",
+    "impact": "Discovery of plaintext credentials in config files, web.config files, scripts, or backup files, enabling privilege escalation, lateral movement, or service account compromise.",
+    "detection": "Mass file search with findstr executed by standard user. Unusual read access to web application directories (%WINDIR%\\repair, C:\\inetpub). Auditd equivalent: file access anomaly on config files.",
+    "artifacts": "Process log: findstr /SIM /C:password executed by non-admin | File access events on web.config, unattend.xml, or repair SAM",
+    "prevention": "Never store plaintext credentials in configuration files. Use Windows Data Protection API (DPAPI), Azure Key Vault, or Windows Credential Manager for secrets. Restrict read access to web application config files (web.config should not be world-readable). Rotate credentials if found in config files.",
+    "misconfiguration": "web.config or application config files contain plaintext database connection strings with passwords. Unattend.xml from Windows deployment left on disk with AutoLogon credentials. Scripts with hardcoded credentials in world-readable locations.",
+    "vulnerable_config": "# World-readable web.config with DB password:\n# <connectionStrings>\n#   <add connectionString='Server=db;User=sa;Password=P@ssw0rd!' />\n# </connectionStrings>\n\n# Attacker searches:\nfindstr /SIM /C:'password' *.txt *.ini *.cfg *.config *.xml",
+    "secure_config": "# Use DPAPI or environment variables for secrets\n# web.config: encrypt connectionStrings section\naspnet_regiis.exe -pe 'connectionStrings' -app /MyApp\n\n# Set restrictive file ACLs on config files\nicacls web.config /inheritance:r /grant 'IIS_IUSRS:(R)' /grant 'SYSTEM:(F)' /grant 'Administrators:(F)'\n\n# Rotate all credentials found during audits",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552.001",
+      "MITRE T1083"
+    ]
+  }
+}

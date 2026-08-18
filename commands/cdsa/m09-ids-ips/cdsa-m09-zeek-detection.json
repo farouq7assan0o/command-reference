@@ -1,0 +1,110 @@
+{
+  "id": "cdsa-m09-zeek-detection",
+  "name": "Zeek Intrusion Detection \u2014 Beaconing, DNS Exfil, TLS Exfil & PsExec",
+  "command": "/usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/psempire.pcap",
+  "description": "Zeek-based intrusion detection using conn.log, dns.log, smb_files.log, and dce_rpc.log. Key techniques: beaconing detection via regular conn.log connection intervals (PowerShell Empire every 5s), DNS exfiltration via high-entropy subdomain enumeration in dns.log, TLS exfiltration via datamash byte-sum one-liner revealing ~270MB to suspicious host, PsExec detection via PSEXESVC.exe in smb_files.log + svcctl CreateServiceW in dce_rpc.log.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "IDS/IPS",
+  "subcategory": "Zeek",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 09: Working with IDS/IPS",
+  "tags": [
+    "zeek",
+    "beaconing",
+    "dns-exfil",
+    "tls-exfil",
+    "psexec",
+    "c2-detection",
+    "lateral-movement",
+    "threat-hunting",
+    "blue-team"
+  ],
+  "tools": ["zeek", "zeek-cut", "datamash"],
+  "mitre": [
+    "T1071.001",
+    "T1071.004",
+    "T1048",
+    "T1543.003",
+    "T1570"
+  ],
+  "notes": "=== EXAMPLE 1: BEACONING DETECTION (PowerShell Empire) ===\nIndicator: malware beaconing = periodic, regular outbound connections to C2\n\nPCAP: /home/htb-student/pcaps/psempire.pcap\nTool: /usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/psempire.pcap\n\nWhat to look for in conn.log:\n  \u2192 Multiple TCP connections to same destination IP:port\n  \u2192 Regular intervals between connection timestamps\n  \u2192 Similar orig_bytes and resp_bytes per connection (fixed payload size)\n  \u2192 conn_state: SF (normal established + closed = successful C2 beacon)\n\nBeaconing IOC:\n  Source: 192.168.56.14\n  Destination: 51.15.197.127:80\n  Interval: ~5 seconds between ts fields\n  orig_bytes: 199-208 (small, fixed-size requests)\n  resp_bytes: 399 (consistent responses)\n  \u2192 Empire default beacon interval: 5 seconds\n\nAnalysis command:\n  cat conn.log   \u2192 read and look at ts column differences for regular intervals\n  \u2192 If timestamps show 5.xxx seconds between each connection = beaconing\n\nZeek vs Suricata: Suricata caught the Empire rule; Zeek shows the timing pattern\n\n=== EXAMPLE 2: DNS EXFILTRATION ===\nIndicator: data exfil via DNS subdomains \u2014 encoded data in subdomain queries\n\nPCAP: /home/htb-student/pcaps/dnsexfil.pcapng\nTool: /usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/dnsexfil.pcapng\n\nAnalysis commands:\n  cat dns.log | /usr/local/zeek/bin/zeek-cut query | cut -d . -f1-7\n    \u2192 Extracts query field from all DNS entries\n    \u2192 cut -d . -f1-7: show first 7 dot-separated parts of domain name\n\nWhat to look for in dns.log:\n  \u2192 One domain (letsgohunt.online) with hundreds of unique subdomains\n  \u2192 Subdomain prefixes: www.1204192da26d109d4.*, cdn.0600553f0.*, post.1460.*\n  \u2192 Pattern: hex strings encoded as subdomain labels\n  \u2192 Not typical cloud CDN behavior \u2014 legitimate CDNs use consistent hostnames\n\nDNS tunneling patterns:\n  Exfil in query:  data.<chunk>.<domain> (high-entropy subdomain)\n  Exfil in response: TXT record with encoded data\n  DGA C2: random-looking subdomains of registered domain (sgtqrgcask.windomain.local)\n\nExfil IOCs in dns.log:\n  \u2192 Single domain with 50+ unique subdomains in short timeframe\n  \u2192 Subdomain labels contain hex/base64 strings (not real words)\n  \u2192 Queries use prefixes like 'www.', 'cdn.', 'post.' followed by entropy\n  \u2192 Many NOERROR responses to hex-string queries (server is controlled by attacker)\n\n=== EXAMPLE 3: TLS EXFILTRATION ===\nIndicator: large amount of data sent to external IP over TLS\n\nPCAP: /home/htb-student/pcaps/tlsexfil.pcap\nTool: /usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/tlsexfil.pcap\n\nByte-sum one-liner:\n  cat conn.log | /usr/local/zeek/bin/zeek-cut id.orig_h id.resp_h orig_bytes \\\n    | sort | grep -v -e '^$' | grep -v '-' \\\n    | datamash -g 1,2 sum 3 | sort -k 3 -rn | head -10\n\nCommand breakdown:\n  zeek-cut id.orig_h id.resp_h orig_bytes \u2192 extract src IP, dst IP, bytes from src\n  sort                                     \u2192 sort lines for grouping\n  grep -v -e '^$'                          \u2192 remove empty lines\n  grep -v '-'                              \u2192 remove lines with '-' (missing Zeek field)\n  datamash -g 1,2 sum 3                   \u2192 group by col1+col2, sum col3\n  sort -k 3 -rn                           \u2192 sort by bytes (col3) descending\n  head -10                                 \u2192 top 10 src\u2192dst pairs by volume\n\nResult:\n  10.0.10.100    192.168.151.181    270775912\n  \u2192 ~270 MB sent from internal host to 192.168.151.181\n  \u2192 270 MB over SSL to same IP = strong exfiltration IOC\n\nTLS exfil IOCs in conn.log:\n  \u2192 One external IP receiving massive orig_bytes (100MB+)\n  \u2192 Many persistent TLS connections to same destination\n  \u2192 Service field: ssl (port 443)\n  \u2192 Compare against baseline \u2014 legitimate cloud services also have high bytes\n\n=== EXAMPLE 4: PSEXEC DETECTION ===\nIndicator: PsExec uploads PSEXESVC.exe to ADMIN$ share, then creates temp service via IPC$\n\nPCAP: /home/htb-student/pcaps/psexec_add_user.pcap\nTool: /usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/psexec_add_user.pcap\n\nLogs to check: smb_files.log + dce_rpc.log + smb_mapping.log\n\nsmb_files.log \u2014 what to look for:\n  \u2192 action: SMB::FILE_OPEN on \\\\dc1\\ADMIN$ for PSEXESVC.exe   \u2190 upload indicator\n  \u2192 action: SMB::FILE_DELETE on \\\\dc1\\ADMIN$ for PSEXESVC.exe \u2190 cleanup after\n  \u2192 size: 145568 (PSEXESVC.exe binary)\n\ndce_rpc.log \u2014 what to look for:\n  \u2192 endpoint: svcctl (Service Control Manager over named pipe)\n  \u2192 named_pipe: \\\\pipe\\\\ntsvcs\n  \u2192 operations in sequence:\n    1. OpenSCManagerW   \u2190 connect to SCM\n    2. CreateServiceWOW64W \u2190 create temp service = PSEXESVC\n    3. OpenServiceW\n    4. StartServiceW    \u2190 start the service (executes command)\n    5. QueryServiceStatus\n    6. ControlService   \u2190 stop the service\n    7. DeleteService    \u2190 remove temp service\n    8. CloseServiceHandle\n\nsmb_mapping.log \u2014 what to look for:\n  \u2192 \\\\dc1\\ADMIN$  DISK  \u2190 file upload to ADMIN share\n  \u2192 \\\\dc1\\IPC$    PIPE  \u2190 service creation via IPC pipe\n\nPsExec attack flow:\n  1. Attacker authenticates to SMB (445)\n  2. Connects to \\\\target\\ADMIN$ \u2014 uploads PSEXESVC.exe\n  3. Connects to \\\\target\\IPC$ \u2014 uses svcctl to create + start PSEXESVC service\n  4. Service executes attacker's command (net user hacker /add, etc.)\n  5. Service stopped and deleted; PSEXESVC.exe deleted\n\nMITRE: T1543.003 (Create or Modify System Process: Windows Service)\nMITRE: T1570 (Lateral Tool Transfer)\nPCAP source: https://github.com/401TRG/detections/raw/master/pcaps/20171220_smb_psexec_add_user.pcap",
+  "examples": [
+    {
+      "label": "Analyze psempire.pcap for C2 beaconing",
+      "command": "/usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/psempire.pcap"
+    },
+    {
+      "label": "View connection log for beaconing intervals",
+      "command": "cat conn.log"
+    },
+    {
+      "label": "Analyze DNS exfil PCAP",
+      "command": "/usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/dnsexfil.pcapng"
+    },
+    {
+      "label": "Extract DNS queries to find exfil subdomains",
+      "command": "cat dns.log | /usr/local/zeek/bin/zeek-cut query | cut -d . -f1-7"
+    },
+    {
+      "label": "Analyze TLS exfil PCAP",
+      "command": "/usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/tlsexfil.pcap"
+    },
+    {
+      "label": "Sum bytes per src+dst pair (find exfil target)",
+      "command": "cat conn.log | /usr/local/zeek/bin/zeek-cut id.orig_h id.resp_h orig_bytes | sort | grep -v -e '^$' | grep -v '-' | datamash -g 1,2 sum 3 | sort -k 3 -rn | head -10"
+    },
+    {
+      "label": "Analyze PsExec PCAP",
+      "command": "/usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/psexec_add_user.pcap"
+    },
+    {
+      "label": "Check SMB file operations (PsExec upload)",
+      "command": "cat smb_files.log"
+    },
+    {
+      "label": "Check DCE/RPC service operations (PsExec service creation)",
+      "command": "cat dce_rpc.log"
+    },
+    {
+      "label": "Check SMB share mappings (ADMIN$ and IPC$)",
+      "command": "cat smb_mapping.log"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Working with IDS/IPS",
+      "url": "https://academy.hackthebox.com/module/details/226"
+    },
+    {
+      "title": "Zeek Documentation",
+      "url": "https://docs.zeek.org/en/stable/"
+    },
+    {
+      "title": "PrintNightmare Network Analysis",
+      "url": "https://labs.jumpsec.com/printnightmare-network-analysis/"
+    },
+    {
+      "title": "Active Countermeasures Zeek One-liners",
+      "url": "https://www.activecountermeasures.com/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m09-zeek-fundamentals",
+      "rel": "prereq",
+      "note": "Zeek fundamentals \u2014 log structure and zeek-cut usage before analysis examples."
+    },
+    {
+      "id": "cdsa-m09-suricata-rule-examples",
+      "rel": "prereq",
+      "note": "Suricata C2 rules \u2014 Suricata alerts same C2 PCAPs via signature matching."
+    }
+  ],
+  "lint_ignore": [
+    "hardcoded-literal"
+  ]
+}

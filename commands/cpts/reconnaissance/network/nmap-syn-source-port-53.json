@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nSYN scan (-sS) with source port set to 53 (--source-port 53). Packets appear as DNS responses \u2014 firewall rules whitelisting DNS source port 53 pass them without inspection. In example: port 50000 filtered normally \u2192 open when sourced from port 53.\n\n=== CONFIRMATION FLOW ===\n1. Normal SYN scan: port filtered 2. --source-port 53 SYN scan: port shows open 3. ncat --source-port 53 to that port: confirms full connection possible 4. Service is fully accessible via DNS-sourced packets.\n\n=== TARGET ===\nStateless ACL rules matching 'src port 53 = permit'. Won't bypass stateful firewalls that track connection state and validate that DNS responses come from DNS servers.",
+  "references": []
+}

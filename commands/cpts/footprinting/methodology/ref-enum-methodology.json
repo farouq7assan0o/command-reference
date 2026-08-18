@@ -1,0 +1,57 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "methodology",
+    "layers",
+    "reference"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Sweep all ports fast, then enumerate each service",
+      "command": "nmap -p- --min-rate 1000 10.129.14.128"
+    }
+  ],
+  "notes": "Layer 1 Internet Presence: domains, subdomains, vHosts, ASN, netblocks, IPs, cloud, security measures\nLayer 2 Gateway: firewalls, DMZ, IPS/IDS, EDR, proxies, NAC, segmentation, VPN, Cloudflare\nLayer 3 Accessible Services: type, functionality, config, port, version, interface\nLayer 4 Processes: PID, processed data, tasks, source, destination\nLayer 5 Privileges: groups, users, permissions, restrictions, environment\nLayer 6 OS Setup: OS type, patch level, network config, config files, sensitive private files",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "domain-passive-recon",
+      "note": "Start Layer 1 enumeration with passive domain recon",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-enum-methodology",
+  "name": "Reference - Enumeration Methodology (6 Layers)",
+  "command": "# work outside-in: Internet presence -> gateway -> services -> processes -> privileges -> OS",
+  "description": "HTB's layered enumeration model - a mental checklist so you enumerate systematically rather than randomly poking ports.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1595"
+  ]
+}

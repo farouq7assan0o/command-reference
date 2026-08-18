@@ -1,0 +1,86 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python"
+  ],
+  "tags": [
+    "drupal",
+    "cve",
+    "exploit"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Drupal",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Exploit CVE-2014-3704 to create a new admin account",
+      "command": "python2.7 drupalgeddon.py -t http://drupal-qa.inlanefreight.local -u hacker -p pwnd"
+    }
+  ],
+  "notes": "Drupal 7 < 7.32 SQLi (CVE-2014-3704). It creates an admin account rather than direct RCE, so follow up by logging in and planting a webshell.",
+  "references": [
+    {
+      "title": "SA-CORE-2014-005 (Drupalgeddon)",
+      "url": "https://www.drupal.org/SA-CORE-2014-005"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "drupal-detect",
+      "note": "Confirms Drupal 7 target range.",
+      "rel": "prereq"
+    },
+    {
+      "id": "drupalgeddon2",
+      "note": "Newer chain for Drupal 7/8.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "drupalgeddon",
+  "name": "Drupalgeddon - Create Admin (CVE-2014-3704)",
+  "command": "python2.7 drupalgeddon.py -t http://<url> -u <newuser> -p <newpass>",
+  "description": "Exploits the Drupalgeddon SQL injection (Drupal 7 < 7.32) to create a new administrator account, giving full CMS control.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1136"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Drupalgeddon (SA-CORE-2014-005 / CVE-2014-3704) exploits SQL injection in Drupal's database abstraction layer. Array-format username parameters bypass query sanitization, allowing insertion of a new admin user without authentication.",
+    "prerequisites": "Drupal 7.x before 7.32. Unauthenticated access to the registration or login endpoint.",
+    "impact": "Creates a new admin-level user, providing full backend access for further exploitation (webshell, data exfiltration).",
+    "detection": "Unusual POST parameters with array notation to Drupal's login endpoint. New admin user in the database. drupalgeddon.py request pattern.",
+    "artifacts": "Web server access logs (POST with array parameters) | Database: new user in users table with admin role | Drupal watchdog log (new user registration)",
+    "prevention": "Update to Drupal 7.32+. This vulnerability is over 10 years old -- any unpatched Drupal 7 instance should be considered fully compromised.",
+    "misconfiguration": "Drupal 7.x < 7.32 running on a public-facing server without the SA-CORE-2014-005 patch applied.",
+    "vulnerable_config": "# Drupal 7.x < 7.32\n# Vulnerable query in includes/database/database.inc\n# No parameterised query for array-type form values",
+    "secure_config": "# Update to Drupal 7.32+ or Drupal 9.x\ndrush pm-update drupal",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "OWASP A03:2021"
+    ]
+  }
+}

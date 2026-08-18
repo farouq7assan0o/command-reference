@@ -1,0 +1,106 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "rdp"
+  ],
+  "tools": [
+    "nmap",
+    "xfreerdp",
+    "rdp-sec-check"
+  ],
+  "tags": [
+    "rdp",
+    "remote-desktop"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Windows Remote Management",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Enumerate RDP security settings",
+      "command": "nmap -sV -sC 10.129.201.248 -p3389 --script rdp*"
+    },
+    {
+      "label": "Check RDP security settings / NLA",
+      "command": "./rdp-sec-check.pl 10.129.201.248"
+    }
+  ],
+  "notes": "Port: 3389/tcp+udp. rdp-sec-check needs Perl Encoding::BER (install via cpan).",
+  "references": [
+    {
+      "title": "rdp-sec-check",
+      "url": "https://github.com/CiscoCXSecurity/rdp-sec-check"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "rdp-bruteforce",
+      "rel": "escalation",
+      "note": "Brute RDP credentials."
+    },
+    {
+      "id": "rdp-session-hijack",
+      "rel": "escalation",
+      "note": "Hijack an existing session with SYSTEM."
+    },
+    {
+      "id": "winrm-wmi-enum",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "rdp-enum",
+  "name": "RDP - Enumeration & Connect",
+  "command": "nmap -sV -sC <ip> -p3389 --script rdp*",
+  "description": "Scan RDP with the rdp* NSE scripts, assess its security config with rdp-sec-check, then connect with xfreerdp.",
+  "variations": [
+    {
+      "label": "Nmap RDP scripts",
+      "command": "nmap -sV -sC <ip> -p3389 --script rdp*"
+    },
+    {
+      "label": "rdp-sec-check",
+      "command": "git clone https://github.com/CiscoCXSecurity/rdp-sec-check.git && cd rdp-sec-check\n./rdp-sec-check.pl <ip>"
+    },
+    {
+      "label": "Connect with xfreerdp",
+      "command": "xfreerdp /u:<user> /p:\"P455w0rd!\" /v:<ip>"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries scan for open ports and running services on network hosts to identify attack surface and potential exploitation targets. Tools like netcat, nmap, and service-specific clients probe for banner information that reveals software versions, which can then be matched against known vulnerabilities.",
+    "prerequisites": "Network access to RDP (TCP 3389).",
+    "impact": "RDP version, NLA status, and certificate details — enabling CVE matching (e.g. BlueKeep) and spraying decisions.",
+    "detection": "Monitor for processes performing network enumeration by correlating process creation, socket connections, and sequential destination IP probing within a time window. Unusual port scanning patterns or banner-grabbing activity from internal hosts can indicate post-compromise discovery.",
+    "artifacts": "Connection attempts in the RDP/Security logs (Event 4625 on failed auth); traffic to 3389.",
+    "prevention": "Close unnecessary ports and services to prevent risk of discovery and potential exploitation. Use network intrusion detection/prevention systems to detect and prevent remote service scans. Ensure proper network segmentation to protect critical servers and devices.",
+    "sources": [
+      "MITRE T1046"
+    ],
+    "misconfiguration": "RDP (TCP 3389) is exposed to the internet or internal networks without NLA (Network Level Authentication), allowing unauthenticated brute force at the login screen. Session hijacking exploits the Windows tscon.exe utility which can reconnect disconnected sessions without a password when run as SYSTEM.",
+    "vulnerable_config": "# RDP without NLA — authentication happens INSIDE the session (post-connection):\n# Attacker can reach the Windows login screen without any prior auth\n# Enables brute force + BlueKeep/DejaBlue exploitation\n\n# Disconnected sessions hijackable:\n# > query session  -> shows disconnected admin session\n# > tscon <ID> /dest:console  (as SYSTEM) -> hijacks session without password",
+    "secure_config": "# Enable NLA:\n# Group Policy: Computer Config -> Admin Templates -> Windows Components -> RDS\n#   'Require NLA' = Enabled\n# Registry: HKLM\\System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp\n#   UserAuthentication = 1\n\n# Restrict RDP access:\nNew-NetFirewallRule -Name 'RDP Allow' -Protocol TCP -LocalPort 3389 \\\n    -RemoteAddress 10.10.1.0/24 -Action Allow\nNew-NetFirewallRule -Name 'RDP Block' -Protocol TCP -LocalPort 3389 -Action Block\n\n# Prevent session hijacking:\n# Enable RDP session timeouts + automatic logoff for disconnected sessions\n# GPO: Disconnect + log off after 15 minutes idle"
+  }
+}

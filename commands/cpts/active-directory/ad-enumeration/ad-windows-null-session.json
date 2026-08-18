@@ -1,0 +1,80 @@
+{
+  "id": "ad-windows-null-session",
+  "name": "net use - Windows Null Session IPC$",
+  "command": "net use \\\\<dc_host>\\ipc$ \"\" /u:\"\"",
+  "description": "Establishes a null session to the IPC$ share on a Windows domain controller from a Windows host. Enables anonymous enumeration of domain info via RPC. Rarely works on modern patched Windows (anonymous sessions disabled by default) but still found in legacy environments and can be used as a prerequisite for other net commands.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "null-session",
+    "ipc",
+    "net-use",
+    "windows",
+    "unauthenticated",
+    "smb"
+  ],
+  "mitre": [
+    "T1135"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY IPC$ NULL SESSION ===\nIPC$ (Inter-Process Communication) is a special share that enables RPC connections.\nA null session to IPC$ with empty username/password allows anonymous RPC calls\nif the DC permits it (RestrictAnonymous = 0 in registry).\n\n=== WHEN IT WORKS ===\n  Windows NT/2000       → always works by default\n  Windows 2003+         → restricted by default, RestrictAnonymous GPO\n  Windows 2008+/modern  → almost always blocked\n  Lab environments      → often enabled for learning\n\n=== AFTER ESTABLISHING NULL SESSION ===\n  net view \\\\<dc>       → list shares\n  net user /domain      → list domain users (if allowed)\n  net group /domain     → list domain groups\n  nbtstat -A <ip>       → NetBIOS names\n\n=== CHECK IF IT WORKED ===\nnet use output:\n  'The command completed successfully.' = null session established\n  'System error 5' = access denied\n  'System error 1326' = bad password/account\n\n=== CLEAN UP ===\nnet use \\\\<dc>\\ipc$ /delete  → remove the connection",
+  "examples": [
+    {
+      "label": "Establish null session",
+      "command": "net use \\\\ACADEMY-EA-DC01\\ipc$ \"\" /u:\"\""
+    },
+    {
+      "label": "List domain users after null session",
+      "command": "net user /domain"
+    },
+    {
+      "label": "List groups",
+      "command": "net group /domain"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-net-commands",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Establishes an anonymous/null SMB session (net use \\\\dc\\ipc$ \"\" /u:\"\") to enable unauthenticated enumeration where it is permitted.",
+    "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
+    "impact": "A null-session foothold for RPC/SAMR enumeration.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "An anonymous IPC$ connection; subsequent RPC queries.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1135"
+    ],
+    "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
+    "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
+    "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+  },
+  "tools": [
+    "net"
+  ]
+}

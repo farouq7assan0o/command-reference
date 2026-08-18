@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nCHAOS class TXT query against version.bind fingerprints the exact DNS server software version without standard security monitoring triggering. Returns the BIND version string or equivalent for other DNS implementations.\n\n=== CHAINING ===\nPassive fingerprint \u2192 look up version in CVE databases \u2192 identify if unpatched vulnerabilities exist \u2192 plan targeted exploitation if applicable.\n\n=== DETECTION EVASION ===\nCHAOS class queries are not logged by most standard DNS monitoring tools which focus on IN class queries. Administrators who disabled version reporting return REFUSED or a generic string.",
+  "references": []
+}

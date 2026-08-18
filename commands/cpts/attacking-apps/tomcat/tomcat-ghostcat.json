@@ -1,0 +1,91 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python"
+  ],
+  "tags": [
+    "tomcat",
+    "ajp",
+    "lfi",
+    "cve"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Tomcat",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Confirm AJP/8009 and HTTP/8080 are open",
+      "command": "nmap -sV -p 8009,8080 app-dev.inlanefreight.local"
+    },
+    {
+      "label": "Read WEB-INF/web.xml through the Ghostcat (CVE-2020-1938) LFI",
+      "command": "python2.7 tomcat-ajp.lfi.py app-dev.inlanefreight.local -p 8009 -f WEB-INF/web.xml"
+    }
+  ],
+  "notes": "CVE-2020-1938 reads (and sometimes includes) files under the app root via AJP/8009 with no credentials - ideal for pulling WEB-INF/web.xml and leaked manager creds.",
+  "references": [
+    {
+      "title": "Ghostcat (CVE-2020-1938)",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-1938"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "tomcat-discovery",
+      "note": "Fingerprints the Tomcat instance.",
+      "rel": "prereq"
+    },
+    {
+      "id": "tomcat-mgr-bruteforce",
+      "note": "Use creds leaked from config files to hit the manager.",
+      "rel": "next"
+    }
+  ],
+  "id": "tomcat-ghostcat",
+  "name": "Tomcat - Ghostcat AJP LFI (CVE-2020-1938)",
+  "command": "python2.7 tomcat-ajp.lfi.py <url> -p 8009 -f WEB-INF/web.xml",
+  "description": "Ghostcat abuses the AJP connector (port 8009) to read files inside the web app, disclosing WEB-INF/web.xml and other sensitive files; can lead to RCE if uploads are possible.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Ghostcat (CVE-2020-1938) exploits a flaw in Tomcat's AJP connector. AJP attribute injection allows an unauthenticated attacker to read arbitrary files from any deployed webapp, including WEB-INF/web.xml which may contain credentials.",
+    "prerequisites": "AJP connector exposed on port 8009 (default in Tomcat < 9.0.31). Network access to port 8009.",
+    "impact": "Read any webapp file: WEB-INF/web.xml (credentials), application.properties, log files. If file upload is possible, can achieve RCE by including an uploaded file as JSP.",
+    "detection": "Unexpected connection to port 8009 from non-localhost IP. AJP protocol traffic in network capture. tomcat-ajp.lfi.py signature in access logs.",
+    "artifacts": "Network flow to port 8009 from external IP | Tomcat access log (AJP requests) | IDS alert for AJP-based LFI pattern",
+    "prevention": "Upgrade Tomcat to 9.0.31+, 8.5.51+, or 7.0.100+. If AJP not needed, disable the connector. If needed, set secret attribute and bind to localhost only.",
+    "misconfiguration": "AJP connector enabled on 0.0.0.0:8009 in server.xml without secret attribute and without firewall restriction.",
+    "vulnerable_config": "<!-- server.xml default -->\n<Connector port=\"8009\" protocol=\"AJP/1.3\"\n           redirectPort=\"8443\"/>  <!-- no secret, no address restriction -->",
+    "secure_config": "<!-- Option 1: disable AJP -->\n<!-- Remove or comment out the AJP Connector -->\n\n<!-- Option 2: secure AJP -->\n<Connector protocol=\"AJP/1.3\"\n           address=\"127.0.0.1\"\n           port=\"8009\"\n           redirectPort=\"8443\"\n           secret=\"strong-random-secret\"/>",
+    "evasion": "Port 8009 often not checked by default egress firewall rules.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1083",
+      "OWASP A05:2021"
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n--script banner reads raw service banner immediately after connection. --script smtp-commands issues EHLO and reads the server's full SMTP capability list. Combined: fingerprints the SMTP server version + supported extensions in one scan.\n\n=== BANNER DETAIL ===\nbanner script captures what version detection normalizes: '220 inlane ESMTP Postfix (Ubuntu)' includes OS distribution. smtp-commands reveals: VRFY (user enum viable), STARTTLS, AUTH methods, supported ESMTP extensions.\n\n=== CHAINING ===\nSMTP service discovered \u2192 banner + smtp-commands \u2192 if VRFY listed: attempt user enumeration \u2192 discovered usernames \u2192 IMAP password spray.",
+  "references": []
+}

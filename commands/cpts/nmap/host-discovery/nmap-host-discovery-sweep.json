@@ -1,0 +1,109 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "icmp"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "host-discovery",
+    "ping-sweep"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Host Discovery",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "Inspect the target list",
+      "command": "cat hosts.lst"
+    },
+    {
+      "label": "hosts.lst format (one IP per line)",
+      "command": "10.129.2.4\n10.129.2.10\n10.129.2.18"
+    },
+    {
+      "label": "Lab example",
+      "command": "sudo nmap 10.129.2.0/24 -sn -oA tnet | grep for | cut -d\" \" -f5"
+    }
+  ],
+  "notes": "-sn disables port scanning; -oA writes .nmap/.gnmap/.xml. Use -iL for large scopes.",
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nmap-tcp-connect-scan",
+      "rel": "next",
+      "note": "Port-scan each discovered host."
+    },
+    {
+      "id": "nmap-top-ports",
+      "rel": "alternative",
+      "note": "Quick top-ports triage first."
+    }
+  ],
+  "id": "nmap-host-discovery-sweep",
+  "name": "Nmap - Host Discovery Sweep (-sn)",
+  "command": "sudo nmap <cidr> -sn -oA tnet | grep for | cut -d\" \" -f5",
+  "description": "Ping-sweep a range with no port scan (-sn) to list live hosts, saving all output formats. The grep/cut pipeline prints just the live IPs.",
+  "variations": [
+    {
+      "label": "From an IP list (-iL)",
+      "command": "sudo nmap -sn -oA tnet -iL hosts.lst | grep for | cut -d\" \" -f5"
+    },
+    {
+      "label": "Multiple specific IPs",
+      "command": "sudo nmap -sn -oA tnet 10.129.2.18 10.129.2.19 10.129.2.20 | grep for | cut -d\" \" -f5"
+    },
+    {
+      "label": "IP range shorthand",
+      "command": "sudo nmap -sn -oA tnet 10.129.2.18-20 | grep for | cut -d\" \" -f5"
+    }
+  ],
+  "lint_ignore": [
+    "hardcoded-literal"
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1018"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Host discovery relies on ICMP echo requests and other probes. Hosts with firewalls blocking ICMP appear inactive, but on local networks Nmap uses ARP requests and replies to confirm hosts regardless of ICMP filtering.\n\n[MITRE T1018] Adversaries map the network by querying for other systems by IP, hostname, or logical identifier using built-in OS utilities (ping, net view, arp, tracert) or remote access tool functionality. The resulting host list guides lateral movement decisions.",
+    "prerequisites": "Network access to the target range/subnet.",
+    "impact": "A live-host inventory of the subnet, scoping the rest of the engagement.",
+    "detection": "[MITRE T1018 AN1583] Execution of network enumeration utilities (net.exe, ping.exe, tracert.exe) in short succession, often chained with lateral movement tools or system enumeration commands. [AN1584] Use of bash scripts or interactive shells to issue sequential ping, arp, or traceroute commands to map remote hosts.",
+    "artifacts": "A sweep of ICMP/ARP/SYN probes across many addresses — a clear discovery pattern in network logs.",
+    "prevention": "Firewall rules that drop ICMP echo/unsolicited probes cause hosts to be marked inactive by default discovery (HTB M03). Because on-segment ARP still exposes live hosts, rely on segmentation, NAC, and monitoring for sweep patterns rather than ICMP filtering alone.",
+    "evasion": "On local subnets, use --disable-arp-ping to suppress ARP discovery and rely solely on ICMP/TCP probes, or combine multiple probe types (-PE -PP -PM) to reach hosts that block some probe types.",
+    "sources": [
+      "HTB M03",
+      "MITRE T1018"
+    ],
+    "misconfiguration": "Network perimeters that do not filter ICMP, do not use egress filtering, or expose unnecessary services (all ports open) allow comprehensive port scanning. Systems without host-based firewalls or IDS/IPS allow scan traffic to enumerate every open service, revealing attack surface. No rate-limiting on inbound probes means stealth scans complete quickly.",
+    "vulnerable_config": "# No firewall between attacker and target (or overly permissive rules):\n# iptables -L  ->  Chain INPUT (policy ACCEPT)  [no rules]\n# Or: Windows Firewall disabled\n# Every service's port is reachable from any source\n\n# No IDS/IPS:\n# Snort/Suricata not deployed; no AWS GuardDuty / Azure Defender\n# Nmap SYN scan completes in seconds with no alert generated",
+    "secure_config": "# Linux host-based firewall — default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
+  }
+}

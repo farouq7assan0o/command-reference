@@ -1,0 +1,97 @@
+{
+  "id": "ad-mimikatz-dcsync",
+  "name": "Mimikatz - DCSync (Windows)",
+  "command": "lsadump::dcsync /domain:<domain> /user:<domain>\\<target>",
+  "description": "Performs DCSync from a Windows host using Mimikatz's lsadump::dcsync module. Impersonates a DC replication partner to pull the target account's NT hash, Kerberos keys, and password history. Requires domain admin or equivalent DCSync rights. Use /all for full domain dump or /user for targeted account pull.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Credential Access",
+  "subcategory": "DCSync",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "dcsync",
+    "mimikatz",
+    "credential-dumping",
+    "ntlm",
+    "kerberos",
+    "windows"
+  ],
+  "mitre": [
+    "T1003.006"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== MIMIKATZ DCSYNC vs SECRETSDUMP.PY ===\n  secretsdump.py  \u2192 Linux, remote, requires creds or hash as input\n  lsadump::dcsync \u2192 Windows, runs locally on a machine with AD connectivity,\n                    uses the CURRENT user's token (must already be DA or have DCSync rights)\n\nWhen to use Mimikatz:\n  - You have a Mimikatz-ready Windows shell (DA/high-priv)\n  - You prefer to work from Windows rather than Linux tools\n  - You need /user targeted pull of a specific account\n\n=== REQUIRED: PRIVILEGE::DEBUG OR ELEVATED ===\nMimikatz typically needs 'privilege::debug' first if running as a user:\n  privilege::debug\n  lsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\krbtgt\n\nIf running already as SYSTEM or NT AUTHORITY\\SYSTEM, privilege::debug may not\nbe needed, but doesn't hurt.\n\n=== FLAGS EXPLAINED ===\n  /domain:   \u2192 target domain FQDN\n  /user:     \u2192 target account to pull (domain\\user format)\n  /all       \u2192 pull ALL accounts (equivalent to full secretsdump)\n  /dc:       \u2192 target DC hostname or IP\n  /csv       \u2192 output in CSV format\n\n=== OUTPUT TO LOOK FOR ===\n  Object  : krbtgt\n  Hash NTLM: <32-char hash>\n  Hash NTLM history: ... (previous passwords)\n  Supplemental Credentials: (AES128, AES256 keys)\n\n=== WHAT TO EXTRACT ===\n  KRBTGT hash + AES keys \u2192 golden ticket creation\n  DA account hashes      \u2192 PtH for admin access\n  Service account hashes \u2192 kerberoast comparison / direct use\n\n=== CHAIN POSITION ===\nAfter: gaining DA or DCSync-equivalent rights\nAfter (alternative): runas /netonly to inject credentials (ad-runas-netonly)\nBefore: golden ticket creation (ad-golden-ticket-mimikatz), lateral movement Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "examples": [
+    {
+      "label": "Pull krbtgt hash",
+      "command": "lsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\krbtgt"
+    },
+    {
+      "label": "Pull specific domain admin",
+      "command": "lsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\administrator"
+    },
+    {
+      "label": "Full domain dump",
+      "command": "lsadump::dcsync /domain:INLANEFREIGHT.LOCAL /all /csv"
+    },
+    {
+      "label": "Run privilege escalation then dcsync",
+      "command": "privilege::debug\nlsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\administrator"
+    },
+    {
+      "label": "Ch22 \u2014 dcsync a specific domain user to get NT hash (PEN-200 pattern)",
+      "command": "lsadump::dcsync /user:<domain>\\<username>"
+    }
+  ],
+  "references": [
+    {
+      "title": "Mimikatz (gentilkiwi)",
+      "url": "https://github.com/gentilkiwi/mimikatz"
+    },
+    {
+      "title": "MITRE T1003.006 - DCSync",
+      "url": "https://attack.mitre.org/techniques/T1003/006/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Attacking Active Directory Authentication",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-golden-ticket-mimikatz",
+      "rel": "next",
+      "note": "Forge a golden ticket."
+    }
+  ],
+  "defense": {
+    "why_it_works": "DCSync abuses the MS-DRSR (Directory Replication Service Remote Protocol) that DCs use to replicate with each other. Mimikatz's lsadump::dcsync issues a GetNCChanges (DRSGetNCChanges) RPC call impersonating a replication partner. The DC responds with the requested object's attributes including NT hashes, AES Kerberos keys, and password history \u2014 no code runs on the DC and LSASS is never touched on it. The calling account simply needs Replicating Directory Changes + Replicating Directory Changes All on the domain NC object.",
+    "prerequisites": "Domain Admin rights or explicit DCSync rights (Replicating Directory Changes + Replicating Directory Changes All granted on the domain NC object, e.g. via WriteDACL ACL abuse). An established high-privilege Windows session with network connectivity to the DC on RPC ports (135 + ephemeral). Mimikatz requires SeDebugPrivilege (privilege::debug) unless already running as SYSTEM.",
+    "impact": "Extracts NT hashes, AES-128/256 Kerberos keys, and password history for any domain account including KRBTGT \u2014 without touching LSASS on the DC. KRBTGT hash enables golden ticket creation (10-year persistence); DA/EA hashes enable immediate pass-the-hash; service account hashes enable offline cracking. Effectively full domain compromise from a single operation.",
+    "detection": "Windows Security Event 4662 on the domain object with Access Mask 0x100 and object properties matching the replication GUIDs {1131f6aa-9c07-11d1-f79f-00c04fc2dcd2} (Replicating Directory Changes), {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2} (Replicating Directory Changes All), and {89e95b76-444d-4c62-991a-0facbeda640c} (Replicating Directory Changes In Filtered Set) from an account that is NOT a Domain Controller machine account. Microsoft Defender for Identity (MDI) generates a dedicated DCSync alert on any non-DC performing replication. Many SIEMs have canned rules for this event pattern.",
+    "artifacts": "Event 4662 on the DC(s) with replication GUIDs in the Properties field; MSRPC/DRSUAPI network traffic (DRSGetNCChanges) from the attacking host on ephemeral RPC ports; netlogon.log may show non-DC replication partner registration attempt; Mimikatz process on the attacker's Windows host.",
+    "prevention": "Audit who holds Replicating Directory Changes All on the domain NC (should be only DC machine accounts, Domain Admins, and Enterprise Admins \u2014 remove any service accounts or users that don't need it). Deploy Microsoft Defender for Identity (MDI) for real-time DCSync alerting. Implement a tiered admin model to limit Domain Admin proliferation. Protected Users group for krbtgt (prevents some credential caching). Credential Guard to protect KRBTGT material on DCs.",
+    "evasion": "Use /user: with a single specific account rather than /all to reduce RPC traffic volume. Time the pull during business hours to blend with normal DC replication traffic. Operate from a domain-joined Windows host to make the source less anomalous than a Linux host. Note: Event 4662 fires regardless \u2014 there is no stealth path for DCSync; fast execution and immediate lateral movement limit the response window.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1003.006"
+    ],
+    "misconfiguration": "User or computer accounts have been granted AD replication rights (DS-Replication-Get-Changes-All) that should belong exclusively to Domain Controllers. This right allows calling the MS-DRSR (Directory Replication Service Remote Protocol) to retrieve NTLM password hashes for any account \u2014 including krbtgt. Typically granted accidentally via WriteDACL on the domain object or through inherited ACEs.",
+    "vulnerable_config": "# Who has DCSync rights:\nGet-ObjectAcl -DistinguishedName 'DC=corp,DC=local' -ResolveGUIDs |\n    Where-Object {$_.ActiveDirectoryRights -match 'DS-Replication-Get-Changes'} |\n    Select-Object IdentityReference, ActiveDirectoryRights\n\n# Dangerous: any non-DC account appearing here\n# CORP\\svc_monitoring  DS-Replication-Get-Changes-All  <- not a DC",
+    "secure_config": "# Remove non-DC replication rights:\n# Using PowerView:\nRemove-DomainObjectAcl -TargetIdentity 'DC=corp,DC=local' \\\n    -PrincipalIdentity 'svc_monitoring' -Rights DCSync\n\n# Monitor with Event 4662 (Object access with properties):\n# Filter for: ObjectType = DS-Replication-Get-Changes-All GUID\n# {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}\n# Any 4662 from non-DC account with this GUID = DCSync in progress\n\n# Microsoft Defender for Identity: built-in 'DCSync attack' alert\n# Anomalous AD replication from non-DC IPs also caught by MDI"
+  },
+  "tools": [
+    "mimikatz"
+  ]
+}

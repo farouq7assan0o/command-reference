@@ -1,0 +1,74 @@
+{
+  "id": "ad-ldapsearch-users",
+  "name": "ldapsearch - Enumerate Users via LDAP",
+  "command": "ldapsearch -h <dc_ip> -x -b \"<base_dn>\" -s sub \"(&(objectCategory=person)(objectClass=user))\" | grep sAMAccountName",
+  "description": "Enumerates all user objects in AD via LDAP using an anonymous or authenticated bind. Filters for person+user objectClass to get only user accounts (not machine accounts). Outputs sAMAccountNames usable directly in kerbrute userenum or password spray.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "ldap",
+    "user-enumeration",
+    "ldapsearch",
+    "enumeration"
+  ],
+  "mitre": [
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== LDAP FILTER EXPLAINED ===\n(&(objectCategory=person)(objectClass=user))\n  &  → AND (both conditions must match)\n  objectCategory=person  → human users (excludes computers)\n  objectClass=user       → user objects specifically\nThis gives you ONLY user accounts, not computer accounts (which also have objectClass=user but objectCategory=computer).\n\n=== OUTPUT TO USER LIST ===\nFilter the output:\n  ldapsearch -h <dc> -x -b 'DC=...' -s sub '(&(objectCategory=person)(objectClass=user))' sAMAccountName | \\\n    grep sAMAccountName | awk '{print $2}' > users.txt\n\nThen use for:\n  kerbrute userenum -d domain --dc <dc> users.txt  → validate active accounts\n  Password spray with valid users only\n\n=== USEFUL ATTRIBUTES TO PULL ===\nAdd attributes after the filter:\n  sAMAccountName userPrincipalName description memberOf pwdLastSet\n  accountExpires userAccountControl\n\n=== CRACKMAPEXEC ALTERNATIVE ===\ncrackmapexec smb <dc> -u user -p pass --users → faster, authenticated",
+  "examples": [
+    {
+      "label": "Get all usernames",
+      "command": "ldapsearch -h 172.16.5.5 -x -b 'DC=INLANEFREIGHT,DC=LOCAL' -s sub '(&(objectCategory=person)(objectClass=user))' sAMAccountName | grep sAMAccountName | awk '{print $2}' > users.txt"
+    },
+    {
+      "label": "Get users with description (for password hunting)",
+      "command": "ldapsearch -h 172.16.5.5 -x -b 'DC=INLANEFREIGHT,DC=LOCAL' -s sub '(&(objectCategory=person)(objectClass=user))' sAMAccountName description"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-ldapsearch-pwpolicy",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "ldapsearch queries the DC directly over LDAP to enumerate users/attributes from Linux without domain-joined tooling.",
+    "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
+    "impact": "A user inventory gathered from Linux.",
+    "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
+    "artifacts": "Raw LDAP queries to the DC for user objects.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "The LDAP server (Active Directory domain controller) allows anonymous binds or null-credential binds, exposing the directory tree to unauthenticated queries. Even when full anonymous access is disabled, authenticated-but-low-privilege domain users can enumerate all users, groups, SPNs, and sensitive attributes (description fields containing passwords, LAPS passwords if ACLs are wrong) because AD's default read ACL is very permissive.",
+    "vulnerable_config": "# Anonymous LDAP bind allowed (old domain or misconfigured):\n# Test: ldapsearch -H ldap://<dc> -x -b '' -s base  (no -D or -w)\n# If returns results -> anonymous bind works\n\n# AD attribute exposure to all authenticated users (default permissive ACL):\n# All users can read: userPrincipalName, sAMAccountName, memberOf,\n#   servicePrincipalName, description, pwdLastSet, adminCount\n# Description field often contains passwords set by admins during provisioning",
+    "secure_config": "# Disable LDAP anonymous binds on domain controllers:\n# Registry (on each DC):\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters' \\\n    -Name 'LDAPServerIntegrity' -Value 2  # require signing\n\n# Force LDAPS (LDAP over TLS) — block plaintext LDAP:\n# GPO: Domain Controller Security Policy\n#   Network Security: LDAP client signing requirements = Require signing\n\n# Audit AD attribute ACLs — check who can read sensitive attributes:\nGet-ADObject (Get-ADDomain).DistinguishedName -Properties nTSecurityDescriptor\n\n# Remove passwords from description/info fields (audit quarterly):\nGet-ADUser -Filter * -Properties Description |\n    Where-Object {$_.Description -match 'pass|pwd|password|temp'} |\n    Select-Object SamAccountName, Description\n\n# Enable LDAP channel binding (KB4520412):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters\n#   LdapEnforceChannelBinding = 2"
+  },
+  "tools": [
+    "ldapsearch"
+  ]
+}

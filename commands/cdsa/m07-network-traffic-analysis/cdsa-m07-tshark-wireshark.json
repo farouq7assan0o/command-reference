@@ -1,0 +1,80 @@
+{
+  "id": "cdsa-m07-tshark-wireshark",
+  "name": "TShark & Wireshark — Switches, Panes, Capture & Display Filters",
+  "command": "tshark -i eth0 -w /tmp/capture.pcap",
+  "description": "TShark is the CLI version of Wireshark — same capture engine, no GUI. Both use BPF for capture filters (same syntax as tcpdump) and Wireshark's proprietary display filter syntax for post-capture analysis. Wireshark GUI has three panes: Packet List (orange), Packet Details (blue), Packet Bytes (green). Display filters are more powerful than capture filters — applied without losing packets.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "Wireshark / TShark",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 07: Intro to Network Traffic Analysis",
+  "tags": ["tshark", "wireshark", "pcap", "display-filters", "capture-filters", "bpf", "network-analysis", "blue-team", "nta"],
+  "mitre": ["T1040"],
+  "notes": "=== TSHARK SWITCHES ===\n-D                  List available network interfaces\n-i eth0             Select capture interface\n-f 'host x.x.x.x'  Capture filter (BPF syntax, same as tcpdump)\n-c 100              Stop after capturing 100 packets\n-a duration:60      Auto-stop after 60 seconds\n-r file.pcap        Read from PCAP file\n-W <format>         Set output format (e.g., pcapng)\n-P                  Print packet summary (even when writing to file)\n-x                  Print hex dump of packet data\n\n=== TSHARK COMMON USAGE ===\n# Live capture to file\ntshark -i eth0 -w /tmp/capture.pcap\n\n# Live capture with BPF capture filter\ntshark -i eth0 -f 'port not 22' -w /tmp/capture.pcap\n\n# Read PCAP with display filter (Wireshark syntax)\ntshark -r capture.pcap -Y 'http.request.method == GET'\n\n# Print verbose packet details\ntshark -r capture.pcap -V\n\n# List interfaces\ntshark -D\n\n# Auto-stop conditions\ntshark -i eth0 -a duration:60 -a filesize:1000 -w /tmp/cap.pcap\n\n=== TSHARK DISPLAY FILTER EXAMPLES ===\ntshark -r capture.pcap -Y 'ip.addr == <IP>'\ntshark -r capture.pcap -Y 'tcp.port == 443'\ntshark -r capture.pcap -Y 'http'\ntshark -r capture.pcap -Y 'dns'\ntshark -r capture.pcap -Y 'ftp'\ntshark -r capture.pcap -Y 'ftp-data'\ntshark -r capture.pcap -Y 'frame.number == 4'\n\n=== WIRESHARK GUI PANES ===\n[ORANGE] Packet List Pane\n  → Shows all captured packets as rows\n  → Columns: No. | Time | Source | Destination | Protocol | Length | Info\n  → Click a row to select it — highlights corresponding bytes in green pane\n  → Right-click: Follow Stream, Apply as Filter, Export, Mark/Ignore\n\n[BLUE] Packet Details Pane\n  → Protocol tree for selected packet\n  → Expand layer: Frame → Ethernet → IP → TCP → Application\n  → Right-click a field: Apply as Filter / Prepare as Filter / Copy\n  → Shows all header fields, flags, options\n\n[GREEN] Packet Bytes Pane\n  → Raw hex + ASCII of selected packet\n  → Highlighted bytes correspond to selected field in blue pane\n  → Useful for spotting encoded data, patterns in payloads\n\n=== WIRESHARK CAPTURE FILTERS (BPF — applied BEFORE capture) ===\n# Same syntax as tcpdump — applied before packets arrive in Wireshark\n# Set in: Capture → Options → Capture filter field\n# Downside: packets NOT matching are lost permanently\n\nhost <IP>              → traffic to/from host\nnet <NETWORK>/<CIDR>   → traffic to/from subnet\nport 80                → TCP/UDP port 80\nnot arp and not icmp   → exclude noise\ntcp and port 443       → HTTPS only\nsrc host <IP>          → from source only\n\n=== WIRESHARK DISPLAY FILTERS (proprietary — applied AFTER capture) ===\n# Applied to already-captured packets — can change without losing data\n# Enter in the filter bar at top of Wireshark\n# Green bar = valid filter, Red bar = invalid syntax\n\nip.addr == <IP>          → packets involving this IP\nip.src == <IP>           → source IP only\nip.dst == <IP>           → destination IP only\ntcp.port == 443          → TCP port 443\nudp.port == 53           → UDP DNS\nhttp                     → HTTP traffic\ndns                      → DNS queries + responses\nftp                      → FTP control channel\nftp-data                 → FTP data transfer\nicmp                     → ICMP only\nnot arp                  → exclude ARP\nhttp.request.method == \"GET\"  → HTTP GET requests only\nframe.number == 4        → specific packet by number\ntcp.stream eq 1          → all packets in TCP stream 1\n\n=== LOGICAL OPERATORS IN DISPLAY FILTERS ===\n# AND / OR / NOT + parentheses for grouping\nip.addr == <IP1> && tcp.port == 80       → AND\nip.addr == <IP1> || ip.addr == <IP2>     → OR\n!(arp || icmp)                           → NOT (exclude both)\n\n=== LAB ACCESS (xfreerdp) ===\n# Connect to Wireshark lab machine\nxfreerdp /v:<TARGET_IP> /u:htb-student /p:HTB_@cademy_stdnt!\n  → Use for HTB lab access when GUI is needed",
+  "examples": [
+    {
+      "label": "List interfaces (TShark)",
+      "command": "tshark -D"
+    },
+    {
+      "label": "Live capture to file",
+      "command": "tshark -i eth0 -w /tmp/capture.pcap"
+    },
+    {
+      "label": "Capture with BPF filter (exclude SSH)",
+      "command": "tshark -i eth0 -f 'port not 22' -w /tmp/capture.pcap"
+    },
+    {
+      "label": "Auto-stop: 60 seconds OR 1MB file",
+      "command": "tshark -i eth0 -a duration:60 -a filesize:1000 -w /tmp/cap.pcap"
+    },
+    {
+      "label": "Read PCAP with display filter",
+      "command": "tshark -r capture.pcap -Y 'http.request.method == \"GET\"'"
+    },
+    {
+      "label": "Display filter: IP address",
+      "command": "tshark -r capture.pcap -Y 'ip.addr == <TARGET_IP>'"
+    },
+    {
+      "label": "Display filter: FTP traffic",
+      "command": "tshark -r capture.pcap -Y 'ftp'"
+    },
+    {
+      "label": "Display filter: NOT ARP and NOT ICMP",
+      "command": "tshark -r capture.pcap -Y '!(arp || icmp)'"
+    },
+    {
+      "label": "Connect to RDP lab via xfreerdp",
+      "command": "xfreerdp /v:<TARGET_IP> /u:htb-student /p:HTB_@cademy_stdnt!"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intro to Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/81"
+    },
+    {
+      "title": "Wireshark Display Filter Reference",
+      "url": "https://www.wireshark.org/docs/dfref/"
+    },
+    {
+      "title": "TShark Man Page",
+      "url": "https://www.wireshark.org/docs/man-pages/tshark.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m07-tcpdump-filters",
+      "rel": "prereq",
+      "note": "BPF capture filter syntax — shared with Wireshark capture filters."
+    },
+    {
+      "id": "cdsa-m07-wireshark-advanced",
+      "rel": "next",
+      "note": "Wireshark advanced: FTP dissection, Follow Stream, HTTP object export, RDP decryption."
+    }
+  ]
+}

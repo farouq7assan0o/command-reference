@@ -1,0 +1,56 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [],
+  "tags": [
+    "reference",
+    "compliance",
+    "pci-dss",
+    "hipaa"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Standards",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "Regime drives scope",
+      "command": "# Card data -> PCI-DSS ; Health records (US) -> HIPAA ; EU personal data -> GDPR"
+    }
+  ],
+  "notes": "PCI DSS: payment card data (Cardholder Data Environment / CDE).\nHIPAA: US healthcare / protected health information.\nFISMA: US federal information systems.\nISO 27001: information security management system (ISMS).",
+  "references": [
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-pentest-standards",
+      "rel": "next",
+      "note": "Testing standards that satisfy compliance."
+    }
+  ],
+  "id": "ref-compliance-standards",
+  "name": "Reference - Compliance Standards",
+  "command": "# which regime applies determines mandatory controls + scope",
+  "description": "The major compliance regimes you'll be assessing against.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1590"
+  ]
+}

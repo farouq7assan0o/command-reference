@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nsmtp-commands NSE retrieves full ESMTP capability list via EHLO exchange. smtp-enum-users tests for valid accounts via VRFY. Service version detection fingerprints exact Postfix/Sendmail/Exim version.\n\n=== VRFY RELIABILITY ===\nMany SMTP servers return 252 for any input including invented usernames \u2014 manual verification required. VRFY results alone are unreliable for automated enumeration.\n\n=== CHAINING ===\nsmtp-commands \u2192 check for VRFY support \u2192 smtp-enum-users with username wordlist \u2192 cross-reference with SMB/LDAP usernames \u2192 test discovered usernames against IMAP with password spray.",
+  "references": []
+}

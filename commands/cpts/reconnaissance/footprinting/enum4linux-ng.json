@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nenum4linux-ng automates SMB/RPC enumeration: OS detection, share listing, user enumeration via RID cycling, group enumeration, and password policy retrieval. The next-generation rewrite of enum4linux with improved output and SMB2 support.\n\n=== KEY OUTPUT ===\nPassword policy: minimum length, complexity requirements, lockout threshold, lockout duration. A lockout threshold of 'None' means password spraying with no lockout risk. Short minimum length + no complexity enables targeted spray.\n\n=== CHAINING ===\nNull session (no creds needed on misconfigured targets) \u2192 get user list \u2192 get password policy \u2192 plan spray with policy constraints \u2192 use harvested creds for deeper access.\n\n=== DANGEROUS SETTINGS DETECTED ===\nguest ok = yes, writable shares, weak password policy, null session permitted.",
+  "references": []
+}

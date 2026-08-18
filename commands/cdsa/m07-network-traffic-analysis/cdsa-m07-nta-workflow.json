@@ -1,0 +1,84 @@
+{
+  "id": "cdsa-m07-nta-workflow",
+  "name": "NTA Analysis Workflow — Descriptive, Diagnostic, Predictive, Prescriptive",
+  "command": "sudo tcpdump -i eth0 -w /tmp/capture.pcap",
+  "description": "Network Traffic Analysis (NTA) follows a 4-phase framework: Descriptive (what happened), Diagnostic (why it happened), Predictive (what might happen), Prescriptive (what to do). The 8-step practical workflow covers everything from capture setup to IOC extraction. Understanding which dependencies to capture (host-to-host, unique events, patterns) drives the whole analysis. Also covers the guided lab scenario (netcat shell + rogue admin user creation).",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "NTA Workflow",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 07: Intro to Network Traffic Analysis",
+  "tags": ["nta", "workflow", "traffic-analysis", "incident-response", "blue-team", "network-forensics", "pcap"],
+  "mitre": ["T1040", "T1059", "T1136.001"],
+  "notes": "=== NTA ANALYSIS FRAMEWORK (4 PHASES) ===\n\n[1] Descriptive Analysis\n  → What happened?\n  → Identify: what traffic occurred, which hosts communicated, what data was exchanged\n  → Tools: tcpdump, Wireshark Packet List, basic display filters\n  → Questions: What IPs are talking? On what ports? When? How much data?\n\n[2] Diagnostic Analysis\n  → Why did it happen?\n  → Investigate anomalies, compare baseline vs observed\n  → Tools: Follow Stream, Wireshark statistics, correlation with logs\n  → Questions: Why is host X talking to this external IP? Is this normal?\n\n[3] Predictive Analysis\n  → What might happen next?\n  → Pattern recognition, threat intel correlation\n  → Tools: threat intel lookups, pattern matching, IOC extraction\n  → Questions: If this is C2, what's the next stage? Data exfil? Lateral movement?\n\n[4] Prescriptive Analysis\n  → What should we do?\n  → Actionable response: block IPs, isolate hosts, create detection rules\n  → Output: firewall rules, IDS signatures, incident report, remediation steps\n\n=== 8-STEP NTA WORKFLOW ===\n\nStep 1 — Ingest Traffic\n  → Decide: live capture or PCAP file\n  → Live: sudo tcpdump -i eth0 -w /tmp/capture.pcap\n  → Use capture filters to reduce volume if interface is noisy\n  → Tip: capture from a span port or tap — not the analyst's own machine\n\nStep 2 — Define Scope\n  → What are you looking for? Specific host? Protocol? Time window?\n  → Set up display filters in Wireshark before drilling down\n  → Ask: is this a targeted investigation or broad hunt?\n\nStep 3 — Capture Dependencies (3 key views)\n  A. Host-to-Host Conversations\n     → Wireshark: Statistics → Conversations → TCP tab\n     → Shows all pairs of talking hosts, bytes exchanged, packet counts\n     → Spot: unexpected external connections, high volume transfers\n\n  B. Unique Traffic Events\n     → Look for unusual protocols, port numbers, or rare endpoints\n     → Wireshark: Statistics → Protocol Hierarchy\n     → Spot: TOR, IRC, non-standard ports, DNS over non-53\n\n  C. Patterns\n     → Repeating connections at regular intervals → beaconing (C2)\n     → Large outbound transfers → data exfiltration\n     → Many hosts connecting to single destination → DDoS or scanning\n     → New admin protocols (RDP, SSH, WinRM) to sensitive hosts\n\nStep 4 — Apply Filters to Reduce Noise\n  → Exclude known-good traffic: not arp, not dns (if noise), not broadcast\n  → Wireshark coloring rules highlight suspicious protocols in red\n  → Focus on: tcp port 4444, unusual outbound HTTP/S, non-standard services\n\nStep 5 — Examine Interesting Flows\n  → Right-click suspicious packet → Follow → TCP Stream\n  → Read protocol exchanges: look for commands, credentials, file names\n  → Check timestamps: night/weekend activity by internal hosts = suspicious\n\nStep 6 — Extract IOCs\n  → IPs, domains, ports, user agents, file hashes from object exports\n  → Commands seen in plaintext streams (Telnet, FTP, HTTP)\n  → File names from FTP RETR/STOR, HTTP GET URIs\n  → Credentials from cleartext protocols\n\nStep 7 — Correlate with Other Data\n  → Match IPs against threat intel feeds, SIEM logs, DNS logs\n  → Correlate timestamps with endpoint events (process creation, logon events)\n  → Wireshark time + SIEM time must align (check timezone offsets)\n\nStep 8 — Document & Report\n  → Note: what was found, packet numbers, timestamps, stream numbers\n  → Export: PCAP segments, exported objects, screenshots of Follow Stream\n  → Write: executive summary + technical findings + IOCs\n\n=== KEY TRAFFIC PATTERNS TO HUNT ===\n\nBeaconing (C2 check-in):\n  → Regular intervals (every 30s, 60s, 5min) to same external IP\n  → Small fixed-size packets\n  → Filter: ip.dst == <SUSPICIOUS_IP> → sort by time → look for regularity\n\nData Exfiltration:\n  → Large outbound transfers to unknown external IP\n  → High byte count in Wireshark Conversations → Endpoints\n  → DNS exfil: unusually long DNS queries or high-volume DNS to single resolver\n\nPort Scanning:\n  → Many TCP RST responses from target host\n  → Lots of SYN packets from one source with no follow-up SYN-ACK\n  → Filter: tcp[13] &2 != 0 (SYN packets) then look for patterns\n\nLateral Movement:\n  → RDP (3389), SMB (445), WinRM (5985), SSH (22) between internal hosts\n  → Auth-related traffic from unexpected sources\n  → New connections using service accounts on non-standard times\n\n=== GUIDED LAB: NETCAT SHELL INVESTIGATION ===\nThe M07 guided lab captures an attacker:\n  1. Gaining a reverse shell via netcat on port 4444\n  2. Running net user hacker /add\n  3. Running net localgroup administrators hacker /add\n\nInvestigation approach:\n  → Display filter: tcp.port == 4444\n  → Follow TCP Stream → see bash/cmd commands in plaintext\n  → Extract commands: net user, net localgroup → IOCs for incident report\n  → Note: port 4444 = common netcat default — always alert-worthy\n\nExpected stream contents show:\n  → Commands typed by attacker (red in stream)\n  → System responses (blue in stream)\n  → Evidence of user creation and privilege escalation\n\n=== TRAFFIC CAPTURE DEPENDENCIES TABLE ===\nWhat to capture | Why | How\nHost-to-host    | Find who's talking | Statistics → Conversations\nProtocol use    | Detect unusual protocols | Statistics → Protocol Hierarchy\nVolume by host  | Find exfil candidates | Statistics → Endpoints → Bytes column\nDNS queries     | Detect C2 domains | dns filter + unique dst IPs\nHTTP URIs       | Detect downloads/C2 | http.request.method==GET + follow stream\nAuth traffic    | Lateral movement | tcp.port in {22,445,3389,5985}\nSmall-pkt floods | Scanning/DDoS | less 64 + Statistics → Conversations",
+  "examples": [
+    {
+      "label": "Start live capture to PCAP for analysis",
+      "command": "sudo tcpdump -i eth0 -w /tmp/capture.pcap"
+    },
+    {
+      "label": "Open PCAP in Wireshark (GUI)",
+      "command": "wireshark /tmp/capture.pcap"
+    },
+    {
+      "label": "Open PCAP in TShark (CLI)",
+      "command": "tshark -r /tmp/capture.pcap"
+    },
+    {
+      "label": "Protocol hierarchy overview (TShark)",
+      "command": "tshark -r capture.pcap -q -z io,phs"
+    },
+    {
+      "label": "List all TCP conversations with byte counts",
+      "command": "tshark -r capture.pcap -q -z conv,tcp"
+    },
+    {
+      "label": "Hunt for netcat/reverse shell on port 4444",
+      "command": "tshark -r capture.pcap -Y 'tcp.port == 4444' -V"
+    },
+    {
+      "label": "Extract all unique destination IPs",
+      "command": "tshark -r capture.pcap -T fields -e ip.dst | sort | uniq -c | sort -rn"
+    },
+    {
+      "label": "Hunt for DNS queries to unique external resolvers",
+      "command": "tshark -r capture.pcap -Y 'dns' -T fields -e ip.dst | sort | uniq"
+    },
+    {
+      "label": "Find lateral movement protocols between internal hosts",
+      "command": "tshark -r capture.pcap -Y 'tcp.port in {22 445 3389 5985}'"
+    },
+    {
+      "label": "Hunt SYN packets for port scan detection",
+      "command": "sudo tcpdump -r capture.pcap 'tcp[13] &2 != 0'"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intro to Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/81"
+    },
+    {
+      "title": "SANS - Network Forensics & Traffic Analysis",
+      "url": "https://www.sans.org/white-papers/network-forensics-traffic-analysis/"
+    },
+    {
+      "title": "Wireshark Statistics Documentation",
+      "url": "https://www.wireshark.org/docs/wsug_html_chunked/ChStatistics.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m07-tcpdump-fundamentals",
+      "rel": "prereq",
+      "note": "TCPDump is the primary capture tool in the NTA workflow."
+    },
+    {
+      "id": "cdsa-m07-wireshark-advanced",
+      "rel": "prereq",
+      "note": "Follow Stream and object export — core step 5/6 NTA techniques."
+    }
+  ]
+}

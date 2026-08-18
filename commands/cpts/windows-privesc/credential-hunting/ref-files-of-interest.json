@@ -1,0 +1,74 @@
+{
+  "type": "reference",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "reference",
+    "files",
+    "credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "SAM/SYSTEM backups often left in repair",
+      "command": "# %WINDIR%\\repair\\sam ; %WINDIR%\\repair\\system"
+    },
+    {
+      "label": "IIS web app config with connection strings",
+      "command": "# C:\\inetpub\\wwwroot\\web.config"
+    },
+    {
+      "label": "Registry hive .sav copies",
+      "command": "# %WINDIR%\\system32\\config\\{SAM,SYSTEM,SECURITY,software}.sav"
+    }
+  ],
+  "notes": "=== Files of Interest Reference — Extended Credential and Sensitive Data Locations ===\nComprehensive checklist of high-value file locations to check during post-exploitation.\n\n=== HIGH-VALUE REGISTRY HIVE COPIES ===\nC:\\Windows\\repair\\SAM              → backup SAM hive (local account hashes)\nC:\\Windows\\repair\\SYSTEM           → needed to decrypt SAM\nC:\\Windows\\system32\\config\\SAM    → live (locked) - access via VSS or SeBackupPrivilege\nC:\\Windows\\system32\\config\\SYSTEM → live (locked) - same\nC:\\Windows\\system32\\config\\*.sav  → .sav extension = backup copies from Windows Setup\n\n=== LOG AND CONFIG FILES ===\n%WINDIR%\\System32\\CCM\\logs\\*.log          → SCCM deployment logs (may contain credentials)\n%WINDIR%\\System32\\drivers\\etc\\hosts       → internal DNS names / network topology\nC:\\inetpub\\wwwroot\\web.config             → IIS connection strings\nC:\\inetpub\\wwwroot\\*\\appsettings.json    → .NET Core connection strings\n*.rdp files anywhere                         → saved RDP sessions with encoded credentials\n*.vnc files                                  → VNC password configuration\n*.config files                               → application configuration\nNetSetup.log                                 → domain join credentials\n\n=== VIRTUAL DISK AND BACKUP FILES ===\n*.vhd, *.vhdx files               → Hyper-V virtual disk images (mount offline for full OS access)\n*.vmdk files                      → VMware virtual disk images\n*.bak, *.backup files             → application database backups (may contain credentials)\nSQL database backup files (.bak)  → may restore to extract credentials from app DB\n\n=== MEMORY AND PAGE FILES ===\nC:\\pagefile.sys                   → system page file (may contain memory-resident credentials)\nC:\\hiberfil.sys                   → hibernation file (full memory snapshot — contains credentials)\n%temp%\\*.dmp                      → crash dumps (may contain LSASS memory)\n\n=== SNAFFLER FOR AUTOMATED SWEEP ===\n.\\Snaffler.exe -s -d <domain> -o snaffler.log -v data\nSnaffler specifically targets file extensions and content patterns known to contain credentials\nSearches network shares — finds web.config, connection strings, password files, SSH keys\n\n=== CHAINING CONTEXT ===\n.sav registry files → secretsdump offline → local account hashes without admin tools\nVirtual disk files on backup shares → mount offline → full OS credential access\nhiberfil.sys → volatility/strings extraction → memory-resident credentials\npagefile.sys analysis → find credentials that were swapped to disk\nSCCM logs → deployment account credentials → lateral movement across managed systems",
+  "references": [
+    {
+      "title": "PayloadsAllTheThings - Windows PrivEsc",
+      "url": "https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/Methodology%20and%20Resources/Windows%20-%20Privilege%20Escalation.md"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "setakeownership",
+      "note": "Seize ownership to read these when locked.",
+      "rel": "prereq"
+    },
+    {
+      "id": "sebackup-copy-file",
+      "note": "Copy them out with SeBackupPrivilege.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "ref-files-of-interest",
+  "name": "Reference - Windows Files of Interest",
+  "command": "# High-value files to read once you have file access (SeTakeOwnership / SeBackup / arbitrary read)",
+  "description": "Lookup list of sensitive files worth reading for credentials, hashes, or config once you can access protected paths.",
+  "opsec": "silent",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok"
+}

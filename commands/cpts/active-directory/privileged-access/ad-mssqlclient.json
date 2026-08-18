@@ -1,0 +1,87 @@
+{
+  "id": "ad-mssqlclient",
+  "name": "mssqlclient.py - Connect to MSSQL",
+  "command": "mssqlclient.py <domain>/<user>@<target> -windows-auth",
+  "description": "Impacket tool for connecting to Microsoft SQL Server using Windows (NTLM) or SQL authentication. -windows-auth uses domain credentials. Once connected, enables xp_cmdshell for OS command execution, or uses MSSQL as a pivot point to linked servers. Essential for MSSQL privilege escalation chains.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Lateral Movement",
+  "subcategory": "Privileged Access",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "mssql",
+    "impacket",
+    "sql",
+    "lateral-movement",
+    "xp-cmdshell"
+  ],
+  "mitre": [
+    "T1505.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY MSSQL MATTERS IN AD ATTACKS ===\nSQL Server instances often run as high-privilege service accounts:\n  - NT AUTHORITY\\SYSTEM (sysadmin rights on the DB engine)\n  - Domain accounts in Domain Admins or privileged groups\n  - Service accounts with SPNs (kerberoastable!)\n\nIf you can authenticate to the SQL instance, you may get:\n  - xp_cmdshell → OS command execution as the SQL service account\n  - Linked server queries → pivot to other SQL servers in the domain\n  - Credential harvesting from SQL stored procedures\n\n=== AUTH MODES ===\n  -windows-auth   → NTLM authentication with domain creds (most common)\n  (no flag)       → SQL authentication (sa account or SQL user)\n  -hashes lm:nt   → pass-the-hash\n  -k              → Kerberos auth\n\n=== FINDING MSSQL INSTANCES ===\n  PowerUpSQL: Get-SQLInstanceDomain | Get-SQLServerInfo\n  CME: crackmapexec mssql <target> -u user -p pass\n  nmap: nmap -p 1433 <subnet> --open\n  Port: TCP 1433 (default), may be non-standard\n\n=== INSIDE THE CLIENT ===\nSQL commands once connected:\n  SELECT @@version           → SQL Server version\n  SELECT SYSTEM_USER         → who you're connected as\n  SELECT IS_SRVROLEMEMBER('sysadmin') → are you sysadmin?\n  EXEC xp_cmdshell 'whoami'  → OS command (must be enabled)\n  EXEC sp_configure 'show advanced options', 1; RECONFIGURE;\n  EXEC sp_configure 'xp_cmdshell', 1; RECONFIGURE;\n\n=== ENABLING XP_CMDSHELL ===\nOften disabled by default — enable it:\n  sp_configure 'show advanced options', 1\n  RECONFIGURE\n  sp_configure 'xp_cmdshell', 1\n  RECONFIGURE\nThen: EXEC xp_cmdshell 'whoami'\n\n=== CHAIN POSITION ===\nThis card typically follows PowerUpSQL finding an accessible instance.\nLeads to: xp_cmdshell OS command execution → upload payload → privilege escalation",
+  "examples": [
+    {
+      "label": "Connect with Windows auth",
+      "command": "mssqlclient.py INLANEFREIGHT/damundsen@172.16.5.150 -windows-auth"
+    },
+    {
+      "label": "Connect with SQL auth",
+      "command": "mssqlclient.py sa:password@172.16.5.150"
+    },
+    {
+      "label": "Check sysadmin inside the session",
+      "command": "SELECT IS_SRVROLEMEMBER('sysadmin')"
+    },
+    {
+      "label": "Enable and use xp_cmdshell",
+      "command": "EXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 1; RECONFIGURE;\nEXEC xp_cmdshell 'whoami'"
+    }
+  ],
+  "references": [
+    {
+      "title": "Impacket mssqlclient.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/mssqlclient.py"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "mssql-xp-cmdshell",
+      "rel": "next",
+      "note": "RCE via xp_cmdshell."
+    }
+  ],
+  "defense": {
+    "why_it_works": "mssqlclient.py connects to the MSSQL TDS protocol on TCP 1433 using Windows (NTLM/Kerberos) or SQL authentication. Once authenticated as a sysadmin or with sufficient SQL privileges, xp_cmdshell can be enabled via sp_configure to execute OS commands as the SQL Server service account — which often runs with elevated OS privileges (NT AUTHORITY\\SYSTEM, or a domain account with local admin). Linked server chains allow querying other SQL instances in the domain using EXECUTE AT or OPENQUERY, pivoting privilege across the SQL mesh.",
+    "prerequisites": "Network access to target on TCP 1433. Valid credentials (domain user with SQL access, SQL sa account, or NT hash for PtH). The account must have SQL Server login and sufficient privilege (sysadmin role or ability to execute sp_configure). Impacket installed.",
+    "impact": "OS command execution as the SQL Server service account — often SYSTEM or a highly privileged domain account. Enables: reverse shell upload, credential harvesting from SQL stored procedures, linked server pivoting to other SQL instances in the domain. If the service account is a domain admin or has DCSync rights, immediate domain compromise.",
+    "detection": "MSSQL error log and audit trail shows sp_configure changes (enabling xp_cmdshell) and xp_cmdshell executions. Windows Security Event 4688 for child processes spawned by sqlservr.exe (cmd.exe, PowerShell.exe as children of SQL). Windows Application Event Log (MSSQL category 17, 18). Network connections to TCP 1433 from unusual hosts (especially Linux IPs). SQL Server Audit (if configured) logs all T-SQL statements including sp_configure and xp_cmdshell calls.",
+    "artifacts": "MSSQL error log entries; Event 4688 with sqlservr.exe as parent; network sessions on TCP 1433; sp_configure change recorded in SQL Server audit log; any files written via xp_cmdshell on disk.",
+    "prevention": "Disable xp_cmdshell and enforce it via policy — audit who re-enables it (alert on sp_configure 'xp_cmdshell' changes). Run SQL Server service as a low-privilege gMSA account (not SYSTEM or domain admin). Disable linked servers where not operationally required. Network firewall: restrict TCP 1433 access to application servers only. Enable SQL Server Audit to log all T-SQL. Principle of least privilege for SQL logins — no unnecessary sysadmin grants.",
+    "evasion": "Disable xp_cmdshell after use to reduce dwell-time artifact. Use linked server chains to execute on less-monitored remote SQL instances. Kerberos auth (-k) avoids NTLM authentication logs. Use sp_execute_external_script (if Python/R enabled) as xp_cmdshell alternative. Operate quickly and disable changed settings after use.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1505.001"
+    ],
+    "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
+    "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
+    "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

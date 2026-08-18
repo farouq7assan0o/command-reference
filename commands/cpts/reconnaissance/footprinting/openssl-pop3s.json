@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nopenssl s_client against port 995 (POP3S) for interactive POP3 session over TLS. POP3 is simpler than IMAP \u2014 only list, retrieve, delete. Downloads messages to local storage. IMAP preferred for richer access but POP3 used when only that protocol is available.\n\n=== POP3 COMMANDS ===\nUSER username \u2192 identify user\nPASS password \u2192 authenticate\nLIST \u2192 list messages with sizes\nRETR 1 \u2192 retrieve first message\nDELE 1 \u2192 delete (avoid in assessments)\nQUIT \u2192 close session",
+  "references": []
+}

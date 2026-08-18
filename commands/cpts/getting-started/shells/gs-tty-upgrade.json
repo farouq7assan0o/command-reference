@@ -1,0 +1,84 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "python"
+  ],
+  "tags": [
+    "tty",
+    "shell-upgrade"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Shells & Payloads",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Read your local terminal size to mirror it",
+      "command": "echo $TERM\nstty size"
+    }
+  ],
+  "notes": "A raw netcat shell has no job control, no tab completion, and Ctrl+C kills the connection. After spawning a PTY with Python/script, background it (Ctrl+Z), run 'stty raw -echo; fg', then 'reset'. Set TERM=xterm and stty rows/cols to match your terminal for full interactivity.",
+  "references": [
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-privesc-enum",
+      "rel": "next",
+      "note": "Now enumerate for privilege escalation."
+    }
+  ],
+  "id": "gs-tty-upgrade",
+  "name": "Upgrade to a Full TTY",
+  "command": "python -c 'import pty; pty.spawn(\"/bin/bash\")'",
+  "description": "Turn a dumb reverse shell into a fully interactive TTY so you get tab-completion, job control, and working editors/su.",
+  "steps": [
+    {
+      "label": "1. Spawn a PTY",
+      "command": "python -c 'import pty; pty.spawn(\"/bin/bash\")'"
+    },
+    {
+      "label": "2. Background (CTRL+Z), fix your terminal",
+      "command": "stty raw -echo\nfg"
+    },
+    {
+      "label": "3. Set terminal type + size on the remote",
+      "command": "export TERM=xterm-256color\nstty rows 67 columns 318"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1059.004"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Unix shells (bash, sh, zsh, etc.) are present by default on Linux and macOS and control every aspect of a system. Certain commands require elevated privileges, but interactive shell access provides a powerful execution environment that attackers use for commands, file operations, pivoting, and spawning further processes.",
+    "prerequisites": "A basic (non-interactive) shell already on the target, with python or script available.",
+    "impact": "A fully interactive TTY (job control, tab-completion, working sudo prompts) — improving control over the session.",
+    "detection": "Monitor for Unix shell execution from unexpected parent processes (e.g., a web server or database process spawning bash). Flag shell activity following unusual network connections, file writes to web directories, or privilege escalation attempts.",
+    "artifacts": "Spawning of python pty.spawn / script in process and command logs; network footprint unchanged (it reuses the existing shell).",
+    "prevention": "Use application control where appropriate to restrict which binaries can execute. On ESXi hosts, the execInstalledOnly feature prevents binaries from running unless packaged and signed as part of a vSphere installation bundle (VIB).",
+    "sources": [
+      "MITRE T1059.004"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

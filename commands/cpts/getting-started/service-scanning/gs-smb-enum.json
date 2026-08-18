@@ -1,0 +1,91 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tools": [
+    "smbclient"
+  ],
+  "tags": [
+    "smb",
+    "shares"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Service Scanning",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Inside the share",
+      "command": "ls\ncd bob\nget passwords.txt\nexit"
+    }
+  ],
+  "notes": "smbclient/smbmap list shares; try a null session. Getting-Started intro - Module 04's enum4linux-ng/rpcclient go deeper.",
+  "references": [
+    {
+      "title": "smbclient man page",
+      "url": "https://www.samba.org/samba/docs/current/man-html/smbclient.1.html"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "smb-enum4linux",
+      "rel": "next",
+      "note": "Deep SMB enumeration (Module 04)."
+    }
+  ],
+  "id": "gs-smb-enum",
+  "name": "SMB - Share Enumeration",
+  "command": "smbclient -N -L \\\\\\\\<ip>",
+  "description": "List SMB shares (-N null session, -L list) then connect to interesting ones as guest or with credentials to pull files.",
+  "variations": [
+    {
+      "label": "List shares (null session)",
+      "command": "smbclient -N -L \\\\\\\\<ip>"
+    },
+    {
+      "label": "Connect as guest",
+      "command": "smbclient \\\\\\\\<ip>\\\\users"
+    },
+    {
+      "label": "Connect with credentials",
+      "command": "smbclient -U bob \\\\\\\\<ip>\\\\users"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1135"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SMB shares may allow null sessions or unauthenticated guest access, exposing files that contain sensitive data including credentials. Some SMB versions are vulnerable to RCE exploits such as EternalBlue.",
+    "prerequisites": "Network access to SMB (TCP 445/139); a null/guest session or valid credentials for authenticated enumeration.",
+    "impact": "A list of shares and readable files — often exposing credentials or sensitive data — plus the server version for CVE matching (e.g. EternalBlue).",
+    "detection": "[MITRE T1135 AN0513] Process or script enumerates network shares via CLI (net view, net share, PowerShell Get-SmbShare/WMI) or OS APIs (NetShareEnum, srvsvc.NetShareEnumAll RPC) → bursts of outbound SMB/RPC connections (port 445/139) to many hosts within a short window → optional follow-on file listing or copy operations.",
+    "artifacts": "SMB session-setup and tree-connect events (Windows 5140/5145 with share auditing enabled); a connection to 445 in network logs.",
+    "prevention": "Enforce SMB signing — by default 'Message signing enabled but not required', which leaves sessions vulnerable to relay attacks. Require authentication for all shares, disable SMBv1, and audit share permissions to remove unnecessary access.\n\n[MITRE T1135 M1028] Enable Windows Group Policy setting 'Do Not Allow Anonymous Enumeration of SAM Accounts and Shares' to limit which users can enumerate network shares. Enforce least-privilege access to shares so only authorized users can list them.",
+    "sources": [
+      "HTB M02",
+      "MITRE T1135"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

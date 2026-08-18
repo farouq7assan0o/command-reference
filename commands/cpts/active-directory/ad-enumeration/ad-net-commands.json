@@ -1,0 +1,109 @@
+{
+  "id": "ad-net-commands",
+  "name": "net Commands - Windows Domain Enumeration (LOTL)",
+  "command": "net <object> /domain",
+  "description": "Built-in Windows 'net' commands for domain enumeration \u2014 requires no additional tools, runs on any domain-joined Windows host. Living-off-the-land (LOTL) enumeration. Core commands: net user, net group, net accounts, net share. Always available when you have a Windows domain foothold.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "net-commands",
+    "lotl",
+    "windows",
+    "enumeration",
+    "built-in"
+  ],
+  "mitre": [
+    "T1087.002",
+    "T1069.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== KEY NET COMMANDS FOR AD ===\n  net user /domain                  \u2192 list all domain users\n  net user <username> /domain       \u2192 detailed info for a specific user\n  net group /domain                 \u2192 list all domain groups\n  net group 'Domain Admins' /domain \u2192 list members of Domain Admins\n  net group 'Enterprise Admins' /domain \u2192 EA members\n  net accounts /domain              \u2192 password policy (lockout threshold!)\n  net share                         \u2192 local shares\n  net view /domain                  \u2192 list computers in domain\n  net localgroup administrators     \u2192 local admin group members\n\n=== WHY THESE MATTER ===\nNet commands work with no imports, no executables, no PowerShell.\nIdeal for:\n  - Initial enumeration immediately after landing on a Windows box\n  - Environments where PowerShell is restricted or monitored\n  - Quick checks before deploying PowerView or SharpHound\n\n=== GET PASSWORD POLICY FAST ===\nnet accounts /domain\n  Account lockout threshold: 5\n  Account lockout observation window: 30 minutes\n  Account lockout duration: 30 minutes\nThis is what you need before spraying.\n\n=== LIMITATIONS ===\n  - Limited output compared to PowerView\n  - No attribute-level filtering\n  - Can't enumerate ACLs, trusts, or detailed user attributes\n  - Use PowerView/BloodHound for deeper enumeration Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
+  "examples": [
+    {
+      "label": "List all domain users",
+      "command": "net user /domain"
+    },
+    {
+      "label": "Get Domain Admins",
+      "command": "net group 'Domain Admins' /domain"
+    },
+    {
+      "label": "Password policy",
+      "command": "net accounts /domain"
+    },
+    {
+      "label": "Specific user info",
+      "command": "net user jsmith /domain"
+    },
+    {
+      "label": "Ch21 \u2014 list all domain users (output shown on DC)",
+      "command": "net user /domain"
+    },
+    {
+      "label": "Ch21 \u2014 get full detail for a specific domain user",
+      "command": "net user <username> /domain"
+    },
+    {
+      "label": "Ch21 \u2014 list all domain groups",
+      "command": "net group /domain"
+    },
+    {
+      "label": "Ch21 \u2014 list members of a specific domain group",
+      "command": "net group \"<group_name>\" /domain"
+    },
+    {
+      "label": "Ch22 \u2014 net accounts: check password policy / lockout threshold before spraying",
+      "command": "net accounts"
+    }
+  ],
+  "references": [
+    {
+      "title": "Net command reference (Microsoft)",
+      "url": "https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/net-user"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Active Directory Introduction and Enumeration",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-powerview-import",
+      "rel": "next",
+      "note": "Escalate to PowerView for richer domain enumeration."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Built-in `net user/group /domain` commands enumerate domain users and groups using native Windows binaries - no tools dropped.",
+    "prerequisites": "A domain-joined Windows session (any user).",
+    "impact": "User/group enumeration using trusted built-ins that blend with admin activity.",
+    "detection": "[MITRE T1087.002/T1069.002] net.exe with /domain in process logs (4688); the resulting LDAP/SAMR queries to the DC.",
+    "artifacts": "net.exe /domain command lines; SAMR/LDAP queries.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "net.exe is a trusted built-in, so it blends far better than PowerView/BloodHound; single targeted queries avoid bulk-read alerts.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1087.002",
+      "MITRE T1069.002"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions \u2014 authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 \u2014 access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) \u2014 any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "net"
+  ]
+}

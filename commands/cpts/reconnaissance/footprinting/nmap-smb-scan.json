@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nSMB scan of ports 445 and 139 with smb* NSE scripts. Fingerprints OS, SMB version (v1/v2/v3), signing status, and attempts vulnerability checks. Foundation for all SMB enumeration.\n\n=== SMBv1 CRITICAL ===\nSMBv1 detection is a critical finding \u2014 vulnerable to EternalBlue (MS17-010) and related exploits. smb-vuln-ms17-010 NSE script tests for this directly.\n\n=== SMB SIGNING ===\nsmb-security-mode NSE shows signing status. signing:disabled means SMB relay attacks are possible \u2014 NTLM credentials captured from one system can be relayed to authenticate to another.",
+  "references": []
+}

@@ -1,0 +1,62 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "dig"
+  ],
+  "tags": [
+    "dns",
+    "reference",
+    "misconfig"
+  ],
+  "category": "Enumeration",
+  "subcategory": "DNS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Check which hosts can pull a zone transfer",
+      "command": "grep -i 'allow-transfer' /etc/bind/named.conf.options"
+    }
+  ],
+  "notes": "Config: /etc/bind/named.conf.local, named.conf.options, named.conf.log, db.<domain>, db.<reverse>\nPorts: 53/udp (queries), 53/tcp (zone transfers/AXFR)\nDangerous directives: allow-query, allow-recursion, allow-transfer (any/wide -> AXFR to anyone), zone-statistics",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dns-dig-queries",
+      "note": "Run dig queries to enumerate DNS records",
+      "rel": "next"
+    },
+    {
+      "id": "dns-subdomain-brute",
+      "note": "Brute-force subdomains against the DNS server",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-dns-config",
+  "name": "Reference - DNS Config, Ports & Dangerous Settings",
+  "command": "# BIND config + settings that allow zone transfer / recursion abuse",
+  "description": "BIND config file locations, DNS ports, and the directives that expose zone data.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1590.002"
+  ]
+}

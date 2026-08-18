@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\ntcpdump in parallel with an nc banner grab provides packet-level visibility into the TCP exchange. The PSH-ACK packet from the server (step 4 in extended three-way handshake) carries the banner data. Reveals what tools may suppress, normalize, or miss.\n\n=== CHAINING ===\nTerminal 1: tcpdump -i eth0 host TARGET \u2192 Terminal 2: nc TARGET PORT \u2192 observe: SYN, SYN-ACK, ACK, PSH-ACK (banner) in tcpdump output \u2192 banner content visible at packet level.\n\n=== DIAGNOSTIC VALUE ===\ntcpdump captures the actual bytes exchanged, not the tool's interpretation of them. Essential when nmap/nc output seems incomplete or when verifying exactly what data a service sends before authentication.",
+  "references": []
+}

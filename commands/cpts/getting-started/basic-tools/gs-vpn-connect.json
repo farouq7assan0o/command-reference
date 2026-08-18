@@ -1,0 +1,102 @@
+{
+  "id": "gs-vpn-connect",
+  "name": "VPN - Connect and Verify HTB Lab Access",
+  "type": "command",
+  "platform": "linux",
+  "command": "sudo openvpn user.ovpn",
+  "description": "Connect your attack VM to the HTB lab network via OpenVPN. Requires sudo because creating a TUN interface needs root-level network manipulation. After connecting, verify tun0 exists and the routing table has the lab range before touching any target.",
+  "opsec": "quiet",
+  "category": "Fundamentals",
+  "subcategory": "Basic Tools",
+  "requires": [],
+  "protocols": [
+    "VPN"
+  ],
+  "tools": [
+    "openvpn"
+  ],
+  "tags": [
+    "vpn",
+    "openvpn",
+    "lab-setup",
+    "tun0"
+  ],
+  "steps": [
+    {
+      "label": "1. Connect to VPN",
+      "command": "sudo openvpn user.ovpn"
+    },
+    {
+      "label": "2. Verify tun0 adapter exists (new terminal)",
+      "command": "ip -4 a show tun0"
+    },
+    {
+      "label": "3. Verify routing table updated",
+      "command": "sudo netstat -rn"
+    },
+    {
+      "label": "4. Confirm end-to-end connectivity",
+      "command": "ping -c 4 10.10.14.1"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Check adapter",
+      "command": "ifconfig"
+    },
+    {
+      "description": "Connect with a named .ovpn file (OSCP lab style)",
+      "command": "sudo openvpn <filename>.ovpn",
+      "label": "sudo openvpn"
+    },
+    {
+      "description": "Check tunnel IP after connecting",
+      "command": "ip -4 a show tun0",
+      "label": "Check tun0 IP"
+    },
+    {
+      "description": "Verify routing table",
+      "command": "sudo netstat -rn",
+      "label": "Check routes"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Confirm successful connection in output",
+      "command": "# Look for: Initialization Sequence Completed"
+    },
+    {
+      "label": "Expected tun0 IP and route",
+      "command": "# tun0 -> 10.10.x.2 (VPN subnet)\n# Route: 10.129.0.0/16 via tun0 -> lab access confirmed"
+    },
+    {
+      "label": "OSCP lab VPN connection",
+      "command": "sudo openvpn universal.ovpn"
+    }
+  ],
+  "notes": "sudo is required because establishing a VPN tunnel requires root-level network interface manipulation. The user.ovpn file downloaded from the HTB platform acts as both configuration and authentication key.\n\nTwo verification steps: first, ip -4 a show tun0 (or ifconfig) confirms a tun0 adapter was created with an IP in the HTB VPN range. Second, netstat -rn confirms the routing table routes 10.129.0.0/16 through tun0 via gateway 10.10.14.1. If either is absent, the connection did not fully establish.\n\nThe HTB VPN enforces single-session use per account — connecting from a second machine will drop both sessions. Common source of confusion when switching between Pwnbox and a local VM.\n\nThe HTB VPN is a lab access mechanism only, not a privacy tool. Keep client assessment data out of any VM also used for HTB practice. Also covered in: OSCP PEN-200 Chapter 2.",
+  "references": [
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-nmap-service-scan",
+      "rel": "next",
+      "note": "Once VPN is confirmed, start scanning the target."
+    }
+  ],
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "exam": "exam-ok"
+}

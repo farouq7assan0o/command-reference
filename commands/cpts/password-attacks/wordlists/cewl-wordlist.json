@@ -1,0 +1,80 @@
+{
+  "id": "cewl-wordlist",
+  "name": "CeWL - Scrape Site for Wordlist",
+  "command": "cewl <url> -d <depth> -m <min_length> --lowercase -w wordlist.txt",
+  "description": "Crawls a target website to a given depth (-d) and harvests unique words of at least -m characters into a custom wordlist. Great for building organization-specific candidates that generic lists miss.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "cewl"
+  ],
+  "tags": [
+    "cewl",
+    "wordlist",
+    "osint"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Wordlist Generation",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Scrape a site into a wordlist",
+      "command": "cewl https://www.inlanefreight.com -d 4 -m 6 --lowercase -w inlane.wordlist"
+    }
+  ],
+  "notes": "cewl spiders the target site and builds a wordlist from words on the pages - great for org-specific passwords. `--with-numbers`, set `-m` min length, then mutate with hashcat rules.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "CeWL",
+      "url": "https://github.com/digininja/CeWL"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hashcat-mutate",
+      "note": "Expand the wordlist with rules.",
+      "rel": "next"
+    },
+    {
+      "id": "hybrid-wordlist-filter",
+      "note": "Trims a large password list down to only candidates that satisfy a known password policy, shrinking the keyspace and attack time.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "CeWL crawls a target website and harvests words to build a bespoke wordlist reflecting the organisation's vocabulary - improving cracking/guessing success.",
+    "prerequisites": "Network access to the target website.",
+    "impact": "A targeted wordlist tuned to the organisation - raises the odds of cracking its users' passwords.",
+    "prevention": "Passwords unrelated to the organisation/site vocabulary resist CeWL-derived lists; strong password policy. (CeWL does crawl the site, so heavy crawling may appear in web logs.)",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
+    "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
+    "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+  }
+}

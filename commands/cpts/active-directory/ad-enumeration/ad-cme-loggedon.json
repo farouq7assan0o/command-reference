@@ -1,0 +1,79 @@
+{
+  "id": "ad-cme-loggedon",
+  "name": "CrackMapExec - Find Logged-On Users",
+  "command": "crackmapexec smb <target> -u <user> -p <password> --loggedon-users",
+  "description": "Enumerates users currently logged on to target hosts via the NetWkstaUserEnum RPC call. High-value intelligence: find where Domain Admins, IT staff, or privileged accounts have active sessions. Enables targeted lateral movement — compromise the machine where the DA is logged in → get DA token.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "crackmapexec",
+    "logged-on-users",
+    "session-hunting",
+    "lateral-movement",
+    "smb"
+  ],
+  "mitre": [
+    "T1049"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY LOGGED-ON USERS MATTERS ===\nIn token-based attacks (PTH, impersonation), you need to target machines where\nhigh-privilege users have ACTIVE sessions:\n  - DA logged into WS01 → compromise WS01 → steal DA token\n  - Admin logged into file server → pivot there, impersonate\n  - Service account running on server → dump LSASS → get hash\n\nBloodHound also shows this via 'HasSession' edges (requires collection timing\nto be right when DA is logged in).\n\n=== OUTPUT ===\n  SMB  172.16.5.25  445  ACADEMY-EA-MS01  INLANEFREIGHT\\administrator  (Pwn3d!)\n  SMB  172.16.5.25  445  ACADEMY-EA-MS01  INLANEFREIGHT\\adunn\n\nSee 'administrator' logged in → target this machine for token theft.\n\n=== SWEEP SUBNET FOR SESSION HUNTING ===\ncrackmapexec smb 172.16.5.0/23 -u forend -p Klmcargo2 --loggedon-users | grep 'administrator\\|admin\\|DA'\n\n=== SHARPHOUND ALTERNATIVE ===\nSharpHound (-c Session) collects session data and shows it in BloodHound.\nBloodHound query: 'Find Active Domain Admin Sessions'\n\n=== REQUIRES ADMIN ON TARGET ===\nNetWkstaUserEnum requires local admin rights on the target machine.\nFor non-admin: try NetSessionEnum (less detailed but lower privilege requirement).",
+  "examples": [
+    {
+      "label": "Find logged-on users on a host",
+      "command": "crackmapexec smb 172.16.5.25 -u forend -p Klmcargo2 --loggedon-users"
+    },
+    {
+      "label": "Hunt for DA sessions across subnet",
+      "command": "crackmapexec smb 172.16.5.0/23 -u forend -p Klmcargo2 --loggedon-users 2>/dev/null | grep -i 'admin\\|Pwn3d'"
+    }
+  ],
+  "references": [
+    {
+      "title": "CrackMapExec wiki",
+      "url": "https://wiki.porchetta.industries/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-cme-groups",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "nxc --loggedon-users lists users logged onto remote hosts, exposing where privileged sessions live (for targeting).",
+    "prerequisites": "Local-admin credentials and SMB access to the hosts.",
+    "impact": "Where privileged users are logged in - targets for token theft/PtH.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "Remote session enumeration across hosts.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1049"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "crackmapexec"
+  ]
+}

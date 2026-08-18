@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-sC runs all default-category NSE scripts automatically. 'Default' scripts are selected by Nmap developers as safe, useful, and non-intrusive for standard enumeration. Runs in parallel with the port scan.\n\n=== CATEGORIES ===\nNSE categories: safe, discovery, default, auth, brute, vuln, exploit, intrusive, dos. -sC runs 'default' only. Default scripts include banner grabbing, basic auth testing, SSL cert extraction, protocol capability enumeration.\n\n=== COMBINATION ===\n-sC -sV together (-A equivalent without OS detection and traceroute): service version + default scripts on all open ports. Standard starting point for service enumeration.",
+  "references": []
+}

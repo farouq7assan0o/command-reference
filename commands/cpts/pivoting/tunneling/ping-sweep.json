@@ -1,0 +1,101 @@
+{
+  "id": "ping-sweep",
+  "name": "Pivot - Host Discovery Ping Sweep",
+  "command": "for i in {1..254}; do (ping -c 1 172.16.5.$i | grep \"bytes from\" &); done",
+  "description": "Once on a pivot, sweep the internal subnet for live hosts using native tools so you do not need to upload a scanner. Variations cover a Linux for-loop, Windows CMD, PowerShell, and the Metasploit ping_sweep post module.",
+  "platform": "linux",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "ping",
+    "metasploit"
+  ],
+  "tags": [
+    "ping-sweep",
+    "host-discovery",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "Metasploit Pivoting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "for example",
+      "command": "for i in {1..254} ;do (ping -c 1 172.16.5.$i | grep \"bytes from\" &) ;done"
+    },
+    {
+      "label": "run example",
+      "command": "run post/multi/gather/ping_sweep RHOSTS=172.16.5.0/23"
+    },
+    {
+      "label": "OSCP Ch18 \u2014 nc port-check loop to discover hosts with SMB open (seq variant)",
+      "command": "for i in $(seq 1 254); do nc -zv -w 1 172.16.50.$i 445; done 2>&1 | grep succeeded"
+    }
+  ],
+  "notes": "Sweep the pivot host's internal subnet to find live hosts (`post/multi/gather/ping_sweep`, or a for-loop over the range) once autoroute is set - your first discovery step on the new network segment. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: nc -zv -w 1 does a port scan (zero-I/O, verbose, 1s timeout) rather than ICMP ping \u2014 useful when ICMP is blocked or you need to verify a specific service (e.g. SMB/445) is reachable across the subnet.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "OffSec PEN-200 - Port Redirection and SSH Tunneling",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Linux",
+      "command": "for i in {1..254}; do (ping -c 1 172.16.5.$i | grep \"bytes from\" &); done"
+    },
+    {
+      "label": "Windows CMD",
+      "command": "for /L %i in (1 1 254) do ping 172.16.5.%i -n 1 -w 100 | find \"Reply\""
+    },
+    {
+      "label": "PowerShell",
+      "command": "1..254 | % {\"172.16.5.$($_): $(Test-Connection -count 1 -comp 172.16.5.$($_) -quiet)\"}"
+    },
+    {
+      "label": "Meterpreter",
+      "command": "run post/multi/gather/ping_sweep RHOSTS=<cidr>"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "proxychains-run",
+      "note": "Enumerate discovered hosts through the proxy.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1018"
+  ],
+  "exam": "msf-one-machine",
+  "defense": {
+    "why_it_works": "A ping sweep (Meterpreter post/multi/gather/ping_sweep, or a loop) discovers live hosts on the pivot's internal subnet to map the next targets.",
+    "prerequisites": "A foothold/session on a host with an internal-facing interface.",
+    "impact": "A list of live internal hosts - the map for further pivoting and attack.",
+    "detection": "[MITRE T1018] a burst of ICMP (or TCP) probes across an internal subnet sourced from the pivot; internal host-discovery pattern in east-west monitoring.",
+    "artifacts": "ICMP/ARP probes across the internal range from the pivot; the discovered host list.",
+    "prevention": "Internal segmentation and host-based firewalls; monitor east-west scanning; endpoint firewalls dropping unsolicited probes.",
+    "evasion": "Use ARP or targeted TCP probes over ICMP where ICMP is monitored; slow the sweep to avoid burst detection.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1018"
+    ],
+    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
+  }
+}

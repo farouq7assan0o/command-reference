@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-sU UDP scan is slow because UDP is stateless \u2014 no handshake, must wait for timeout on non-responding ports. Open UDP ports often return no response (service-specific probes needed to elicit reply). -F limits to top 100 UDP ports for speed.\n\n=== RESPONSE LOGIC ===\nOpen UDP: service-specific response (or silence if no probe matched). Closed UDP: ICMP type 3 code 3 (port unreachable). Filtered: ICMP type 3 other code or silence. Open|filtered: silence from open port that doesn't respond to generic probe.\n\n=== WHY SLOW ===\nMust wait for timeout on every non-responding port. Default 10 retries \u00d7 timeout per port \u00d7 many ports = many minutes. -F (top 100) + --max-retries 0 for fastest UDP discovery at accuracy cost.\n\n=== KEY UDP SERVICES ===\n53 (DNS), 67/68 (DHCP), 69 (TFTP), 111 (RPC), 123 (NTP), 137-139 (NetBIOS), 161 (SNMP), 500 (IKE), 623 (IPMI), 1194 (OpenVPN).",
+  "references": []
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nConnects to MySQL with root and no password (-h host, -u root, no -p flag or empty -p). MySQL empty root password is a critical misconfiguration \u2014 full database access without authentication.\n\n=== CHAINING ===\nnmap mysql* NSE confirms empty password \u2192 connect as root \u2192 show databases \u2192 access mysql.user table for password hashes \u2192 read sensitive application data \u2192 check secure_file_priv for file read/write.\n\n=== FILE READ ===\nIf secure_file_priv is empty: LOAD DATA INFILE '/etc/passwd' INTO TABLE t \u2192 file read as the mysql process user. Combined with web shell write \u2192 full compromise.\n\n=== FALSE POSITIVE CAUTION ===\nNmap mysql-empty-password NSE may return false positives. Always manually verify with direct mysql client connection before treating as confirmed.",
+  "references": []
+}

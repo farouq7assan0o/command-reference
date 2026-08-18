@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nwmiexec.py from Impacket authenticates via SMB and executes commands through WMI, returning output without installing a persistent service. Uses legitimate Windows management channels \u2014 lower detection profile than PSExec for command execution.\n\n=== CHAINING ===\nValid credentials from any source \u2192 wmiexec.py \u2192 OS command execution as authenticated user \u2192 enumerate \u2192 dump creds \u2192 lateral movement.\n\n=== vs ALTERNATIVES ===\npsexec.py: installs a service binary (more detectable). wmiexec.py: no persistent service, uses WMI (legitimate admin channel). smbexec.py: uses scheduled tasks. wmiexec preferred for stealth.\n\n=== DETECTION ===\nWMI command execution creates Event 4648, 4624. wmiexec spawns commands as children of WmiPrvSE.exe. EDR behavioral rules watch for unusual WmiPrvSE.exe child processes.",
+  "references": []
+}

@@ -1,0 +1,98 @@
+{
+  "id": "cdsa-m12-sigma-rules",
+  "name": "Sigma Rule Development \u2014 Structure, Value Modifiers, Conditions & Examples",
+  "command": "# Sigma rule structure: title + id + status + logsource + detection + condition",
+  "description": "Developing Sigma detection rules. Full field reference: title, id (UUID), status (stable/test/experimental/deprecated/unsupported), description, references, author, date, tags (attack.tXXXX), logsource (category+product+service), detection (selection + filter + condition), falsepositives, level (low/medium/high/critical). Value modifiers pipe-chained: field|contains, field|all, field|startswith, field|endswith, field|re. Detection lists (OR logic) vs maps (AND logic). Condition operators: and/or/not, 1/all of them, 1/all of selection*, selection and not 1 of filter_*. Key examples: LSASS 0x1010 access (Sysmon EID 10), NTLM failed logins count >3 per workstation (EID 4776), unusually long PowerShell (EID 4688, regex .{1000,}).",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Malware Analysis",
+  "subcategory": "Detection Rules",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 12: YARA & Sigma for SOC Analysts",
+  "tags": [
+    "sigma",
+    "detection-rules",
+    "siem",
+    "sysmon",
+    "lsass",
+    "ntlm",
+    "powershell",
+    "blue-team",
+    "threat-hunting"
+  ],
+  "notes": "=== SIGMA RULE COMPLETE FIELD REFERENCE ===\n\ntitle: (required)\n  \u2192 Concise, descriptive rule name\n  \u2192 Example: \"LSASS Access with rare GrantedAccess flag\"\n\nid: (recommended)\n  \u2192 UUID v4 format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n  \u2192 Uniquely identifies this rule across all SIEMs\n  \u2192 Example: fa34b441-961a-42fa-a100-ecc28c886725\n\nrelated: (optional)\n  \u2192 Links to other rule IDs with relationship type\n  \u2192 type: derived | similar | obsoletes | merged\n  \u2192 Example:\n    related:\n      - id: e98374a6-e2d9-4076-9b5c-11bdb2569995\n        type: derived\n\nstatus: (required)\n  \u2192 stable        = well-tested, low false positive rate\n  \u2192 test          = tested but needs more real-world validation\n  \u2192 experimental  = new rule, may have false positives\n  \u2192 deprecated    = superseded by another rule\n  \u2192 unsupported   = not maintained, use with caution\n\ndescription: (recommended)\n  \u2192 What the rule detects and why it's suspicious\n\nreferences: (optional)\n  \u2192 List of URLs: blog posts, MITRE ATT&CK pages, CVE links\n\nauthor: (optional)\n  \u2192 Name/handle of rule creator\n\ndate: (optional)\n  \u2192 Format: YYYY/MM/DD\n  \u2192 Creation date\n\nmodified: (optional)\n  \u2192 Format: YYYY/MM/DD\n  \u2192 Last modification date\n\ntags: (optional)\n  \u2192 MITRE ATT&CK mapping:\n    attack.initial_access, attack.execution, attack.persistence,\n    attack.privilege_escalation, attack.credential_access,\n    attack.lateral_movement, attack.collection, attack.exfiltration,\n    attack.command_and_control, attack.defense_evasion, attack.discovery\n  \u2192 Technique IDs: attack.t1003.001, attack.t1059.001, etc.\n  \u2192 Other: detection.threat_hunting, cve.2021-XXXXX\n\nlevel: (recommended)\n  \u2192 low, medium, high, critical\n  \u2192 Indicates severity/confidence of alert\n\nfalsepositives: (recommended)\n  \u2192 List of known legitimate scenarios that may trigger rule\n\nlogsource: (required)\n  \u2192 category: process_creation | process_access | network_connection |\n               file_event | registry_event | image_load | dns_query\n  \u2192 product: windows | linux | macos | apache | ...\n  \u2192 service: security | sysmon | powershell | sshd | ...\n\n  Note: category maps to Sysmon EventIDs via config:\n    process_creation   \u2192 Sysmon EID 1 or Security EID 4688\n    process_access     \u2192 Sysmon EID 10\n    network_connection \u2192 Sysmon EID 3\n    image_load         \u2192 Sysmon EID 7\n    file_event         \u2192 Sysmon EID 11\n    registry_event     \u2192 Sysmon EID 12/13/14\n\ndetection: (required)\n  \u2192 One or more search identifiers (selection/filter/keywords)\n  \u2192 One condition\n\n=== VALUE MODIFIERS ===\nPipe-appended to field name:\n\n  field|contains: value        \u2192 *value* (wildcard both sides)\n  field|startswith: value      \u2192 value*  (wildcard at end)\n  field|endswith: value        \u2192 *value  (wildcard at start)\n  field|all: [v1, v2]          \u2192 field contains v1 AND v2 (list = AND)\n  field|contains|all: [v1,v2]  \u2192 *v1* AND *v2* (chain modifiers)\n  field|re: 'regex_pattern'    \u2192 regular expression match\n\nDefault (no modifier): exact match (or SIEM-dependent)\n\nExamples:\n  Image|endswith: '\\\\mshta.exe'          \u2192 any path ending in \\mshta.exe\n  CommandLine|contains: 'powershell'     \u2192 cmdline contains 'powershell'\n  CommandLine|re: '.{1000,}'             \u2192 cmdline >= 1000 chars\n  TargetImage|endswith: '\\\\lsass.exe'   \u2192 target process is lsass.exe\n  ParentImage|startswith: 'C:\\\\Users\\\\'  \u2192 parent in user profile\n  GrantedAccess|endswith: '0x1010'       \u2192 access flags ending with 0x1010\n\n=== DETECTION LISTS vs MAPS ===\n\nList (OR logic \u2014 any item matches):\n  selection:\n    Image|endswith:\n      - '\\\\powershell.exe'\n      - '\\\\pwsh.exe'\n      - '\\\\cmd.exe'\n  \u2192 Matches if Image ends with ANY of the three values\n\nMap (AND logic \u2014 all key:value pairs must match):\n  selection:\n    EventLog: Security\n    EventID: 4776\n    TargetUserName: '*'\n  \u2192 Matches only if ALL three conditions are true\n\nMixed (list of maps \u2192 OR of ANDs):\n  selection:\n    - Image|endswith: '\\\\example.exe'\n    - Description|contains: 'Test executable'\n  \u2192 Matches if EITHER condition is true\n\n=== CONDITION OPERATORS ===\n\n  condition: selection              \u2192 selection must match\n  condition: selection1 and selection2   \u2192 both must match\n  condition: selection1 or selection2    \u2192 either must match\n  condition: selection and not filter    \u2192 selection but exclude filter hits\n  condition: 1 of them              \u2192 ANY search identifier must match\n  condition: all of them            \u2192 ALL search identifiers must match\n  condition: 1 of selection*        \u2192 any identifier starting with 'selection'\n  condition: all of selection*      \u2192 all identifiers starting with 'selection'\n  condition: selection and not 1 of filter_*   \u2192 selection minus any filter\n  condition: (selection1 or selection2) and selection3  \u2192 brackets for order\n\nAggregation (for counting/thresholds):\n  condition: selection | count() > 5\n  condition: selection | count(FieldName) by GroupField > 3\n  Example: selection2 | count(TargetUserName) by Workstation > 3\n    \u2192 Alert if count of unique TargetUserName grouped by Workstation > 3\n\n=== EXAMPLE 1: LSASS ACCESS (Sysmon EID 10) ===\n\n  title: LSASS Access with rare GrantedAccess flag\n  id: fa34b441-961a-42fa-a100-ecc28c886725\n  status: experimental\n  description: Detects process access to LSASS with suspicious access flag 0x1010\n  date: 2021/11/27\n  tags:\n    - attack.credential_access\n    - attack.t1003.001\n  logsource:\n    category: process_access\n    product: windows\n  detection:\n    selection:\n      TargetImage|endswith: '\\\\lsass.exe'\n      GrantedAccess|endswith: '0x1010'\n    condition: selection\n  falsepositives:\n    - Legitimate security tools\n  level: high\n\nWhy 0x1010?\n  0x0010 = PROCESS_VM_READ\n  0x1000 = PROCESS_QUERY_LIMITED_INFORMATION\n  Combined = 0x1010 = reading LSASS memory (credential dumping)\n\nRobust version also checks SourceImage path:\n  filter_optional_generic_appdata:\n    SourceImage|startswith: 'C:\\\\Users\\\\'\n    SourceImage|contains: '\\\\AppData\\\\Local\\\\'\n    GrantedAccess: '0x410'\n  condition: selection and not 1 of filter_optional_*\n\nSuspicious GrantedAccess suffixes (credential dumping techniques):\n  10, 30, 50, 70, 90, B0, D0, F0, 18, 38, 58, 78, 98, B8, D8, F8,\n  1A, 3A, 5A, 7A, 9A, BA, DA, FA, 0x14C2, FF\n\nSuspicious SourceImage paths:\n  \\\\Temp\\\\, \\\\Users\\\\Public\\\\, \\\\PerfLogs\\\\, \\\\AppData\\\\, \\\\htb\\\\\n\n=== EXAMPLE 2: NTLM FAILED LOGINS COUNT (Security EID 4776) ===\n\n  title: Failed NTLM Logins with Different Accounts from Single Source System\n  id: 6309ffc4-8fa2-47cf-96b8-a2f72e58e538\n  status: unsupported\n  description: Detects suspicious failed logins with different user accounts from single source\n  tags:\n    - attack.persistence\n    - attack.privilege_escalation\n    - attack.t1078\n  logsource:\n    product: windows\n    service: security\n  detection:\n    selection2:\n      EventID: 4776\n      TargetUserName: '*'\n      Workstation: '*'\n    condition: selection2 | count(TargetUserName) by Workstation > 3\n  falsepositives:\n    - Terminal servers\n    - Jump servers\n    - Citrix farms\n  level: medium\n\nEID 4776 = NTLM credential validation event\n  \u2192 TargetUserName: account being authenticated\n  \u2192 Workstation: source machine\n  \u2192 Error code 0xC0000064 = user does not exist (failed login)\n  \u2192 Count > 3 unique usernames from same workstation = spray indicator\n\n=== EXAMPLE 3: UNUSUALLY LONG POWERSHELL COMMAND (Security EID 4688) ===\n\n  title: Unusually Long PowerShell CommandLine\n  id: d0d28567-4b9a-45e2-8bbc-fb1b66a1f7f6\n  status: test\n  logsource:\n    category: process_creation\n    product: windows\n  detection:\n    selection:\n      EventID: 4688\n      NewProcessName|endswith:\n        - '\\\\powershell.exe'\n        - '\\\\pwsh.exe'\n        - '\\\\cmd.exe'\n    selection_powershell:\n      CommandLine|contains:\n        - 'powershell.exe'\n        - 'pwsh.exe'\n    selection_length:\n      CommandLine|re: '.{1000,}'\n    condition: selection and selection_powershell and selection_length\n  level: low\n\nPattern: attackers use base64+gzip compressed payloads \u2192 very long cmdlines\nCommon evasion: cmd.exe /b /c start /b /min powershell.exe -nop -w hidden ...\n\n=== SIGMA RULE DEVELOPMENT RESOURCES ===\nOfficial:\n  https://github.com/SigmaHQ/sigma/wiki/Rule-Creation-Guide\n  https://github.com/SigmaHQ/sigma-specification\n  https://github.com/SigmaHQ/sigma/tree/master/documentation/logsource-guides\n\nLogsource guides (category \u2192 EventID mapping):\n  https://github.com/SigmaHQ/sigma/tree/master/documentation/logsource-guides",
+  "examples": [
+    {
+      "label": "Sigma LSASS access detection rule (process_access, EID 10)",
+      "command": "# logsource: category: process_access, product: windows\n# detection: TargetImage|endswith: '\\\\lsass.exe', GrantedAccess|endswith: '0x1010'"
+    },
+    {
+      "label": "Sigma NTLM spray detection with count aggregation (EID 4776)",
+      "command": "# condition: selection2 | count(TargetUserName) by Workstation > 3"
+    },
+    {
+      "label": "Sigma long PowerShell command detection (EID 4688)",
+      "command": "# selection_length: CommandLine|re: '.{1000,}'\n# condition: selection and selection_powershell and selection_length"
+    },
+    {
+      "label": "Sigma condition filtering false positives",
+      "command": "# condition: selection and not 1 of filter_optional_*"
+    },
+    {
+      "label": "Sigma value modifier chaining example",
+      "command": "# CommandLine|contains|all: ['powershell', '-enc', '-nop']"
+    },
+    {
+      "label": "Sigma regex modifier example",
+      "command": "# CommandLine|re: '\\.{1000,}|base64'"
+    },
+    {
+      "label": "Sigma logsource for Sysmon process creation",
+      "command": "# logsource: category: process_creation, product: windows"
+    },
+    {
+      "label": "Sigma logsource for Windows Security service",
+      "command": "# logsource: product: windows, service: security"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - YARA & Sigma for SOC Analysts",
+      "url": "https://academy.hackthebox.com/module/details/234"
+    },
+    {
+      "title": "Sigma Rule Creation Guide",
+      "url": "https://github.com/SigmaHQ/sigma/wiki/Rule-Creation-Guide"
+    },
+    {
+      "title": "Sigma Specification",
+      "url": "https://github.com/SigmaHQ/sigma-specification"
+    },
+    {
+      "title": "Sigma Logsource Guides",
+      "url": "https://github.com/SigmaHQ/sigma/tree/master/documentation/logsource-guides"
+    },
+    {
+      "title": "blusapphire.io Sigma Detection Attributes",
+      "url": "https://docs.blusapphire.io/sigma-rules/sigma-detection-attributes"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m12-yara-hunting",
+      "rel": "prereq",
+      "note": "YARA hunting techniques \u2014 file, memory, and ETW-based detection."
+    },
+    {
+      "id": "cdsa-m12-sigma-conversion",
+      "rel": "next",
+      "note": "Converting and applying Sigma rules with sigmac, Chainsaw, and Splunk."
+    }
+  ],
+  "tools": [
+    "sigma"
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "id": "ps-port-scan-loop",
+  "name": "PowerShell - TCP Port Scan One-Liner (TcpClient)",
+  "command": "1..1024 | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"<ip>\", $_)) \"TCP port $_ is open\"} 2>$null",
+  "description": "PowerShell one-liner that iterates a port range, attempts a .NET TcpClient connection on each, and prints 'TCP port N is open' for successful handshakes. No extra tools needed — pure .NET on any Windows host.",
+  "type": "script",
+  "platform": "windows",
+  "requires": [
+    "network-access"
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "powershell",
+    "port-scan",
+    "enumeration",
+    "windows",
+    "tcp",
+    "dotnet",
+    "lolbas"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Network Discovery",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 Chapter 06: Information Gathering",
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1046"
+  ],
+  "variations": [
+    {
+      "label": "Ports 1-1024",
+      "command": "1..1024 | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"<ip>\", $_)) \"TCP port $_ is open\"} 2>$null"
+    },
+    {
+      "label": "Custom range",
+      "command": "<port_start>..<port_end> | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"<ip>\", $_)) \"TCP port $_ is open\"} 2>$null"
+    },
+    {
+      "label": "Store open ports in variable",
+      "command": "$open = 1..1024 | ? {try{(New-Object Net.Sockets.TcpClient).Connect(\"<ip>\",$_);$true}catch{$false}}; $open"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Scan ports 1-1024 on 192.168.50.151",
+      "command": "1..1024 | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"192.168.50.151\", $_)) \"TCP port $_ is open\"} 2>$null"
+    },
+    {
+      "label": "Scan common high ports 3000-9000",
+      "command": "3000..9000 | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"192.168.50.151\", $_)) \"TCP port $_ is open\"} 2>$null"
+    }
+  ],
+  "notes": "2>$null suppresses the connection-refused exceptions so only open ports print. New-Object Net.Sockets.TcpClient performs a full TCP connect (same as nmap -sT) — visible in PCAP as SYN/SYN-ACK/ACK sequences. Slow on large ranges because each attempt is sequential and synchronous. For faster scanning use the try/catch filter variation which skips the exception-printing overhead. Requires PowerShell 2+ (all modern Windows).",
+  "recommended": [
+    {
+      "id": "ps-test-netconnection",
+      "rel": "alternative",
+      "note": "Test-NetConnection is cleaner for single-port checks and returns structured output."
+    },
+    {
+      "id": "nmap-tcp-connect-scan",
+      "rel": "alternative",
+      "note": "nmap -sT is faster and provides service fingerprinting; use when nmap is available from Kali."
+    },
+    {
+      "id": "nc-port-scan",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Network Service Discovery (T1046)",
+      "url": "https://attack.mitre.org/techniques/T1046/"
+    },
+    {
+      "title": "Microsoft - System.Net.Sockets.TcpClient",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.tcpclient"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Compromised Windows foothold with PowerShell access. No elevated privileges required.",
+    "why_it_works": ".NET's TcpClient.Connect() performs a full TCP three-way handshake. Success (port open) completes without exception; failure (closed or filtered) throws a SocketException, which 2>$null silences. The loop over a range gives sequential port coverage using only built-in .NET classes — no executable is written to disk.",
+    "misconfiguration": "Hosts with open ports not filtered by host-based firewall. PowerShell module/script-block logging not enabled. Lack of network IPS rules for sequential port probes.",
+    "impact": "Maps open TCP ports across a target host from a Windows foothold. Enables pivot planning — identify SMB (445), RDP (3389), WinRM (5985), SQL (1433) before launching targeted attacks.",
+    "detection": "PowerShell script block logging (Event 4104) captures the loop expression. Event 4688 (command-line auditing) shows powershell.exe arguments. Network: sequential TCP SYN packets from the foothold host to the target visible in PCAP and IPS logs. IDS rule: >50 SYN packets to distinct ports from a single source within a short window.",
+    "artifacts": "PowerShell script block log entries. Process Event 4688. Network: TCP SYN/RST or SYN/SYN-ACK flows for each probed port.",
+    "prevention": "PowerShell Constrained Language Mode (blocks New-Object). Script block logging. AppLocker policy restricting PowerShell. Network egress filter on internal-to-internal port scans.",
+    "evasion": "2>$null removes exception output that might appear in transcript logs. The one-liner avoids writing a script file (fileless). Splitting the range across multiple smaller loops fragments the scanning pattern. Using the try/catch variation avoids the echo statement which is more keyword-detectable.",
+    "sources": [
+      "PEN-200 Ch 6",
+      "MITRE T1046",
+      "MS Docs"
+    ]
+  }
+}

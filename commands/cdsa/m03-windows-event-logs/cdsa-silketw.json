@@ -1,0 +1,96 @@
+{
+  "id": "cdsa-silketw",
+  "name": "SilkETW - ETW Provider Collection for Detection",
+  "command": "SilkETW.exe -t user -pn Microsoft-Windows-Kernel-Process -ot file -p C:\\windows\\temp\\etw.json",
+  "description": "SilkETW is an open-source tool for consuming ETW (Event Tracing for Windows) providers and outputting events to JSON. It provides deeper telemetry than Sysmon for detecting advanced techniques like parent PID spoofing and malicious .NET assembly loading.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "quiet",
+  "category": "Windows Events/Forensics",
+  "subcategory": "ETW",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 03: Windows Event Logs & Finding Evil",
+  "tags": [
+    "silketw",
+    "etw",
+    "detection",
+    "dotnet",
+    "ppid-spoofing",
+    "blue-team"
+  ],
+  "notes": "SilkETW flags:\n  -t user|kernel      Trace type (user-mode or kernel-mode provider)\n  -pn <ProviderName>  ETW provider name (use logman query providers to find)\n  -uk <keyword_hex>   Provider keyword filter (bitmask for event types)\n  -ot file|eventlog|url  Output type\n  -p <path>           Output path (for file output)\n\nImportant providers:\n  Microsoft-Windows-Kernel-Process    \u2192 process creation, PPID spoofing detection\n  Microsoft-Windows-DotNETRuntime     \u2192 .NET assembly loading\n\n.NET runtime keywords (-uk flag, used with DotNETRuntime):\n  0x2038 = JitKeyword | InteropKeyword | LoaderKeyword | NGenKeyword\n  \u2192 Captures assembly loads (detect malicious .NET loaded in-memory)\n\nParent PID Spoofing detection:\n  Attack tool: psgetsystem (psgetsys.ps1)\n  Attack command:\n    Import-Module .\\psgetsys.ps1\n    [MyProcess]::CreateProcessFromParent(<PPID>,\"C:\\Windows\\System32\\cmd.exe\",\"\")\n  Detection: Kernel-Process provider shows CreateProcess with spoofed ParentProcessID\n    \u2192 PPID in event != actual parent visible in process tree\n    \u2192 Kernel-Process records true calling process, exposing the spoof\n\nMalicious .NET assembly loading detection:\n  Attack tool: Invoke-PSInject (unmanaged PowerShell injection)\n  Attack command:\n    Import-Module .\\Invoke-PSInject.ps1\n    Invoke-PSInject -ProcId <PID> -PoshCode \"<base64-encoded-PS>\"\n  Detection: DotNETRuntime provider logs assembly load events\n    \u2192 clr.dll / clrjit.dll loaded into unexpected process (e.g. notepad.exe)\n    \u2192 DotNETRuntime JIT events appear in a process that shouldn't be running .NET\n\nOutput is JSON \u2014 parse with jq or PowerShell ConvertFrom-Json for analysis.",
+  "mitre": [
+    "T1055.001",
+    "T1134.004",
+    "T1620"
+  ],
+  "examples": [
+    {
+      "label": "Collect Kernel-Process ETW events to JSON (PPID spoofing detection)",
+      "command": "SilkETW.exe -t user -pn Microsoft-Windows-Kernel-Process -ot file -p C:\\windows\\temp\\etw.json"
+    },
+    {
+      "label": "Collect .NET Runtime events to JSON (malicious assembly loading detection)",
+      "command": "SilkETW.exe -t user -pn Microsoft-Windows-DotNETRuntime -uk 0x2038 -ot file -p C:\\windows\\temp\\etw.json"
+    },
+    {
+      "label": "Attack: Inject PowerShell into another process (triggers DotNETRuntime events)",
+      "command": "powershell -ep bypass; Import-Module .\\Invoke-PSInject.ps1; Invoke-PSInject -ProcId <PID> -PoshCode \"<base64-PS-code>\""
+    },
+    {
+      "label": "Attack: Parent PID spoofing via psgetsystem (triggers Kernel-Process events)",
+      "command": "powershell -ep bypass; Import-Module .\\psgetsys.ps1; [MyProcess]::CreateProcessFromParent(<PPID>,\"C:\\Windows\\System32\\cmd.exe\",\"\")"
+    },
+    {
+      "label": "Parse SilkETW JSON output with PowerShell",
+      "command": "Get-Content C:\\windows\\temp\\etw.json | ConvertFrom-Json | Select-Object EventName, ProcessName, ProcessID | Format-Table -AutoSize"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Event Logs & Finding Evil",
+      "url": "https://academy.hackthebox.com/module/details/216"
+    },
+    {
+      "title": "fireeye/SilkETW (GitHub)",
+      "url": "https://github.com/fireeye/SilkETW"
+    },
+    {
+      "title": "Microsoft - Event Tracing for Windows",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/etw/about-event-tracing"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-logman-etw",
+      "rel": "prereq",
+      "note": "Use logman to find provider names before running SilkETW."
+    },
+    {
+      "id": "cdsa-sysmon-event-ids",
+      "rel": "next",
+      "note": "SilkETW catches what Sysmon misses (PPID spoofing, .NET injection)."
+    }
+  ],
+  "defense": {
+    "why_it_works": "SilkETW consumes ETW (Event Tracing for Windows) providers directly from the kernel telemetry pipeline, capturing events before they reach the Windows Event Log. ETW providers like Microsoft-Windows-Kernel-Process expose process creation information including the TRUE parent process ID \u2014 even when an attacker uses PPID spoofing via CreateProcess with PROC_THREAD_ATTRIBUTE_PARENT_PROCESS. Similarly, Microsoft-Windows-DotNETRuntime exposes .NET assembly loading events that reveal when PowerShell or other .NET hosts load malicious assemblies \u2014 visible even when AMSI is bypassed.",
+    "prerequisites": "Administrative rights required to subscribe to most ETW providers. SilkETW binary deployed on the target host. .NET Framework 3.5+ installed (SilkETW dependency). A writeable output path for JSON telemetry.",
+    "impact": "Detects advanced evasion techniques that bypass standard Sysmon/Event Log detection: PPID spoofing (parent PID manipulation to hide malicious process lineage), malicious .NET assembly loading via PowerShell injection (Invoke-PSInject), reflective DLL injection into .NET processes, and process hollowing. Each of these techniques leaves artifacts in ETW that are invisible in standard Windows event logs but fully visible to SilkETW consumers.",
+    "detection": "SilkETW itself generates: Sysmon Event ID 1 (process creation for SilkETW.exe), network connections if using Windows Event Log output mode (-ot eventlog), file writes to the JSON output path. Attackers who enumerate ETW sessions (logman query -ets) can identify SilkETW sessions and attempt to terminate or tamper with them. ETW session names created by SilkETW are visible in logman output.\nSuspicious token manipulation chains: token-related APIs (LogonUser, DuplicateTokenEx) or runas commands \u2192 new process spawned under different security context (e.g., SYSTEM) \u2192 mismatched parent-child process lineage or ETW token/PPID anomalies \u2192 abnormal lateral movement or privilege escalation activity (DET0283/AN0786).",
+    "artifacts": "SilkETW process creation (Sysmon ID 1) | JSON output file at specified path with timestamped ETW events | ETW session visible in logman query -ets output | EventName field in JSON identifies detected technique type",
+    "prevention": "Deploy SilkETW as a persistent service on sensitive Windows hosts (DCs, admin workstations, build servers). Configure output to Windows Event Log (-ot eventlog) for SIEM integration rather than local file. Protect the SilkETW process and output file from tampering via ACLs. Alert on SilkETW process termination (unexpected stop of the monitoring process itself = evasion attempt).\nPrivileged Account Management: Limit permissions so users/groups cannot create tokens (GPO: Computer Configuration > Security Settings > Local Policies > User Rights Assignment: Create a token object = local system only; Replace a process level token = local and network service only). Admins should log in as standard user and use runas for elevated tasks.\nUser Account Management: Restrict users to least privileges; adversary must already have administrator-level access to fully exploit token manipulation.",
+    "evasion": "Attackers aware of SilkETW can: terminate the SilkETW process (requires admin), patch ETW at the ntdll.dll level (EtwEventWrite NOP patch) to prevent events from reaching any consumer, use kernel-level techniques that bypass ETW entirely (direct syscalls avoid ETW instrumentation in ntdll.dll). ETW patch detection requires kernel-level integrity monitoring.",
+    "sources": [
+      "CDSA Module 03: Windows Event Logs & Finding Evil",
+      "https://github.com/fireeye/SilkETW",
+      "https://learn.microsoft.com/en-us/windows/win32/etw/about-event-tracing",
+      "https://attack.mitre.org/techniques/T1134/004/",
+      "https://attack.mitre.org/techniques/T1055/001/"
+    ],
+    "misconfiguration": "Relying solely on Sysmon for process monitoring without ETW-level telemetry misses PPID spoofing (Sysmon records the spoofed parent, not the real one). Not monitoring Microsoft-Windows-DotNETRuntime misses PowerShell injection into running processes. Running SilkETW output to a local file without SIEM forwarding = telemetry dies with the host if compromised.",
+    "vulnerable_config": "# Sysmon-only configuration \u2014 misses PPID spoofing:\n# Sysmon Event ID 1 records ParentProcessId from process creation\n# When attacker uses PROC_THREAD_ATTRIBUTE_PARENT_PROCESS:\n#   Sysmon reports the SPOOFED parent (e.g., explorer.exe)\n#   NOT the real parent (malicious process)\n# Result: malicious process appears to have legitimate lineage\n\n# No ETW DotNETRuntime monitoring = PowerShell injection invisible:\n# Invoke-PSInject loads PS assembly into target process\n# No Event ID generated in Security or Sysmon logs\n# AMSI bypass means PS script block logging also silent",
+    "secure_config": "# Deploy SilkETW for PPID spoofing detection:\nSilkETW.exe -t user -pn Microsoft-Windows-Kernel-Process -ot eventlog -l Microsoft-Windows-SilkETW\n\n# Deploy SilkETW for .NET injection detection:\nSilkETW.exe -t user -pn Microsoft-Windows-DotNETRuntime -uk 0x2038 -ot eventlog -l Microsoft-Windows-SilkETW\n\n# PowerShell to parse SilkETW JSON for PPID anomalies:\nGet-Content C:\\ETWLogs\\etw.json | ConvertFrom-Json |\n  Where-Object {$_.EventName -eq 'MSNT_SystemTrace/Process/Start'} |\n  Select-Object ProcessName, ProcessID, ParentProcessID, ImageFileName\n\n# Alert rule: ProcessName = cmd.exe or powershell.exe\n#   where ParentProcessID != expected parent (explorer.exe, svchost.exe)"
+  }
+}

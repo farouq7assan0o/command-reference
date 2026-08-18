@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\ngvm-start launches all GVM/OpenVAS services: gvmd (manager daemon), ospd-openvas (scanner), gsad (web UI). Services must all be running before the web interface is accessible.\n\n=== CHAINING ===\ngvm-start \u2192 check gvm-check-setup for health \u2192 access web UI \u2192 create credentials (SSH/SMB for credentialed scans) \u2192 create targets \u2192 configure and run scans.\n\n=== TROUBLESHOOTING ===\nIf web UI unreachable after start: check service status with systemctl. GVM services take 1-3 minutes to fully initialize. Check /var/log/gvm/ for errors.",
+  "references": []
+}

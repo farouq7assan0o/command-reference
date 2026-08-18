@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nopenvasreporting converts OpenVAS/GVM XML scan reports to Excel (XLSX), CSV, or HTML formats for easier analysis, client reporting, and remediation tracking. Raw OpenVAS XML is difficult to work with manually.\n\n=== CHAINING ===\nOpenVAS scan \u2192 export XML report \u2192 openvasreporting -i report.xml -o output.xlsx \u2192 Excel: filter by severity, sort by CVSS, create remediation tracking spreadsheet.\n\n=== REPORT CONTENT ===\nXLSX includes: vulnerability name, CVSS score, affected hosts, CVE IDs, description, solution recommendations. Provides sortable/filterable data for prioritization and tracking.",
+  "references": []
+}

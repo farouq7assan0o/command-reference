@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n@ specifies which DNS server to query rather than the system default. Used to: query the target's authoritative NS directly (for AXFR attempts), test a specific public resolver (8.8.8.8, 1.1.1.1), or use an internal corporate DNS server (--dns-server in Nmap equivalent).\n\n=== USE CASES ===\n@target-ns: direct authoritative query, attempt AXFR. @8.8.8.8: bypass local resolver for clean public DNS answer. @internal-dns: internal DNS may resolve names not public-facing, revealing internal infrastructure.\n\n=== CAUTION ===\nQuerying authoritative nameservers directly is more detectable than querying public resolvers \u2014 direct query appears in NS server logs. \"Recursion requested but not available\" = hitting an authoritative-only server.",
+  "references": []
+}

@@ -1,0 +1,57 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "snmpwalk"
+  ],
+  "tags": [
+    "snmp",
+    "reference",
+    "misconfig"
+  ],
+  "category": "Enumeration",
+  "subcategory": "SNMP",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Reveal configured community strings",
+      "command": "grep -i community /etc/snmp/snmpd.conf"
+    }
+  ],
+  "notes": "Config: /etc/snmp/snmpd.conf\nPorts: 161/udp (queries), 162/udp (traps)\nDangerous: rwuser noauth, rwcommunity <string> <ipv4>, rwcommunity6 <string> <ipv6>\nDefault community strings: public, private",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "snmp-enum",
+      "note": "Walk MIB tree with snmpwalk, brute community strings with onesixtyone",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-snmp",
+  "name": "Reference - SNMP Ports & Dangerous Settings",
+  "command": "cat /etc/snmp/snmpd.conf | grep -v \"#\" | sed -r '/^\\s*$/d'",
+  "description": "SNMP config, ports, and the settings that grant unauthenticated read/write access.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1595.002"
+  ]
+}

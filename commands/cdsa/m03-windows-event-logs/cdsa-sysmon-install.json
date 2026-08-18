@@ -1,0 +1,109 @@
+{
+  "id": "cdsa-sysmon-install",
+  "name": "Sysmon - Installation & Configuration",
+  "command": "sysmon.exe -i -accepteula -h md5,sha256,imphash -l -n",
+  "description": "Install and configure Sysmon (System Monitor) for deep Windows telemetry. Sysmon extends native event logging with process creation hashes, network connections, image loads, and more \u2014 critical for threat detection.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "quiet",
+  "category": "Windows Events/Forensics",
+  "subcategory": "Sysmon",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 03: Windows Event Logs & Finding Evil",
+  "tags": [
+    "sysmon",
+    "windows",
+    "telemetry",
+    "detection",
+    "logging",
+    "blue-team"
+  ],
+  "notes": "Sysmon logs to: Applications and Services Logs \u2192 Microsoft \u2192 Windows \u2192 Sysmon \u2192 Operational\n\nInstall flags:\n  -i              Install Sysmon as a service\n  -accepteula     Accept EULA silently\n  -h md5,sha256,imphash   Hash algorithms to compute for images\n  -l              Log loading of modules\n  -n              Log network connections\n\nConfig management:\n  sysmon.exe -c <config.xml>    Apply/update XML config\n  sysmon.exe -c                 Print current config\n  sysmon.exe -u                 Uninstall Sysmon\n\nRecommended config: SwiftOnSecurity/sysmon-config (GitHub)\n  \u2192 Very comprehensive, community-maintained, covers most threat scenarios\n\nAfter install, verify service:\n  Get-Service Sysmon\n  Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -MaxEvents 5\n\nRDP to lab Windows target (HTB):\n  xfreerdp /u:Administrator /p:'HTB_@cad3my_lab_W1n10_r00t!@0' /v:<TARGET_IP> /dynamic-resolution",
+  "mitre": [
+    "T1055",
+    "T1059",
+    "T1071",
+    "T1547"
+  ],
+  "examples": [
+    {
+      "label": "Install Sysmon with MD5+SHA256+ImpHash hashing, module load + network logging",
+      "command": "sysmon.exe -i -accepteula -h md5,sha256,imphash -l -n"
+    },
+    {
+      "label": "Install Sysmon with custom config file",
+      "command": "sysmon.exe -i sysmonconfig-export.xml"
+    },
+    {
+      "label": "Apply / update Sysmon config (without reinstall)",
+      "command": "sysmon.exe -c sysmonconfig-export.xml"
+    },
+    {
+      "label": "Print current running Sysmon config",
+      "command": "sysmon.exe -c"
+    },
+    {
+      "label": "Uninstall Sysmon",
+      "command": "sysmon.exe -u"
+    },
+    {
+      "label": "Verify Sysmon service is running",
+      "command": "Get-Service Sysmon"
+    },
+    {
+      "label": "RDP to HTB lab Windows target",
+      "command": "xfreerdp /u:Administrator /p:'HTB_@cad3my_lab_W1n10_r00t!@0' /v:<TARGET_IP> /dynamic-resolution"
+    },
+    {
+      "label": "Read last 5 Sysmon events to confirm logging",
+      "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -MaxEvents 5 | Select-Object TimeCreated, Id, Message | Format-List"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Event Logs & Finding Evil",
+      "url": "https://academy.hackthebox.com/module/details/216"
+    },
+    {
+      "title": "Microsoft Sysinternals - Sysmon",
+      "url": "https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon"
+    },
+    {
+      "title": "SwiftOnSecurity/sysmon-config (recommended config)",
+      "url": "https://github.com/SwiftOnSecurity/sysmon-config"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-sysmon-event-ids",
+      "rel": "next",
+      "note": "Sysmon event IDs to query after installation."
+    },
+    {
+      "id": "cdsa-get-winevent",
+      "rel": "next",
+      "note": "Use Get-WinEvent to query Sysmon operational log."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Sysmon (System Monitor) is a Windows system service and device driver that intercepts system calls to capture detailed security telemetry beyond what native Windows event logging provides. By installing at the driver level, Sysmon captures events before they can be easily suppressed from user mode: process creation with full command lines and hashes, network connections with PIDs, image (DLL/EXE) loads with hashes, registry modifications, file creation timestamps, pipe events, and more. This telemetry is critical for detecting living-off-the-land attacks, lateral movement, and persistence mechanisms that leave no trace in standard Windows event logs.",
+    "prerequisites": "Administrative rights to install Sysmon service and driver. Windows Vista/Server 2008 or later. Sysmon binary (from Sysinternals). Optional: configuration XML file (SwiftOnSecurity/sysmon-config recommended as baseline). Approximately 1-5% additional CPU overhead depending on configuration verbosity.",
+    "impact": "Sysmon provides detection capability for: process injection (Event ID 8 - CreateRemoteThread), DLL loading by process (Event ID 7 with hash), network connections by process (Event ID 3), registry persistence (Event ID 12/13/14), file creation with hash (Event ID 11), WMI event subscriptions (Event ID 19/20/21), DNS queries (Event ID 22), named pipe creation and connection (Event ID 17/18). Without Sysmon, defenders are limited to native Event IDs which lack command-line detail, hashes, and network-to-process correlation.",
+    "detection": "Sysmon logs to: Microsoft-Windows-Sysmon/Operational (Event Log). Attackers attempting to evade Sysmon: process exclusion via process name matching (requires knowing exact Sysmon config), service termination (sc stop sysmon requires admin), driver removal (requires admin + service stop first). Sysmon termination itself generates Event ID 4 (Sysmon service state changed). ETW-level evasion (patching EtwEventWrite in ntdll.dll) can bypass Sysmon event generation even when the service is running.\nProcess injection by correlating memory manipulation API calls (VirtualAllocEx, WriteProcessMemory), suspicious thread creation (CreateRemoteThread), and unusual DLL loads within another process's context (DET0508/AN1399).\nptrace- or memfd-based injection through audit logs capturing system calls (ptrace, mmap) targeting running processes along with suspicious file descriptors or memory writes (AN1400).\nMemory-based injection via task_for_pid, mach_vm_write, and dylib injection patterns through DYLD_INSERT_LIBRARIES or manual memory mapping on macOS (AN1401).",
+    "artifacts": "Microsoft-Windows-Sysmon/Operational event log (all Sysmon events) | SysmonDrv kernel driver loaded (visible in driverquery) | Sysmon service in services.msc | Registry key: HKLM\\SYSTEM\\CurrentControlSet\\Services\\SysmonDrv",
+    "prevention": "Deploy Sysmon on all Windows endpoints (servers, workstations, DCs). Use a maintained community config (SwiftOnSecurity/sysmon-config or olafhartong/sysmon-modular). Forward Sysmon events to SIEM via Windows Event Forwarding (WEF) or agent. Protect Sysmon binary and config via ACLs: restrict write access to prevent config tampering. Alert on Sysmon service stop (Event ID 7036 in System log). Alert on SysmonDrv driver removal attempts.\nBehavior Prevention on Endpoint: Configure endpoint security solutions to block process injection based on common injection sequences; Windows 10 ASR rules can prevent Office applications from code injection.\nPrivileged Account Management: Use Yama (ptrace_scope) on Linux to restrict ptrace to privileged users; deploy security kernel modules.",
+    "evasion": "Common Sysmon evasion: process name exclusions in config (if attacker knows the config, they rename their tool to an excluded process name). ETW-level patch (NOP EtwEventWrite in ntdll.dll) prevents Sysmon from receiving events at all. Direct syscalls bypass ntdll.dll instrumentation entirely \u2014 Sysmon cannot see events from processes using direct syscalls. Process injection into an already-trusted process (explorer.exe) may be excluded from logging if config excludes that parent.",
+    "sources": [
+      "CDSA Module 03: Windows Event Logs & Finding Evil",
+      "https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon",
+      "https://github.com/SwiftOnSecurity/sysmon-config",
+      "https://attack.mitre.org/techniques/T1055/",
+      "https://attack.mitre.org/techniques/T1059/"
+    ],
+    "misconfiguration": "Installing Sysmon with default flags only (-i -accepteula) without a configuration XML generates high-volume unfiltered events that overwhelm SIEM storage and make analysis impractical. Not including -h md5,sha256,imphash misses hash-based detection (cannot compare against threat intel IOCs). Not enabling -n misses network connection telemetry (cannot correlate C2 connections to processes). Not forwarding to SIEM = telemetry exists only on the endpoint and is lost if host is compromised or reimaged.",
+    "vulnerable_config": "# Minimal install \u2014 no config, no hash, no network:\nsysmon.exe -i -accepteula\n# Problems:\n# - No file hashes in Event ID 1 (cannot match against malware IOCs)\n# - No network connections logged (cannot find C2 beaconing)\n# - No image load logging (cannot detect DLL injection)\n# - High noise from all events with no filtering\n# - Sysmon events not forwarded to SIEM\n\n# Missing critical config sections:\n# - No NetworkConnect rules (Event ID 3 disabled)\n# - No ImageLoad rules (Event ID 7 disabled)\n# - No CreateRemoteThread rules (Event ID 8 disabled)\n# - No RawAccessRead rules (Event ID 9 disabled)",
+    "secure_config": "# Full install with hashing, image load, and network logging:\nsysmon.exe -i -accepteula -h md5,sha256,imphash -l -n\n#   -h md5,sha256,imphash  = hash all executables (MD5 for compat, SHA256 for IOC matching, ImpHash for malware family)\n#   -l                     = log all loaded images (DLL injection detection via Event ID 7)\n#   -n                     = log all network connections (Event ID 3)\n\n# Apply community config (recommended \u2014 suppresses noise, focuses on malicious patterns):\nsysmon.exe -i sysmonconfig-export.xml\n# Source: https://github.com/SwiftOnSecurity/sysmon-config\n\n# Verify installation:\nGet-Service Sysmon | Select Status  # Should show Running\nGet-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -MaxEvents 5 | Select Id,Message\n\n# Forward events via WEF subscription:\n# In GPO: Windows Settings > Security Settings > Event Log > Event Forwarding\n# Subscribe to: Microsoft-Windows-Sysmon/Operational\n\n# Alert on Sysmon service stop (SIEM rule):\n# Source: System log, Event ID 7036\n# Message contains: Sysmon service entered the stopped state"
+  }
+}

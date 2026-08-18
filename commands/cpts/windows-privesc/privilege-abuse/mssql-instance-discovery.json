@@ -1,0 +1,84 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "mssql"
+  ],
+  "tools": [
+    "sc",
+    "wmic"
+  ],
+  "tags": [
+    "mssql",
+    "enumeration",
+    "service-account"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Token Privileges",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Find SQL services",
+      "command": "sc query | findstr SQL"
+    },
+    {
+      "label": "Query a specific instance",
+      "command": "sc query MSSQL$SQLEXPRESS01"
+    },
+    {
+      "label": "See which account the instance runs as",
+      "command": "wmic service where \"name='MSSQL$SQLEXPRESS01'\" get name,startname"
+    }
+  ],
+  "notes": "=== MSSQL Instance Discovery ===\nEnumerate SQL Server instances before attempting authentication or exploitation.\n\n=== DISCOVERY METHODS ===\nNetwork scan:\n  nmap -p 1433,1434 --script ms-sql-info,ms-sql-empty-password <TARGET>\n  UDP 1434 (SQL Browser): nmap -sU -p 1434 --script ms-sql-info <TARGET>\n\nLocal enumeration (on compromised Windows host):\n  Get-Service | Where-Object {$_.Name -like 'MSSQL*'}\n  reg query \"HKLM\\SOFTWARE\\Microsoft\\Microsoft SQL Server\\Instance Names\\SQL\"\n  netstat -ano | findstr 1433\n\nSnaffler for credential files:\n  .\\Snaffler.exe -s -d <domain> -o snaffler.log -v data\n  Finds: web.config, *.config, appsettings.json, *.sql, connections.ini\n\n=== INSTANCE NAMING ===\nDefault instance: SERVER (port 1433)\nNamed instance: SERVER\\INSTANCENAME (dynamic port, SQL Browser on 1434 reveals it)\nAlways check both default and named instances via nmap + SQL Browser\n\n=== CHAINING CONTEXT ===\nDiscovery → credentials from share → mssqlclient.py → xp_cmdshell → SeImpersonate → SYSTEM\nMultiple MSSQL instances → linked servers across instances → lateral movement through SQL\nMSSQL on DC → highest value target (machine account has DC-level access in some configs)\n\n=== WHAT TO LOOK FOR ===\nMSSQL running on Domain Controllers (rare but extremely high-value)\nSA account with blank or weak password\nWindows-authenticated users with sysadmin role\nSQL Agent service account with sysadmin → agent job execution = RCE as that service account",
+  "references": [
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "mssql-enable-xpcmdshell",
+      "note": "Enable command exec on the discovered instance.",
+      "rel": "next"
+    }
+  ],
+  "id": "mssql-instance-discovery",
+  "name": "MSSQL - Discover Instance & Service Account",
+  "command": "sc query | findstr SQL",
+  "description": "Locate installed SQL Server instances and identify the account each service runs as. If the service account holds SeImpersonatePrivilege it is the pivot for a potato attack.",
+  "opsec": "loud",
+  "mitre": [
+    "T1007"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "sc query / wmic service discovery reveals running SQL Server instances and, critically, the service account they run under. If the service account is highly privileged (Local System, Domain Admin, a misconfigured service account), compromising MSSQL credentials leads directly to system or domain admin access. Instance discovery is the reconnaissance step enabling targeted SQL attacks.",
+    "prerequisites": "Shell access. WMI query rights (standard user can query Win32_Service). Knowledge of MSSQL client tools.",
+    "impact": "Identifies SQL Server instances and their service account context. Enables targeted attack planning: if MSSQL runs as Local System, xp_cmdshell provides SYSTEM access.",
+    "detection": "sc query containing 'SQL' executed by standard user. WMI Win32_Service query filtered for SQL. net start output analyzed for SQL services.",
+    "artifacts": "Process log: sc query / wmic service query by standard user | SIEM: SQL service enumeration pattern",
+    "prevention": "Run SQL Server as a dedicated low-privilege service account with only the permissions needed for MSSQL operation. Document all SQL instances. Monitor for SQL service enumeration in SIEM.",
+    "misconfiguration": "SQL Server running as NT AUTHORITY\\SYSTEM or a domain admin account. Multiple SQL instances not inventoried. No service account least-privilege review.",
+    "vulnerable_config": "# Enumerate SQL instances:\nsc query type= all | findstr SQL\nwmic service where 'name like \"%sql%\"' get Name,StartName\n# Output: MSSQL$SQLEXPRESS StartName: LocalSystem <- misconfigured",
+    "secure_config": "# Correct service account setup:\n# Create dedicated MSSQL service account:\nNew-ADUser -Name svc_mssql -Enabled $true -PasswordNeverExpires $true\n\n# Assign minimal rights in SQL:\nCREATE LOGIN [INLANEFREIGHT\\svc_mssql] FROM WINDOWS;\nEXEC sp_addsrvrolemember 'INLANEFREIGHT\\svc_mssql', 'public'; -- no sysadmin\n\n# Verify service account:\nwmic service where 'name=\"MSSQL$SQLEXPRESS\"' get StartName",
+    "sources": [
+      "HTB M26",
+      "MITRE T1046",
+      "MITRE T1082"
+    ]
+  }
+}

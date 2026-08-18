@@ -1,0 +1,85 @@
+{
+  "id": "cdsa-m09-suricata-rule-syntax",
+  "name": "Suricata Rule Syntax — Anatomy, Content Modifiers & PCRE",
+  "command": "alert http $HOME_NET any -> $EXTERNAL_NET any (msg:\"Rule description\"; content:\"pattern\"; sid:1000001; rev:1;)",
+  "description": "Complete Suricata rule structure: header (action + protocol + IP/port + direction) and body (msg, content, flow, dsize, detection_filter, PCRE, buffers, modifiers). Actions: alert/log/pass/drop/reject. Protocols: tcp/udp/icmp/ip/http/tls/smb/dns. Content modifiers: nocase/offset/depth/distance/within. Rule buffers enable scoped inspection. PCRE provides regex matching. detection_filter adds threshold-based alerting.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "IDS/IPS",
+  "subcategory": "Suricata",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 09: Working with IDS/IPS",
+  "tags": ["suricata", "ids-rules", "snort-rules", "pcre", "content-match", "rule-writing", "blue-team", "detection-engineering"],
+  "tools": ["suricata"],
+  "mitre": ["T1071.001", "T1071.004"],
+  "notes": "=== RULE STRUCTURE ===\nFull format:\n  action proto src_ip src_port -> dst_ip dst_port (options)\n\nExample:\n  alert http $HOME_NET any -> $EXTERNAL_NET any (msg:\"ET MALWARE...\"; content:\"pattern\"; sid:10000001; rev:1;)\n\n=== HEADER FIELDS ===\n[ACTION]\n  alert  → generate alert\n  log    → log without alerting\n  pass   → allow/ignore (whitelist)\n  drop   → drop packet (IPS mode)\n  reject → send TCP RST / ICMP unreachable, then drop\n\n[PROTOCOL]\n  tcp, udp, icmp, ip        → layer 4\n  http, tls, smb, dns       → application layer (Suricata decodes)\n\n[IP/PORT SPECIFICATION]\n  $HOME_NET any -> $EXTERNAL_NET 9090   → outbound on port 9090\n  $EXTERNAL_NET any -> $HOME_NET 8443   → inbound on port 8443\n  $EXTERNAL_NET any <> $HOME_NET any    → bidirectional\n  [8443,8080,7001:7002,!8443]           → port list with range and exclusion\n  $UNCOMMON_PORTS                        → defined in suricata.yaml\n\n=== RULE OPTIONS ===\n[MSG] — alert message:\n  msg:\"ET MALWARE Dridex Infection\";\n  → Should include: malware family, action, version/variant\n\n[FLOW] — track session direction:\n  flow:established,to_server;    → client→server in existing TCP session\n  flow:established,from_server;  → server→client\n  flow:to_server;                → new or established, toward server\n  flow:from_client;              → UDP, from originating side\n  → BEST PRACTICE: always add flow:established for TCP rules\n\n[CONTENT] — byte pattern matching:\n  content:\"User-Agent: Go-http-client/1.1\";\n  content:\"|3a 20|\";               → hex bytes (3a=colon, 20=space)\n  content:\"|0d 0a|\";               → \\r\\n (CRLF, end of HTTP header line)\n  Multiple content: keywords allowed per rule (all must match)\n\n[CONTENT MODIFIERS — position]:\n  offset:0     → start matching from byte 0 of payload\n  depth:5      → only match within first 5 bytes (from offset)\n  distance:10  → next content must start ≥10 bytes after previous match end\n  within:80    → next content must match within 80 bytes of previous match end\n  → offset+depth: absolute window; distance+within: relative window\n\n[CONTENT MODIFIERS — other]:\n  nocase            → case-insensitive match\n  fast_pattern      → hint to use this content for fast pre-filter\n\n[RULE BUFFERS] — scope matching to protocol fields:\n  http_method        → match in HTTP method field only\n  http_uri           → match in HTTP URI only\n  http_cookie        → match in HTTP Cookie header only\n  http_user_agent    → match in User-Agent header only\n  http_client_body   → match in HTTP request body\n  http_header_names  → match in HTTP header names (not values)\n  http.accept        → sticky buffer: HTTP Accept header value only\n  ja3.hash           → TLS JA3 fingerprint hash\n  → Using buffers avoids scanning entire packet = performance gain\n  → Docs: https://suricata.readthedocs.io/en/latest/rules/http-keywords.html\n\n[PCRE] — Perl Compatible Regular Expressions:\n  pcre:\"/regex/flags\";\n  → Flags: i=case-insensitive, R=relative to previous content match\n  →        U=HTTP URI buffer, P=HTTP body buffer, C=HTTP cookie buffer\n  → Negation: pcre:!\"...\" → trigger if regex does NOT match\n  → WARNING: never base a rule solely on PCRE (too slow); pair with content:\n\n  Example:\n    pcre:\"/^(?:login\\/process|admin\\/get|news)\\.php$/RU\";\n    → Matches login/process.php, admin/get.php, or news.php in HTTP URI\n    → R=relative to previous content match, U=HTTP URI buffer\n\n[DSIZE] — payload size match:\n  dsize:312;       → exact payload size (TCP segment, not total packet)\n  dsize:>10000;    → payload larger than 10000 bytes\n  → Useful for C2 beacon detection (fixed-size heartbeats)\n\n[DETECTION_FILTER] — threshold after detection:\n  detection_filter: track by_src, count 4, seconds 10;\n  → Only alert if same detection fires ≥4 times within 10 seconds\n  → by_src: group by source IP\n  → by_dst: group by destination IP\n  → Reduces noise for bursty traffic\n\n[METADATA — required]:\n  sid:10000001;    → signature ID, must be unique\n  rev:1;           → revision number\n  reference:url,link.to.source;\n\n=== DETECTION APPROACHES ===\n1. Signature-based: content patterns unique to known malware\n2. Anomaly/behavior-based: dsize thresholds, beaconing intervals, unusual ports\n3. Stateful protocol analysis: flow states, unexpected protocol transitions\n\n=== RULE DEVELOPMENT TIPS ===\n  → Always use flow:established,to_server for TCP HTTP rules\n  → Use buffers (http_method, http_uri, etc.) instead of raw content when possible\n  → Never write a rule that relies ONLY on PCRE\n  → Add multiple content: checks before PCRE to pre-filter\n  → Use nocase on known case-insensitive fields (URIs, User-Agents)\n  → Use detection_filter to reduce false positives for volume-based alerts\n  → Test with: sudo suricata -r file.pcap -l . -k none",
+  "examples": [
+    {
+      "label": "Minimal alert rule structure",
+      "command": "alert tcp $HOME_NET any -> $EXTERNAL_NET any (msg:\"Test rule\"; content:\"pattern\"; sid:1000001; rev:1;)"
+    },
+    {
+      "label": "HTTP method + URI buffer matching",
+      "command": "alert http any any -> any any (msg:\"HTTP GET to /admin\"; content:\"GET\"; http_method; content:\"/admin\"; http_uri; sid:1000002; rev:1;)"
+    },
+    {
+      "label": "Flow + content + nocase",
+      "command": "alert tcp any any -> any any (msg:\"User-Agent Mozilla\"; content:\"User-Agent: Mozilla\"; nocase; flow:established,to_server; sid:8001; rev:1;)"
+    },
+    {
+      "label": "Offset + depth (start/end window)",
+      "command": "alert tcp any any -> any any (msg:\"Protocol command at offset 0\"; content:\"|01 02 03|\"; offset:0; depth:5; sid:3003; rev:1;)"
+    },
+    {
+      "label": "Distance + within (relative chained window)",
+      "command": "alert http any any -> any any (msg:\"GET /admin with gap\"; content:\"GET\"; offset:0; depth:4; content:\"/admin\"; distance:10; within:80; sid:3001; rev:1;)"
+    },
+    {
+      "label": "PCRE on HTTP URI (relative, case-insensitive)",
+      "command": "alert http any any -> any any (msg:\"PHP admin URI\"; content:\"/\"; http_uri; pcre:\"/^(?:login\\/process|admin\\/get)\\.php$/RU\"; sid:1000003; rev:1;)"
+    },
+    {
+      "label": "dsize exact match (C2 fixed-size beacon)",
+      "command": "alert tcp $HOME_NET any -> any any (msg:\"C2 beacon size 312\"; dsize:312; detection_filter: track by_src, count 3, seconds 10; sid:3000001; rev:1;)"
+    },
+    {
+      "label": "JA3 hash match (TLS fingerprint)",
+      "command": "alert tls any any -> any any (msg:\"Malware TLS\"; ja3.hash; content:\"473cd7cb9faa642487833865d516e578\"; sid:1002; rev:1;)"
+    },
+    {
+      "label": "File extraction rule",
+      "command": "alert http any any -> any any (msg:\"FILE store all\"; filestore; sid:2; rev:1;)"
+    },
+    {
+      "label": "Test rule against PCAP",
+      "command": "sudo suricata -r /home/htb-student/pcaps/suspicious.pcap -l . -k none"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Working with IDS/IPS",
+      "url": "https://academy.hackthebox.com/module/details/226"
+    },
+    {
+      "title": "Suricata Rules Documentation",
+      "url": "https://docs.suricata.io/en/latest/rules/index.html"
+    },
+    {
+      "title": "Suricata HTTP Keywords",
+      "url": "https://suricata.readthedocs.io/en/latest/rules/http-keywords.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m09-suricata-operations",
+      "rel": "prereq",
+      "note": "Suricata config and ruleset management — needed before writing/deploying rules."
+    },
+    {
+      "id": "cdsa-m09-suricata-rule-examples",
+      "rel": "next",
+      "note": "Real-world rule examples: PowerShell Empire, Covenant, Sliver, Dridex detection."
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "enumeration",
+    "defender",
+    "applocker"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Defender real-time protection status",
+      "command": "Get-MpComputerStatus"
+    },
+    {
+      "label": "Effective AppLocker rule collections",
+      "command": "Get-AppLockerPolicy -Effective | select -ExpandProperty RuleCollections"
+    },
+    {
+      "label": "Test whether a specific binary is allowed by AppLocker",
+      "command": "Get-AppLockerPolicy -Local | Test-AppLockerPolicy -path C:\\Windows\\System32\\cmd.exe -User Everyone"
+    }
+  ],
+  "notes": "=== SECURITY PROTECTIONS ENUMERATION ===\nCheck AV and AppLocker before deciding which tools to use and how to deliver payloads.\n\nAV/DEFENDER CHECK:\nGet-MpComputerStatus | Select AntivirusEnabled,RealTimeProtectionEnabled,BehaviorMonitorEnabled\nsc query windefend\ntasklist | findstr -i defender\n\nAPPLOCKER CHECK:\nGet-AppLockerPolicy -Effective | select -ExpandProperty RuleCollections\nreg query \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SrpV2\"\n\nLSASS PROTECTION:\nreg query \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v RunAsPPL\n0 = unprotected (dump with ProcDump/Task Manager)\n1 = PPL protected (requires signed driver bypass like PPLKiller)\n\n=== CHAINING CONTEXT ===\nAppLocker blocking .exe → fall back to LOLBAS (certutil, rundll32, msiexec)\nAppLocker blocking scripts → use InstallUtil, regsvr32, or msbuild for CLR execution\nDefender enabled → use obfuscated PS, in-memory execution (IEX), or freshly compiled tools\nPPL on LSASS → cannot dump with ProcDump — use Task Manager GUI or driver bypass\n\n=== WHAT TO LOOK FOR ===\nReal-time protection disabled = aggressive tool deployment safe\nAppLocker not configured = no execution restrictions\nPSLogging/ScriptBlock enabled = your commands are captured in event logs\nAudit process creation enabled = 4688 events with command lines logged",
+  "references": [
+    {
+      "title": "Microsoft - AppLocker",
+      "url": "https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/applocker/applocker-overview"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "winpe-tools",
+      "note": "Pick tooling that fits the protection posture.",
+      "rel": "next"
+    }
+  ],
+  "id": "winpe-protections-enum",
+  "name": "WinPE - Enumerate Defender and AppLocker",
+  "command": "Get-MpComputerStatus",
+  "description": "Checks endpoint protections before dropping tools: Defender real-time status and effective AppLocker policy. Test whether a specific binary path is allowed for a user.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1518.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Before running tools or exploits, enumerating active Windows defenses (Defender, AppLocker) prevents detection and avoids wasted effort. Get-MpComputerStatus reveals Defender state, while Get-AppLockerPolicy reveals execution restrictions that determine which paths and binaries are allowed.",
+    "prerequisites": "Shell access. PowerShell available. Rights to query WMI/AppLocker policy (standard user can query effective policy).",
+    "impact": "Identifies defensive gaps: if Defender real-time protection is disabled, tools can run undetected. If AppLocker is missing or misconfigured, tool execution from staging directories is unrestricted.",
+    "detection": "Get-MpComputerStatus and Get-AppLockerPolicy queries logged in PowerShell transcript logs. Reconnaissance pattern: standard user enumerating security configuration. SIEM: alert on security configuration query by non-admin.",
+    "artifacts": "PowerShell transcript: Get-MpComputerStatus and Get-AppLockerPolicy commands | Process log: PowerShell querying security config",
+    "prevention": "Enable PowerShell Script Block Logging and Transcript Logging. Ensure Defender and AppLocker are configured and enforced. Monitor security configuration queries in SIEM.",
+    "misconfiguration": "No PowerShell logging. Defender disabled or with outdated signatures. AppLocker not configured. No SIEM alerting on security configuration reconnaissance.",
+    "vulnerable_config": "# Attacker checks defenses:\nGet-MpComputerStatus | select RealTimeProtectionEnabled, AntivirusEnabled\n# RealTimeProtectionEnabled: False <- no AV scanning\n\nGet-AppLockerPolicy -Effective | select -ExpandProperty RuleCollections\n# No rules returned <- no AppLocker",
+    "secure_config": "# Enable Defender real-time protection\nSet-MpPreference -DisableRealtimeMonitoring $false\n\n# Configure AppLocker via GPO\n# Computer Configuration > Policies > Windows Settings > Security Settings > Application Control Policies\n\n# Enable PowerShell logging\n# HKLM\\Software\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\n# EnableScriptBlockLogging = 1",
+    "sources": [
+      "HTB M26",
+      "MITRE T1518.001",
+      "MITRE T1083"
+    ]
+  }
+}

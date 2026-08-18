@@ -1,0 +1,100 @@
+{
+  "id": "cdsa-m12-sigma-conversion",
+  "name": "Applying & Converting Sigma Rules \u2014 sigmac, Chainsaw, pySigma & Splunk",
+  "command": "python sigmac -t powershell 'C:\\Rules\\sigma\\rule.yml'",
+  "description": "Converting Sigma rules to SIEM queries and applying them to event logs. sigmac (legacy): python sigmac -t <backend> rule.yml [-c config.yml]. Backends: powershell, splunk, es-qs, qradar. Chainsaw hunt: chainsaw_x86_64.exe hunt <evtx_path> -s <sigma_rule_or_dir> --mapping mappings/sigma-event-logs-all.yml. Mapping files tell Chainsaw which event log fields to use \u2014 missing fields cause 0 detections even when rules are correct. pySigma / Uncoder.io = modern sigmac alternatives. Config files critical: sigma-event-logs-all.yml may need custom fields added (e.g., NewProcessName for EID 4688). Zircolite: alternative to Chainsaw for EVTX+Sigma hunting.",
+  "platform": "windows",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Malware Analysis",
+  "subcategory": "Detection Rules",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 12: YARA & Sigma for SOC Analysts",
+  "tags": [
+    "sigma",
+    "sigmac",
+    "chainsaw",
+    "splunk",
+    "siem",
+    "evtx",
+    "event-logs",
+    "blue-team",
+    "threat-hunting",
+    "pysigma"
+  ],
+  "notes": "=== sigmac \u2014 SIGMA RULE CONVERTER (LEGACY) ===\n\nsigmac converts Sigma YAML rules into SIEM-specific query language.\nLocation in lab: C:\\Tools\\sigma-0.21\\tools\\sigmac\n\nBasic syntax:\n  python sigmac -t <backend> <rule.yml> [-c <config.yml>]\n\nCommon backends (-t):\n  powershell    \u2192 Get-WinEvent PowerShell query\n  splunk        \u2192 Splunk SPL search\n  es-qs         \u2192 Elasticsearch Query String\n  es-dsl        \u2192 Elasticsearch DSL (JSON)\n  qradar        \u2192 IBM QRadar AQL\n  logpoint      \u2192 LogPoint query\n  arcsight      \u2192 ArcSight filter\n\n--- Convert to PowerShell (Get-WinEvent): ---\n  python sigmac -t powershell 'C:\\Rules\\sigma\\proc_access_win_lsass_access.yml'\n\n  Output:\n    Get-WinEvent | where {\n      ($_.ID -eq \"10\" -and\n       $_.message -match \"TargetImage.*.*\\\\lsass.exe\" -and\n       $_.message -match \"GrantedAccess.*.*0x1010\")\n    } | select TimeCreated,Id,RecordId,ProcessId,MachineName,Message\n\n--- Run Get-WinEvent against specific .evtx file: ---\n  Get-WinEvent -Path C:\\Events\\YARASigma\\lab_events.evtx | where {\n    ($_.ID -eq \"10\" -and\n     $_.message -match \"TargetImage.*.*\\\\lsass.exe\" -and\n     $_.message -match \"GrantedAccess.*.*0x1010\")\n  } | select TimeCreated,Id,RecordId,ProcessId,MachineName,Message\n\n  Note: Run PowerShell as Administrator for EVTX access.\n\n--- Convert to Splunk: ---\n  python sigmac -t splunk 'C:\\Tools\\chainsaw\\sigma\\rules\\windows\\process_access\\proc_access_win_lsass_dump_comsvcs_dll.yml' -c .\\config\\splunk-windows.yml\n\n  Output:\n    (TargetImage=\"*\\\\lsass.exe\" SourceImage=\"C:\\\\Windows\\\\System32\\\\rundll32.exe\" CallTrace=\"*comsvcs.dll*\")\n\n  Note: -c config/splunk-windows.yml maps Sigma field names to Splunk field names\n  Sysmon + Splunk Universal Forwarder required for data ingestion\n\n--- Convert notepad susp child process rule to Splunk: ---\n  python sigmac -t splunk 'C:\\Rules\\sigma\\proc_creation_win_notepad_susp_child.yml' -c .\\config\\splunk-windows.yml\n\n  Output:\n    (ParentImage=\"*\\\\notepad.exe\" (Image=\"*\\\\powershell.exe\" OR Image=\"*\\\\cmd.exe\" OR ...))\n\n=== SIGMAC CONFIG FILES ===\nLocation: C:\\Tools\\sigma-0.21\\tools\\config\\\n  splunk-windows.yml    \u2192 maps Sigma fields to Splunk fields for Windows\n  sysmon.yml            \u2192 Sysmon-specific field mappings\n  elasticsearch.yml     \u2192 ES field mappings\n\nConfig file format (YAML):\n  fieldmappings:\n    Image: NewProcessName           \u2190 Sigma field \u2192 EVTX/SIEM field\n    CommandLine: ProcessCommandLine\n    ParentImage: ParentProcessName\n\nCritical: without correct config, queries reference wrong field names\n  \u2192 Always specify -c <config> for production use\n  \u2192 Custom config needed when adding non-standard fields (e.g., NewProcessName for EID 4688)\n\n=== pySigma \u2014 MODERN sigmac REPLACEMENT ===\nOfficial modern tool: https://github.com/SigmaHQ/pySigma\n\n  pip install pySigma\n  pip install pySigma-backend-splunk    (Splunk backend)\n  pip install pySigma-backend-elasticsearch\n\nConvert with pySigma Python API:\n  from sigma.collection import SigmaCollection\n  from sigma.backends.splunk import SplunkBackend\n\n  rules = SigmaCollection.load_ruleset([\"rule.yml\"])\n  backend = SplunkBackend()\n  print(backend.convert(rules))\n\nCLI (via sigma-cli):\n  pip install sigma-cli\n  sigma convert -t splunk -p windows-sysmon rule.yml\n\n=== Uncoder.io \u2014 WEB-BASED SIGMA CONVERTER ===\nURL: https://uncoder.io/\n  \u2192 Paste Sigma YAML \u2192 select target SIEM \u2192 get converted query\n  \u2192 Supports: Splunk, Elastic, QRadar, Microsoft Sentinel, Chronicle, etc.\n  \u2192 No installation required\n  \u2192 Free tier available\n\nUse case: quick one-off conversions, exploring output formats\n\n=== CHAINSAW \u2014 EVENT LOG HUNTING WITH SIGMA ===\nChainsaw applies Sigma rules directly to Windows EVTX files.\nNo SIEM needed \u2014 ideal for incident response.\n\nLocation: C:\\Tools\\chainsaw\\chainsaw_x86_64-pc-windows-msvc.exe\n\nBasic hunt command:\n  .\\chainsaw_x86_64-pc-windows-msvc.exe hunt <evtx_path> \\\n    -s <sigma_rule_or_dir> \\\n    --mapping mappings\\sigma-event-logs-all.yml\n\nHunt with single rule:\n  .\\chainsaw_x86_64-pc-windows-msvc.exe hunt C:\\Events\\lab_events.evtx \\\n    -s C:\\Rules\\sigma\\proc_access_win_lsass_access.yml \\\n    --mapping .\\mappings\\sigma-event-logs-all.yml\n\nHunt directory of rules against directory of EVTX:\n  .\\chainsaw_x86_64-pc-windows-msvc.exe hunt C:\\Events\\ \\\n    -s C:\\Tools\\chainsaw\\sigma\\rules\\ \\\n    --mapping .\\mappings\\sigma-event-logs-all.yml\n\nHunt with JSON output:\n  .\\chainsaw_x86_64-pc-windows-msvc.exe hunt C:\\Events\\ \\\n    -s sigma\\rules\\ \\\n    --mapping mappings\\sigma-event-logs-all.yml \\\n    --json\n\n--- Mapping files ---\nMappings tell Chainsaw which EVTX fields to use:\n  sigma-event-logs-all.yml     \u2192 General Windows event log mappings\n  sigma-event-logs-all-new.yml \u2192 Extended version (includes NewProcessName for EID 4688)\n\nGOTCHA: if a field exists in the Sigma rule but not in the mapping file,\n  \u2192 Chainsaw returns 0 detections even if rule is logically correct\n  \u2192 Fix: add the field to the mapping file, or use an extended mapping\n  \u2192 Example: NewProcessName was missing \u2192 0 detections for EID 4688 rules\n             \u2192 Added to sigma-event-logs-all-new.yml \u2192 detections worked\n\n--- Chainsaw search (keyword hunt): ---\n  .\\chainsaw_x86_64-pc-windows-msvc.exe search mimikatz -i C:\\Events\\\n\n  \u2192 -i = case-insensitive\n  \u2192 Searches raw event log content for keyword\n\n--- Chainsaw search by EventID: ---\n  .\\chainsaw_x86_64-pc-windows-msvc.exe search -t 'Event.System.EventID: =4104' C:\\Events\\\n\n--- Chainsaw output format: ---\n  Table view by default:\n    timestamp | detections | count | Provider | EventID | RecordID | Computer | Event Data\n\n  Use --full flag to show complete event data (not truncated)\n\n=== Zircolite \u2014 ALTERNATIVE TO CHAINSAW ===\nURL: https://github.com/wagga40/Zircolite\n  \u2192 Similar to Chainsaw: EVTX + Sigma rules\n  \u2192 Also scans multiple EVTX files concurrently\n  \u2192 Output: JSON, CSV, or HTML reports\n  \u2192 Better suited for large-scale log hunting\n\nBasic usage:\n  python3 zircolite.py --evtx C:\\Events\\ --ruleset sigma\\rules\\ --outfile results.json\n\n=== SPLUNK SIGMA HUNTING ===\nAfter sigmac conversion, paste SPL into Splunk 'Search & Reporting':\n  http://[Target IP]:8000 \u2192 Search & Reporting \u2192 paste SPL\n\nSplunk searches use tstats or raw field searches:\n  (TargetImage=\"*\\\\lsass.exe\" SourceImage=\"*\\\\rundll32.exe\" CallTrace=\"*comsvcs.dll*\")\n  \u2192 Results show events matching all conditions\n\n=== WORKFLOW: SIGMA RULE \u2192 HUNT \u2192 DETECT ===\n1. Write Sigma rule in YAML\n2. Convert with sigmac or pySigma to target SIEM format\n3. Option A - Quick EVTX hunt:\n   chainsaw hunt <evtx> -s rule.yml --mapping mapping.yml\n4. Option B - SIEM search:\n   Paste converted query into Splunk/Elastic/etc.\n5. Option C - PowerShell (no SIEM):\n   sigmac -t powershell rule.yml \u2192 Get-WinEvent -Path evtx.evtx | where {...}\n6. Review hits \u2192 confirm true positives\n7. Tune rule to reduce false positives\n8. Add to detection library",
+  "examples": [
+    {
+      "label": "Convert Sigma rule to PowerShell query (sigmac)",
+      "command": "python sigmac -t powershell 'C:\\Rules\\sigma\\proc_access_win_lsass_access.yml'"
+    },
+    {
+      "label": "Convert Sigma rule to Splunk SPL (sigmac with config)",
+      "command": "python sigmac -t splunk rule.yml -c .\\config\\splunk-windows.yml"
+    },
+    {
+      "label": "Run converted PowerShell query against EVTX file",
+      "command": "Get-WinEvent -Path C:\\Events\\YARASigma\\lab_events.evtx | where {($_.ID -eq \"10\" -and $_.message -match \"TargetImage.*.*\\\\lsass.exe\" -and $_.message -match \"GrantedAccess.*.*0x1010\")} | select TimeCreated,Id,RecordId,ProcessId,MachineName,Message"
+    },
+    {
+      "label": "Chainsaw hunt with single Sigma rule",
+      "command": ".\\chainsaw_x86_64-pc-windows-msvc.exe hunt C:\\Events\\YARASigma\\lab_events.evtx -s C:\\Rules\\sigma\\rule.yml --mapping .\\mappings\\sigma-event-logs-all.yml"
+    },
+    {
+      "label": "Chainsaw hunt with directory of Sigma rules",
+      "command": ".\\chainsaw_x86_64-pc-windows-msvc.exe hunt C:\\Events\\ -s C:\\Tools\\chainsaw\\sigma\\rules\\ --mapping .\\mappings\\sigma-event-logs-all.yml"
+    },
+    {
+      "label": "Chainsaw hunt with JSON output",
+      "command": ".\\chainsaw_x86_64-pc-windows-msvc.exe hunt C:\\Events\\ -s sigma\\rules\\ --mapping mappings\\sigma-event-logs-all.yml --json"
+    },
+    {
+      "label": "Chainsaw keyword search in EVTX",
+      "command": ".\\chainsaw_x86_64-pc-windows-msvc.exe search mimikatz -i C:\\Events\\"
+    },
+    {
+      "label": "Chainsaw search by EventID",
+      "command": ".\\chainsaw_x86_64-pc-windows-msvc.exe search -t 'Event.System.EventID: =4104' C:\\Events\\"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - YARA & Sigma for SOC Analysts",
+      "url": "https://academy.hackthebox.com/module/details/234"
+    },
+    {
+      "title": "Chainsaw GitHub (WithSecureLabs)",
+      "url": "https://github.com/WithSecureLabs/chainsaw"
+    },
+    {
+      "title": "pySigma GitHub",
+      "url": "https://github.com/SigmaHQ/pySigma"
+    },
+    {
+      "title": "Uncoder.io \u2014 Online Sigma Converter",
+      "url": "https://uncoder.io/"
+    },
+    {
+      "title": "Zircolite GitHub",
+      "url": "https://github.com/wagga40/Zircolite"
+    },
+    {
+      "title": "SigmaHQ Rules Repository",
+      "url": "https://github.com/SigmaHQ/sigma/tree/master/rules"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m12-sigma-rules",
+      "rel": "prereq",
+      "note": "Sigma rule structure and development \u2014 required before converting/applying rules."
+    }
+  ],
+  "tools": [
+    "sigmac",
+    "pySigma",
+    "chainsaw"
+  ]
+}

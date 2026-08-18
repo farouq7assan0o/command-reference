@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n+noall +answer suppresses all dig output sections except the answer, producing minimal clean output. Equivalent to +short but preserves TTL and record type information. Useful for quick record lookup without the verbose header/footer.\n\n=== vs +short ===\n+short: bare answer value only (just the IP). +noall +answer: answer section only (includes TTL, record type, value). Choose based on whether TTL is needed.\n\n=== SCRIPTING ===\nClean output is directly pipeable into grep/awk/cut. Used in automated loops where dig output needs parsing without stripping header lines.",
+  "references": []
+}

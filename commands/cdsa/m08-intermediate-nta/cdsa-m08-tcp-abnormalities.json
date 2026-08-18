@@ -1,0 +1,80 @@
+{
+  "id": "cdsa-m08-tcp-abnormalities",
+  "name": "TCP Abnormality Detection — Scan Types, RST Injection & Hijacking",
+  "command": "tcp.flags.syn == 1 && tcp.flags.ack == 0",
+  "description": "TCP scan detection via flag analysis: SYN scans (half-open), NULL scans (no flags), ACK scans (firewall mapping), FIN scans, and Xmas scans (all flags). RST injection terminates connections by spoofing src IP + RST flag. TCP hijacking uses sequence number prediction + ARP poisoning to inject into active sessions. All detectable via Wireshark TCP flag filters and MAC address cross-referencing.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "TCP Detection",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 08: Intermediate Network Traffic Analysis",
+  "tags": ["tcp", "port-scan", "syn-scan", "null-scan", "xmas-scan", "rst-injection", "tcp-hijacking", "wireshark", "blue-team", "nta"],
+  "mitre": ["T1046", "T1040", "T1557"],
+  "notes": "=== TCP FLAGS REFERENCE ===\nURG = Urgent data (rarely used legitimately)\nACK = Acknowledgement (almost always set after handshake)\nPSH = Push (deliver data to app immediately)\nRST = Reset (abort connection)\nSYN = Synchronize (initiate connection)\nFIN = Finish (graceful close)\nECN = Explicit Congestion Notification\n\n=== TCP 3-WAY HANDSHAKE (NORMAL) ===\n  Client → Server: SYN\n  Server → Client: SYN-ACK\n  Client → Server: ACK\n  → Then data transfer with PSH+ACK\n  → Close: FIN-ACK → FIN-ACK → ACK\n\nAnomalies to watch:\n  1. Too many flags of one kind (scanning)\n  2. Unusual flag combinations (NULL, Xmas)\n  3. One source → many ports or many hosts\n  4. SYN floods from random sources\n\n=== SCAN TYPE DETECTION ===\n\n[SYN SCAN] — Most common Nmap scan\nBehavior:\n  → Attacker sends SYN; open port responds SYN-ACK; attacker sends RST\n  → Closed port responds RST directly\n  → IOC: many SYN packets from one IP to many ports\nFilter:\n  tcp.flags.syn == 1 && tcp.flags.ack == 0    → SYN packets only\n  → Follow with: ip.src == <SCANNER_IP>\n  → Also watch for: one host generating many RST to close scanner's half-open\n\n[NULL SCAN] — No flags set\nBehavior:\n  → Open port: no response\n  → Closed port: RST response\n  → IOC: TCP packets with no flags → RST replies from closed ports\nFilter:\n  tcp.flags == 0      → packets with zero flags (NULL scan)\n\n[ACK SCAN] — Maps firewall rules (not service detection)\nBehavior:\n  → Both open AND closed ports respond with RST\n  → Purpose: determine if port is filtered (no response = firewall) vs unfiltered (RST)\n  → IOC: many ACK packets from one source → RST replies back\nFilter:\n  tcp.flags.ack == 1 && tcp.flags.syn == 0 && tcp.flags.fin == 0\n  → Many ACKs from same source to many ports\n\n[FIN SCAN] — Stealthy, bypass some firewalls\nBehavior:\n  → Open port: no response\n  → Closed port: RST response\n  → IOC: FIN packets without SYN/ACK preceding them\nFilter:\n  tcp.flags.fin == 1 && tcp.flags.ack == 0    → FIN-only packets\n\n[XMAS SCAN] — All flags set (FIN+PSH+URG)\nBehavior:\n  → Open port: no response\n  → Closed port: RST response\n  → IOC: impossible flag combination (FIN+PSH+URG set simultaneously)\nFilter:\n  tcp.flags.fin == 1 && tcp.flags.push == 1 && tcp.flags.urg == 1\n  → Very obvious — legitimate traffic never uses all three together\n\n=== GENERAL SCAN DETECTION APPROACH ===\n  1. Filter for scan flag pattern (see above per scan type)\n  2. Apply: ip.src == <SUSPECTED_SCANNER>\n  3. Check Statistics → Conversations → TCP tab\n     → One host talking to many ports = scan\n  4. Look for RST flood from victim to scanner (many closed ports)\n  5. Correlate with IDS alerts or server logs\n\n=== TCP RST INJECTION (CONNECTION TERMINATION ATTACK) ===\nHow it works:\n  1. Attacker spoofs source IP of victim machine\n  2. Sends TCP RST to destination with correct port\n  3. Destination terminates connection thinking victim requested it\nResult: DoS on any active TCP connection\n\nDetection steps:\n  1. Filter: tcp.flags.rst == 1 → look for RST flood to one port\n  2. Open packet → check Ethernet → Source MAC\n  3. Cross-reference: does src IP's registered MAC match what's actually sending?\n  4. Mismatch = spoofed RST injection\nFilter:\n  tcp.flags.rst == 1 && ip.src == <VICTIM_IP>\n  → Then check eth.src in Packet Details — if MAC doesn't match known host = attack\n\nIOC: excessive RST packets to one port, MAC in ethernet header doesn't match ARP table entry for that IP\n\n=== TCP CONNECTION HIJACKING ===\nHow it works:\n  1. Attacker monitors active TCP session\n  2. Predicts next sequence number (seq prediction or sniffing)\n  3. Spoofs victim's src IP, injects packet in correct order\n  4. Blocks ACKs from reaching victim (often via ARP poisoning)\nResult: attacker takes over existing authenticated session\n\nDetection signs:\n  → TCP retransmissions in stream (victim not getting ACKs)\n  → Out-of-order packets from one host\n  → PSH+ACK packets arriving from unexpected MAC for victim's IP\n  → Often combined with ARP poisoning (check for duplicate-address-detected)\nFilter:\n  tcp.analysis.retransmission    → find retransmissions\n  tcp.analysis.out_of_order      → find out-of-order segments\n\nNote: TCP hijacking commonly targets Telnet (port 23) since it's cleartext and easy to inject into.",
+  "examples": [
+    {
+      "label": "Detect SYN scan (SYN without ACK)",
+      "command": "tcp.flags.syn == 1 && tcp.flags.ack == 0"
+    },
+    {
+      "label": "Detect NULL scan (no flags set)",
+      "command": "tcp.flags == 0"
+    },
+    {
+      "label": "Detect ACK scan",
+      "command": "tcp.flags.ack == 1 && tcp.flags.syn == 0 && tcp.flags.fin == 0"
+    },
+    {
+      "label": "Detect FIN scan (FIN without ACK)",
+      "command": "tcp.flags.fin == 1 && tcp.flags.ack == 0"
+    },
+    {
+      "label": "Detect Xmas scan (FIN+PSH+URG)",
+      "command": "tcp.flags.fin == 1 && tcp.flags.push == 1 && tcp.flags.urg == 1"
+    },
+    {
+      "label": "Hunt RST flood (RST injection attack)",
+      "command": "tcp.flags.rst == 1"
+    },
+    {
+      "label": "Filter all TCP from suspected scanner",
+      "command": "ip.src == <SCANNER_IP>"
+    },
+    {
+      "label": "Find retransmissions (hijacking indicator)",
+      "command": "tcp.analysis.retransmission"
+    },
+    {
+      "label": "Find out-of-order segments (hijacking indicator)",
+      "command": "tcp.analysis.out_of_order"
+    },
+    {
+      "label": "Statistics: TCP conversation table",
+      "command": "Statistics → Conversations → TCP tab"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intermediate Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/229"
+    },
+    {
+      "title": "MITRE ATT&CK - Network Service Discovery (T1046)",
+      "url": "https://attack.mitre.org/techniques/T1046/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m08-ip-layer-attacks",
+      "rel": "prereq",
+      "note": "IP fragmentation and spoofing appear in advanced TCP scan variants."
+    },
+    {
+      "id": "cdsa-m08-tunneling-detection",
+      "rel": "next",
+      "note": "Tunneling detection — post-scan, attackers use tunnels for C2 and exfil."
+    }
+  ]
+}

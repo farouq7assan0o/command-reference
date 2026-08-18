@@ -1,0 +1,92 @@
+{
+  "id": "cdsa-m11-js-obfuscation",
+  "name": "JavaScript Obfuscation & Deobfuscation \u2014 Techniques and Tools",
+  "command": "curl -s http://<TARGET_IP>:<PORT>/secret.js",
+  "description": "JavaScript obfuscation techniques and deobfuscation workflow. Obfuscation types: (1) Minification \u2014 single long line (.min.js), (2) Packing \u2014 eval(function(p,a,c,k,e,d){...}) pattern, recognizable by 6-arg function, (3) Advanced \u2014 obfuscator.io with Base64 string arrays, (4) JSFuck/JJEncode/AAEncode \u2014 bracket-only or Unicode encoding. Deobfuscation: Browser DevTools Pretty Print ({}), Beautifier.io, Prettier.io, UnPacker (matthewfl.com). Packed code: find return value, replace eval with console.log. Source discovery: Ctrl+U (view-source), CTRL+SHIFT+Z (Firefox debugger), check <script src='...'> tags.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "quiet",
+  "category": "Malware Analysis",
+  "subcategory": "Code Analysis",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 11: JavaScript Deobfuscation",
+  "tags": [
+    "javascript",
+    "deobfuscation",
+    "obfuscation",
+    "web",
+    "malware-analysis",
+    "blue-team",
+    "curl",
+    "beautifier"
+  ],
+  "notes": "=== FINDING JAVASCRIPT SOURCE ===\nIn browser:\n  Ctrl+U \u2192 view-source:http://TARGET:PORT (view raw HTML)\n  Ctrl+Shift+Z (Firefox) or Ctrl+Shift+I (Chrome) \u2192 DevTools\n  F12 \u2192 Sources/Debugger tab \u2192 find .js files\n\nIn HTML source, JS can be:\n  Internal:  <script>console.log('...')</script>\n  External:  <script src=\"secret.js\"></script>\n             \u2192 fetch via: curl http://TARGET:PORT/secret.js\n\nAlways check HTML comments for sensitive info!\n  <!-- TODO: remove this API key: sk-abc123 -->\n\n=== OBFUSCATION TYPES ===\n\n--- Type 1: Minification ---\nAll code on a single line; removes whitespace/newlines.\nSaved as .min.js\nExample:\n  var a=1;function b(){console.log(a);}b();\nDeobfuscate with: Prettier, Beautifier (format only, no hidden logic)\n\n--- Type 2: Packing ---\nRecognizable pattern: eval(function(p,a,c,k,e,d){...})\nThe 6 arguments (p,a,c,k,e,d) are the giveaway\nCode builds a word dictionary and reconstructs at runtime\nStrings MAY still be visible inside the packed code (less secure)\n\nExample packer output:\n  eval(function(p,a,c,k,e,d){e=function(c){return c};\n  ...}('5.4(\\'3 2 1 0\\');',6,6,\n  'Module|Deobfuscation|JavaScript|HTB|log|console'.split('|'),0,{}))\n\nDeobfuscate:\n  \u2192 UnPacker: https://matthewfl.com/unPacker.html\n  \u2192 Or find the return statement in eval() and replace eval with console.log\n  \u2192 Run in browser console (JSConsole): https://jsconsole.com\n\n--- Type 3: Advanced (obfuscator.io) ---\nFeatures: string array encoding (Base64/RC4), dead code, control flow flattening\nNo readable strings in output \u2014 all via encoded string array + lookup functions\nVariable names changed to _0x prefixed hex values\n\nExample snippet:\n  var _0x1ec6=['Bg9N','sfrciePH...'];\n  ...\n  console[_0x14f8('0x0')](_0x14f8('0x1'));\n\nDeobfuscate:\n  \u2192 Harder to automate; browser devtools debugging\n  \u2192 Set breakpoints around string decode functions\n  \u2192 Some online tools: https://deobfuscate.relative.im/\n\n--- Type 4: JSFuck / JJEncode / AAEncode ---\nExtreme encoding \u2014 only uses 6 chars: []()!+\nGenerates massive code that runs correctly but is unreadable\nSlow to execute (CPU-intensive to decode at runtime)\nNot often used in real malware (too slow for large payloads)\n\nJSFuck example prefix:\n  [][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]+...\n\nDeobfuscate: run in browser console; result is readable JS\n\n=== DEOBFUSCATION TOOLS ===\n\nBrowser DevTools Pretty Print:\n  Firefox: CTRL+SHIFT+Z \u2192 Debugger \u2192 click script \u2192 click '{ }' button\n  Chrome:  F12 \u2192 Sources \u2192 click script \u2192 click '{ }' at bottom\n  \u2192 Only formats minified code; doesn't deobfuscate packing\n\nOnline tools:\n  Beautifier.io:  https://beautifier.io/\n  Prettier:       https://prettier.io/playground/\n  UnPacker:       https://matthewfl.com/unPacker.html  \u2190 best for packed code\n  JS Nice:        https://jsnice.org/ (rename variables)\n  de4js:          https://de4js.kshift.me/\n  deobfuscate.io: https://deobfuscate.relative.im/\n\nManual trick for packed code:\n  \u2192 Find the return p; at end of eval()\n  \u2192 Replace eval( with console.log(\n  \u2192 Run in JSConsole \u2192 prints the unpacked code without executing\n\n=== CODE ANALYSIS AFTER DEOBFUSCATION ===\nDeobfuscated secret.js:\n  function generateSerial() {\n    var xhr = new XMLHttpRequest;\n    var url = '/serial.php';\n    xhr.open('POST', url, true);\n    xhr.send(null);\n  }\n\nXMLHttpRequest = JavaScript object for making HTTP requests\n  \u2192 xhr.open('POST', url, true)  \u2192 method, URL, async=true\n  \u2192 xhr.send(null)               \u2192 sends POST with no body\n  \u2192 This function POSTs to /serial.php\n\n=== REPLICATING JS FUNCTIONS WITH CURL ===\nEmulate the JS function from command line:\n\nSimple GET:\n  curl http://<TARGET_IP>:<PORT>/\n\nPOST with no data (replicating xhr.send(null)):\n  curl -s http://<TARGET_IP>:<PORT>/serial.php -X POST\n\nPOST with data:\n  curl -s http://<TARGET_IP>:<PORT>/serial.php -X POST -d 'param1=sample'\n\nPOST with decoded serial:\n  curl -s http://<TARGET_IP>:<PORT>/serial.php -X POST -d 'serial=DECODED_VALUE'\n\n  -s = silent (suppress progress meter)\n  -X POST = HTTP method\n  -d = data body (URL-encoded by default)\n\n=== WORKFLOW SUMMARY ===\n1. View HTML source (Ctrl+U)\n2. Find <script src='...'> \u2192 fetch file\n3. Identify obfuscation type (packer? minified? JSFuck?)\n4. Use appropriate deobfuscation tool\n5. Read/analyze the deobfuscated code\n6. Identify HTTP requests, API calls, encoded strings\n7. Decode any encoded values (base64/hex/rot13)\n8. Replicate the function with curl",
+  "examples": [
+    {
+      "label": "View HTML page source",
+      "command": "curl -s http://<TARGET_IP>:<PORT>/"
+    },
+    {
+      "label": "Fetch external JavaScript file",
+      "command": "curl -s http://<TARGET_IP>:<PORT>/secret.js"
+    },
+    {
+      "label": "Send POST request (replicate XMLHttpRequest)",
+      "command": "curl -s http://<TARGET_IP>:<PORT>/serial.php -X POST"
+    },
+    {
+      "label": "Send POST request with data",
+      "command": "curl -s http://<TARGET_IP>:<PORT>/serial.php -X POST -d 'param1=sample'"
+    },
+    {
+      "label": "Run JavaScript in browser console (test obfuscated code)",
+      "command": "# Open https://jsconsole.com \u2192 paste code \u2192 Enter"
+    },
+    {
+      "label": "Pretty print JS in Firefox devtools",
+      "command": "# CTRL+SHIFT+Z \u2192 Debugger \u2192 click .js file \u2192 click '{ }' button"
+    },
+    {
+      "label": "Deobfuscate packed JS at UnPacker",
+      "command": "# https://matthewfl.com/unPacker.html \u2192 paste code \u2192 UnPack"
+    },
+    {
+      "label": "Manual packed code trick - reveal without executing",
+      "command": "# Replace eval( with console.log( \u2192 paste into JSConsole \u2192 prints source"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - JavaScript Deobfuscation",
+      "url": "https://academy.hackthebox.com/module/details/41"
+    },
+    {
+      "title": "UnPacker tool",
+      "url": "https://matthewfl.com/unPacker.html"
+    },
+    {
+      "title": "obfuscator.io",
+      "url": "https://obfuscator.io/"
+    },
+    {
+      "title": "Beautifier.io",
+      "url": "https://beautifier.io/"
+    },
+    {
+      "title": "JSConsole (browser JS runner)",
+      "url": "https://jsconsole.com/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m11-js-encoding",
+      "rel": "next",
+      "note": "Decoding base64/hex/rot13 strings found in deobfuscated JS."
+    }
+  ],
+  "tools": [
+    "curl"
+  ]
+}

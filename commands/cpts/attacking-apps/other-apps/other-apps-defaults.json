@@ -1,0 +1,74 @@
+{
+  "type": "cheatsheet",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "default-credentials",
+    "cheatsheet"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Other Applications",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Scan, then try each app's well-known default credentials",
+      "command": "nmap -p- -sC -sV --open --min-rate=1000 10.129.201.90"
+    }
+  ],
+  "notes": "Default creds are the fastest win on enterprise apps: system:manager (Tomcat/JBoss), nagiosadmin:PASSW0RD, prtgadmin:prtgadmin, admin:changeme (Splunk). Always try these before exploiting.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "coldfusion-discovery",
+      "note": "ColdFusion admin panel is a prime default-cred target.",
+      "rel": "alternative"
+    },
+    {
+      "id": "auth-default-creds",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "other-apps-defaults",
+  "name": "Other Notable Apps - Defaults and Exploit Paths",
+  "command": "nmap -p- -sC -sV --open --min-rate=1000 <ip>",
+  "description": "Quick reference for other common enterprise apps and their standard attack paths - default creds and the deploy/RCE primitive for each.",
+  "variations": [
+    {
+      "label": "Default creds",
+      "command": "Tomcat:  tomcat/tomcat, admin/admin\nSplunk:  admin/changeme\nPRTG:    prtgadmin/prtgadmin\nWebLogic: system/manager\nNagios:  nagiosadmin/PASSW0RD"
+    },
+    {
+      "label": "Deploy / RCE primitive",
+      "command": "Axis2:    AAR webshell upload (or Metasploit)\nWebSphere: WAR deployment\nWebLogic: exploit/multi/http/weblogic_admin_handle_rce\nvCenter:  JuicyPotato local privesc (Windows)"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1078.001"
+  ],
+  "exam": "exam-ok"
+}

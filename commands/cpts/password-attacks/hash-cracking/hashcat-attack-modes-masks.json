@@ -1,0 +1,85 @@
+{
+  "id": "hashcat-attack-modes-masks",
+  "name": "Hashcat - Attack Modes and Mask Charsets",
+  "type": "cheatsheet",
+  "command": "hashcat -a 3 -m <mode> <hash> '?u?l?l?l?l?d?s'",
+  "description": "The -a attack mode decides how candidates are generated; masks (?l ?u ?d ?s ...) drive brute-force and hybrid attacks. Custom charsets (-1..-4) let you define your own placeholder for targeted policy-aware cracking.",
+  "platform": "linux",
+  "requires": [],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "hashcat"
+  ],
+  "tags": [
+    "hashcat",
+    "mask",
+    "attack-mode",
+    "reference"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Hash Cracking",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "8-char mask: Upper, 4 lower, digit, symbol",
+      "command": "hashcat -a 3 -m 0 1e293d6912d074c0fd15844d803400dd '?u?l?l?l?l?d?s'"
+    },
+    {
+      "label": "Custom charset for a policy-aware mask",
+      "command": "hashcat -a 3 -m 0 <hash> -1 ?u?l '?1?l?l?l?l?d?d?s'"
+    }
+  ],
+  "notes": "?a expands to ?l?u?d?s. Define up to four custom sets with -1/-2/-3/-4 and reference them as ?1/?2/?3/?4.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Hashcat Mask Attack",
+      "url": "https://hashcat.net/wiki/doku.php?id=mask_attack"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hashcat-mask",
+      "note": "Run a mask attack.",
+      "rel": "next"
+    },
+    {
+      "id": "hashcat-dictionary",
+      "note": "The -a 0 dictionary alternative.",
+      "rel": "alternative"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Attack modes (-a)",
+      "command": "-a 0  - Straight (dictionary)\n-a 1  - Combination (two wordlists)\n-a 3  - Brute-force / mask\n-a 6  - Hybrid wordlist + mask\n-a 7  - Hybrid mask + wordlist"
+    },
+    {
+      "label": "Built-in charsets",
+      "command": "?l  - abcdefghijklmnopqrstuvwxyz\n?u  - ABCDEFGHIJKLMNOPQRSTUVWXYZ\n?d  - 0123456789\n?h  - 0123456789abcdef\n?H  - 0123456789ABCDEF\n?s  - (space)!\"#$%&'()*+,-./:;<=>?@[]^_`{|}~\n?a  - ?l?u?d?s\n?b  - 0x00 - 0xff"
+    },
+    {
+      "label": "Custom charsets",
+      "command": "-1 ?l?u        # define set 1 = letters\n-2 ?d?s        # define set 2 = digits+symbols\n# then reference in the mask:\nhashcat -a 3 -m 0 <hash> -1 ?l?u -2 ?d?s '?1?1?1?1?2?2'"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok"
+}

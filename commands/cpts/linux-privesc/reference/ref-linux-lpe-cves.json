@@ -1,0 +1,75 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "uname"
+  ],
+  "tags": [
+    "reference",
+    "cve",
+    "kernel"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Reference",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Fingerprint kernel + sudo to pick a CVE",
+      "command": "uname -r; sudo -V | head -n1"
+    },
+    {
+      "label": "Near-universal / modern picks",
+      "command": "# PwnKit CVE-2021-4034 (polkit, almost any distro) | Dirty Pipe CVE-2022-0847 (kernel 5.8-5.17)"
+    },
+    {
+      "label": "sudo-specific picks",
+      "command": "# Baron Samedit CVE-2021-3156 (sudo <1.9.5p2) | negative-UID CVE-2019-14287 (sudo <1.8.28)"
+    }
+  ],
+  "notes": "Sudo:\n  CVE-2021-3156 (Baron Samedit)  sudo <= 1.9.5p1 (1.8.31/1.8.27/1.9.2)\n  CVE-2019-14287 (neg UID)        sudo < 1.8.28, needs (ALL,!root) rule\nPolkit:\n  CVE-2021-4034 (PwnKit)          any system with SUID pkexec (12+ yrs)\nKernel:\n  CVE-2016-5195 (DirtyCow)        old kernels\n  CVE-2022-0847 (Dirty Pipe)      5.8 - 5.17\n  CVE-2021-22555 (netfilter)      2.6 - 5.11\n  CVE-2022-25636 (netfilter)      5.4 - 5.6.10\n  CVE-2023-32233 (netfilter)      up to 6.3.1",
+  "references": [
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "kernel-exploit-generic",
+      "note": "Generic compile-and-run workflow.",
+      "rel": "next"
+    },
+    {
+      "id": "polkit-pwnkit",
+      "note": "PwnKit is the safest near-universal pick.",
+      "rel": "next"
+    },
+    {
+      "id": "dirty-pipe",
+      "note": "Dirty Pipe for kernels 5.8-5.17.",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-linux-lpe-cves",
+  "name": "Reference - Linux Local-Root CVE Quick-Pick",
+  "command": "uname -r; sudo -V | head -n1   # then match against this list",
+  "description": "Fast lookup mapping kernel/sudo/polkit versions to a known local-root exploit - the first thing to check on a Linux target.",
+  "opsec": "silent",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok"
+}

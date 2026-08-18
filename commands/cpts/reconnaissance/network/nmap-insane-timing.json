@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-T5 (insane) is Nmap's most aggressive timing preset \u2014 maximum parallelism, minimal retry waits, shortest RTT timeouts. Fastest possible scan but sacrifices accuracy: missed ports are expected on slow/unreliable networks.\n\n=== TIMING TEMPLATES ===\nT0 (paranoid): slowest, maximum evasion. T1 (sneaky): slow evasion. T2 (polite): slow, minimal impact. T3 (normal): default. T4 (aggressive): fast, reliable networks. T5 (insane): maximum speed, accuracy sacrificed.\n\n=== VALIDATION ===\nAlways compare -T5 port count against a standard scan \u2014 save both with -oA, diff results. If port counts match, -T5 is acceptable for this network. Missing ports = slower timing needed.\n\n=== USE CASE ===\nInternal, high-bandwidth, trusted infrastructure where IPS is not a concern and time is limited. NOT for internet-facing or monitored environments.",
+  "references": []
+}

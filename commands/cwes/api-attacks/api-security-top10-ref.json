@@ -1,0 +1,62 @@
+{
+  "id": "api-security-top10-ref",
+  "name": "OWASP API Security Top 10 (2023) - Reference",
+  "command": "# Map each API finding to its OWASP API risk and the card that exploits it",
+  "description": "Reference index of the OWASP API Security Top 10 (2023). For each risk: the one-line test approach and the card in this library that exploits it. Gives a home to the categories the CWES M18 lab teaches through its UI (BFLA, BOPLA, business flows, unsafe consumption) that don't reduce to a single copy-paste command.",
+  "type": "reference",
+  "platform": "multi",
+  "requires": [],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "burp",
+    "curl",
+    "ffuf"
+  ],
+  "tags": [
+    "api",
+    "owasp",
+    "api-top-10",
+    "reference",
+    "checklist"
+  ],
+  "category": "Web Exploitation",
+  "subcategory": "API Attacks",
+  "certifications": [
+    "CWES"
+  ],
+  "primary_cert": "CWES",
+  "source": "CWES Module 18: API Attacks",
+  "notes": "OWASP API Security Top 10 (2023) — test approach → covering card:\n\nAPI1 Broken Object Level Authorization (BOLA): swap an object ID (userId, orderId, GUID) for another user's and see if the API returns it. → api-bola-sequential-enum, idor-api.\nAPI2 Broken Authentication: weak/absent auth on token issue, no rate limit on login/OTP, forgeable/weak JWT. → auth-password-bruteforce-ffuf, api-ffuf-json-bruteforce, auth-session-token-forge.\nAPI3 Broken Object Property Level Authorization (BOPLA): send extra/hidden JSON properties the client shouldn't set (mass assignment) or read fields you shouldn't (excessive data exposure). → mass-assignment.\nAPI4 Unrestricted Resource Consumption: no size/type/rate limit on uploads or expensive calls → DoS, cost, exe upload. → api-unrestricted-resource-consumption.\nAPI5 Broken Function Level Authorization (BFLA): call an admin/privileged function (often just a different HTTP verb or /admin path) as a low-priv user. Test method: replay an action with a lower-role token; change GET→PUT/DELETE. (No single command — enumerate roles vs endpoints.)\nAPI6 Unrestricted Access to Sensitive Business Flows: automate a business flow the app assumes is manual (bulk-buy limited stock, mass-create accounts, scalping). Test method: script the flow and check for missing anti-automation controls.\nAPI7 Server Side Request Forgery: API fetches a user-supplied URL without validation. → ssrf-identify, ssrf-blind, ssrf-exploit.\nAPI8 Security Misconfiguration: verbose errors, CORS, missing headers, injection via misconfig. → api-enum-abuse; injection cards (sqli/xss/ssti).\nAPI9 Improper Inventory Management: old/undocumented API versions (v1 vs v2), staging/debug hosts still live. → api-version-enum.\nAPI10 Unsafe Consumption of APIs: the target trusts a third-party API's data without validation — poison the upstream/redirect it. Test method: MITM/replace the consumed API's response and observe blind trust.\n\nWorkflow: enumerate endpoints and roles first (Swagger/OpenAPI, /docs, api-version-enum), map each endpoint to the risks above, then reach for the specific card.",
+  "references": [
+    {
+      "title": "OWASP API Security Top 10 (2023)",
+      "url": "https://owasp.org/API-Security/editions/2023/en/0x11-t10/"
+    },
+    {
+      "title": "HTB Academy - API Attacks",
+      "url": "https://academy.hackthebox.com/module/details/268"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "api-version-enum",
+      "note": "Start by mapping versions/endpoints (API9) before testing risks.",
+      "rel": "prereq"
+    },
+    {
+      "id": "api-bola-sequential-enum",
+      "note": "API1 BOLA is the most common and highest-yield API bug.",
+      "rel": "next"
+    },
+    {
+      "id": "api-unrestricted-resource-consumption",
+      "note": "API4 - the one category with a concrete upload exploit.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [],
+  "exam": "exam-ok"
+}

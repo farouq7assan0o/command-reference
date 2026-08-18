@@ -1,0 +1,80 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "eyewitness"
+  ],
+  "tags": [
+    "discovery",
+    "screenshots"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Application Discovery",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Screenshot every host from the nmap XML into a report",
+      "command": "eyewitness --web -x web_discovery.xml -d inlanefreight_eyewitness"
+    }
+  ],
+  "notes": "Screenshots let you triage dozens of apps in one pass; it also grabs server headers and default-page fingerprints. Point it at the nmap XML, not a flat URL list, so ports are preserved.",
+  "references": [
+    {
+      "title": "EyeWitness (RedSiege)",
+      "url": "https://github.com/RedSiege/EyeWitness"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "app-discovery-nmap",
+      "note": "Produces the web_discovery.xml this consumes.",
+      "rel": "prereq"
+    },
+    {
+      "id": "aquatone",
+      "note": "Alternative screenshot/report tool.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "eyewitness",
+  "name": "EyeWitness - Screenshot Web Applications",
+  "command": "eyewitness --web -x web_discovery.xml -d <output_dir>",
+  "description": "Takes screenshots of every web app from an Nmap XML, letting you triage many hosts visually and spot default/login/admin pages fast.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "EyeWitness uses a headless browser to screenshot web services discovered from Nmap XML or URL lists, categorising results by technology detected for rapid triage of large environments.",
+    "prerequisites": "List of targets from a prior Nmap scan or URL list. Network access to HTTP/HTTPS ports.",
+    "impact": "Attacker rapidly identifies default-credential panels, exposed management UIs (Jenkins, PRTG, Tomcat Manager), and outdated login pages across a network segment.",
+    "detection": "Headless browser requests generate characteristic HTTP headers. Sequential requests from one IP with short delay. IDS signature for EyeWitness User-Agent.",
+    "artifacts": "Web server access logs (sequential requests, minimal interaction) | IDS/WAF alerts for scanning UA strings",
+    "prevention": "Require VPN/network-level auth before management interfaces are reachable. Suppress version banners. Block known scanning tool User-Agents at WAF.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595"
+    ]
+  }
+}

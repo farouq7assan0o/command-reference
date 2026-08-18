@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nDefault TCP SYN scan (-sS) against localhost or single target. Sends SYN per port without completing handshake \u2014 half-open scan. SYN-ACK = open, RST = closed, no response = filtered. Requires root for raw socket access.\n\n=== PORT STATES ===\nopen: service accepting connections \u2014 primary target.\nclosed: host alive, port reachable, nothing listening \u2014 confirms host is up.\nfiltered: no response or ICMP error \u2014 firewall in path, needs bypass technique.\nunfiltered: only in ACK scans \u2014 reachable but open/closed indeterminate.\n\n=== DEFAULT BEHAVIOR ===\nWithout sudo: Nmap falls back to -sT (Connect scan). With sudo: -sS by default. Always run as root for SYN scan performance and stealth benefits.",
+  "references": []
+}

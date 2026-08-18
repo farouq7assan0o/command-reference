@@ -1,0 +1,112 @@
+{
+  "id": "crtp-powerview-users-groups",
+  "name": "PowerView Users, Groups & Computers Enumeration",
+  "command": "Get-DomainUser -Properties samaccountname,description,memberof,admincount | select samaccountname,description,admincount",
+  "description": "Enumerate domain users with admincount=1 (protected), groups, group members, SPN accounts, and AS-REP roastable users using PowerView.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1069.002",
+    "T1087.002"
+  ],
+  "tools": [
+    "PowerView"
+  ],
+  "tags": [
+    "powerview",
+    "users",
+    "groups",
+    "enumeration",
+    "spn",
+    "asrep"
+  ],
+  "steps": [
+    {
+      "label": "Get all admincount users",
+      "command": "Get-DomainUser -AdminCount | select samaccountname,memberof"
+    },
+    {
+      "label": "Get Domain Admins members",
+      "command": "Get-DomainGroupMember 'Domain Admins' -Recurse"
+    },
+    {
+      "label": "Find SPN accounts (Kerberoastable)",
+      "command": "Get-DomainUser -SPN | select samaccountname,serviceprincipalname"
+    },
+    {
+      "label": "Find AS-REP roastable accounts",
+      "command": "Get-DomainUser -PreauthNotRequired | select samaccountname"
+    }
+  ],
+  "examples": [
+    {
+      "label": "List all privileged users (admincount=1)",
+      "command": "Get-DomainUser -AdminCount | select samaccountname,description"
+    },
+    {
+      "label": "Get Domain Admins members recursively",
+      "command": "Get-DomainGroupMember 'Domain Admins' -Recurse | select MemberName,MemberObjectClass"
+    },
+    {
+      "label": "Find Kerberoastable accounts",
+      "command": "Get-DomainUser -SPN | select samaccountname,serviceprincipalname"
+    },
+    {
+      "label": "Find AS-REP roastable accounts",
+      "command": "Get-DomainUser -PreauthNotRequired | select samaccountname"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-kerberoasting",
+      "note": "Roast found SPN accounts",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-asrep-roasting",
+      "note": "Roast pre-auth disabled accounts",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-powerview-acls",
+      "note": "Check ACLs for found privileged users",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-bloodhound",
+      "note": "Graph all paths to Domain Admin",
+      "rel": "next"
+    }
+  ],
+  "references": [
+    {
+      "title": "CRTP - PowerView Users/Groups",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "notes": "admincount=1 indicates the account is (or was) in a protected group (DA, EA, etc.) and is subject to AdminSDHolder propagation. SPN accounts are Kerberoastable. DoesNotRequirePreAuth=True accounts are AS-REP roastable without credentials.",
+  "defense": {
+    "why_it_works": "Get-DomainUser, Get-DomainGroup, Get-DomainComputer enumerate AD principals via LDAP. Used to find Kerberoastable accounts (SPNs), AS-REP roastable accounts (no pre-auth), DA members, and nested group paths.",
+    "prerequisites": "Any domain user. PowerView loaded. LDAP access.",
+    "impact": "T1069.002 Permission Groups Discovery + T1087.002 Account Discovery. Identifies Kerberoastable SPNs, AS-REP roast targets, DA members \u2014 directly feeds subsequent credential attacks.",
+    "detection": "Event 4104 SBL: Get-DomainUser/Get-DomainGroup/Get-DomainGroupMember. LDAP query volume from workstation. MDI reconnaissance alerts.\nDetection of adversary enumeration of domain or local group memberships via native tools such as net.exe, PowerShell, or WMI; may precede lateral movement or privilege escalation (DET0179/AN0507).\nGroup enumeration using 'id', 'groups', or 'getent group' commands on Linux, often followed by privilege escalation or SSH lateral movement (AN0508).\nGroup membership checks via 'dscl', 'dscacheutil', or 'id' on macOS, executed via terminal or automation scripts (AN0509).",
+    "artifacts": "Event 4104 with PowerView user/group functions | DC LDAP logs: large result set from workstation | MDI LDAP recon alert",
+    "prevention": "SBL + CLM via GPO/WDAC. MDI. Regularly audit/rotate SPN account passwords. Use gMSA for service accounts. Remove DoesNotRequirePreAuth from all accounts.\nThis technique cannot be easily mitigated with preventive controls since it is based on the abuse of system features.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Obfuscation, AMSI bypass, ADSI direct calls, targeted queries on small OUs.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1069/002/",
+      "https://attack.mitre.org/techniques/T1087/002/"
+    ],
+    "misconfiguration": "Service accounts with SPNs have stale passwords (Kerberoastable). Accounts have DoesNotRequirePreAuth set. Nested group memberships not audited \u2014 hidden DA pathways.",
+    "vulnerable_config": "# Service accounts with old SPN passwords:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n# PasswordLastSet: 2015-01-01 \u2014 crackable Kerberos ticket\n\n# AS-REP roastable accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true}",
+    "secure_config": "# Use gMSA for service accounts (auto-rotate passwords):\nNew-ADServiceAccount -Name 'svc_web' -DNSHostName 'dc01.corp.local' -ManagedPasswordIntervalInDays 30\n\n# Ensure pre-auth required:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} | Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# Alert on SPN enumeration:\n# SIEM: Event 4769 volume spike from unexpected source"
+  }
+}

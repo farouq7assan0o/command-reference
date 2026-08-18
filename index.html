@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Reference - CPTS and more</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/icons.css">
+</head>
+<body>
+    <div id="app">
+        <div id="sidebarBackdrop"></div>
+        <aside id="sidebar">
+            <div class="logo">
+                <i class="fas fa-terminal"></i>
+                <div>
+                    <h1>Command Reference</h1>
+                    <span id="commandCount">Loading...</span>
+                </div>
+            </div>
+
+            <div class="search-wrap">
+                <input type="text" id="searchBox" placeholder="Search... (Ctrl+K)">
+                <button id="searchHelp" class="search-help-btn" type="button" title="Search tips" aria-label="Search tips">?</button>
+                <div id="searchHelpPop" class="search-help-pop" hidden>
+                    <strong>Search tips</strong>
+                    <p>Type to search names, commands, tags, tools, MITRE IDs - ranked by relevance, match highlighted.</p>
+                    <p>Narrow with <code>field:value</code>:</p>
+                    <ul>
+                        <li><code>tool:hydra</code> · <code>opsec:loud</code> · <code>platform:windows</code></li>
+                        <li><code>cat:enumeration</code> · <code>sub:kerberoasting</code> · <code>type:payload</code></li>
+                        <li><code>mitre:T1003</code> · <code>tag:pivoting</code> · <code>access:credentials</code></li>
+                    </ul>
+                    <p class="shp-eg">Combine them: <code>tool:crackmapexec opsec:loud spray</code></p>
+                </div>
+            </div>
+
+            <div class="category-tree">
+                <div class="tree-head">
+                    <label class="tree-label">Categories</label>
+                    <button id="treeToggleAll" class="tree-toggle-all" type="button">Expand all</button>
+                </div>
+                <div id="categoryTree"></div>
+            </div>
+
+            <a class="github-link" href="#"><i class="fab fa-github"></i> View on GitHub</a>
+        </aside>
+
+        <main>
+            <div class="topbar">
+                <button id="menuToggle" class="menu-toggle" type="button" aria-label="Menu"><i class="fas fa-bars"></i></button>
+                <h2 id="viewTitle">All Commands</h2>
+
+                <div class="view-toggles">
+                    <button id="favToggle" class="view-btn" title="Show only favorited commands"><i class="far fa-star"></i> <span>Favorites</span></button>
+                    <button id="recentToggle" class="view-btn" title="Commands you opened recently"><i class="fas fa-clock-rotate-left"></i> <span>Recent</span></button>
+                    <div class="filter-wrap">
+                        <button id="filterBtn" class="view-btn" title="Filter the list"><i class="fas fa-sliders-h"></i> <span>Filters</span> <span id="filterCount" class="filter-badge" hidden></span> <i class="fas fa-caret-down caret"></i></button>
+                        <div id="filterPop" class="filter-pop" hidden>
+                            <div class="filter-pop-head"><span>Filters</span><button id="resetFilters" class="fp-reset" type="button"><i class="fas fa-rotate-left"></i> Reset</button></div>
+                            <div class="filter-group">
+                                <label for="collectionFilter">Collection</label>
+                                <select id="collectionFilter"><option value="">All collections</option></select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="certFilter">Certification</label>
+                                <select id="certFilter"><option value="all">All</option></select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="typeFilter">Type</label>
+                                <select id="typeFilter"><option value="all">All Types</option></select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="platformFilter">Platform</label>
+                                <select id="platformFilter">
+                                    <option value="all">All Platforms</option>
+                                    <option value="linux">Linux</option>
+                                    <option value="windows">Windows</option>
+                                    <option value="multi">Cross-platform</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="opsecFilter">OpSec / Noise</label>
+                                <select id="opsecFilter">
+                                    <option value="all">Any Noise Level</option>
+                                    <option value="silent">Silent</option>
+                                    <option value="quiet">Quiet</option>
+                                    <option value="moderate">Moderate</option>
+                                    <option value="loud">Loud</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="requiresFilter">What You Have</label>
+                                <select id="requiresFilter"><option value="all">Any Access Level</option></select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="protocolFilter">Protocol</label>
+                                <select id="protocolFilter"><option value="all">All Protocols</option></select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="toolFilter">Tool</label>
+                                <select id="toolFilter"><option value="all">All Tools</option></select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="modeToggle" class="mode-toggle" title="Show Red Team only, Blue Team only, or both">
+                    <button class="mode-btn" data-mode="red"><span class="mode-pip red"></span> Red</button>
+                    <button class="mode-btn" data-mode="both">All</button>
+                    <button class="mode-btn" data-mode="blue"><span class="mode-pip blue"></span> Blue</button>
+                </div>
+                <a id="examModeLink" href="exam.html"><i class="fas fa-crosshairs"></i> Exam Mode</a>
+                <button id="guideBtn" class="ghost-btn" title="Guide - what this is & how to use it"><i class="fas fa-circle-question"></i> Guide</button>
+                <button id="clearContext" class="ghost-btn"><i class="fas fa-eraser"></i> Clear context</button>
+            </div>
+
+            <div id="targetContext">
+                <span class="tc-title">TARGET</span>
+                <div class="eng-ctrl">
+                    <select id="engSelect" title="Saved engagements"><option value="">— context —</option></select>
+                    <button id="engMenuBtn" class="eng-menu-btn" type="button" title="Engagements">&#9776;</button>
+                    <div id="engMenu" class="eng-menu" hidden>
+                        <button data-eng="save">Save</button>
+                        <button data-eng="saveas">Save as new…</button>
+                        <button data-eng="rename">Rename…</button>
+                        <button data-eng="delete">Delete</button>
+                        <div class="eng-menu-sep"></div>
+                        <button data-eng="export">Export engagements…</button>
+                        <button data-eng="import">Import engagements…</button>
+                        <div class="eng-menu-sep"></div>
+                        <button data-eng="backup">Back up ALL my data…</button>
+                        <button data-eng="restore">Restore backup…</button>
+                    </div>
+                    <input type="file" id="engImport" accept="application/json" hidden>
+                    <input type="file" id="dataImport" accept="application/json" hidden>
+                </div>
+                <div class="tc-fields" id="tcFields"></div>
+                <button id="tcToggle" class="tc-toggle" type="button">Show all variables</button>
+            </div>
+
+            <div id="activeChips" class="active-chips" hidden></div>
+
+            <div class="workspace">
+                <section id="commandList"></section>
+
+                <aside id="builder">
+                    <div class="builder-head">
+                        <i class="fas fa-hammer"></i>
+                        <div>
+                            <h2>Command Builder</h2>
+                            <span>Fill parameters and generate your command</span>
+                        </div>
+                    </div>
+                    <div id="builderBody">
+                        <div class="builder-empty onboard">
+                            <p class="ob-lead">Build a ready-to-run command in three steps:</p>
+                            <ol class="ob-steps">
+                                <li><b>Set your target once</b> — fill IP, user, LHOST… in the <span class="ob-hl">TARGET</span> bar up top. It fills every command (and every alias like <code>&lt;target&gt;</code>, <code>&lt;rhost&gt;</code>).</li>
+                                <li><b>Find a command</b> — search (Ctrl+K) or pick a Category on the left.</li>
+                                <li><b>Copy</b> — it appears here filled in, with anything still missing flagged.</li>
+                            </ol>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </main>
+    </div>
+
+    <div id="guideOverlay" class="guide-overlay" hidden>
+        <div class="guide-modal">
+            <div class="guide-head">
+                <h2><i class="fas fa-terminal"></i> Command Reference - Guide</h2>
+                <button id="guideClose" class="guide-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="guide-body">
+                <p class="guide-intro">A searchable, offline command reference for pentest certs (CPTS, OSCP, and more). Pick a command, fill your target details once, and copy ready-to-run commands. Everything you personalize is saved in this browser.</p>
+
+                <h3>Finding commands</h3>
+                <ul>
+                    <li><b>Search</b> (Ctrl+K) - ranked by relevance, match highlighted, tolerant of typos. Narrow with <code>field:value</code>: <code>tool:hydra</code>, <code>opsec:loud</code>, <code>platform:windows</code>, <code>cat:enumeration</code>, <code>sub:kerberoasting</code>, <code>type:payload</code>, <code>mitre:T1003</code>, <code>tag:pivoting</code>, <code>access:credentials</code>. Combine freely. (The <b>?</b> by the search box shows this too.)</li>
+                    <li><b>Category tree</b> - Category → Group → Subcategory. Click a group to see everything in it; counts on every node.</li>
+                    <li><b>Filters</b> (sidebar) - certification, type, platform, OpSec/noise, access level, protocol, tool. <b>Reset Filters</b> clears everything.</li>
+                    <li><b>Favorites</b> ★, <b>Recently Used</b> (last commands you opened), and <b>Collections</b> (your own named sets) - each a sidebar view.</li>
+                </ul>
+
+                <h3>The Command Builder (right panel)</h3>
+                <ul>
+                    <li><b>Target Context bar</b> - set your engagement variables once (IP, user, password, domain, DC, LHOST/LPORT…). They fill every command. "Show all variables" reveals the rest. It's <b>alias-aware</b>: a command written with <code>&lt;target&gt;</code> or <code>&lt;host&gt;</code> still fills from your single <b>IP</b> value.</li>
+                    <li><b>Parameters &amp; Generated Command</b> - fill any command-specific fields; the finished command shows with your values. <b>Unfilled</b> lists variables you still need to set. <b>Copy</b> copies it.</li>
+                    <li><b>Attack Chain</b> - multi-step cards are substituted too, with <b>Copy all</b> for the whole sequence.</li>
+                    <li><b>Examples / References</b> - concrete lab examples, and links to the tool's docs + the HTB module (where to review if stuck).</li>
+                    <li><b>Recommended Next Commands</b> - the attack-chain flow (grouped: Next steps / Alternatives / Prerequisites / Escalation), plus <b>Reached From</b> (what leads here). Click to jump.</li>
+                    <li><b>OpSec badge</b> (silent/quiet/moderate/loud = how detectable) and <b>MITRE</b> ATT&amp;CK chips (link out; searchable).</li>
+                    <li><b>My Notes</b> - your own annotation on any card (gotchas, lab tweaks). Saved locally, searchable, marked with ✎.</li>
+                    <li><b>Findings</b> button - push this command into Exam Mode's findings log / report.</li>
+                    <li><b>Bookmark</b> button - add the card to a Collection (create/delete collections here).</li>
+                </ul>
+
+                <h3>Your data</h3>
+                <ul>
+                    <li><b>Named engagements</b> (the ≡ menu by the context bar) - save the current variable set under a name and switch between targets. Export/import to move a setup between machines.</li>
+                    <li><b>Back up ALL my data</b> (same ≡ menu) - exports favorites, notes, engagements, context, collections, and recent to one JSON file. <b>Restore</b> brings it back. Use this so nothing is ever lost.</li>
+                    <li>Everything personal lives in this browser's local storage - clearing browser data wipes it, so back up.</li>
+                </ul>
+
+                <h3>Exam Mode</h3>
+                <p>The <b>Exam Mode</b> button (top bar) opens a separate "battle station": engagement variables (same vocabulary), a 10-phase methodology playbook, host tracker, findings log, and one-button markdown report export. Send commands to it with the <b>Findings</b> button in the builder.</p>
+
+                <h3>Tips</h3>
+                <ul>
+                    <li><b>Keyboard</b>: Ctrl+K focus search · ↑/↓ move through results · Enter opens · Esc closes menus.</li>
+                    <li><b>Offline</b>: fully self-contained - works on an exam VPN with no internet.</li>
+                    <li><b>Mobile</b>: the sidebar collapses to a ≡ drawer.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="js/commands.js"></script>
+    <script src="js/vars.js"></script>
+    <script src="js/groups.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

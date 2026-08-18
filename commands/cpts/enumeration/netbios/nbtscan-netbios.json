@@ -1,0 +1,91 @@
+{
+  "id": "nbtscan-netbios",
+  "name": "NetBIOS Discovery (nbtscan)",
+  "type": "command",
+  "command": "sudo nbtscan -r <cidr>",
+  "description": "Sweep a subnet for NetBIOS name-service (UDP 137) responders to quickly map Windows hosts, their NetBIOS names, workgroups/domains, and logged-in users before deeper SMB enumeration.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "smb",
+    "netbios"
+  ],
+  "tools": [
+    "nbtscan",
+    "nmap"
+  ],
+  "tags": [
+    "netbios",
+    "smb",
+    "enumeration",
+    "host-discovery"
+  ],
+  "category": "Enumeration",
+  "subcategory": "SMB / NetBIOS",
+  "certifications": [
+    "OSCP",
+    "CPTS"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP: Information Gathering",
+  "exam": "exam-ok",
+  "examples": [
+    {
+      "label": "Scan a /24 from the local NetBIOS scope (-r uses src port 137)",
+      "command": "sudo nbtscan -r 192.168.50.0/24"
+    },
+    {
+      "label": "Nmap alternative — pull NetBIOS/OS details over SMB",
+      "command": "nmap -v -p 139,445 --script smb-os-discovery <ip>"
+    },
+    {
+      "label": "Grep-friendly SMB host sweep first, then enumerate",
+      "command": "nmap -v -p 139,445 -oG smb.txt 192.168.50.1-254\ncat smb.txt"
+    }
+  ],
+  "notes": "nbtscan is the fastest way to fingerprint Windows hosts on a LAN: it returns NetBIOS name, workgroup/domain, and sometimes the logged-in user. -r sets the source port to UDP 137 (needed on some networks for hosts to reply). Follow up on any responder with smb-os-discovery and share enumeration (see smb-share-enum). Exam-legal: manual, no automated exploitation. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "mitre": [
+    "T1046",
+    "T1018"
+  ],
+  "opsec": "moderate",
+  "recommended": [
+    {
+      "id": "smb-share-enum",
+      "rel": "next",
+      "note": "Enumerate shares on the hosts nbtscan found."
+    }
+  ],
+  "references": [
+    {
+      "title": "nbtscan man page",
+      "url": "https://manpages.debian.org/bookworm/nbtscan/nbtscan.1.en.html"
+    },
+    {
+      "title": "HackTricks - 137,138,139 NetBIOS",
+      "url": "https://book.hacktricks.xyz/network-services-pentesting/137-138-139-pentesting-netbios"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP Course)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "NetBIOS Name Service (NBT-NS) runs on UDP 137 and responds to broadcast/unicast queries with the host's NetBIOS name, workgroup/domain, and a flags byte indicating role (server, DC, etc.). nbtscan sends raw UDP 137 probes to every host in a CIDR and maps responses, revealing Windows hostnames and domain membership before any authenticated SMB session is attempted.",
+    "prerequisites": "UDP 137 must be reachable from the attacker (not blocked by host firewall or perimeter ACL). Target must have the 'NetBIOS over TCP/IP' binding enabled on the NIC (default on older Windows; often still default on modern Windows inside corporate LANs).",
+    "impact": "T1046 Network Service Discovery + T1018 Remote System Discovery. Attacker builds a fast, unauthenticated host map of all Windows systems: hostnames, workgroup/domain affiliation, and MAC addresses. This feeds SMB null-session attacks, relay chains, and Kerberoasting target selection.",
+    "detection": "Monitor for bursts of inbound UDP/137 packets from a single source IP (IDS rule: UDP src_port ANY dst_port 137 with high rate). Windows Event 5156 (Windows Filtering Platform permitted connection) logs UDP 137 connections if advanced audit is enabled. Zeek/Suricata NBNS parsers flag broadcast storms or unicast sweeps. EDR network telemetry (CrowdStrike, Defender for Endpoint) surfaces nbtscan.exe or unusual UDP sweep patterns.\nProcesses performing network enumeration (port scans, service probing) by correlating process creation, socket connections, and sequential destination IP probing within a time window (DET0376/AN1057).\nUse of network scanning utilities or scripts performing rapid connections to multiple services or hosts using auditd and netflow/pcap telemetry (AN1058).\nBonjour-based mDNS enumeration or use of system tools (dns-sd, nmap) to find active services via multicast probing or targeted scans (AN1059).\nLateral discovery or container breakout attempts using netcat, curl, or custom binaries probing other services within the same namespace or VPC subnet (AN1060).",
+    "artifacts": "IDS/IPS alerts on UDP 137 sweep | Zeek conn.log entries with proto=udp dst_port=137 | Windows Filtering Platform Event 5156 on target hosts | Network flow records showing single-source UDP 137 to entire /24",
+    "prevention": "Disable NetBIOS over TCP/IP on all NICs via GPO: Computer Configuration → Windows Settings → Security Settings → Network security → restrict NTLM (or via DHCP option 001 setting 0x2 to disable NetBIOS). Block UDP 137/138 at the perimeter and between VLANs. Enable Windows Defender Firewall rule blocking inbound NBT-NS. Modern networks should use DNS exclusively; NetBIOS provides no value on segmented enterprise networks.\nDisable or Remove Feature or Program: Close unnecessary ports and services to reduce discovery and exploitation risk.\nNetwork Intrusion Prevention: Use network IDS/IPS to detect and prevent remote service scans.\nNetwork Segmentation: Ensure proper segmentation to protect critical servers and devices.",
+    "evasion": "Slow-scan with low rate (nbtscan -T5 or equivalent) to avoid rate-based IDS triggers. Scan from a compromised internal host to blend with legitimate traffic. Limit scope to target subnet rather than sweeping the entire network.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1046/",
+      "https://attack.mitre.org/techniques/T1018/"
+    ],
+    "misconfiguration": "NetBIOS over TCP/IP enabled by default on Windows NIC bindings. No authentication required to query UDP 137. NetBIOS name responses include domain/workgroup membership and service flags, exposing AD topology to unauthenticated sweepers.",
+    "vulnerable_config": "# NetBIOS enabled (default Windows NIC setting)\n# Check via PowerShell:\nGet-WmiObject Win32_NetworkAdapterConfiguration | Select-Object Description, TcpipNetbiosOptions\n# TcpipNetbiosOptions = 0 (Use DHCP) or 1 (Enable) = VULNERABLE\n\n# GPO not applied → UDP 137/138 open on all interfaces\n# Firewall inbound rule for NBT-NS missing or disabled",
+    "secure_config": "# Disable NetBIOS via GPO (registry write):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip_{GUID}\\NetbiosOptions = 2\n\n# PowerShell (run on each host or via SCCM/Intune):\n$adapters = Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True'\nforeach ($a in $adapters) { $a.SetTcpipNetbios(2) }  # 2 = Disable NetBIOS\n\n# Windows Defender Firewall — block inbound NBT:\nNew-NetFirewallRule -DisplayName 'Block NBT-NS Inbound' -Direction Inbound -Protocol UDP -LocalPort 137,138 -Action Block\n\n# Perimeter ACL:\n# deny udp any any eq 137\n# deny udp any any eq 138"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "id": "aws-iam-full-dump",
+  "name": "AWS - Full IAM Account Dump & JMESPath Querying",
+  "command": "aws --profile <profile> iam get-account-authorization-details --filter User Group LocalManagedPolicy Role | tee account-auth-details.json\naws --profile <profile> iam get-account-authorization-details --filter User --query \"UserDetailList[].UserName\"",
+  "description": "When a compromised IAM user has iam:GetAccountAuthorizationDetails (part of SupportUser, SecurityAudit, ReadOnlyAccess managed policies), dump the entire IAM structure in one API call: all users, groups, roles, and managed policies with their attached policies and group memberships. The --filter flag limits to specific resource types. Use --query with JMESPath syntax to extract specific fields from the JSON output \u2014 avoiding large JSON blobs and piping to jq.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "iam:GetAccountAuthorizationDetails"
+  ],
+  "tools": [
+    "awscli"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "iam",
+    "enumeration",
+    "jmespath",
+    "users",
+    "groups",
+    "policies"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.5.2, 24.5.3)",
+  "examples": [
+    {
+      "label": "Full IAM dump - all users, groups, roles, policies",
+      "command": "aws --profile target iam get-account-authorization-details --filter User Group LocalManagedPolicy Role | tee account-auth-details.json"
+    },
+    {
+      "label": "Account-wide summary (total users, groups, policies, MFA state)",
+      "command": "aws --profile target iam get-account-summary | tee account-summary.json"
+    },
+    {
+      "label": "List all users in the account",
+      "command": "aws --profile target iam list-users | tee users.json"
+    },
+    {
+      "label": "List all groups",
+      "command": "aws --profile target iam list-groups | tee groups.json"
+    },
+    {
+      "label": "List customer-managed policies (only attached ones)",
+      "command": "aws --profile target iam list-policies --scope Local --only-attached | tee policies.json"
+    },
+    {
+      "label": "JMESPath - extract all usernames as a flat list",
+      "command": "aws --profile target iam get-account-authorization-details --filter User --query \"UserDetailList[].UserName\""
+    },
+    {
+      "label": "JMESPath - get details of a specific user",
+      "command": "aws --profile target iam get-account-authorization-details --filter User --query \"UserDetailList[?UserName=='admin-alice']\""
+    },
+    {
+      "label": "JMESPath - filter users whose name contains 'admin'",
+      "command": "aws --profile target iam get-account-authorization-details --filter User --query \"UserDetailList[?contains(UserName, 'admin')].{Name: UserName}\""
+    },
+    {
+      "label": "JMESPath - get admin users and admin groups in one query",
+      "command": "aws --profile target iam get-account-authorization-details --filter User Group --query \"{Users: UserDetailList[?Path=='/admin/'].UserName, Groups: GroupDetailList[?Path=='/admin/'].{Name: GroupName}}\""
+    },
+    {
+      "label": "Read a specific custom policy document (workaround if direct access denied)",
+      "command": "aws --profile target iam get-account-authorization-details --filter LocalManagedPolicy --query \"Policies[?PolicyName=='my_policy']\""
+    }
+  ],
+  "notes": "iam:GetAccountAuthorizationDetails is a single read-only API call that returns the ENTIRE IAM configuration. It is included in AWS-managed policies like SupportUser (iam:Get*, iam:List*), SecurityAudit, and ReadOnlyAccess. The response can be very large (MB range for large orgs) \u2014 always pipe to tee to save a local copy. --filter accepts: User, Group, Role, LocalManagedPolicy, AWSManagedPolicy. JMESPath syntax: [] = project array items; [?field=='value'] = filter; {Key: field} = reshape; [*].field = extract field from all items. The --query flag processes the response client-side (not server-side) \u2014 the full API call always runs. If GetAccountAuthorizationDetails is denied but list-users/list-groups/list-policies/list-policy-versions/get-policy-version are allowed, assemble the picture manually (see aws-iam-scope-permissions).",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Enumerating AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "JMESPath specification",
+      "url": "https://jmespath.org/specification.html"
+    },
+    {
+      "title": "AWS IAM - get-account-authorization-details",
+      "url": "https://docs.aws.amazon.com/cli/latest/reference/iam/get-account-authorization-details.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-iam-scope-permissions",
+      "rel": "prereq",
+      "note": "Verify iam:Get*/List* permissions before attempting the full dump."
+    },
+    {
+      "id": "aws-pacu-enum",
+      "rel": "alternative",
+      "note": "Pacu iam__enum_users_roles_policies_groups automates this enumeration."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1087.004",
+    "T1069.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "IAM enumeration maps the entire access control surface of an AWS account \u2014 all users, groups, roles, policies, and their attachments. With iam:Get*/iam:List* permissions, an attacker discovers: other IAM users and their permissions, roles assumable by the current principal, overprivileged policies, and privilege escalation paths (iam:CreatePolicyVersion, iam:AttachUserPolicy, iam:PassRole, etc.). This is the cloud equivalent of AD enumeration.",
+    "prerequisites": "AWS credentials with iam:List* and iam:Get* permissions. AWS CLI configured. Sufficient permissions to call IAM APIs (often available by default to developers).",
+    "impact": "T1087.004 Account Discovery: Cloud Account + T1069.003 Permission Groups Discovery: Cloud Groups. Maps all IAM principals and their permissions \u2014 identifies privilege escalation paths, over-permissioned roles, and lateral movement targets within the AWS account.",
+    "detection": "CloudTrail: iam:ListUsers, iam:ListRoles, iam:ListPolicies, iam:GetPolicy, iam:GetPolicyVersion in rapid succession from a single principal. GuardDuty: 'Discovery:IAMUser/AnomalousBehavior'. These calls are normal for IAM admins but unusual for developer credentials calling hundreds of IAM APIs in minutes.\nProcesses performing local or domain account enumeration by invoking account directory queries or security APIs followed by structured output of account lists (DET0587/AN1612).\nSuspicious shell commands or unauthorized access to /etc/passwd or /etc/shadow (AN1613).\nDirectory service queries or system utilities accessing account metadata stores, producing enumeration output (AN1614).\nCloud provider API calls where principals retrieve IAM users or roles in rapid succession (AN1615).\nESXi host account configuration or management APIs queried to retrieve user account listings (AN1617).",
+    "artifacts": "CloudTrail: bulk iam:List*/iam:Get* API calls | GuardDuty: IAM discovery anomaly | CloudWatch metric: unusual IAM API call volume from single principal",
+    "prevention": "Least-privilege IAM policies: developers should NOT need iam:List* on all resources. IAM permissions boundary: restrict what actions any role can perform even if over-permissioned. SCPs: deny iam:List* except for IAM admin roles. CloudTrail alerting: SIEM rule on bulk IAM enumeration. Use aws-nuke or permission boundary enforcement.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Enumerate slowly (rate-limited calls over hours). Enumerate only necessary targets (specific users/roles) rather than full account dump. Use pacu with --delay between calls.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1087/004/",
+      "https://attack.mitre.org/techniques/T1069/003/"
+    ],
+    "misconfiguration": "Developer IAM policies include iam:List* and iam:Get* for '*' resource. No CloudTrail alerting on bulk IAM API calls. No IAM permissions boundaries. SCPs not used to restrict IAM actions.",
+    "vulnerable_config": "# Overpermissive developer policy:\n# {\n#   'Effect': 'Allow',\n#   'Action': ['iam:List*', 'iam:Get*'],\n#   'Resource': '*'\n# }\n# \u2192 Developer can enumerate all IAM \u2014 maps escalation paths\n\n# No SCP restriction:\naws organizations list-policies-for-target --target-id ACCOUNT_ID --filter SERVICE_CONTROL_POLICY\n# \u2192 No SCP limiting iam:List* = any account member can enumerate",
+    "secure_config": "# Least-privilege: developers don't need iam:List* on *\n# Restrict to their own user:\n# {\n#   'Effect': 'Allow',\n#   'Action': ['iam:GetUser', 'iam:ListAccessKeys'],\n#   'Resource': 'arn:aws:iam::ACCOUNT:user/${aws:username}'\n# }\n\n# SCP denying iam:List* for non-admin:\n# {\n#   'Effect': 'Deny',\n#   'Action': ['iam:List*', 'iam:Get*'],\n#   'Resource': '*',\n#   'Condition': {'StringNotEquals': {'aws:PrincipalArn': 'arn:aws:iam::ACCOUNT:role/IAMAdmin'}}\n# }\n\n# CloudWatch alarm on bulk IAM calls:\n# Metric filter: $.eventSource=iam.amazonaws.com AND $.errorCode='' (successful)\n# Alarm: > 50 IAM calls in 5 minutes from same principal \u2192 SNS alert"
+  }
+}

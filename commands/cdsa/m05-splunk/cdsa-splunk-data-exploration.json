@@ -1,0 +1,76 @@
+{
+  "id": "cdsa-splunk-data-exploration",
+  "name": "Splunk - Data & Source Enumeration",
+  "command": "| eventcount summarize=false index=* | table index",
+  "description": "SPL queries for discovering available indexes, sourcetypes, sources, fields, and data distribution in a Splunk environment. Essential first step when approaching an unknown Splunk instance or starting a new threat hunt.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "SIEM",
+  "subcategory": "Splunk",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 05: Understanding Log Sources & Investigating with Splunk",
+  "tags": ["splunk", "spl", "enumeration", "data-sources", "siem", "blue-team"],
+  "notes": "=== Enumerate Available Indexes ===\n  | eventcount summarize=false index=* | table index\n\n=== Enumerate All Sourcetypes (All Indexes) ===\n  | metadata type=sourcetypes\n  | metadata type=sourcetypes index=* | table sourcetype\n\n=== Enumerate All Sources ===\n  | metadata type=sources index=* | table source\n\n=== Inspect Raw Events for a Sourcetype ===\n  sourcetype=\"WinEventLog:Security\" | table _raw\n  sourcetype=\"WinEventLog:Security\" | table *       (all extracted fields)\n\n=== View Specific Fields ===\n  sourcetype=\"WinEventLog:Security\" | fields Account_Name, EventCode | table Account_Name, EventCode\n\n=== Field Summary for a Sourcetype ===\n  sourcetype=\"WinEventLog:Security\" | fieldsummary\n  (shows all fields, coverage %, distinct count)\n\n=== Data Volume by Index/Sourcetype Over Time ===\n  index=* sourcetype=* | bucket _time span=1d | stats count by _time, index, sourcetype | sort - _time\n\n=== Rare Index/Sourcetype Combinations ===\n  index=* sourcetype=* | rare limit=10 index, sourcetype\n\n=== Rare Parent Processes (anomaly indicator) ===\n  index=\"main\" | rare limit=20 useother=f ParentImage\n\n=== Low-Frequency Fields (unusual data) ===\n  index=* sourcetype=* | fieldsummary | where count < 100 | table field, count, distinct_count\n\n=== Data Distribution Across Hosts/Sources ===\n  index=* | sistats count by index, sourcetype, source, host\n\n=== Rare Combinations of Multiple Fields ===\n  index=* sourcetype=* | rare limit=10 field1, field2, field3\n\n=== Retrieve All Events (no time limit) ===\n  index=\"main\" earliest=0\n\n=== Common Windows Sourcetypes ===\n  WinEventLog:Security     → auth, account, logon/logoff events\n  WinEventLog:Sysmon       → Sysmon process/network/file/registry events\n  WinEventLog:System       → service installs, driver loads\n  WinEventLog:Application  → application-level events\n  WinEventLog:sysmon       → (lowercase variant — check both)\n  linux:syslog             → Linux system and network logs\n  XmlWinEventLog:Sysmon    → alternate XML format for Sysmon",
+  "mitre": ["T1059", "T1078"],
+  "examples": [
+    {
+      "label": "List all indexes with event counts",
+      "command": "| eventcount summarize=false index=* | table index"
+    },
+    {
+      "label": "List all sourcetypes across all indexes",
+      "command": "| metadata type=sourcetypes index=* | table sourcetype"
+    },
+    {
+      "label": "List all sources (log files / inputs)",
+      "command": "| metadata type=sources index=* | table source"
+    },
+    {
+      "label": "Inspect all fields in Security sourcetype",
+      "command": "sourcetype=\"WinEventLog:Security\" | fieldsummary"
+    },
+    {
+      "label": "View specific fields from Security logs",
+      "command": "sourcetype=\"WinEventLog:Security\" | fields Account_Name, EventCode | table Account_Name, EventCode"
+    },
+    {
+      "label": "Data volume by sourcetype per day",
+      "command": "index=* sourcetype=* | bucket _time span=1d | stats count by _time, index, sourcetype | sort - _time"
+    },
+    {
+      "label": "Rare parent processes (anomaly starting point)",
+      "command": "index=\"main\" | rare limit=20 useother=f ParentImage"
+    },
+    {
+      "label": "Get all events with no time filter",
+      "command": "index=\"main\" earliest=0"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Understanding Log Sources & Investigating with Splunk",
+      "url": "https://academy.hackthebox.com/module/details/218"
+    },
+    {
+      "title": "Splunk - metadata Command",
+      "url": "https://docs.splunk.com/Documentation/SplunkCloud/latest/SearchReference/Metadata"
+    },
+    {
+      "title": "Splunk - fieldsummary Command",
+      "url": "https://docs.splunk.com/Documentation/SplunkCloud/latest/SearchReference/Fieldsummary"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-spl-fundamentals",
+      "rel": "prereq",
+      "note": "SPL command syntax needed to run these queries."
+    },
+    {
+      "id": "cdsa-splunk-intrusion-detection",
+      "rel": "next",
+      "note": "After identifying data sources, apply intrusion detection queries."
+    }
+  ]
+}

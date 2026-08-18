@@ -1,0 +1,94 @@
+{
+  "id": "cdsa-m12-yara-hunting",
+  "name": "Hunting with YARA \u2014 Windows Disk, Process Memory, ETW & Linux Memory Images",
+  "command": "yara64.exe -s rule.yar C:\\Samples\\ -r 2>nul",
+  "description": "YARA-based threat hunting across all surfaces. Windows disk: yara64.exe -s rule.yar C:\\dir -r 2>nul (-s shows matching strings, -r recursive, 2>nul suppresses permission errors). Windows process memory: Get-Process | ForEach-Object { yara64.exe rule.yar $_.id } or yara64.exe rule.yar <PID> --print-strings. ETW live telemetry: SilkETW.exe -t user -pn Microsoft-Windows-PowerShell -ot file -p out.json -y C:\\Rules\\yara -yo Matches. Linux memory image: yara rule.yar dump.raw --print-strings. Volatility: vol.py -f memory.raw yarascan -y rule.yar.",
+  "platform": "windows",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Malware Analysis",
+  "subcategory": "Detection Rules",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 12: YARA & Sigma for SOC Analysts",
+  "tags": [
+    "yara",
+    "hunting",
+    "threat-hunting",
+    "silketw",
+    "volatility",
+    "process-memory",
+    "memory-forensics",
+    "etw",
+    "blue-team"
+  ],
+  "notes": "=== HUNTING WITH YARA ON WINDOWS \u2014 DISK ===\n\nScan a directory (recursive), show matched strings, suppress errors:\n  yara64.exe -s rule.yar C:\\Windows\\Temp\\ -r 2>nul\n  yara64.exe -s rule.yar C:\\Users\\ -r 2>nul\n  yara64.exe -s rule.yar C:\\Samples\\YARASigma\\ -r 2>nul\n\nFlags:\n  -s / --print-strings     \u2192 print the matched strings and offsets\n  -r / --recursive         \u2192 scan subdirectories recursively\n  2>nul                    \u2192 redirect stderr to nul (suppress access-denied errors)\n\nScan single file:\n  yara64.exe -s rule.yar C:\\Samples\\YARASigma\\shell.exe\n\nScan with multiple rule files:\n  yara64.exe -s rules1.yar rules2.yar C:\\Samples\\ -r 2>nul\n\nOutput format:\n  RuleName  matched_file_path\n  0x14d8:$s1: 45.33.32.156    \u2190 offset : variable : matched value\n\n=== HUNTING WITH YARA ON WINDOWS \u2014 PROCESS MEMORY ===\n\nScan all running processes (PowerShell loop):\n  Get-Process | ForEach-Object { yara64.exe rule.yar $_.Id 2>$null }\n\nScan specific PID:\n  yara64.exe rule.yar 1234\n  yara64.exe rule.yar 1234 --print-strings\n\nGet PID of a process:\n  Get-Process -Name notepad | Select-Object Id\n  (or: tasklist | findstr notepad)\n\nCommon use cases:\n  \u2192 Hunt for injected shellcode in process memory\n  \u2192 Detect in-memory malware that never touches disk\n  \u2192 Find C2 strings loaded in memory\n  \u2192 Detect process hollowing artifacts\n\nNote: requires elevated privileges (Admin/SYSTEM) to scan other processes.\nNote on output: matched process shows rule name + PID.\n  If no match: no output for that PID.\n\n=== ETW (Event Tracing for Windows) WITH SilkETW ===\n\nSilkETW: C# tool that taps ETW providers for live telemetry + YARA scanning.\n\nHunt PowerShell events in real-time with YARA:\n  SilkETW.exe -t user -pn Microsoft-Windows-PowerShell -ot file -p C:\\Logs\\etw.json -y C:\\Rules\\yara -yo Matches\n\nFlags:\n  -t user              \u2192 user-mode ETW session (vs -t kernel)\n  -pn <ProviderName>   \u2192 ETW provider name (e.g., Microsoft-Windows-PowerShell)\n  -ot file             \u2192 output type: file\n  -p <path>            \u2192 output file path (.json)\n  -y <path>            \u2192 path to YARA rules file or directory\n  -yo Matches          \u2192 only output events where YARA matched\n\nOther useful ETW providers:\n  Microsoft-Windows-Kernel-Process     \u2192 process creation/termination\n  Microsoft-Windows-DNS-Client         \u2192 DNS queries\n  Microsoft-Windows-Security-Auditing  \u2192 security events\n  Microsoft-Antimalware-Service        \u2192 Defender events\n\nOutput: JSON file with ETW event data + YARA match results\n\n=== HUNTING WITH YARA ON LINUX \u2014 MEMORY IMAGE ===\n\nScan a raw memory dump file:\n  yara rule.yar /home/htb-student/memory.raw --print-strings\n  yara -s rule.yar /opt/dumps/memory.raw\n\nWith multiple rules:\n  yara /home/htb-student/rules/*.yar /home/htb-student/memory.raw\n\nWith offset/size limits (scan first 1GB only):\n  yara rule.yar /home/htb-student/memory.raw --scan-limit=1073741824\n\nOutput shows:\n  RuleName \u2192 hit in memory image\n  0x1234567:$s1: matched string value\n\n=== VOLATILITY YARASCAN PLUGIN ===\n\nBasic yarascan with inline string pattern:\n  vol.py -f /home/htb-student/memory.raw yarascan -U \"pattern_to_find\"\n  vol.py -f /home/htb-student/memory.raw yarascan -U \"iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com\"\n\nYarascan with YARA rule file:\n  vol.py -f /home/htb-student/memory.raw yarascan -y /home/htb-student/rule.yar\n\nPrint matching strings:\n  vol.py -f /home/htb-student/memory.raw yarascan -y rule.yar --print-strings\n\nYarascan flags:\n  -U <string>   \u2192 scan for literal string\n  -y <file>     \u2192 use YARA rule file\n  -A <addr>     \u2192 start scan at virtual address\n  -V <string>   \u2192 scan for regex pattern\n\nFilter results by process:\n  vol.py -f memory.raw --pid 1234 yarascan -y rule.yar\n\nVolatility 3 syntax:\n  python3 vol.py -f memory.raw windows.vadyarascan --yara-file rule.yar\n  python3 vol.py -f memory.raw windows.vadyarascan --yara-string \"evil_string\"\n\n=== ONLINE YARA HUNTING ===\nUnpac.Me: https://www.unpac.me/#/\n  \u2192 Upload suspect sample \u2192 automatic unpacking\n  \u2192 Navigate to 'YARA Hunt' section\n  \u2192 Submit custom YARA rule\n  \u2192 Hunts against their malware sample database\n  \u2192 Returns list of matching samples with SHA256 hashes\n  \u2192 Useful for: testing rule quality, finding more samples of same family\n\nVirusTotal:\n  \u2192 Supports YARA search via VT Intelligence (paid tier)\n  \u2192 Retrohunt: run YARA against entire VT corpus\n  \u2192 Livehunt: run YARA against new submissions in real-time\n\n=== WORKFLOW: COMPLETE YARA HUNT LIFECYCLE ===\n1. Analyze initial sample \u2192 identify unique strings/bytes\n2. Write YARA rule (strings + condition)\n3. Test rule:\n   \u2192 yara rule.yar /path/to/known_malware \u2192 expect match\n   \u2192 yara rule.yar /path/to/clean_files \u2192 expect 0 matches\n4. Hunt on disk:\n   \u2192 yara64.exe -s rule.yar C:\\ -r 2>nul\n5. Hunt in process memory:\n   \u2192 Get-Process | ForEach-Object { yara64.exe rule.yar $_.Id 2>$null }\n6. Hunt in memory image (forensics):\n   \u2192 vol.py -f memory.raw yarascan -y rule.yar\n7. Hunt online:\n   \u2192 Submit to Unpac.Me YARA Hunt or VT Retrohunt\n8. Refine rule based on false positives found",
+  "examples": [
+    {
+      "label": "Scan Windows directory recursively with YARA",
+      "command": "yara64.exe -s rule.yar C:\\Samples\\YARASigma\\ -r 2>nul"
+    },
+    {
+      "label": "Scan all running process memory (PowerShell)",
+      "command": "Get-Process | ForEach-Object { yara64.exe rule.yar $_.Id 2>$null }"
+    },
+    {
+      "label": "Scan specific PID with YARA and print matches",
+      "command": "yara64.exe rule.yar 1234 --print-strings"
+    },
+    {
+      "label": "SilkETW live ETW+YARA hunt (PowerShell events)",
+      "command": "SilkETW.exe -t user -pn Microsoft-Windows-PowerShell -ot file -p C:\\Logs\\etw.json -y C:\\Rules\\yara -yo Matches"
+    },
+    {
+      "label": "Scan Linux memory image with YARA",
+      "command": "yara -s rule.yar /home/htb-student/memory.raw"
+    },
+    {
+      "label": "Volatility yarascan with inline string",
+      "command": "vol.py -f /home/htb-student/memory.raw yarascan -U \"iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com\""
+    },
+    {
+      "label": "Volatility yarascan with rule file",
+      "command": "vol.py -f /home/htb-student/memory.raw yarascan -y /home/htb-student/rule.yar"
+    },
+    {
+      "label": "Volatility 3 yarascan (process memory)",
+      "command": "python3 vol.py -f memory.raw windows.vadyarascan --yara-file rule.yar"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - YARA & Sigma for SOC Analysts",
+      "url": "https://academy.hackthebox.com/module/details/234"
+    },
+    {
+      "title": "SilkETW GitHub",
+      "url": "https://github.com/mandiant/SilkETW"
+    },
+    {
+      "title": "Volatility yarascan documentation",
+      "url": "https://github.com/volatilityfoundation/volatility/wiki/Command-Reference#yarascan"
+    },
+    {
+      "title": "Unpac.Me YARA Hunt",
+      "url": "https://www.unpac.me/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m12-yara-advanced",
+      "rel": "prereq",
+      "note": "Advanced YARA rule development \u2014 pe/math modules, yarGen, imphash, entropy."
+    },
+    {
+      "id": "cdsa-m12-sigma-rules",
+      "rel": "next",
+      "note": "Sigma rules for log-based detection \u2014 structure, value modifiers, condition operators."
+    }
+  ],
+  "tools": [
+    "yara"
+  ]
+}

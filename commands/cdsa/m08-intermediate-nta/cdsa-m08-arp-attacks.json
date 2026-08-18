@@ -1,0 +1,72 @@
+{
+  "id": "cdsa-m08-arp-attacks",
+  "name": "ARP Attack Detection — Spoofing, Poisoning, Scanning & DoS",
+  "command": "arp.opcode",
+  "description": "ARP has no authentication — any host can broadcast false IP-to-MAC mappings. ARP spoofing/poisoning enables MITM and DoS; ARP scanning is used for host discovery. All attacks are detectable via Wireshark display filters since ARP is broadcast. Key IOC: same IP mapped to two different MAC addresses (duplicate-address-detected). Detect using arp.opcode, arp.duplicate-address-detected, and MAC cross-referencing.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "ARP Detection",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 08: Intermediate Network Traffic Analysis",
+  "tags": ["arp", "arp-spoofing", "arp-poisoning", "mitm", "dos", "wireshark", "blue-team", "nta", "link-layer"],
+  "mitre": ["T1557.002", "T1040"],
+  "notes": "=== ARP NORMAL OPERATION ===\n  1. Host A needs Host B's MAC — checks ARP cache\n  2. If not cached: broadcasts ARP request ('Who has <IP>?')\n  3. Host B replies with its MAC address\n  4. Host A updates ARP cache with IP-to-MAC mapping\n\nARP has NO authentication — anyone can send a reply.\n\n=== ARP ATTACK TYPES ===\n\nARP Spoofing/Poisoning (MITM):\n  → Attacker sends fake ARP replies to victim AND router\n  → Victim: 'router IP = attacker MAC'\n  → Router: 'victim IP = attacker MAC'\n  → Result: all traffic flows through attacker\n  → If forwarded → MITM; if not forwarded → DoS\n\nARP Scanning:\n  → Single host sends ARP requests to ALL IPs sequentially\n  → Used by tools like Nmap for host discovery\n  → IOC: rapid sequential ARP requests to non-existent hosts\n\nARP DoS:\n  → Attacker poisons entire subnet's ARP caches\n  → Declares own MAC for all live IPs → router can't reach anyone\n  → OR: declares router's IP = victim's MAC → victims can't reach router\n\n=== WIRESHARK DETECTION FILTERS ===\n\n# Show all ARP requests and replies\narp.opcode\n\n# ARP requests only (opcode 1)\narp.opcode == 1\n\n# ARP replies only (opcode 2)\narp.opcode == 2\n\n# Find duplicate IP-to-MAC mappings (ARP spoofing IOC)\narp.duplicate-address-detected && arp.opcode == 2\n\n# Trace all traffic from a suspicious MAC address\n(arp.opcode) && ((eth.src == <SUSPECT_MAC>) || (eth.dst == <SUSPECT_MAC>))\n\n# Show all traffic between two MAC addresses (spoofer + victim)\neth.addr == <MAC_1> or eth.addr == <MAC_2>\n\n=== LINUX ARP CACHE INSPECTION ===\n# Check ARP table for duplicate IPs\narp -a | grep <SUSPECT_MAC>\n  → If two entries show same IP with different MACs = poisoned cache\n\n=== ARP ATTACK DETECTION STEPS ===\n1. Apply filter: arp.opcode → look for one host broadcasting to all\n2. Apply: arp.duplicate-address-detected → Wireshark warns in orange/red\n3. Open packet details — Wireshark shows 'duplicate use of <IP> detected'\n4. Filter: arp.opcode == 1 → check if one MAC sends requests to sequential IPs\n5. Find original IP of suspect MAC:\n   Filter: (arp.opcode) && ((eth.src == <SUSPECT_MAC>) || (eth.dst == <SUSPECT_MAC>))\n   → First ARP packets show attacker's real IP before they switched\n6. Follow TCP streams from suspect MAC — look for RSTs/drops (not forwarding)\n\n=== ARP ATTACK IOCS ===\nOne host sending ARP replies without being asked (gratuitous ARP)\nSame IP mapped to two different MACs in Wireshark output\nExcessive ARP traffic from single source (scanning or flooding)\nSequential target IPs in ARP requests (.1, .2, .3...) = ARP scan\nARP replies claiming router's IP belongs to attacker's MAC\nTCP connections dropping/resetting after ARP traffic = DoS (not forwarding)\n\n=== PREVENTION ===\n  → Static ARP entries: prevent cache rewrites (high maintenance)\n  → Switch port security: only authorized MACs on each port\n  → Dynamic ARP Inspection (DAI): switch validates ARP against DHCP snooping table\n  → VLAN segmentation: limits broadcast domain for ARP",
+  "examples": [
+    {
+      "label": "Show all ARP traffic",
+      "command": "arp.opcode"
+    },
+    {
+      "label": "Show only ARP requests (host discovery scanning)",
+      "command": "arp.opcode == 1"
+    },
+    {
+      "label": "Show only ARP replies",
+      "command": "arp.opcode == 2"
+    },
+    {
+      "label": "Detect duplicate IP-to-MAC (ARP poisoning IOC)",
+      "command": "arp.duplicate-address-detected && arp.opcode == 2"
+    },
+    {
+      "label": "Trace all ARP traffic from/to a suspect MAC",
+      "command": "(arp.opcode) && ((eth.src == <SUSPECT_MAC>) || (eth.dst == <SUSPECT_MAC>))"
+    },
+    {
+      "label": "Show all traffic between two MAC addresses",
+      "command": "eth.addr == <MAC_1> or eth.addr == <MAC_2>"
+    },
+    {
+      "label": "Check ARP cache for duplicates (Linux)",
+      "command": "arp -a | grep <SUSPECT_MAC>"
+    },
+    {
+      "label": "Start live capture for ARP analysis",
+      "command": "sudo tcpdump -i eth0 arp -w /tmp/arp_capture.pcap"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intermediate Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/229"
+    },
+    {
+      "title": "MITRE ATT&CK - ARP Cache Poisoning (T1557.002)",
+      "url": "https://attack.mitre.org/techniques/T1557/002/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m07-tcpdump-filters",
+      "rel": "prereq",
+      "note": "BPF filters — needed for capture-time ARP filtering with tcpdump."
+    },
+    {
+      "id": "cdsa-m08-ip-layer-attacks",
+      "rel": "next",
+      "note": "IP layer attacks — often combined with ARP poisoning for MITM/DoS."
+    }
+  ]
+}

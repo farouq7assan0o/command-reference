@@ -1,0 +1,90 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "wpscan"
+  ],
+  "tags": [
+    "wordpress",
+    "brute-force"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "WordPress",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Brute-force a known user over XML-RPC (fast, multi-threaded)",
+      "command": "sudo wpscan --password-attack xmlrpc -t 20 -U john -P /usr/share/wordlists/rockyou.txt --url http://blog.inlanefreight.local"
+    }
+  ],
+  "notes": "The xmlrpc method is far faster than wp-login because it accepts many auth attempts per request; if xmlrpc.php is blocked, fall back to wp-login. Confirm the username with --enumerate u first so you only spray passwords.",
+  "references": [
+    {
+      "title": "WPScan (wpscanteam)",
+      "url": "https://github.com/wpscanteam/wpscan"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "wpscan-enum",
+      "note": "Supplies the usernames to spray.",
+      "rel": "prereq"
+    },
+    {
+      "id": "wp-theme-webshell",
+      "note": "Use the cracked admin creds to plant a theme webshell.",
+      "rel": "next"
+    },
+    {
+      "id": "wp-admin-shell-msf",
+      "note": "Automate the same admin->shell path with Metasploit.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "wpscan-bruteforce",
+  "name": "WPScan - Password Brute Force (xmlrpc)",
+  "command": "wpscan --password-attack xmlrpc -t 20 -U <user> -P <wordlist> --url http://<url>",
+  "description": "Brute-forces a WordPress account through the xmlrpc endpoint (faster and quieter than wp-login). Recovered admin creds lead to code execution via the theme editor.",
+  "opsec": "loud",
+  "mitre": [
+    "T1110"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "WordPress /wp-login.php does not rate-limit by default and returns distinct errors for invalid username vs incorrect password, enabling username enumeration. WPScan uses this to efficiently brute-force credentials.",
+    "prerequisites": "Valid username list from wpscan-enum. HTTP access to /wp-login.php. No CAPTCHA or rate-limiting present.",
+    "impact": "Compromised admin credentials grant full control: theme/plugin editor access for webshell upload, user management, complete site data exfiltration.",
+    "detection": "High volume POST requests to /wp-login.php from one IP. Failed login events in WordPress logs or WordFence. Authentication log spikes.",
+    "artifacts": "WordPress authentication logs (failed logins) | WordFence alert emails | Web server POST request logs to /wp-login.php",
+    "prevention": "Install WordFence or Limit Login Attempts to lock accounts after N failures. Require CAPTCHA on login. Enable 2FA. Disable XML-RPC if not needed.",
+    "misconfiguration": "WordPress /wp-login.php publicly accessible with no rate-limiting, no CAPTCHA, and distinct error messages enabling username enumeration. xmlrpc.php also enabled.",
+    "vulnerable_config": "# WordPress default\n# POST /wp-login.php -> distinct error per username vs password\n# No lockout after N failures\n# xmlrpc.php enabled",
+    "secure_config": "// functions.php\nadd_filter('login_errors', fn() => 'Incorrect credentials.');\nadd_filter('xmlrpc_enabled', '__return_false');\n// .htaccess\n<Files wp-login.php>\n  Require ip 10.0.0.0/8\n</Files>",
+    "evasion": "Brute-force via xmlrpc.php multicall method (bypasses login page protections). Use random User-Agent. Add throttle delay.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1110",
+      "OWASP A07:2021"
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nwget -m mirrors the entire FTP server recursively, downloading all accessible files to a local directory named after the target IP. Fast and comprehensive but loud \u2014 bulk downloads of all content are abnormal behavior detectable in logs.\n\n=== CHAINING ===\nConfirm anonymous or authenticated FTP access \u2192 wget mirror entire server \u2192 grep for sensitive content (passwords, configs, scripts) offline \u2192 follow up with targeted investigation.\n\n=== DETECTION ===\nHigh volume of sequential FTP GET requests. vsftpd/ProFTPD logs every file access. Bulk transfer volume anomalous vs baseline. --no-passive flag switches to active mode (server initiates data connection back to client).",
+  "references": []
+}

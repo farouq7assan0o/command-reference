@@ -1,0 +1,102 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "reg",
+    "netsh"
+  ],
+  "tags": [
+    "registry",
+    "autologon",
+    "wifi",
+    "putty"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Winlogon autologon password",
+      "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\""
+    },
+    {
+      "label": "PuTTY saved sessions (proxy creds)",
+      "command": "reg query HKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions"
+    },
+    {
+      "label": "Saved wireless key in cleartext",
+      "command": "netsh wlan show profile <name> key=clear"
+    }
+  ],
+  "notes": "=== Registry Stored Credentials ===\nWindows Autologon and PuTTY sessions store credentials in plaintext registry keys.\n\n=== WINDOWS AUTOLOGON ===\nLocation: HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\nValues: DefaultUserName, DefaultPassword, DefaultDomainName\nAccess: readable by standard users (BUILTIN\\Users has read access)\n\nQuery:\n  reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\"\n  Get-ItemProperty -Path \"HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" | Select DefaultUserName,DefaultPassword\n\nNote: Sysinternals Autologon.exe encrypts the password as an LSA secret (more secure alternative).\nIf DefaultPassword value exists and is not empty → immediately usable credential.\n\n=== PUTTY SESSIONS ===\nLocation: HKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions\\<session_name>\nValues: ProxyUsername, ProxyPassword\nAccess: limited to owning user's HKCU, but readable from HKEY_USERS\\<SID>\\... with admin rights\n\nQuery:\n  reg query \"HKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions\" /s\n  reg query \"HKU\\\" (list all user SIDs), then query each user's PuTTY sessions\n\n=== WIFI PASSWORDS ===\n  netsh wlan show profile   → list all saved wireless profiles\n  netsh wlan show profile <name> key=clear   → show PSK in cleartext under \"Key Content\"\n  Requires local admin rights\n\n=== LOLBAS REGISTRY SEARCH ===\n  reg query HKLM /f password /t REG_SZ /s   (search all HKLM for \"password\" string — slow but thorough)\n  reg query HKCU /f password /t REG_SZ /s\n\n=== CHAINING CONTEXT ===\nAutologon credentials → domain credentials on workstations joined to domain → lateral movement\nAutologon often set on kiosks, shared workstations, or servers with automated startup scripts\nPuTTY proxy credentials → SOCKS/HTTP proxy server credentials → network pivot\nSweep all HKEY_USERS profiles after gaining local admin → all users' PuTTY sessions\n\n=== WHAT TO LOOK FOR ===\nDefaultPassword value present in Winlogon = plaintext credential immediately usable\nMultiple user SIDs in HKEY_USERS = multiple potential PuTTY credential stores to check\nnetsh wifi check on any domain-connected workstation = may reveal pre-shared keys for wireless segments",
+  "references": [
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-autologon-keys",
+      "note": "Which Winlogon values hold the password.",
+      "rel": "next"
+    },
+    {
+      "id": "sessiongopher",
+      "note": "Automates PuTTY/RDP/WinSCP session extraction.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "reg-stored-creds",
+  "name": "Credential Hunting - Registry & Wi-Fi Secrets",
+  "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\"",
+  "description": "Common secret stashes: Winlogon AutoLogon (DefaultPassword), PuTTY saved sessions (proxy creds), and saved wireless profiles (recoverable in cleartext).",
+  "variations": [
+    {
+      "label": "AutoLogon",
+      "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\""
+    },
+    {
+      "label": "PuTTY sessions",
+      "command": "reg query HKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions"
+    },
+    {
+      "label": "Wi-Fi passwords",
+      "command": "netsh wlan show profile\nnetsh wlan show profile <SSID> key=clear"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1552.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Windows AutoLogon stores credentials in plaintext (or weakly encrypted) in the registry under HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon. PuTTY stored sessions under HKCU can contain proxy credentials. Any user who can read these registry keys recovers those stored credentials.",
+    "prerequisites": "Shell access. Read access to HKLM\\...\\Winlogon (usually accessible to all users). HKCU registry access for PuTTY sessions (owner access).",
+    "impact": "Discovery of AutoLogon account credentials (often administrator) from the Winlogon registry hive, enabling privilege escalation or lateral movement.",
+    "detection": "reg query on Winlogon or PuTTY registry paths by non-admin. Process log: reg.exe query of DefaultPassword key. SIEM: alert on Winlogon credential registry read by standard user.",
+    "artifacts": "Process log: reg query HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon | Registry audit: read on DefaultPassword value",
+    "prevention": "Disable AutoLogon in production environments — it is not appropriate for servers or shared workstations. If required, use a low-privilege account not linked to admin functions. Remove PuTTY saved credentials. Apply registry ACLs to restrict Winlogon key reads to SYSTEM only.",
+    "misconfiguration": "AutoLogon configured for convenience on a server with a local admin password stored in DefaultPassword. Registry ACL allows all users to read HKLM\\...\\Winlogon\\DefaultPassword.",
+    "vulnerable_config": "# Winlogon stores AutoLogon creds:\nreg query 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon'\n# DefaultUserName: Administrator\n# DefaultPassword: P@ssw0rd2024!\n\n# PuTTY session creds:\nreg query HKEY_CURRENT_USER\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions",
+    "secure_config": "# Disable AutoLogon\nreg delete 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultPassword\nreg delete 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v DefaultUserName\nreg delete 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' /v AutoAdminLogon\n\n# Restrict Winlogon registry ACL\n# Only SYSTEM should read DefaultPassword",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552.002",
+      "MITRE T1078"
+    ]
+  }
+}

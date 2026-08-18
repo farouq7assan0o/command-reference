@@ -1,0 +1,120 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "dig"
+  ],
+  "tags": [
+    "dns",
+    "dig",
+    "records"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "DNS",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "Query MX records concisely",
+      "command": "dig inlanefreight.com MX +short"
+    }
+  ],
+  "notes": "Query record types individually (a/aaaa/mx/ns/txt/soa/cname). TXT/SPF leak third-party providers and internal IP ranges; MX reveals the mail stack; NS gives the authoritative servers to try a zone transfer against.",
+  "references": [
+    {
+      "title": "dig man page",
+      "url": "https://linux.die.net/man/1/dig"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dns-zone-transfer-web",
+      "rel": "next",
+      "note": "Attempt AXFR against each NS."
+    },
+    {
+      "id": "dns-subdomain-brute-web",
+      "rel": "next",
+      "note": "Brute subdomains."
+    },
+    {
+      "id": "crtsh-ct-logs",
+      "rel": "alternative",
+      "note": "Passive subdomain source."
+    }
+  ],
+  "id": "dig-record-query",
+  "name": "DNS - dig Record Queries",
+  "command": "dig <domain> <record_type>",
+  "description": "Query DNS with dig for any record type. The core of web recon: map A/AAAA/MX/NS/TXT/CNAME/SOA, trace delegation, and do reverse lookups.",
+  "variations": [
+    {
+      "label": "A / AAAA",
+      "command": "dig domain.com A\ndig domain.com AAAA"
+    },
+    {
+      "label": "MX / NS / SOA",
+      "command": "dig domain.com MX\ndig domain.com NS\ndig domain.com SOA"
+    },
+    {
+      "label": "TXT / CNAME / ANY",
+      "command": "dig domain.com TXT\ndig domain.com CNAME\ndig domain.com ANY"
+    },
+    {
+      "label": "Use a specific resolver",
+      "command": "dig @1.1.1.1 domain.com"
+    },
+    {
+      "label": "Trace delegation",
+      "command": "dig +trace domain.com"
+    },
+    {
+      "label": "Reverse lookup",
+      "command": "dig -x <ip>"
+    },
+    {
+      "label": "Concise output",
+      "command": "dig +short domain.com\ndig +noall +answer domain.com"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1590.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "DNS records publicly expose the infrastructure layout of a target domain: A/AAAA records reveal IPs, MX records expose mail servers, NS records identify name servers, CNAME chains reveal CDN/cloud providers, and TXT records may leak SPF configs or third-party verification tokens.",
+    "prerequisites": "A target domain name and a resolver that will answer queries for it.",
+    "impact": "Reveals the domain's infrastructure — mail servers (MX), name servers (NS), host IPs (A/AAAA), and hosting/CDN provider (CNAME) — informing target selection and mail-based attacks.",
+    "detection": "Standard individual DNS queries blend in with normal traffic. However, some DNS servers can detect and block excessive query volumes — high-frequency enumeration against a single domain is abnormal and visible in DNS server logs. Use caution and respect rate limits.\n\n[MITRE T1590.002 M1056] Monitor for suspicious queries to internet-facing DNS infrastructure. Monitoring may also be used to ensure that traffic follows expected patterns and uses expected ports and protocols.",
+    "artifacts": "Individual queries blend into normal DNS traffic. High-volume querying appears in the authoritative server's query logs.",
+    "prevention": "Minimize information exposed in public DNS: avoid leaking internal hostnames via public-facing DNS and remove stale/unused records. Restrict DNS zone transfers (AXFR/IXFR) to authorized secondary servers only.\n\n[MITRE T1590.002 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "evasion": "Spread queries across time and rotate source IPs to stay below server-side rate limits. Use third-party passive DNS databases (SecurityTrails, DNSDumpster) instead of direct queries to avoid generating traffic the target's DNS servers log.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1590.002"
+    ],
+    "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
+    "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
+    "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
+  }
+}

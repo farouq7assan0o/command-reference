@@ -1,0 +1,82 @@
+{
+  "id": "crtp-user-enumeration",
+  "name": "User Enumeration via Kerberos (kerbrute)",
+  "command": "kerbrute userenum --dc <dc_ip> -d <domain> <userlist>",
+  "description": "Enumerate valid domain usernames via Kerberos pre-authentication. No lockouts triggered for valid/invalid responses.",
+  "platform": "linux",
+  "category": "Active Directory",
+  "subcategory": "Foothold",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS",
+    "OSCP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1589.001"
+  ],
+  "tools": [
+    "kerbrute"
+  ],
+  "tags": [
+    "kerbrute",
+    "users",
+    "kerberos",
+    "enumeration"
+  ],
+  "examples": [
+    {
+      "label": "Enumerate with jsmith wordlist",
+      "command": "kerbrute userenum --dc 10.10.10.10 -d corp.local /opt/wordlists/jsmith.txt"
+    },
+    {
+      "label": "Save valid users to file",
+      "command": "kerbrute userenum --dc 10.10.10.10 -d corp.local /opt/wordlists/jsmith.txt -o valid_users.txt"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-password-policy",
+      "note": "Check lockout threshold before spraying",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-password-spray",
+      "note": "Spray found usernames with common passwords",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-asrep-roasting",
+      "note": "Check found users for pre-auth disabled",
+      "rel": "next"
+    }
+  ],
+  "notes": "Valid users get AS-REQ response; invalid get KDC_ERR_C_PRINCIPAL_UNKNOWN. No auth logs for enumeration.",
+  "references": [
+    {
+      "title": "CRTP - User Enumeration",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Kerberos AS-REQ error codes distinguish valid from invalid usernames without authentication: valid users return KRB5KDC_ERR_PREAUTH_REQUIRED (18), invalid users return KRB5KDC_ERR_C_PRINCIPAL_UNKNOWN (6). kerbrute exploits this to validate domain accounts without triggering 4768 events or account lockouts.",
+    "prerequisites": "Network access to DC on UDP/TCP 88 (Kerberos). A username wordlist. kerbrute binary on attacker host.",
+    "impact": "T1589.001 Gather Victim Identity Information: Credentials. Validates domain usernames for targeted password spraying, Kerberoasting, or AS-REP roasting without risking account lockout.",
+    "detection": "Rapid AS-REQ burst to port 88 from a non-DC, all with different usernames. IDS: >50 AS-REQ from same IP in 60 seconds. Zeek Kerberos parser logs KDC_ERR_C_PRINCIPAL_UNKNOWN responses. MDI: 'Account enumeration reconnaissance using Kerberos' alert.\nMonitor for suspicious network traffic indicative of probing for user information, such as large/iterative quantities of authentication requests from a single source (especially if associated with an adversary/botnet). Analyze web metadata for artifacts attributable to malicious activity, such as unusual referer or user-agent string HTTP/S fields (DET0841/AN1973).",
+    "artifacts": "Zeek kerberos.log: many KDC_ERR_C_PRINCIPAL_UNKNOWN to same client IP | DC network capture: UDP/88 burst with varying cname fields | MDI alert: Kerberos enumeration reconnaissance | IDS alert: Kerberos username enumeration",
+    "prevention": "Block DC port 88 from non-domain hosts at perimeter/VLAN ACL. Deploy MDI (built-in Kerberos enumeration alert). Enable Kerberos Pre-Authentication on all accounts. Use honeypot usernames that alert on any Kerberos activity.\nPre-compromise: This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "evasion": "Slow enumeration rate to avoid burst detection. Use short targeted wordlist (format-derived from email addresses). Enumerate from a compromised internal host to bypass perimeter restrictions.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1589/001/"
+    ],
+    "misconfiguration": "DC port 88 accessible from any host. MDI not deployed. Pre-authentication disabled on some accounts (also enables AS-REP roasting).",
+    "vulnerable_config": "# DC accessible from any host on UDP/TCP 88 — no ACL restriction\n\n# Accounts with Kerberos pre-auth disabled:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth",
+    "secure_config": "# Firewall: restrict Kerberos to domain-joined subnets:\nNew-NetFirewallRule -DisplayName 'Block external Kerberos' -Direction Inbound -Protocol TCP -LocalPort 88 -RemoteAddress Internet -Action Block\n\n# Ensure pre-auth required for all users:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} | Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# MDI sensor on each DC — 'Account enumeration reconnaissance using Kerberos' alert\n\n# Honeypot account alert in SIEM:\n# Any 4768 for honeypot_user = active enumeration"
+  }
+}

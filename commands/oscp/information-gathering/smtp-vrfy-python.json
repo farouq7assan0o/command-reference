@@ -1,0 +1,70 @@
+{
+  "id": "smtp-vrfy-python",
+  "name": "SMTP - Python VRFY User Enumeration Script",
+  "command": "python3 smtp.py <user> <ip>",
+  "description": "Custom Python3 script that opens a TCP socket to an SMTP server, reads the banner, issues a VRFY command for a given username, and prints the server's response. Automates the manual nc/telnet VRFY process and serves as a template for building SMTP enumeration tools.",
+  "type": "script",
+  "platform": "linux",
+  "requires": ["network-access"],
+  "protocols": ["smtp"],
+  "tools": ["python3"],
+  "tags": ["smtp", "vrfy", "user-enumeration", "python", "script", "email"],
+  "category": "Enumeration",
+  "subcategory": "SMTP",
+  "certifications": ["OSCP"],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 Chapter 06: Information Gathering",
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": ["T1087.003"],
+  "examples": [
+    {
+      "label": "Check if 'root' exists on mail.lab",
+      "command": "python3 smtp.py root 192.168.50.8"
+    },
+    {
+      "label": "Check a non-existent user (expect 550)",
+      "command": "python3 smtp.py johndoe 192.168.50.8"
+    }
+  ],
+  "notes": "Script body (save as smtp.py):\n\n#!/usr/bin/python3\nimport socket, sys\n\nif len(sys.argv) != 3:\n    print('Usage: smtp.py <username> <target_ip>')\n    sys.exit(0)\n\ns = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\ns.connect((sys.argv[2], 25))\nbanner = s.recv(1024)\nprint(banner)\n\nuser = (sys.argv[1]).encode()\ns.send(b'VRFY ' + user + b'\\r\\n')\nresult = s.recv(1024)\nprint(result)\ns.close()\n\nResponse codes: 250/252 = user exists; 550/551 = user unknown. Extend with a wordlist loop:\nfor u in $(cat users.txt); do python3 smtp.py \"$u\" 192.168.50.8; done",
+  "recommended": [
+    {
+      "id": "smtp-user-enum",
+      "rel": "alternative",
+      "note": "smtp-user-enum tool automates VRFY/EXPN/RCPT TO across a wordlist — faster for bulk enumeration."
+    },
+    {
+      "id": "smtp-enum",
+      "rel": "prereq",
+      "note": "Manual nc/telnet VRFY to confirm the server responds before scripting."
+    }
+  ],
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Email Account Discovery (T1087.003)",
+      "url": "https://attack.mitre.org/techniques/T1087/003/"
+    },
+    {
+      "title": "RFC 5321 - SMTP VRFY Command",
+      "url": "https://datatracker.ietf.org/doc/html/rfc5321#section-3.5"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Port 25 reachable from attacker. SMTP server with VRFY enabled (many modern MTAs disable it). Python3 on attacker host.",
+    "why_it_works": "VRFY is an SMTP command from RFC 821 intended to verify a recipient address before sending. Many older Postfix, Sendmail, and Exchange configurations still respond to VRFY with 252 (user exists) or 550 (no such user). The script automates the raw socket exchange that a manual telnet session would require, making it trivial to script a wordlist loop.",
+    "misconfiguration": "SMTP server configured with VRFY enabled (smtpd_discard_ehlo_keyword_address_maps not set in Postfix; sendmail NOVRFY feature not enabled). Exposed SMTP on port 25 without IP-based access restrictions.",
+    "vulnerable_config": "# Postfix main.cf — VRFY NOT disabled\n# (VRFY is enabled by default if this setting is absent)\n# smtpd_discard_ehlo_keywords = vrfy",
+    "secure_config": "# Postfix main.cf — disable VRFY\nsmtpd_discard_ehlo_keywords = vrfy expn\ndisable_vrfy_command = yes",
+    "impact": "Enumerates valid email addresses / local Unix accounts on the SMTP server. Valid usernames feed password spraying, phishing, and Kerberos AS-REP roasting attacks.",
+    "detection": "SMTP server access logs: repeated VRFY commands from a single IP. SIEM rule: >5 VRFY commands in 60 seconds from same source. Network IPS: VRFY flood signature.",
+    "artifacts": "SMTP server mail.log (Postfix) or syslog entries showing VRFY commands with source IP. Network PCAP showing VRFY requests and 250/550 responses.",
+    "prevention": "Disable VRFY on the MTA (disable_vrfy_command = yes for Postfix). Restrict SMTP to required source IPs. Rate-limit SMTP connections per source IP at the firewall.",
+    "evasion": "Single requests per username spaced out over time evade rate-limit rules. Varying the source IP (or using SOCKS proxy) bypasses per-IP thresholds. RCPT TO enumeration (not VRFY) works even when VRFY is disabled on many servers.",
+    "sources": ["PEN-200 Ch 6", "MITRE T1087.003", "RFC 5321"]
+  }
+}

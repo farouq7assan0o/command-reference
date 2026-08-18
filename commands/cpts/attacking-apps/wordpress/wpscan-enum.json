@@ -1,0 +1,90 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "wpscan"
+  ],
+  "tags": [
+    "wordpress",
+    "enumeration"
+  ],
+  "category": "Enumeration",
+  "subcategory": "WordPress",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Full enumeration with a WPVulnDB API token for CVE mapping",
+      "command": "sudo wpscan --url http://blog.inlanefreight.local --enumerate --api-token dEOFB<SNIP>"
+    }
+  ],
+  "notes": "Aggressive plugin detection (--enumerate ap) is loud and slow but finds vulnerable plugins passive mode misses. A WPVulnDB API token is what maps versions to CVEs - without it you only get a plugin list.",
+  "references": [
+    {
+      "title": "WPScan (wpscanteam)",
+      "url": "https://github.com/wpscanteam/wpscan"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "wp-detect",
+      "note": "Manual fingerprinting that scopes this scan.",
+      "rel": "prereq"
+    },
+    {
+      "id": "wpscan-bruteforce",
+      "note": "Feed enumerated usernames into a password attack.",
+      "rel": "next"
+    },
+    {
+      "id": "wp-wpdiscuz-rce",
+      "note": "Pivot to a plugin exploit if a vulnerable one is found.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "wpscan-enum",
+  "name": "WPScan - Enumerate Themes/Plugins/Users",
+  "command": "wpscan --url http://<url> --enumerate --api-token <token>",
+  "description": "Automated WordPress scanner. --enumerate finds plugins, themes, and users; an API token adds known-vulnerability data from the WPScan database.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "WPScan queries WordPress-specific paths (/wp-json/wp/v2/users for users, plugin readme.txt for versions) and the WPScan Vulnerability Database, correlating findings against known CVEs.",
+    "prerequisites": "HTTP access to the WordPress site. A WPScan API token is needed for CVE lookups but enumeration works without it.",
+    "impact": "Complete enumeration: WordPress version, all active plugins with CVE matches, themes, and registered usernames — providing the full attack surface in one command.",
+    "detection": "Rapid sequential requests to /wp-json/wp/v2/users, /readme.txt, plugin readme paths from one IP. User-Agent 'WPScan' in access logs.",
+    "artifacts": "Web server access logs (WPScan UA, /wp-json/ requests) | WAF/IDS alerts for WPScan signatures",
+    "prevention": "Disable the WP REST API user endpoint. Limit login attempts. Block WPScan User-Agent at WAF. Keep all plugins updated.",
+    "misconfiguration": "WordPress REST API unauthenticated user endpoint (/wp/v2/users) accessible, leaking all usernames. Plugin directories expose readme.txt with exact version numbers.",
+    "vulnerable_config": "# WP default\n# GET /wp-json/wp/v2/users -> returns all usernames\n# GET /wp-content/plugins/mail-masta/readme.txt -> version 1.0",
+    "secure_config": "// functions.php\nadd_filter('rest_endpoints', function($endpoints) {\n  if (!is_user_logged_in()) {\n    unset($endpoints['/wp/v2/users']);\n    unset($endpoints['/wp/v2/users/(?P<id>[\\\\d]+)']);\n  }\n  return $endpoints;\n});\n// WAF: block User-Agent containing WPScan",
+    "evasion": "Use --random-user-agent flag. Use --throttle to slow below WAF rate thresholds. Route through Tor with --proxy.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595.002",
+      "OWASP A05:2021"
+    ]
+  }
+}

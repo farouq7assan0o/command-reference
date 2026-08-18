@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNetcat manual banner grab captures raw service output that Nmap's version detection may normalize or truncate. The raw banner often contains OS distribution, exact software version, and configuration details that parsed Nmap output suppresses.\n\n=== EXAMPLE ===\nSMTP banner via nc: '220 inlane ESMTP Postfix (Ubuntu)' \u2014 includes OS distribution. Nmap reports only 'Postfix smtpd'. The raw banner exposes more than the parsed result \u2014 always manually grab banners on interesting services.\n\n=== CHAINING ===\nnmap port scan identifies open service \u2192 nc banner grab reveals exact version/OS \u2192 CVE lookup \u2192 targeted exploitation.\n\n=== TCPDUMP PAIRING ===\nRun tcpdump in parallel with nc to observe the TCP exchange at packet level. The PSH-ACK from the server carries the banner \u2014 visible in tcpdump output. Reveals protocol-level behavior that tools suppress.",
+  "references": []
+}

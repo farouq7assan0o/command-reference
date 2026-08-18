@@ -1,0 +1,92 @@
+{
+  "id": "win-bof-jmp-esp",
+  "name": "Windows BOF - Step 4: Find JMP ESP",
+  "command": "!mona jmp -r esp -cpb \"\\x00\\x0a\\x0d\"",
+  "description": "To redirect execution to the shellcode, overwrite EIP with the address of a 'JMP ESP' (or 'CALL ESP') instruction in a module loaded without ASLR or SafeSEH. Mona searches all loaded modules for the gadget and filters out addresses containing bad characters. Write the address into EIP in little-endian byte order.",
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "immunity-debugger",
+    "mona"
+  ],
+  "tags": [
+    "bof",
+    "buffer-overflow",
+    "jmp-esp",
+    "return-address",
+    "mona",
+    "exploit-dev"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Buffer Overflow",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP Classic - Windows Buffer Overflow Methodology",
+  "examples": [
+    {
+      "label": "Find JMP ESP in modules without ASLR/SafeSEH, excluding bad chars",
+      "command": "!mona jmp -r esp -cpb \"\\x00\\x0a\\x0d\""
+    },
+    {
+      "label": "Check module protections if needed",
+      "command": "!mona modules"
+    },
+    {
+      "label": "Encode the chosen address in little-endian for the exploit",
+      "command": "# address 0x311712F3 -> b'\\xf3\\x12\\x17\\x31' in Python\nretn = b'\\xf3\\x12\\x17\\x31'"
+    },
+    {
+      "label": "Verify the address in Immunity (Ctrl+G or right-click -> Go To Address)",
+      "command": "# Confirm the bytes at that address decode as FFE4 (JMP ESP) or FFD4 (CALL ESP)"
+    }
+  ],
+  "notes": "Pick a module that: (1) has no ASLR (Rebase=False, ASLR=False in mona modules); (2) has no SafeSEH (SafeSEH=False or N/A); (3) its address contains none of your bad characters. The app's own DLLs or the main EXE are often the best candidates since they're compiled without protections. Multiple valid addresses may appear \u2014 pick the first one that avoids bad chars. The address goes into EIP as 4 bytes little-endian: if the address is 0x625011AF, write \\xaf\\x11\\x50\\x62. [Note: BOF labs removed from PEN-200 2024 curriculum but remain in OSCP practice machines and TryHackMe/HackTheBox prep.]",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Windows Buffer Overflows",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "mona.py - jmp command",
+      "url": "https://github.com/corelan/mona"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-bof-badchars",
+      "rel": "prereq",
+      "note": "You need the full bad char list to filter valid JMP ESP addresses."
+    },
+    {
+      "id": "win-bof-exploit",
+      "rel": "next",
+      "note": "Assemble the final exploit: offset + JMP ESP address + NOP sled + shellcode."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1203"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "After overwriting EIP, execution needs to jump to the shellcode placed after EIP on the stack. At the time of the crash, ESP points to the data immediately after the overwritten return address. A JMP ESP instruction in any loaded module redirects execution to wherever ESP points \u2014 directly into the shellcode buffer. The key is finding a reliable JMP ESP address in a module without ASLR or with a fixed base address.",
+    "prerequisites": "EIP control with known offset. Bad chars identified. A module in the process loaded without ASLR (fixed base address). Immunity Debugger + Mona.py to find JMP ESP. Shellcode from msfvenom excluding bad chars.",
+    "impact": "T1203 Exploitation for Client Execution. JMP ESP is the return-address redirect that chains EIP control into shellcode execution. With JMP ESP + shellcode in place, the full exploit is complete: crash \u2192 control EIP \u2192 JMP ESP \u2192 execute shellcode \u2192 shell.",
+    "detection": "Crash with EIP containing a memory address pointing to a JMP ESP instruction (often in a system module). IDS: shellcode NOP sled + Meterpreter shellcode bytes in network payload. EDR: shellcode execution from stack memory (DEP would prevent this, but DEP-disabled applications won't trigger it at OS level).\nClient app (browser, Office, PDF/reader) crashes or loads from unusual location, then drops/modifies files in user-writable paths, spawns unexpected child (powershell/cmd/mshta/rundll32), and establishes outbound C2-like connections; correlate app logs, file writes, process lineage, and network egress (DET0287/AN0797).\nBrowser/Office/reader process logs crash/segfault; new executable/script in /sessions/magical-confident-franklin (Downloads, ~/.cache, /tmp); unexpected child like curl/wget/bash opens network connections (AN0798).\nApp crash in unified logs for Safari/Chrome/Office/Preview; new files in ~/Library, ~/Downloads, /private/var/folders/*; unexpected child (osascript, zsh, bash, curl) spawned; new outbound connections (AN0799).",
+    "artifacts": "Crash with EIP = JMP ESP address | WER dump: shellcode on stack | IDS: NOP sled (0x90 repeated) in network input | EDR: code execution from stack memory address | Meterpreter C2 session established",
+    "prevention": "DEP/NX: prevents executing code from stack memory \u2014 JMP ESP into shellcode on the stack will cause an access violation instead of execution. SafeSEH: prevents SEH-based exploits. ASLR on all modules: makes finding a reliable JMP ESP address difficult. CFG: validates control flow transfers.\nApplication Isolation and Sandboxing: Browser sandboxes can mitigate exploitation impact; other virtualization/microsegmentation may also help.\nExploit Protection: Use WDEG/EMET to mitigate exploitation behavior; control flow integrity checking can identify and stop software exploits.\nUpdate Software: Perform regular software updates to mitigate exploitation risk.",
+    "evasion": "Find JMP ESP in a module compiled without ASLR (/DYNAMICBASE:NO) \u2014 its address is fixed even on ASLR-enabled systems. Encode shellcode to avoid NOP sled detection. Use ROP chains instead of direct shellcode when DEP is enabled.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1203/"
+    ],
+    "misconfiguration": "System modules compiled without /DYNAMICBASE (fixed base addresses \u2014 common in older or legacy applications). DEP not enforced for the vulnerable process. Application opts out of DEP via IMAGE_DLLCHARACTERISTICS_NO_ISOLATION.",
+    "vulnerable_config": "# Find modules without ASLR in Immunity Debugger:\n# !mona modules\n# Look for: ASLR: False, Rebase: False\n# \u2192 Module loaded at fixed address every time\n# \u2192 JMP ESP at that address is reliable\n\n# Check DEP status for process:\n# !mona nxopt\n# AlwaysOff or OptOut with process opting out = no DEP",
+    "secure_config": "# Force DEP for all processes (AlwaysOn policy):\nbcdedit /set nx AlwaysOn\n# \u2192 Prevents shellcode execution from stack even via JMP ESP\n\n# Recompile all modules with /DYNAMICBASE:\n# cl.exe /DYNAMICBASE all_modules.c\n# \u2192 All modules participate in ASLR\n# \u2192 No fixed JMP ESP address available\n\n# Application compatibility: test after enabling ASLR/DEP\n# Most modern applications support these without changes"
+  }
+}

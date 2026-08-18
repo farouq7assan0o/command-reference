@@ -1,0 +1,91 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "burpsuite"
+  ],
+  "tags": [
+    "thick-client",
+    "sql-injection",
+    "path-traversal"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Thick Client",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Path-traversal patch to the client's file browser",
+      "command": "# path traversal: currentFolder = \"..\"; showFiles(\"..\")"
+    },
+    {
+      "label": "SQLi UNION payload injected through the client",
+      "command": "# SQLi: abc' UNION SELECT 1,'abc','a@b.com','abc','admin"
+    },
+    {
+      "label": "Recompile the patched client class",
+      "command": "javac -cp client-new.jar ...ClientGuiTest.java"
+    }
+  ],
+  "notes": "The client is just a front end to a server API - decompile the jar, patch a request method (path traversal, SQLi), recompile, and the server trusts it. Hardcoded secrets in beans.xml/manifests are common.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "thickclient-analysis",
+      "note": "Static/behavioral analysis of the same client.",
+      "rel": "alternative"
+    },
+    {
+      "id": "graphql-sqli",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "thickclient-web-vulns",
+  "name": "Thick Client - Exploit Web Vulns (JAR patch)",
+  "command": "# decompile client jar, patch a request method, recompile, run\njar -cmf META-INF/MANIFEST.MF ..\\client-new.jar *",
+  "description": "Java thick clients can be decompiled, modified to inject payloads their UI blocks (path traversal ../../../etc/passwd, SQLi in a field, or client-side password-hash bypass), then recompiled and run against the server.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Thick clients communicating with a web backend are susceptible to the same injection vulnerabilities as web applications. HTTP requests can be intercepted with Burp Suite and modified -- SQL injection, path traversal, and auth bypass work identically to web attacks.",
+    "prerequisites": "Thick client communicating with a web backend. Ability to proxy traffic through Burp Suite. Backend server vulnerable to injection.",
+    "impact": "SQL injection leading to credential theft and data exfiltration. Path traversal reading sensitive server files. Authentication bypass gaining higher-privilege access.",
+    "detection": "Unexpected SQL syntax or traversal sequences in HTTP parameters in web server logs. Database error responses. WAF alert for injection patterns.",
+    "artifacts": "Web server access log (SQL injection patterns in parameters) | Database error log (syntax errors from injected SQL) | WAF alerts for injection attempts",
+    "prevention": "Treat thick client HTTP input identically to browser input -- parameterized queries, input validation, WAF. Do not trust client-side validation. Implement server-side session validation.",
+    "misconfiguration": "Backend web service does not validate or parameterize user-supplied input, assuming the thick client performs all input validation client-side.",
+    "vulnerable_config": "# Vulnerable backend: trusts thick client input\n$query = \"SELECT * FROM users WHERE user='\" . $_POST['user'] . \"'\";\n# No WAF or parameterization",
+    "secure_config": "// Parameterized query (PDO)\n$stmt = $pdo->prepare('SELECT * FROM users WHERE user = ?');\n$stmt->execute([$_POST['user']]);\n// Apply WAF rules to internal API endpoints too",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "MITRE T1083",
+      "OWASP A03:2021"
+    ]
+  }
+}

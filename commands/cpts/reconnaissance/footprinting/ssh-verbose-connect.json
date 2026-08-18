@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nssh -v (verbose) reveals the authentication methods the server will accept: publickey, password, keyboard-interactive, gssapi. This determines whether password brute-force is viable (password auth must be enabled).\n\n=== CHAINING ===\nssh -v \u2192 if 'password' in auth methods: password brute force viable \u2192 hydra/medusa/crackmapexec \u2192 if only publickey: need private key from rsync/NFS/SMB exposure or other means.\n\n=== BANNER ===\nSSH banner (pre-auth message) sometimes contains system owner information, legal warnings, or version strings useful for CVE lookup. Banner also confirms the service is actually SSH (vs another service on port 22).",
+  "references": []
+}

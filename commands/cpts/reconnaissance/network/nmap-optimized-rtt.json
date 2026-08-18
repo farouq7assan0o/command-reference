@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n--initial-rtt-timeout and --max-rtt-timeout reduce how long Nmap waits for responses before marking ports. Dramatically speeds up scans \u2014 in example: 39s \u2192 12s. But: hosts responding slowly will be missed entirely.\n\n=== ACCURACY TRADE-OFF ===\nIn the CPTS example, aggressive RTT values caused 2 hosts to disappear from results. Always validate by comparing port/host count to standard scan. Low RTT = more missed results on high-latency targets.\n\n=== --max-retries ===\nDefault 10 retries accounts for packet loss. --max-retries 0 eliminates re-sends: no response on first try = port skipped. Can drop 1-2 ports requiring retry to respond consistently. Best on low-loss internal networks.",
+  "references": []
+}

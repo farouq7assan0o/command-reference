@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNmap with ms-sql* NSE scripts against port 1433 retrieves hostname, NetBIOS name, exact MSSQL version, instance name, DAC port, named pipe path, and tests for empty sa password. ms-sql-ntlm-info leaks domain/computer names without completing auth.\n\n=== CHAINING ===\nnmap ms-sql* \u2192 version + instance name \u2192 msf mssql_ping (UDP 1434 for named instances) \u2192 mssqlclient.py \u2192 enumerate databases \u2192 check xp_cmdshell.\n\n=== XP_CMDSHELL ===\nms-sql-xp-cmdshell NSE tests if xp_cmdshell is enabled \u2014 direct OS command execution. If disabled: requires SA privileges to enable via sp_configure.",
+  "references": []
+}

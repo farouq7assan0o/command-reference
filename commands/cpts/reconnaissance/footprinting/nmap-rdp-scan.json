@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nrdp* NSE scripts against port 3389 retrieve NetBIOS name, DNS name, Windows build number (product version), NLA/CredSSP requirement status, and domain/computer names via NTLM negotiation (rdp-ntlm-info) without completing auth.\n\n=== MSTSHASH DETECTION ===\nNmap injects mstshash=nmap cookie into the RDP handshake \u2014 a known fingerprint detectable by EDR and threat hunters. In hardened environments this can result in the scanning host being blocked mid-assessment.\n\n=== NLA CHECK ===\nrdp-sec-check Perl script enumerates which security layers are supported (raw RDP, TLS, CredSSP/NLA). If only CredSSP required: pre-authentication credentials needed before any session-layer exploitation.",
+  "references": []
+}

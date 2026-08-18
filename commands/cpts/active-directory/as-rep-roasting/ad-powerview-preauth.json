@@ -1,0 +1,84 @@
+{
+  "id": "ad-powerview-preauth",
+  "name": "PowerView - Find AS-REP Roastable Accounts",
+  "command": "Get-DomainUser -PreauthNotRequired | select samaccountname,userprincipalname,useraccountcontrol",
+  "description": "Enumerates domain accounts with 'Do not require Kerberos preauthentication' set (UAC flag UF_DONT_REQUIRE_PREAUTH=4194304). These accounts are AS-REP roastable — their TGT response is encrypted with their NT hash and can be requested without credentials. Run this before Rubeus asreproast to identify targets.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "AS-REP Roasting",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "as-rep-roasting",
+    "powerview",
+    "enumeration",
+    "kerberos",
+    "uac"
+  ],
+  "mitre": [
+    "T1558.004"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY ENUMERATE BEFORE ROASTING ===\nBlind AS-REP roasting (try every user) creates more Kerberos traffic and noise.\nEnumerating vulnerable accounts first lets you:\n  1. Understand scope (how many accounts are misconfigured)\n  2. Target high-value accounts specifically (service accounts, admins)\n  3. Know what you're cracking before you start\n\n=== UAC FLAG: UF_DONT_REQUIRE_PREAUTH ===\nuseraccountcontrol value includes 4194304 (0x400000) when pre-auth is disabled.\nPowerView's -PreauthNotRequired filter handles this for you — no manual UAC math needed.\n\n=== OUTPUT TO LOOK FOR ===\n  samaccountname    userprincipalname          useraccountcontrol\n  mmorgan           mmorgan@INLANEFREIGHT.LOCAL 4194304\nAny account listed here is immediately roastable.\n\nHigh-value targets to check:\n  - Service accounts (svc-*, sqlsvc, etc.) — often have weak passwords\n  - Admin-looking accounts — if crackable = direct privilege escalation\n  - Regular user accounts — weaker passwords but lower privilege\n\n=== BLOODHOUND ALTERNATIVE ===\nBloodHound also shows AS-REP roastable accounts:\n  Node: User → Properties → 'AS-REP Roastable: True'\n  Pre-built query: 'List all AS-REP Roastable Accounts'\n\n=== CROSS-FOREST ===\nAS-REP roasting can work across forest trusts if pre-auth is disabled on\naccounts in a trusted forest. Check foreign forests too if trust exists.\n\n=== CHAIN ===\nThis card (enumerate) → ad-rubeus-asrep (request + crack) → lateral movement",
+  "examples": [
+    {
+      "label": "Find all AS-REP roastable accounts",
+      "command": "Get-DomainUser -PreauthNotRequired | select samaccountname,userprincipalname,useraccountcontrol"
+    },
+    {
+      "label": "Get just the usernames",
+      "command": "Get-DomainUser -PreauthNotRequired | select samaccountname"
+    },
+    {
+      "label": "Check a specific account's UAC flags",
+      "command": "Get-DomainUser mmorgan | select samaccountname,useraccountcontrol"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-rubeus-asrep",
+      "note": "Roast the identified accounts.",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "PowerView finds accounts with 'Do not require Kerberos preauthentication' set (userAccountControl bit) - the AS-REP roasting targets - via LDAP.",
+    "prerequisites": "Valid domain credentials and PowerView.",
+    "impact": "The list of AS-REP roastable accounts.",
+    "detection": "[MITRE T1558.004] LDAP query on userAccountControl for DONT_REQUIRE_PREAUTH (4662); PowerView in 4104 logs.",
+    "artifacts": "LDAP UAC query; the no-preauth account list.",
+    "prevention": "Enable Kerberos pre-authentication (disable only when truly required); enforce 25+ character passwords for any account that must have it off; quarterly review of no-preauth accounts; Defender for Identity detects AS-REP roasting.",
+    "evasion": "A single scoped LDAP read blends; no 4768 generated at this step.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.004"
+    ],
+    "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash — without demanding proof of identity first.",
+    "vulnerable_config": "# Active Directory user account attribute (via ADUC or ADSI Edit)\n# 'Do not require Kerberos preauthentication' = CHECKED\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $true\n\n# UAC flag value: 0x400000 (4194304)\n# Confirmed with:\nGet-ADUser svc_backup -Properties DoesNotRequirePreAuth",
+    "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix — find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

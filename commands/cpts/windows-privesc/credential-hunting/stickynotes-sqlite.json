@@ -1,0 +1,92 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell",
+    "pssqlite",
+    "strings"
+  ],
+  "tags": [
+    "stickynotes",
+    "sqlite",
+    "credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Point PSSQLite at the plum.sqlite DB",
+      "command": "$db = 'C:\\Users\\htb-student\\AppData\\Local\\Packages\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\\LocalState\\plum.sqlite'"
+    },
+    {
+      "label": "Query the Note table",
+      "command": "Import-Module .\\PSSQLite.psd1\nInvoke-SqliteQuery -Database $db -Query \"SELECT Text FROM Note\" | ft -wrap"
+    },
+    {
+      "label": "strings the WAL file as a fallback",
+      "command": "strings plum.sqlite-wal"
+    }
+  ],
+  "notes": "=== Sticky Notes SQLite — Password in Desktop Notes ===\nWindows StickyNotes stores all notes in a SQLite database — users commonly paste passwords there.\n\n=== TECHNICAL DETAILS ===\nStickyNotes is a UWP app — stores notes in SQLite, NOT plaintext files\nDatabase path: C:\\Users\\<user>\\AppData\\Local\\Packages\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\\LocalState\\plum.sqlite\n\nThree files REQUIRED for complete database (must copy all three):\n  plum.sqlite      → main database\n  plum.sqlite-shm  → shared memory file (index)\n  plum.sqlite-wal  → write-ahead log (CONTAINS RECENT UNCOMMITTED WRITES — critical to include)\n\n=== ATTACK FLOW ===\nMethod 1: Query directly on target with PSSQLite module\n  Import-Module PSSQLite\n  $conn = New-SQLiteConnection -DataSource C:\\Users\\<user>\\...\\plum.sqlite\n  Invoke-SqliteQuery -SQLiteConnection $conn -Query \"SELECT Text FROM Note WHERE IsDeleted = 0\"\n\nMethod 2: Copy to attack host + GUI browser\n  Copy all three files → open plum.sqlite in DB Browser for SQLite\n  Browse Notes table, Text column\n\nMethod 3: Fast string extraction (no SQLite tooling needed)\n  strings plum.sqlite-wal | grep -i \"password\\|pass\\|cred\"\n  strings plum.sqlite | grep -i \"password\\|pass\\|cred\"\n  (Extracts readable text from binary file — often sufficient to find credential content)\n\n=== WHY USERS STORE PASSWORDS IN STICKY NOTES ===\nUsers treat the desktop UI as a private scratepad\nNo understanding that a SQLite database is the backend\n\"Private\" appearance leads to false sense of security\nIT admins store temporary passwords, change tickets, credentials they're \"just keeping for now\"\n\n=== CHAINING CONTEXT ===\nStickyNotes → plaintext passwords for VPN, servers, applications → lateral movement\nIT admin sticky notes → may have recently reset passwords, admin credentials, or temp codes\nSweep after each new user account compromise — each user has their own database\nAfter local admin escalation → access other users' sticky notes databases from their AppData\n\n=== WHAT TO LOOK FOR ===\nMicrosoft.MicrosoftStickyNotes package directory in any user's AppData = check always\nplum.sqlite-wal most important: contains recent writes not yet committed to main database\nIsDeleted = 0 filter in SQL query to exclude deleted notes (they remain in DB until vacuumed)",
+  "references": [
+    {
+      "title": "PSSQLite (RamblingCookieMonster)",
+      "url": "https://github.com/RamblingCookieMonster/PSSQLite"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting-findstr",
+      "note": "Broader on-disk credential hunting.",
+      "rel": "alternative"
+    },
+    {
+      "id": "powershell-clixml-decrypt",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "stickynotes-sqlite",
+  "name": "Credential Hunting - Sticky Notes Database",
+  "command": "Invoke-SqliteQuery -Database $db -Query \"SELECT Text FROM Note\" | ft -wrap",
+  "description": "Windows Sticky Notes stores content in a plum.sqlite DB that users often use for passwords. Query it with PSSQLite, or just run strings on the -wal file.",
+  "opsec": "loud",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Windows Sticky Notes stores all note content in a SQLite database (plum.sqlite) in the user's AppData. Users sometimes write credentials, server passwords, or sensitive information in Sticky Notes for quick access. The database is readable by the user running the session and can be queried with PowerShell's PSSQLite module or parsed with strings.",
+    "prerequisites": "Shell access as the target user. SQLite database file accessible at the known path. PSSQLite module or strings utility available.",
+    "impact": "Discovery of credentials or sensitive information stored in Sticky Notes by the compromised user — may include passwords, encryption keys, or account information.",
+    "detection": "SQLite query on plum.sqlite by non-Sticky-Notes process. strings command against plum.sqlite-wal. Unusual file access to Microsoft.MicrosoftStickyNotes LocalState directory.",
+    "artifacts": "File access: plum.sqlite read by non-StickyNotes process | Process: Invoke-SqliteQuery against plum.sqlite | strings output containing credential keywords",
+    "prevention": "Educate users never to store credentials in Sticky Notes. Deploy DLP policies alerting on credential patterns stored in Sticky Notes. Encrypt or restrict the LocalState directory. Use a dedicated password manager instead.",
+    "misconfiguration": "Users store passwords in Sticky Notes for convenience (e.g., 'SQL server: sa / P@ssw0rd!'). No DLP policy scanning Sticky Notes content for credential patterns.",
+    "vulnerable_config": "# Sticky Notes SQLite contains credentials:\n$db = 'C:\\Users\\htb-student\\AppData\\Local\\Packages\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\\LocalState\\plum.sqlite'\nInvoke-SqliteQuery -Database $db -Query 'SELECT Text FROM Note'\n# Output: Note text with embedded passwords",
+    "secure_config": "# User education: never store credentials in Sticky Notes\n# Deploy DLP solution scanning for credential patterns\n\n# Technical: restrict LocalState directory\nicacls 'C:\\Users\\%username%\\AppData\\Local\\Packages\\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe\\LocalState' /inheritance:r /grant '%username%:(OI)(CI)F'\n\n# Enterprise: enforce use of approved password manager only",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552",
+      "MITRE T1083"
+    ]
+  }
+}

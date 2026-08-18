@@ -1,0 +1,61 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "showmount"
+  ],
+  "tags": [
+    "nfs",
+    "reference",
+    "misconfig"
+  ],
+  "category": "Enumeration",
+  "subcategory": "NFS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Show exported shares and options",
+      "command": "cat /etc/exports"
+    },
+    {
+      "label": "Verify configured exports on the NFS server",
+      "command": "exportfs"
+    }
+  ],
+  "notes": "Config: /etc/exports\nPorts: 111/tcp+udp (rpcbind), 2049/tcp+udp (NFS)\nDangerous export options: rw, insecure, nohide, no_root_squash (keeps root -> SUID abuse)\nFiles worth grabbing: id_rsa, *.priv keys, backup.sh, nfs.share",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nfs-enum",
+      "note": "Enumerate NFS exports, mount and inspect contents",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-nfs-config",
+  "name": "Reference - NFS Ports & Dangerous Settings",
+  "command": "cat /etc/exports",
+  "description": "NFS export config, ports, and the export options that enable SUID abuse / privilege escalation.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1210"
+  ]
+}

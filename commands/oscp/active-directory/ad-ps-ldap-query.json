@@ -1,0 +1,84 @@
+{
+  "id": "ad-ps-ldap-query",
+  "name": "AD Enumeration - PowerShell .NET DirectorySearcher",
+  "command": "$PDC = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().PdcRoleOwner.Name\n$DN  = ([adsi]'').distinguishedName\n$LDAP = \"LDAP://$PDC/$DN\"\n$direntry    = New-Object System.DirectoryServices.DirectoryEntry($LDAP)\n$dirsearcher = New-Object System.DirectoryServices.DirectorySearcher($direntry)\n$dirsearcher.filter = \"(samAccountType=805306368)\"\n$dirsearcher.FindAll()",
+  "description": "Manual PowerShell approach to AD enumeration using built-in .NET DirectoryServices classes — no external tooling needed. Constructs an LDAP path from the PDC emulator and domain distinguished name, then runs an LDAP filter query through DirectorySearcher. Useful when PowerView or SharpHound are blocked or unavailable. OSCP PEN-200 teaches this as the foundational technique before introducing PowerView.",
+  "type": "script",
+  "platform": "windows",
+  "requires": [
+    "domain-joined"
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "active-directory",
+    "ad-enum",
+    "ldap",
+    "powershell",
+    "net-classes",
+    "directoryservices"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Active Directory",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 21: Active Directory Introduction and Enumeration (21.2.2-21.2.3)",
+  "examples": [
+    {
+      "label": "Quick one-liner: get distinguished name of current domain",
+      "command": "([adsi]'').distinguishedName"
+    },
+    {
+      "label": "Build the LDAP path manually",
+      "command": "$PDC = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().PdcRoleOwner.Name\n$DN = ([adsi]'').distinguishedName\n\"LDAP://$PDC/$DN\""
+    },
+    {
+      "label": "Enumerate all user objects (samAccountType=805306368)",
+      "command": "$dirsearcher.filter = \"(samAccountType=805306368)\"\n$dirsearcher.FindAll() | ForEach-Object { $_.Properties }"
+    },
+    {
+      "label": "Enumerate all groups",
+      "command": "$dirsearcher.filter = \"(objectclass=group)\"\n$dirsearcher.FindAll() | ForEach-Object { $_.Properties.cn }"
+    },
+    {
+      "label": "Reusable LDAPSearch function (import once, call repeatedly)",
+      "command": "function LDAPSearch {\n    param([string]$LDAPQuery)\n    $PDC = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().PdcRoleOwner.Name\n    $DN  = ([adsi]'').distinguishedName\n    $direntry    = New-Object System.DirectoryServices.DirectoryEntry(\"LDAP://$PDC/$DN\")\n    $dirsearcher = New-Object System.DirectoryServices.DirectorySearcher($direntry)\n    $dirsearcher.filter = $LDAPQuery\n    $dirsearcher.FindAll()\n}\n# Usage:\nLDAPSearch -LDAPQuery \"(samAccountType=805306368)\"  # users\nLDAPSearch -LDAPQuery \"(objectclass=group)\"          # groups\nLDAPSearch -LDAPQuery \"(&(objectCategory=group)(cn=Sales Department))\"  # specific group"
+    },
+    {
+      "label": "List all members of a specific group (nested)",
+      "command": "foreach ($group in $(LDAPSearch -LDAPQuery \"(objectCategory=group)\")) {\n    $group.properties | Select-Object @{n='Group';e={$_.cn}}, @{n='Members';e={$_.member}}\n}"
+    }
+  ],
+  "notes": "samAccountType=805306368 (0x30000000) is the filter for normal user accounts. Common LDAP filters: (objectclass=group) for groups; (objectCategory=computer) for computers; (&(objectCategory=person)(objectClass=user)) for users with Person category. The PDC emulator is used because it holds the most up-to-date information. Run from any domain-joined Windows host — no admin rights needed for basic enumeration. PowerShell execution policy: bypass with 'powershell -ep bypass' if needed. This technique is AV-friendly since it uses built-in .NET classes.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Active Directory Introduction and Enumeration",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MSDN - System.DirectoryServices.DirectorySearcher",
+      "url": "https://learn.microsoft.com/en-us/dotnet/api/system.directoryservices.directorysearcher"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-powerview-import",
+      "rel": "next",
+      "note": "PowerView wraps this pattern into convenient cmdlets — use after understanding the .NET approach."
+    },
+    {
+      "id": "ad-powerview-domainuser",
+      "rel": "alternative",
+      "note": "Get-DomainUser/Get-NetUser is the PowerView equivalent of the user LDAP filter."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1087.002",
+    "T1069.002"
+  ],
+  "exam": "exam-ok"
+}

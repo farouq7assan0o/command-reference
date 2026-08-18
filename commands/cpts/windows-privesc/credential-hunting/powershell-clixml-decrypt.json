@@ -1,0 +1,85 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "dpapi",
+    "clixml",
+    "credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Import the saved credential object",
+      "command": "$credential = Import-Clixml -Path 'C:\\scripts\\pass.xml'"
+    },
+    {
+      "label": "Recover the username",
+      "command": "$credential.GetNetworkCredential().username"
+    },
+    {
+      "label": "Recover the plaintext password",
+      "command": "$credential.GetNetworkCredential().password"
+    }
+  ],
+  "notes": "=== PowerShell CLIXML — DPAPI-Protected Credential Decryption ===\nExport-Clixml stores PSCredential objects encrypted with DPAPI — decrypt in the owning user's context.\n\n=== HOW CLIXML CREDENTIALS WORK ===\nExport-Clixml saves a PSCredential as an XML file with the password encrypted via DPAPI.\nDPAPI ties encryption to: current user's Windows credentials + current machine.\nThe file can ONLY be decrypted by the same user account on the same machine where it was created.\nCommon use: admin scripts automating connections to vCenter, SQL, WinRM, cloud platforms.\n\n=== DECRYPTION (after gaining code execution as the owning user) ===\n$cred = Import-Clixml -Path C:\\scripts\\svc_cred.xml\n$cred.UserName\n$cred.GetNetworkCredential().Password\n\nSingle-line:\n  (Import-Clixml C:\\scripts\\pass.xml).GetNetworkCredential().Password\n\n=== FINDING CLIXML FILES ===\nGet-ChildItem -Path C:\\ -Recurse -Include *.xml -ErrorAction SilentlyContinue | Select-String \"PSCredential\" | Select-Object Filename\nfindstr /SIM /C:\"PSCredential\" *.xml\n\nCommon storage locations:\n  C:\\scripts\\*, C:\\tools\\*, C:\\Windows\\System32\\WindowsPowerShell\\*, scheduled task directories\n\n=== IDENTIFYING THE OWNING USER ===\nGet-Acl <file.xml> | Select-Object Owner  → shows who created/owns the file\nThe DPAPI key is specific to the creator's account — need their session to decrypt\nIf already running as that user → decrypt immediately\nIf not → need to impersonate them (token theft after LSASS dump)\n\n=== CHAINING CONTEXT ===\nFound pass.xml owned by svc_backup → need svc_backup session to decrypt\nLSASS dump → svc_backup hash → pass-the-hash → code exec as svc_backup → decrypt XML\nPSCredential for vCenter → credentials for VMware infrastructure → clone DC VMs\nPSCredential for SQL → xp_cmdshell → SYSTEM on SQL server → lateral movement\n\n=== WHAT TO LOOK FOR ===\n*.xml files containing <SS SS=\"\" N=\"Password\"> or PSCredential pattern\nAdmin scripts in C:\\scripts\\ or task scheduler directories\nService accounts that run automated scripts — their credentials are often stored as CLIXML\nDPAPI master key theft (via Mimikatz dpapi::masterkey) can bypass the user-context requirement",
+  "references": [
+    {
+      "title": "Microsoft - DPAPI",
+      "url": "https://learn.microsoft.com/en-us/dotnet/standard/security/how-to-use-data-protection"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "powershell-history",
+      "note": "History often shows where the pass.xml lives.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "powershell-clixml-decrypt",
+  "name": "Credential Hunting - Decrypt Export-Clixml Secrets",
+  "command": "$c = Import-Clixml -Path '<pass.xml>'; $c.GetNetworkCredential().Password",
+  "description": "PSCredential objects saved with Export-Clixml are DPAPI-encrypted to the saving user. Running as that user, import the file and read the plaintext username/password.",
+  "opsec": "loud",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "PowerShell's Export-Clixml encrypts credentials using DPAPI with the current user's Windows identity as the key. The encrypted credential can only be decrypted by the same user on the same (or domain-joined equivalent) machine via Import-Clixml. An attacker running as the same user can call GetNetworkCredential().Password to decrypt and retrieve the plaintext password.",
+    "prerequisites": "Running as the same user who created the credential export. Access to the .xml credential file (commonly in script directories or SYSVOL). PowerShell execution.",
+    "impact": "Plaintext recovery of credentials stored in DPAPI-encrypted PowerShell export files, enabling authentication as the service account or administrator whose credential was exported.",
+    "detection": "Import-Clixml followed by GetNetworkCredential().Password in PowerShell transcript logs. Unusual PowerShell script execution. SIEM: detection of Get-Credential / Export-Clixml / Import-Clixml patterns in scripts accessible to broad audiences.",
+    "artifacts": "PowerShell transcript: Import-Clixml and GetNetworkCredential calls | Script file containing the decryption pattern | Audit: .xml credential file access",
+    "prevention": "Do not store DPAPI-encrypted credentials in scripts on shared drives (SYSVOL, network shares) — they are decryptable by anyone running as that user. Use managed identities (Azure MSI), service principals with certificate auth, or secrets managers (HashiCorp Vault). Restrict script directories.",
+    "misconfiguration": "IT scripts store credential XML files in SYSVOL or shared network paths accessible to other domain users. Script decrypts DPAPI-protected credential and uses it inline, meaning any user who can run the script as the target user recovers the password.",
+    "vulnerable_config": "# Vulnerable script pattern:\n$encryptedPassword = Import-Clixml -Path 'C:\\scripts\\pass.xml'\n$decryptedPassword = $encryptedPassword.GetNetworkCredential().Password\n# If attacker runs this as the user who exported it: plaintext recovered",
+    "secure_config": "# Replace DPAPI credential exports with managed identities or secret stores\n# Azure: Use Managed Identity / Key Vault references\n# On-prem: Use Windows GMSA (Group Managed Service Accounts)\nNew-ADServiceAccount -Name gMSASvc -DNSHostName dc01.inlanefreight.local\n\n# If DPAPI export required: restrict access to script dir\nicacls C:\\scripts /inheritance:r /grant 'CREATOR OWNER:(OI)(CI)F'",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552.001",
+      "MITRE T1555"
+    ]
+  }
+}

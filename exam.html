@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPTS Exam Mode - Battle Station</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/exam.css">
+    <link rel="stylesheet" href="css/icons.css">
+</head>
+<body class="exam-body">
+    <header id="examHeader">
+        <div class="eh-left">
+            <i class="fas fa-crosshairs"></i>
+            <div>
+                <h1>Exam Mode</h1>
+                <span id="examSub">CPTS Battle Station</span>
+            </div>
+        </div>
+        <nav id="examTabs">
+            <button class="tab active" data-tab="playbook"><i class="fas fa-list-check"></i> Playbook</button>
+            <button class="tab" data-tab="hosts"><i class="fas fa-server"></i> Hosts <span class="badge" id="hostsBadge">0</span></button>
+            <button class="tab" data-tab="findings"><i class="fas fa-flag"></i> Findings <span class="badge" id="findingsBadge">0</span></button>
+            <button class="tab" data-tab="path"><i class="fas fa-route"></i> Attack Path <span class="badge" id="pathBadge">0</span></button>
+            <button class="tab" data-tab="report"><i class="fas fa-file-export"></i> Report</button>
+        </nav>
+        <a class="eh-link" href="index.html"><i class="fas fa-book"></i> Full Library</a>
+    </header>
+
+    <!-- Global variable bar -->
+    <div id="varBar">
+        <div class="vb-title"><i class="fas fa-sliders"></i> Engagement Variables <span class="vb-hint">set once - fills every command</span></div>
+        <div class="vb-fields" id="vbFields"></div>
+        <div class="vb-actions">
+            <button id="clearVars" class="ghost-btn"><i class="fas fa-eraser"></i> Clear</button>
+        </div>
+    </div>
+
+    <main id="examMain">
+        <!-- PLAYBOOK -->
+        <section class="pane active" id="pane-playbook">
+            <div class="pane-toolbar">
+                <input type="text" id="pbSearch" placeholder="Filter commands in playbook...">
+                <label class="chk-inline"><input type="checkbox" id="hidePriv"> Hide root/admin-only</label>
+                <button id="expandAll" class="ghost-btn"><i class="fas fa-angles-down"></i> Expand all</button>
+                <button id="collapseAll" class="ghost-btn"><i class="fas fa-angles-up"></i> Collapse all</button>
+            </div>
+            <div id="phases"></div>
+        </section>
+
+        <!-- HOSTS -->
+        <section class="pane" id="pane-hosts">
+            <div class="pane-toolbar">
+                <h2>Host / Credential Tracker</h2>
+                <button id="addHost" class="primary-btn"><i class="fas fa-plus"></i> Add host</button>
+            </div>
+            <div class="table-wrap">
+                <table id="hostsTable">
+                    <thead><tr>
+                        <th>IP</th><th>Hostname</th><th>OS</th><th>Creds found</th>
+                        <th>Access</th><th>Pivots to</th><th>Notes</th><th></th>
+                    </tr></thead>
+                    <tbody id="hostsBody"></tbody>
+                </table>
+            </div>
+            <p class="empty-note" id="hostsEmpty">No hosts yet. Add one the moment you find a live target.</p>
+        </section>
+
+        <!-- FINDINGS -->
+        <section class="pane" id="pane-findings">
+            <div class="pane-toolbar">
+                <h2>Findings Log</h2>
+                <button id="addFinding" class="primary-btn"><i class="fas fa-plus"></i> Add finding</button>
+            </div>
+            <div id="findingsList"></div>
+            <p class="empty-note" id="findingsEmpty">No findings yet. Log every one the moment you get it - do not batch at the end.</p>
+        </section>
+
+        <!-- ATTACK PATH -->
+        <section class="pane" id="pane-path">
+            <div class="pane-toolbar">
+                <h2>Attack Path Narrative</h2>
+                <button id="addStep" class="primary-btn"><i class="fas fa-plus"></i> Add step</button>
+            </div>
+            <div id="pathList"></div>
+            <p class="empty-note" id="pathEmpty">No steps yet. Append each pivot: from &lt;host/access&gt; via &lt;technique&gt; to &lt;host/access&gt;.</p>
+        </section>
+
+        <!-- REPORT -->
+        <section class="pane" id="pane-report">
+            <div class="pane-toolbar">
+                <h2>Report Export</h2>
+                <div>
+                    <button id="copyReport" class="ghost-btn"><i class="fas fa-copy"></i> Copy markdown</button>
+                    <button id="downloadReport" class="primary-btn"><i class="fas fa-download"></i> Download .md</button>
+                </div>
+            </div>
+            <div class="report-meta">
+                <label>Engagement / client name <input type="text" id="engName" placeholder="e.g. Inlanefreight CPTS Exam"></label>
+                <label>Tester <input type="text" id="engTester" placeholder="Your name"></label>
+            </div>
+            <pre id="reportPreview" class="report-preview"></pre>
+        </section>
+    </main>
+
+    <div id="toast" class="toast"></div>
+
+    <!-- Shared data layer with the main library -->
+    <script src="js/commands.js"></script>
+    <script src="js/vars.js"></script>
+    <script src="js/exam.js"></script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+{
+  "id": "dism-enable-telnet",
+  "name": "Windows - Enable Telnet Client via DISM",
+  "command": "dism /online /Enable-Feature /FeatureName:TelnetClient",
+  "description": "Installs the Windows optional TelnetClient feature on a live system using DISM (Deployment Image Servicing and Management). Enables use of telnet for banner grabbing and manual protocol interaction (e.g. SMTP VRFY) from a Windows foothold without installing third-party tools.",
+  "type": "command",
+  "platform": "windows",
+  "requires": ["local-admin"],
+  "tools": ["dism"],
+  "tags": ["dism", "telnet", "windows", "lolbas", "setup", "smtp", "banner-grab"],
+  "category": "Utilities",
+  "subcategory": "Windows Configuration",
+  "certifications": ["OSCP"],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 Chapter 06: Information Gathering",
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1046"
+  ],
+  "variations": [
+    {
+      "label": "Enable TelnetClient (requires admin)",
+      "command": "dism /online /Enable-Feature /FeatureName:TelnetClient"
+    },
+    {
+      "label": "Check if TelnetClient is already installed",
+      "command": "dism /online /Get-Features | findstr /i telnet"
+    },
+    {
+      "label": "Enable via PowerShell (alternative)",
+      "command": "Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Install TelnetClient then banner-grab SMTP on 192.168.50.8",
+      "command": "dism /online /Enable-Feature /FeatureName:TelnetClient"
+    },
+    {
+      "label": "Use telnet after install to interact with SMTP",
+      "command": "telnet 192.168.50.8 25"
+    }
+  ],
+  "notes": "Requires Administrator (UAC-elevated) CMD or PowerShell. Usually completes in seconds — no reboot required for TelnetClient. Once installed, use: telnet <ip> <port>. Interact manually: type commands, press Enter. Ctrl+] to open telnet prompt, then q to quit. For SMTP: connect, type VRFY <user> or EHLO <domain>. No cleanup needed unless restoring original system state: dism /online /Disable-Feature /FeatureName:TelnetClient.",
+  "recommended": [
+    {
+      "id": "smtp-enum",
+      "rel": "next",
+      "note": "Use telnet to run VRFY/EXPN commands against SMTP after TelnetClient is installed."
+    },
+    {
+      "id": "smtp-vrfy-python",
+      "rel": "alternative",
+      "note": "Python SMTP VRFY script — automates user enumeration without needing TelnetClient."
+    }
+  ],
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "Microsoft - DISM Feature Commands",
+      "url": "https://learn.microsoft.com/en-us/windows-hardware/manufacture/desktop/dism-operating-system-package-servicing-command-line-options"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Local administrator privileges on the Windows foothold. Internet or WSUS access may be required to download the feature payload if not cached locally.",
+    "why_it_works": "DISM is a Windows signed utility for managing Windows Features and images. /online targets the running OS (as opposed to an offline WIM). The TelnetClient optional feature is distributed as part of Windows but disabled by default. Enabling it installs telnet.exe in system32 without requiring a restart.",
+    "misconfiguration": "Local administrator credentials on a non-privileged host. Windows optional features enabled without WSUS/SCCM control, allowing arbitrary feature installation.",
+    "impact": "Gives the attacker an interactive TCP/UDP client for banner grabbing, manual protocol interaction, and port testing — useful when ncat/nc are blocked by AV but the Windows signing of telnet.exe avoids detection.",
+    "detection": "Event 4688 (process creation): dism.exe with /Enable-Feature arguments. Windows Application Event Log: Feature installation events. PowerShell module logging if the PowerShell variant is used.",
+    "artifacts": "telnet.exe appears in C:\\Windows\\System32\\. DISM logs written to C:\\Windows\\Logs\\DISM\\dism.log. Windows Application log: FeatureConfiguration event.",
+    "prevention": "Restrict DISM execution via AppLocker (block dism.exe for non-admin users, or require admin confirmation). Monitor Event 4688 for dism.exe /Enable-Feature invocations. Use WSUS to control which optional features can be installed.",
+    "evasion": "dism.exe is a signed Microsoft binary — AV/EDR usually allow it. Feature installation generates a log entry but no network connection unless fetching from Windows Update. Running in an elevated CMD session (rather than PowerShell) avoids PowerShell transcript logging.",
+    "sources": ["PEN-200 Ch 6", "MS Docs"]
+  }
+}

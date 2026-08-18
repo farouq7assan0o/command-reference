@@ -1,0 +1,81 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "credential-hunting",
+    "description"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Local user accounts and their descriptions",
+      "command": "Get-LocalUser"
+    },
+    {
+      "label": "Computer/OS description field",
+      "command": "Get-WmiObject -Class Win32_OperatingSystem | select Description"
+    }
+  ],
+  "notes": "=== User/Computer Description Field Credentials ===\nAdministrators misuse Description fields to store passwords — readable by all domain users.\n\n=== WHY THIS HAPPENS ===\nActive Directory Description field designed for administrative notes\nAdmins paste temporary passwords, notes, or reminders there for convenience\nNo understanding that ALL domain users can read this field by default\nCommon patterns: \"Temp password: P@ssw0rd!\", \"Default pass: Welcome1\", \"Setup: Admin123\"\n\n=== COMMANDS ===\nLocal user description fields:\n  Get-LocalUser | Select Name,Description,Enabled\n\nComputer object description:\n  Get-WmiObject -Class Win32_OperatingSystem | Select Description\n  Get-ADComputer -Filter * -Properties Description | Select Name,Description\n\nDomain user description fields:\n  Get-ADUser -Filter * -Properties Description | Where-Object {$_.Description} | Select Name,Description\n\nPowerView equivalent:\n  Get-DomainUser -Properties description | Select samaccountname,description | Where-Object {$_.description}\n  Get-DomainComputer -Properties description | Select name,description | Where-Object {$_.description}\n\n=== OPERATIONAL NOTES ===\nEntire field is readable without authentication to local system — only need domain user access\nTakes less than 10 seconds to check — always run during initial enumeration\nFindings are immediate: no cracking, no exploitation chain needed\n\n=== CHAINING CONTEXT ===\nDescription field → plaintext password → immediate credential use → lateral movement\nComputer description → may contain service account credentials or admin notes\nService account description fields → sometimes contain passwords set by vendor documentation\nAfter obtaining domain user credentials → immediately sweep all description fields via LDAP\n\n=== WHAT TO LOOK FOR ===\nAny non-empty Description field on user or computer objects\nService accounts: description fields often set by vendors with default credential info\nComputer objects: description may contain location, build info, and sometimes login credentials\nGuest accounts and disabled accounts: may have plaintext passwords in description from initial setup",
+  "references": [
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting-findstr",
+      "note": "Broader on-disk credential hunting.",
+      "rel": "alternative"
+    },
+    {
+      "id": "powershell-clixml-decrypt",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "creds-description-fields",
+  "name": "Credential Hunting - User & Computer Description Fields",
+  "command": "Get-LocalUser",
+  "description": "Admins sometimes store passwords in the local-user or computer Description field. Quick to check and occasionally a free credential.",
+  "opsec": "loud",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "AD user account description fields are readable by all authenticated domain users. Administrators sometimes store temporary passwords, account notes, or service account credentials in description fields for convenience. These are exposed via Get-LocalUser, Get-ADUser, or net user.",
+    "prerequisites": "Any authenticated domain or local account. LDAP query or net user access to enumerate account descriptions.",
+    "impact": "Plaintext credential discovery from AD description fields, enabling account takeover or privilege escalation if an admin password or service account password is stored there.",
+    "detection": "Mass LDAP query of user objects' description attribute. Get-ADUser -Filter * -Properties Description executed by standard user. SIEM: large LDAP query patterns suggesting AD enumeration.",
+    "artifacts": "LDAP query log: attribute read on description field | Process log: Get-LocalUser / Get-ADUser executed by non-admin",
+    "prevention": "Audit all AD user description fields for credential data. Never store passwords in description fields — use a secrets manager. Implement AD attribute auditing. Regular Active Directory hygiene checks.",
+    "misconfiguration": "Help desk or admin sets a temporary password in a user account's description field and forgets to clear it. Service accounts have their passwords documented in description for convenience.",
+    "vulnerable_config": "# AD user description contains password:\nGet-ADUser -Filter * -Properties Description | select Name,Description\n# Output: svc_backup | AdminPass2024!\n\n# Local users:\nGet-LocalUser | select Name,Description",
+    "secure_config": "# Audit description fields\nGet-ADUser -Filter * -Properties Description | Where-Object {$_.Description -match 'pass|pwd|cred'}\n\n# Clear credential data from description fields\nSet-ADUser -Identity svc_backup -Description ''\n\n# Use LAPS or PAM for privileged account credentials\n# Implement AD attribute auditing policy",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552",
+      "MITRE T1087.002"
+    ]
+  }
+}

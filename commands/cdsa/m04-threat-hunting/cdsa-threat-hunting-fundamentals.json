@@ -1,0 +1,56 @@
+{
+  "id": "cdsa-threat-hunting-fundamentals",
+  "name": "Threat Hunting - Methodology & Process",
+  "command": "# Hypothesis → Hunt → Validate → Document → Improve",
+  "description": "Structured threat hunting methodology used in SOC environments. Threat hunting is a proactive, human-led practice that searches for advanced threats evading automated detection. Covers the full hunting cycle, team roles, and integration with incident response.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Threat Hunting",
+  "subcategory": "Methodology",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 04: Introduction to Threat Hunting & Hunting With Elastic",
+  "tags": ["threat-hunting", "methodology", "soc", "hypothesis", "ttp", "blue-team"],
+  "notes": "=== Threat Hunting Definition ===\nProactive, human-led practice that systematically searches for stealthy advanced threats\nevading existing security solutions. Goal: reduce dwell time by detecting threats\nearly in the kill chain.\n\n=== 5-Phase Hunting Process ===\n1. Setting the Stage (Planning)\n   → Identify high-value assets (crown jewels)\n   → Research attacker TTPs from threat intel\n   → Enable logging (Sysmon, PowerShell, Zeek, Windows Events)\n   → Configure SIEM, EDR, IDS tools\n\n2. Formulating Hypotheses\n   → Based on: threat intel, industry alerts, tool alerts, intuition\n   → Must be testable and specific\n   → Example: 'Stuxbot delivers invoice.one phishing files via Gmail'\n\n3. Designing the Hunt\n   → Identify data sources: Windows logs, Sysmon, Zeek, PS logs\n   → Define KQL queries, correlation rules, IOC lists\n   → Select tools: SIEM (Kibana/Splunk), EDR, packet analyzers\n\n4. Data Gathering & Examination (active hunt)\n   → Execute queries against data sources\n   → Analyze results: confirm or refute hypothesis\n   → Pivot on new findings — iterative process\n   → Document evidence at each step\n\n5. After the Hunt\n   → Update threat intelligence platforms with new IOCs\n   → Improve SIEM detection rules based on findings\n   → Refine IR playbooks\n   → Communicate findings to SOC/CISO\n\n=== When to Hunt ===\n• New adversary or vulnerability intelligence disclosed\n• New IOCs linked to a known threat actor targeting your sector\n• Multiple simultaneous network anomalies detected\n• During active IR — hunt for lateral spread in parallel\n• Periodic proactive hunts (scheduled, ongoing)\n\n=== Team Roles ===\n• Threat Hunter — TTP expertise, executes hypotheses\n• Threat Intel Analyst — collects/analyzes feeds, OSINT\n• Incident Responder — containment/eradication once threat confirmed\n• Data Analyst/Scientist — statistical and ML-based analysis\n• Security Engineer — tunes tools, implements detections\n• SOC Manager — coordinates team, communicates upward\n\n=== Threat Intel Types ===\nStrategic   → high-level, for executives. Nation-state actors, industry risk.\nOperational → campaign details, attacker infrastructure, TTPs per attack.\nTactical    → IOCs: IPs, hashes, domains, registry keys, mutexes.\n\n=== Pyramid of Pain (IOC Prioritization) ===\n[Top]    TTPs             → hardest for attacker to change; best for detection\n         Tools            → specific binaries/RATs\n         Network Artefacts → C2 domains, JA3, User-Agents\n         Domain Names\n         IP Addresses\n[Base]   Hash Values      → trivial recompile defeats; least useful alone\n\n→ Push detections UP the pyramid. Hash-only = easily evaded.\n   TTP-based Sigma/YARA rules survive tool updates.",
+  "mitre": ["T1566", "T1059", "T1071", "T1078", "T1570"],
+  "examples": [
+    {
+      "label": "Stuxbot hypothesis — initial access via phishing",
+      "command": "# Hypothesis: Stuxbot delivered malicious invoice.one via Gmail → hunt for FileCreateStreamHash events"
+    },
+    {
+      "label": "Pivot approach — follow the process chain",
+      "command": "# Download → File create → OneNote opens → cmd.exe → powershell.exe → C2 → lateral movement"
+    },
+    {
+      "label": "Apply Pyramid of Pain — hunt TTP not just hash",
+      "command": "# Instead of: process.hash.sha256:<hash>\n# Prefer:     event.code:1 AND process.parent.name:ONENOTE.EXE (behavior-based)"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Introduction to Threat Hunting & Hunting With Elastic",
+      "url": "https://academy.hackthebox.com/module/details/214"
+    },
+    {
+      "title": "CISA - Emotet Malware Advisory",
+      "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/aa20-280a"
+    },
+    {
+      "title": "Pyramid of Pain (David Bianco)",
+      "url": "https://detect-respond.blogspot.com/2013/03/the-pyramid-of-pain.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-elastic-stuxbot-hunt",
+      "rel": "next",
+      "note": "Apply the methodology in a real Elastic hunt for Stuxbot malware."
+    },
+    {
+      "id": "cdsa-kql-fundamentals",
+      "rel": "prereq",
+      "note": "KQL syntax used to execute hunting queries in Kibana."
+    }
+  ]
+}

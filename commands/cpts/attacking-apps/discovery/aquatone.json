@@ -1,0 +1,83 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "aquatone"
+  ],
+  "tags": [
+    "discovery",
+    "screenshots"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Application Discovery",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Pipe the nmap XML into aquatone to screenshot + cluster hosts",
+      "command": "cat web_discovery.xml | ./aquatone -nmap"
+    }
+  ],
+  "notes": "Same idea as EyeWitness - it clusters visually similar pages, which quickly reveals templated login panels across many vhosts. Needs the Chromium/headless dependency present.",
+  "references": [
+    {
+      "title": "Aquatone (michenriksen)",
+      "url": "https://github.com/michenriksen/aquatone"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "app-discovery-nmap",
+      "note": "Produces the web_discovery.xml this consumes.",
+      "rel": "prereq"
+    },
+    {
+      "id": "eyewitness",
+      "note": "Alternative screenshot/report tool.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "aquatone",
+  "name": "Aquatone - Visual Web Inspection",
+  "command": "cat web_discovery.xml | ./aquatone -nmap",
+  "description": "Alternative screenshotting tool; ingests Nmap XML and builds an HTML report of every web host for quick visual triage.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Aquatone issues HTTP/HTTPS requests to a list of URLs and screenshots the rendered page, aggregating results into an HTML report enabling rapid visual identification of live web applications without manual browsing.",
+    "prerequisites": "A list of candidate URLs or subdomains. Network access to targets on HTTP/HTTPS ports.",
+    "impact": "Attacker visually surveys dozens of applications simultaneously, identifying login panels, default dashboards, and exposed management interfaces.",
+    "detection": "Single source IP makes sequential HTTP GET requests to many hosts/ports in a short window. Identical User-Agent string (aquatone) across many requests. IDS can alert on the Aquatone User-Agent signature.",
+    "artifacts": "Web server access logs (sequential HEAD/GET from one IP) | IDS alerts for reconnaissance User-Agent strings | DNS query logs showing mass subdomain resolution",
+    "prevention": "Block unauthenticated access to management endpoints via ACL. Require authentication before serving login pages to unrecognised IPs. Use WAF rules to block known recon tool User-Agents.",
+    "misconfiguration": "All web application management panels are publicly reachable with no authentication gate, enabling visual recon without any credentials.",
+    "vulnerable_config": "# AWS Security Group / firewall -- all inbound open\n# No access control on management paths\nresource \"aws_security_group_rule\" \"allow_all\" {\n  type        = \"ingress\"\n  from_port   = 0\n  to_port     = 65535\n  protocol    = \"-1\"\n  cidr_blocks = [\"0.0.0.0/0\"]\n}\n\n# nginx -- no auth on /admin, /api, management paths\nlocation /admin { proxy_pass http://backend; }\nlocation /api   { proxy_pass http://backend; }",
+    "secure_config": "# AWS Security Group -- restrict to known CIDR only\nresource \"aws_security_group_rule\" \"restrict_inbound\" {\n  type        = \"ingress\"\n  from_port   = 443\n  to_port     = 443\n  protocol    = \"tcp\"\n  cidr_blocks = [\"10.0.0.0/8\"]\n}\n\n# nginx -- auth + restrict management paths\nlocation /admin {\n  allow 10.0.0.0/8;\n  deny  all;\n  auth_basic \"Admin Area\";\n  auth_basic_user_file /etc/nginx/.htpasswd;\n  proxy_pass http://backend;\n}",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595"
+    ]
+  }
+}

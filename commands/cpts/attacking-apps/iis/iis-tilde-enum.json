@@ -1,0 +1,89 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "iis-shortname-scanner",
+    "gobuster"
+  ],
+  "tags": [
+    "iis",
+    "tilde",
+    "enumeration"
+  ],
+  "category": "Enumeration",
+  "subcategory": "IIS Tilde Enumeration",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Enumerate 8.3 short names via the tilde scanner",
+      "command": "java -jar iis_shortname_scanner.jar 0 5 http://10.129.204.231/"
+    },
+    {
+      "label": "Build a wordlist seeded from the leaked short name",
+      "command": "egrep -r ^transf /usr/share/wordlists/* | sed 's/^[^:]*://' > /tmp/list.txt"
+    },
+    {
+      "label": "Resolve full filenames with gobuster + extensions",
+      "command": "gobuster dir -u http://10.129.57.61/ -w /tmp/list.txt -x .aspx,.asp"
+    }
+  ],
+  "notes": "The tilde trick only leaks the first 6 chars of the 8.3 short name plus extension - you still have to brute the full name, which the generated wordlist + gobuster does. Works on unpatched IIS.",
+  "references": [
+    {
+      "title": "IIS-ShortName-Scanner (irsdl)",
+      "url": "https://github.com/irsdl/IIS-ShortName-Scanner"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "app-discovery-nmap",
+      "note": "Broader web-app port sweep that surfaces IIS.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "iis-tilde-enum",
+  "name": "IIS - Tilde (8.3 Short Name) Enumeration",
+  "command": "java -jar iis_shortname_scanner.jar 0 5 http://<ip>/",
+  "description": "Abuses IIS 8.3 short-name disclosure to recover the first 6 characters of files/dirs (e.g. TRANSF~1.ASP). Build a wordlist from the prefix and brute-force the full name with gobuster.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "IIS on Windows uses the legacy 8.3 short filename convention. When IIS generates 404 errors for tilde (~) shortname requests, it returns different response codes/lengths for valid vs invalid prefixes, enabling inference of hidden filenames and directories.",
+    "prerequisites": "IIS server with 8.3 filename generation enabled (NTFS default). Publicly accessible HTTP/HTTPS. No WAF filtering tilde-based requests.",
+    "impact": "Reveals hidden files and directories: backup files, administrative scripts, upload directories, API endpoints not linked in the web application.",
+    "detection": "HTTP requests containing '~1' or '~' followed by digits in URL paths. IIS access log showing 404 variations for tilde paths at high rate.",
+    "artifacts": "IIS access log (tilde enumeration, varying response sizes) | WAF alert for IIS scanner pattern",
+    "prevention": "Disable 8.3 filename generation: fsutil 8dot3name set 1. Configure IIS Request Filtering to block tilde characters in URLs.",
+    "misconfiguration": "IIS running on Windows with 8.3 filename generation enabled (NtfsDisable8dot3NameCreation = 0). No URL filtering to block tilde characters.",
+    "vulnerable_config": "# Windows -- 8.3 names enabled (default)\nfsutil 8dot3name query C:\n# NtfsDisable8dot3NameCreation = 0 (vulnerable)",
+    "secure_config": "# Disable 8.3 name creation\nfsutil 8dot3name set 1\n\n# IIS web.config -- block tilde\n<requestFiltering>\n  <denyUrlSequences>\n    <add sequence=\"~\" />\n  </denyUrlSequences>\n</requestFiltering>",
+    "sources": [
+      "HTB M24",
+      "MITRE T1083",
+      "OWASP A05:2021"
+    ]
+  }
+}

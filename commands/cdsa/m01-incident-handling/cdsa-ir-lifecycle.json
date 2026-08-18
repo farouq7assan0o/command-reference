@@ -1,0 +1,56 @@
+{
+  "id": "cdsa-ir-lifecycle",
+  "name": "Incident Response Lifecycle (4 Stages)",
+  "command": "# IR Lifecycle: Preparation → Detection & Analysis → Containment/Eradication/Recovery → Post-Incident Activity",
+  "description": "The four-stage incident handling process as defined by NIST SP 800-61. Each stage has clear objectives and feeds the next.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Incident Response",
+  "subcategory": "IR Process",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 01: Incident Handling Process",
+  "tags": ["methodology", "reference", "nist", "ir-process"],
+  "notes": "Stage 1 — Preparation: Build the capability to respond. Policies, playbooks, communication plans, jump bags, training, TheHive/SIEM setup.\nStage 2 — Detection & Analysis: Identify and validate incidents. Alert triage, log correlation, IOC extraction, severity classification, stakeholder notification.\nStage 3 — Containment/Eradication/Recovery: Limit damage (isolate hosts, block IPs, disable accounts), remove root cause (delete malware, patch), restore operations.\nStage 4 — Post-Incident Activity: Lessons learned meeting, root cause analysis, update playbooks, report to management, close case in TheHive.",
+  "mitre": ["T1595", "T1078", "T1190"],
+  "examples": [
+    {
+      "label": "Stage 1 — Preparation checklist",
+      "command": "# Verify: playbooks current, TheHive accessible, SIEM ingesting, jump bag stocked, contacts list updated"
+    },
+    {
+      "label": "Stage 2 — Initial triage questions",
+      "command": "# What triggered? When first seen? What assets affected? Any data accessed/exfiltrated? Severity?"
+    },
+    {
+      "label": "Stage 3 — Immediate containment steps",
+      "command": "# Isolate host → block C2 at firewall → disable compromised account → preserve forensic image"
+    },
+    {
+      "label": "Stage 4 — Post-incident checklist",
+      "command": "# Schedule lessons-learned meeting → document timeline → update detection rules → close TheHive case"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Incident Handling Process",
+      "url": "https://academy.hackthebox.com/module/details/148"
+    },
+    {
+      "title": "NIST SP 800-61 Rev 2 - Computer Security Incident Handling Guide",
+      "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-61r2.pdf"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-thehive-platform",
+      "rel": "next",
+      "note": "TheHive for case management throughout the IR lifecycle."
+    },
+    {
+      "id": "cdsa-incident-categories",
+      "rel": "next",
+      "note": "Classify the incident type during Detection & Analysis."
+    }
+  ]
+}

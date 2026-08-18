@@ -1,0 +1,136 @@
+{
+  "id": "win-local-enum-ps",
+  "name": "Windows Local Enumeration (PowerShell)",
+  "command": "Get-LocalGroup | Select-Object Name, Description",
+  "platform": "windows",
+  "category": "Privilege Escalation",
+  "subcategory": "Enumeration",
+  "type": "command",
+  "description": "PowerShell-native commands for local user/group enumeration and installed software discovery. Complements net.exe commands with richer output and scriptability.",
+  "notes": "Get-LocalGroup / Get-LocalGroupMember are available on Windows 10/Server 2016+. Get-ItemProperty on the Uninstall registry keys shows all installed software including 32-bit apps. PS history at ConsoleHost_history.txt persists across sessions and often contains credentials typed by admins. Also covered in: OSCP PEN-200 Chapter 16 (Windows Privilege Escalation).",
+  "variations": [
+    {
+      "command": "Get-LocalGroupMember Administrators",
+      "caption": "List members of local Administrators group",
+      "label": "Get-LocalGroupMember"
+    },
+    {
+      "command": "Get-LocalGroupMember '<group>'",
+      "caption": "List members of any local group",
+      "label": "Get-LocalGroupMember"
+    },
+    {
+      "command": "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select-Object DisplayName, DisplayVersion, Publisher | Sort-Object DisplayName",
+      "caption": "List installed 64-bit software from registry",
+      "label": "Get-ItemProperty"
+    },
+    {
+      "command": "Get-ItemProperty 'HKLM:\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select-Object DisplayName, DisplayVersion, Publisher | Sort-Object DisplayName",
+      "caption": "List installed 32-bit software (WOW6432Node)",
+      "label": "Get-ItemProperty"
+    },
+    {
+      "command": "Get-CimInstance -ClassName win32_service | Select-Object Name, State, PathName | Where-Object {$_.State -like 'Running'}",
+      "caption": "List all running Windows services with binary paths",
+      "label": "Get-CimInstance"
+    },
+    {
+      "command": "Get-CimInstance -Class win32_quickfixengineering | Where-Object { $_.Description -eq 'Security Update' } | Select-Object HotFixID, InstalledOn | Sort-Object InstalledOn",
+      "caption": "List installed security patches (for missing patch research)",
+      "label": "Get-CimInstance"
+    },
+    {
+      "command": "Get-History",
+      "caption": "Show PowerShell command history for current session",
+      "label": "Get-History"
+    },
+    {
+      "command": "Get-Content \"$env:APPDATA\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt\"",
+      "caption": "Read persistent PS history file (survives session restarts — often has creds)",
+      "label": "Get-Content"
+    },
+    {
+      "command": "Get-LocalUser | Select-Object Name, Enabled, LastLogon, PasswordLastSet",
+      "caption": "Enumerate all local user accounts",
+      "label": "Get-LocalUser"
+    },
+    {
+      "command": "Get-CimInstance win32_service | Where-Object {$_.StartName -notmatch 'LocalSystem|LocalService|NetworkService'} | Select-Object Name, StartName, PathName",
+      "caption": "Find services running under non-standard service accounts (privesc targets)",
+      "label": "Get-CimInstance"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Post-compromise triage: groups, software, PS history",
+      "command": "Get-LocalGroupMember Administrators\nGet-ItemProperty 'HKLM:\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select DisplayName,DisplayVersion\nGet-Content \"$env:APPDATA\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt\""
+    },
+    {
+      "label": "runas as a different local user (cleartext creds) — opens cmd in their context",
+      "command": "runas /user:<local_username> cmd"
+    },
+    {
+      "label": "PSCredential + Enter-PSSession — run commands as another local user",
+      "command": "$password = ConvertTo-SecureString '<password>' -AsPlainText -Force\n$cred = New-Object System.Management.Automation.PSCredential('<username>', $password)\nEnter-PSSession -ComputerName <hostname> -Credential $cred"
+    }
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1069.001",
+    "T1518",
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 2024.11 Ch16",
+  "references": [
+    {
+      "title": "LocalAccounts PS module",
+      "url": "https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.localaccounts/"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP Course)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "winpe-initial-enum",
+      "rel": "next",
+      "note": "systeminfo, wmic for initial system fingerprint"
+    },
+    {
+      "id": "winpe-user-group-enum",
+      "rel": "next",
+      "note": "net localgroup / net user commands"
+    },
+    {
+      "id": "win-file-search-ps",
+      "rel": "next",
+      "note": "Search for credential files after establishing software inventory"
+    }
+  ],
+  "defense": {
+    "why_it_works": "PowerShell provides built-in cmdlets and WMI access to enumerate local system configuration: installed software, running services, local users/groups, firewall rules, scheduled tasks, and network connections. This information reveals privilege escalation vectors (unquoted paths, weak service permissions, AlwaysInstallElevated) and lateral movement targets without requiring any external tools.",
+    "prerequisites": "Any local user account. PowerShell execution (unrestricted or bypass). No admin required for most enumeration.",
+    "impact": "T1069.001 Permission Groups Discovery: Local Groups + T1518 Software Discovery + T1552.001 Unsecured Credentials: Credentials in Files. Maps local PrivEsc vectors, credentials in config files, and installed security software to guide bypass strategies.",
+    "detection": "PowerShell Script Block Logging (Event 4104): enumeration-heavy scripts. Event 4688: PowerShell with enumeration parameters. AMSI: detection of known enumeration scripts (WinPEAS, PowerUp signatures). EDR: process behavior anomaly — PowerShell spawning WMI queries and reading registry keys in rapid succession.\nDetection of adversary enumeration of domain or local group memberships via native tools such as net.exe, PowerShell, or WMI; may precede lateral movement or privilege escalation (DET0179/AN0507).\nGroup enumeration using 'id', 'groups', or 'getent group' commands on Linux, often followed by privilege escalation or SSH lateral movement (AN0508).\nGroup membership checks via 'dscl', 'dscacheutil', or 'id' on macOS, executed via terminal or automation scripts (AN0509).",
+    "artifacts": "Event 4104: WMI queries and Get-LocalUser/Get-Service in SBL | Event 4688: powershell.exe with WMI in arguments | AMSI blocked event | EDR: bulk system enumeration behavior",
+    "prevention": "PowerShell CLM (WDAC). Script Block Logging. AMSI enforcement. EDR deployment. Principle of least privilege: standard users shouldn't be able to read sensitive config files.\nThis technique cannot be easily mitigated with preventive controls since it is based on the abuse of system features.\nActive Directory Configuration: Remove vulnerable Group Policy Preferences (patch KB2962486).\nAudit: Proactively search for files containing credentials; take remediation action when found.\nEncrypt Sensitive Information: Store keys on separate cryptographic hardware rather than local system.\nFilter Network Traffic: Limit access to Instance Metadata API; use WAF to prevent SSRF exploitation.\nOperating System Configuration: Disable/restrict NTLM; consider set +o history and ln -s /dev/null ~/.bash_history.\nPassword Policies: Use strong passphrases for private keys; prohibit password storage in files or Registry.\nPrivileged Account Management: Limit permissions on Registry-stored credentials to minimize abuse.\nRestrict File and Directory Permissions: Restrict file shares to specific directories with need-to-know access.\nUpdate Software: Apply KB2962486 to prevent credentials being stored in GPPs.",
+    "evasion": "Use built-in Windows commands (cmd.exe: systeminfo, net localgroup, sc qc) instead of PowerShell to avoid SBL. Run enumeration tools from existing high-trust process. Use WMIC.exe for WMI queries.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1069/001/",
+      "https://attack.mitre.org/techniques/T1518/",
+      "https://attack.mitre.org/techniques/T1552/001/"
+    ],
+    "misconfiguration": "Script Block Logging disabled. AMSI not enforced. Sensitive files readable by all users (web.config, connection strings, credential files).",
+    "vulnerable_config": "# SBL disabled:\n# HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\n# EnableScriptBlockLogging = 0\n\n# Sensitive config readable by all:\nicacls 'C:\\inetpub\\wwwroot\\web.config'  # Everyone:(R) = credentials exposed",
+    "secure_config": "# Enable Script Block Logging:\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1\n\n# Restrict sensitive file permissions:\nicacls 'C:\\inetpub\\wwwroot\\web.config' /inheritance:d\nicacls 'C:\\inetpub\\wwwroot\\web.config' /remove 'Users' /remove 'Everyone'\nicacls 'C:\\inetpub\\wwwroot\\web.config' /grant 'IIS_IUSRS:(R)' 'SYSTEM:(F)' 'Administrators:(F)'\n\n# WDAC: restrict PowerShell to CLM on non-admin hosts"
+  }
+}

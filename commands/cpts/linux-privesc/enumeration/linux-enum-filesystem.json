@@ -1,0 +1,92 @@
+{
+  "type": "cheatsheet",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "coreutils"
+  ],
+  "tags": [
+    "enumeration",
+    "filesystem",
+    "fstab"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "fstab - mount points and possible creds",
+      "command": "cat /etc/fstab | grep -v \"#\" | column -t"
+    },
+    {
+      "label": "Block devices and free space",
+      "command": "lsblk; df -h"
+    },
+    {
+      "label": "Hidden files owned by the current user",
+      "command": "find / -type f -name \".*\" -exec ls -l {} \\; 2>/dev/null | grep <user>"
+    },
+    {
+      "label": "Writable temp locations",
+      "command": "ls -l /tmp /var/tmp /dev/shm"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 show all mounted filesystems",
+      "command": "mount"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 all disks and partitions (spot unmounted drives)",
+      "command": "lsblk"
+    }
+  ],
+  "notes": "fstab can hold cleartext mount credentials; hidden dotfiles and world-writable temp dirs (/tmp, /dev/shm) are where dropped secrets and staging live. Always read /etc/fstab and hunt dotfiles before moving on. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting",
+      "note": "Hunt configs/keys once you know the layout.",
+      "rel": "next"
+    },
+    {
+      "id": "linux-enum-world-writable",
+      "note": "Enumerate world-writable files/dirs.",
+      "rel": "next"
+    }
+  ],
+  "id": "linux-enum-filesystem",
+  "name": "Enumeration - Filesystem, Mounts and Hidden Files",
+  "command": "cat /etc/fstab",
+  "description": "Inspect mounts and fstab (can contain credentials for network shares), block devices, temp dirs, and hidden files/dirs that often hold keys, configs, and history.",
+  "variations": [
+    {
+      "label": "Mounts / fstab",
+      "command": "cat /etc/fstab\ncat /etc/fstab | grep -v \"#\" | column -t\ndf -h\nlsblk\nlpstat"
+    },
+    {
+      "label": "Hidden files/dirs",
+      "command": "find / -type f -name \".*\" -exec ls -l {} \\; 2>/dev/null | grep <user>\nfind / -type d -name \".*\" -ls 2>/dev/null\nls -l /tmp /var/tmp /dev/shm"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1083"
+  ],
+  "exam": "exam-ok"
+}

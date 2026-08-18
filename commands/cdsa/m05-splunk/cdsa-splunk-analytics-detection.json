@@ -1,0 +1,80 @@
+{
+  "id": "cdsa-splunk-analytics-detection",
+  "name": "Splunk - Analytics-Based & Statistical Detection",
+  "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=3 | bin _time span=1h | stats count as NetworkConnections by _time, Image | streamstats time_window=24h avg(NetworkConnections) as avg stdev(NetworkConnections) as stdev by Image | eval isOutlier=if(NetworkConnections > (avg + (0.5*stdev)), 1, 0) | search isOutlier=1",
+  "description": "SPL analytics and statistics-based detection patterns for identifying anomalies without relying on static signatures. Covers beaconing detection with streamstats, long command line detection, abnormal cmd.exe frequency, high DLL loading per process, and transaction-based repeated process detection.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "SIEM",
+  "subcategory": "Splunk",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 05: Understanding Log Sources & Investigating with Splunk",
+  "tags": ["splunk", "spl", "analytics", "beaconing", "anomaly-detection", "statistics", "streamstats", "blue-team"],
+  "notes": "=== Beaconing Detection (C2 Periodic Network Connections) ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=3\n  | bin _time span=1h\n  | stats count as NetworkConnections by _time, Image\n  | streamstats time_window=24h avg(NetworkConnections) as avg stdev(NetworkConnections) as stdev by Image\n  | eval isOutlier=if(NetworkConnections > (avg + (0.5*stdev)), 1, 0)\n  | search isOutlier=1\n\n  How it works:\n    1. bin: group into hourly buckets\n    2. stats count: how many connections per image per hour\n    3. streamstats: rolling 24h average + stdev per process\n    4. eval isOutlier: flag if count > avg + 0.5*stdev (sensitive threshold)\n    5. search isOutlier=1: return only anomalies\n  → Catches C2 beaconing that spikes above a process's own baseline\n  → Tune the stdev multiplier (0.5 = sensitive, 2.0 = conservative)\n\n=== Long Command Lines (Encoded/Obfuscated PowerShell) ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1\n  | eval len=len(CommandLine)\n  | table User, len, CommandLine\n  | sort - len\n  → Sorts by longest command line first; encoded PowerShell is extremely long\n\n=== Abnormal cmd.exe Execution Frequency by User ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 Image=\"*cmd.exe\"\n  | stats count by User\n  | sort - count\n  → Identify users with unusually high cmd.exe invocations\n  → Baseline: compare against typical user behavior\n\n  # With time bucketing for trend:\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 Image=\"*cmd.exe\"\n  | bin _time span=1h\n  | stats count by _time, User\n  | sort - count\n\n=== High DLL Loading Per Process (Event 7) ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=7\n  | stats count by Image\n  | sort - count\n  → Processes loading abnormally many DLLs may indicate reflective loading / injected implants\n\n  # Focus on unsigned DLLs loaded by common processes:\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=7 Signed=false\n  | stats count by Image, ImageLoaded\n  | sort - count\n\n=== Repeated Process Execution (Transaction-Based) ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1\n  | transaction Image maxpause=5m\n  | where eventcount > 10\n  | stats count by Image\n  | sort - count\n  → Processes that start and stop repeatedly within a short window\n  → Characteristic of loaders, stagers, or malware beaconing via process execution\n\n=== Detect Processes Making Rare External Connections ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=3\n  | stats dc(DestinationIp) as unique_dest by Image\n  | sort - unique_dest\n  → Processes connecting to many unique IPs (scanning, data exfil, C2 rotation)\n\n=== Rare Process + Network Connect Combination ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" (EventCode=1 OR EventCode=3)\n  | transaction Image startswith=eval(EventCode=1) endswith=eval(EventCode=3) maxspan=30s\n  | stats count by Image\n  | sort count\n  → Rare processes: those that start and immediately make a network connection\n  → Sorted ascending: rarest at top\n\n=== Baseline vs. Deviation: Network by Process ===\n  index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=3\n  | stats count by Image, DestinationPort\n  | eventstats avg(count) as avg_count stdev(count) as stdev_count by DestinationPort\n  | eval deviation=abs(count - avg_count) / (stdev_count + 0.001)\n  | where deviation > 3\n  | table Image, DestinationPort, count, avg_count, deviation\n  | sort - deviation\n  → Identify process+port combos that are statistically unusual\n\n=== General Analytics Workflow ===\n  1. Start broad: stats count by X — find outliers visually\n  2. Add time bucketing (bin) to see temporal patterns\n  3. Apply streamstats for rolling baselines against own history\n  4. Use eval + stdev to score and filter anomalies\n  5. Enrich: table with CommandLine, User, host for context\n  6. Save as alert: convert to Saved Search with cron schedule",
+  "mitre": ["T1071.001", "T1059.001", "T1055", "T1574.002", "T1041"],
+  "examples": [
+    {
+      "label": "Beaconing detection — network outliers by hourly baseline",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=3 | bin _time span=1h | stats count as NetworkConnections by _time, Image | streamstats time_window=24h avg(NetworkConnections) as avg stdev(NetworkConnections) as stdev by Image | eval isOutlier=if(NetworkConnections > (avg + (0.5*stdev)), 1, 0) | search isOutlier=1"
+    },
+    {
+      "label": "Longest command lines (obfuscated / encoded PS detection)",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | eval len=len(CommandLine) | table User, len, CommandLine | sort - len"
+    },
+    {
+      "label": "cmd.exe execution frequency per user",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 Image=\"*cmd.exe\" | stats count by User | sort - count"
+    },
+    {
+      "label": "Hourly cmd.exe frequency by user (trend view)",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 Image=\"*cmd.exe\" | bin _time span=1h | stats count by _time, User | sort - count"
+    },
+    {
+      "label": "High DLL loading per process (possible reflective injection)",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=7 | stats count by Image | sort - count"
+    },
+    {
+      "label": "Unsigned DLL loads by process",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=7 Signed=false | stats count by Image, ImageLoaded | sort - count"
+    },
+    {
+      "label": "Repeated process execution (loaders / stagers)",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=1 | transaction Image maxpause=5m | where eventcount > 10 | stats count by Image | sort - count"
+    },
+    {
+      "label": "Processes connecting to many unique destination IPs",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" EventCode=3 | stats dc(DestinationIp) as unique_dest by Image | sort - unique_dest"
+    },
+    {
+      "label": "Rare process + immediate network connection (suspicious stagers)",
+      "command": "index=\"main\" sourcetype=\"WinEventLog:Sysmon\" (EventCode=1 OR EventCode=3) | transaction Image startswith=eval(EventCode=1) endswith=eval(EventCode=3) maxspan=30s | stats count by Image | sort count"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Understanding Log Sources & Investigating with Splunk",
+      "url": "https://academy.hackthebox.com/module/details/218"
+    },
+    {
+      "title": "Splunk - streamstats Command",
+      "url": "https://docs.splunk.com/Documentation/SplunkCloud/latest/SearchReference/Streamstats"
+    },
+    {
+      "title": "Splunk - transaction Command",
+      "url": "https://docs.splunk.com/Documentation/SplunkCloud/latest/SearchReference/Transaction"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-splunk-intrusion-detection",
+      "rel": "prereq",
+      "note": "Signature-based detection to combine with these analytics patterns."
+    },
+    {
+      "id": "cdsa-spl-fundamentals",
+      "rel": "prereq",
+      "note": "SPL command reference for streamstats, eval, bin, and stats."
+    }
+  ]
+}

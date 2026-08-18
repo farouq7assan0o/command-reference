@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nsmbmap maps shares and shows access permissions (READ/WRITE/NO ACCESS) per share per user. Cleaner permission output than smbclient -L. Also shows disk/IPC/printer share types.\n\n=== CHAINING ===\nsmbmap permissions overview \u2192 identify WRITE shares for upload path \u2192 identify READ shares for credential hunting \u2192 smbclient for interactive file operations on interesting shares.\n\n=== RECURSIVE ===\nsmbmap -R flag recursively lists all file contents of accessible shares \u2014 equivalent to a directory tree dump. Useful for identifying sensitive files without interactive browsing.",
+  "references": []
+}

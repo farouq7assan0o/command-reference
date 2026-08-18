@@ -1,0 +1,103 @@
+{
+  "id": "cdsa-m13-memory-forensics",
+  "name": "Memory Forensics — Volatility v2/v3, YARA on Dumps & Process Injection Indicators",
+  "command": "python vol.py -q -f PhysicalMemory.raw windows.malfind",
+  "description": "Memory forensics with Volatility 2 and 3. Volatility 3 command pattern: python vol.py -q -f <dump> <plugin>. Core plugins: windows.info (OS/kernel info), windows.pslist (running processes + PID/PPID/timestamps), windows.pstree (process hierarchy), windows.psscan (pool tag scan — finds DKOM-hidden processes), windows.cmdline (command lines per PID), windows.malfind (PAGE_EXECUTE_READWRITE regions = injection indicator), windows.dlllist --pid <PID> (loaded DLLs + paths), windows.handles --pid <PID> (open file/registry handles), windows.netstat / windows.netscan (network connections + PID owner), windows.memmap --pid <PID> --dump (dump process memory to pid.XXXX.dmp). DKOM: malware unlinks from EPROCESS list — invisible to pslist but found by psscan. YARA on process dump: yara64.exe rules\\rule.yar pid.3648.dmp. API Monitor: .apmx64 files — search RegSetValueExA (lpData=backdoor path), CreateProcessA (lpCommandLine=child), VirtualAllocEx+WriteProcessMemory+CreateRemoteThread = injection.",
+  "platform": "windows",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Digital Forensics",
+  "subcategory": "Memory Forensics",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 13: Introduction to Digital Forensics",
+  "tags": ["volatility", "memory-forensics", "malfind", "process-injection", "yara", "cobalt-strike", "dkom", "rootkit", "api-monitor", "dfir", "blue-team", "windows"],
+  "notes": "=== VOLATILITY 3 — COMPLETE PLUGIN REFERENCE ===\nBase command: python vol.py -q -f <memory_dump> <plugin> [options]\nPath in lab: C:\\Users\\johndoe\\Desktop\\volatility3-develop\\vol.py\nMemory dump: C:\\Users\\johndoe\\Desktop\\memdump\\PhysicalMemory.raw\n\n--- System Information ---\n  windows.info\n  → OS version, kernel base address, SystemTime, number of processors\n\n--- Process Listing ---\n  windows.pslist\n  → Active processes from EPROCESS doubly-linked list\n  → Columns: PID, PPID, ImageFileName, Threads, SessionId, Wow64, CreateTime, ExitTime\n  → DKOM hiding: malware can unlink itself — missing from pslist but found by psscan\n\n  windows.pstree\n  → Same as pslist but shows parent-child hierarchy\n  → Asterisks indicate depth level\n\n  windows.psscan\n  → Pool tag scanning — finds processes even if EPROCESS unlinked (DKOM/rootkit)\n  → Finds terminated processes still in memory\n  → Compare psscan vs pslist to find hidden processes\n\n--- Command Lines ---\n  windows.cmdline\n  → Shows full command line for each process\n  → Key indicators: -nop -w hidden -encodedcommand (PS), rundll32.exe <dll>,<export>\n\n--- Network Connections ---\n  windows.netstat\n  → Active TCP/UDP connections from live connection tracking\n  → Columns: Offset, Proto, LocalAddr:Port, ForeignAddr:Port, State, PID, Owner, Created\n\n  windows.netscan\n  → More exhaustive scan — also finds CLOSED and recently terminated connections\n  → Finds connections even after socket is closed (still in pool)\n  → Use this when netstat misses connections\n\n  Suspicious finding (lab scenario):\n    PID 3648 (rundll32.exe running payload.dll) → TCP ESTABLISHED to 44.214.212.249:80\n    PID 6744 (powershell.exe) → TCP CLOSED to 44.214.212.249:80 (netscan only)\n\n--- Malicious Code Detection ---\n  windows.malfind\n  → Finds VAD (Virtual Address Descriptor) regions with PAGE_EXECUTE_READWRITE protection\n  → MZ header in memory = PE injection\n  → Key indicators:\n      - Protection: PAGE_EXECUTE_READWRITE = suspicious (normal = PAGE_EXECUTE_READ)\n      - Private memory (not backed by a file) with executable code\n  → Lab scenario: rundll32.exe (PID 3648), powershell.exe (PID 6744) flagged\n\n--- DLL & Module Analysis ---\n  windows.dlllist [--pid <PID>]\n  → Lists loaded DLLs per process: Base, Size, Name, Path, LoadTime\n  → Suspicious: DLL loaded from removable media, temp dirs, or unusual paths\n  → Lab: PID 3648 loaded payload.dll from E:\\ (USB/mounted ISO)\n\n--- Handle Analysis ---\n  windows.handles [--pid <PID>]\n  → Open handles: File, Key (registry), Thread, Process, Event, etc.\n  → File handles reveal what directories/files process is accessing\n  → Registry handles reveal what keys are being read/modified\n  → Lab: PID 3648 had handles to Desktop folder and INTERNET SETTINGS registry keys\n\n--- Memory Dump ---\n  windows.memmap --pid <PID> --dump\n  → Dumps all readable pages for a process to pid.<PID>.dmp\n  → Use for YARA scanning or strings analysis\n\n--- Other Useful Plugins ---\n  windows.svcscan         → Scan for Windows services (finds hidden services)\n  windows.hivelist        → List registry hive addresses in memory\n  windows.registry.hivescan  → Scan pool for registry hives\n  windows.vadwalk --pid <PID>  → Walk VAD tree for process memory regions\n\n=== VOLATILITY 2 — KEY DIFFERENCES ===\nSyntax: vol.py -f <dump> --profile=<profile> <command>\n\nProfile detection:\n  vol.py -f memdump.raw imageinfo\n  → Returns suggested profiles (e.g., Win10x64_19041)\n  vol.py -f memdump.raw --profile=Win10x64_19041 kdbgscan\n\nV2 plugin equivalents:\n  pslist     → python vol.py ... --profile=... pslist\n  psscan     → psscan (finds DKOM-hidden)\n  netscan    → netscan\n  malfind    → malfind\n  handles    → handles --pid <PID>\n  dlllist    → dlllist --pid <PID>\n  cmdscan    → cmdscan (finds cmd.exe history from CONHOST)\n  consoles   → consoles (cmd.exe typed commands from CONSOLE_INFORMATION)\n  svcscan    → svcscan\n  hivelist   → hivelist\n  yarascan   → --yara-file rule.yar or --yara-string \"pattern\"\n\nDKOM (Direct Kernel Object Manipulation):\n  Malware modifies EPROCESS.Flink/Blink → removed from pslist\n  psscan pools scan finds it anyway\n  Cross-reference: processes in psscan but NOT in pslist = hidden/suspicious\n\n=== YARA ON PROCESS MEMORY DUMP ===\nAfter dumping with windows.memmap --dump:\n  PowerShell loop across rule files:\n    $rules = Get-ChildItem C:\\tools\\yara\\rules\\*.yar\n    foreach ($rule in $rules) {\n        yara64.exe rules\\$($rule.Name) pid.3648.dmp\n    }\n\n  Lab results (PID 3648 / rundll32.exe / payload.dll):\n    → HKTL_CobaltStrike_Beacon_Strings\n    → CobaltStrike_Sleep_Decoder_Indicator\n    → WiltedTulip_ReflectiveLoader\n\nStrings from dump:\n  strings pid.3648.dmp | grep -E \"\\b([0-9]{1,3}\\.){3}[0-9]{1,3}\\b\"  → find IPs\n  strings pid.3648.dmp | grep -i \"http\"   → find URLs\n\n=== COBALT STRIKE BEACON CONFIGURATION EXTRACTION ===\nCobaltStrikeParser tool:\n  python parse_beacon_config.py payload.dll\n  → Extracts: C2Server, BeaconType, SleepTime, UserAgent, SpawnTo, ProcInject methods, etc.\n\nKey lab findings from payload.dll beacon config:\n  C2Server:       letsgohunt.site,/load\n  BeaconType:     HTTP\n  Port:           80\n  SleepTime:      60000 (60 seconds)\n  HttpGet_Verb:   GET (metadata in Cookie header, base64 encoded)\n  HttpPost_Verb:  POST → /submit.php\n  Spawnto_x64:    %windir%\\sysnative\\rundll32.exe\n  ProcInject:     CreateRemoteThread, RtlCreateUserThread, VirtualAllocEx (RWX)\n\n=== API MONITOR ANALYSIS (.apmx64 files) ===\nOpens .apmx64 capture files; shows all API calls made by monitored process.\n\nKey API calls for malware analysis:\n\n  RegOpenKeyExA → registry reads\n  RegSetValueExA:\n    → lpValueName: name of value being set\n    → lpData: the VALUE being written (backdoor path, malware config)\n    → Lab: found DiscordUpdate → C:\\Windows\\Tasks\\update.exe (persistence)\n\n  CreateProcessA:\n    → lpCommandLine: what child process is launched\n    → dwCreationFlags: CREATE_SUSPENDED = process hollowing setup\n\n  Process injection API chain:\n    1. OpenProcess(PROCESS_ALL_ACCESS, ..., target_PID)\n    2. VirtualAllocEx(handle, NULL, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE)\n    3. WriteProcessMemory(handle, addr, shellcode, size, ...)\n    4. CreateRemoteThread(handle, NULL, 0, addr, NULL, 0, NULL)\n    → This sequence = classic remote process injection\n\n  Suspicious flags:\n    PAGE_EXECUTE_READWRITE (0x40) = RWX memory = injection preparation\n    CREATE_SUSPENDED (4) = hollow the process before resuming\n\n=== POWERSHELL TRANSCRIPT ANALYSIS ===\nLocation: C:\\Users\\<user>\\Documents\\PowerShell_transcript.*.txt\nContains: complete input/output of PowerShell session\n\nSearch for:\n  Invoke-WebRequest / wget / curl    → downloads\n  -encodedcommand / -enc             → base64 obfuscation\n  Add-MpPreference -ExclusionPath   → AV exclusion\n  schtasks / Register-ScheduledTask → scheduled task creation\n  net user / Add-LocalGroupMember   → account manipulation\n  Set-ItemProperty HKLM:\\...\\Run    → registry persistence\n  ConvertTo-SecureString            → credential handling\n\n=== PRACTICAL WORKFLOW ===\n1. Get system info:\n   python vol.py -q -f PhysicalMemory.raw windows.info\n\n2. Find suspicious processes:\n   python vol.py -q -f PhysicalMemory.raw windows.pslist\n   python vol.py -q -f PhysicalMemory.raw windows.pstree\n   python vol.py -q -f PhysicalMemory.raw windows.psscan  # compare to find hidden\n\n3. Get command lines:\n   python vol.py -q -f PhysicalMemory.raw windows.cmdline\n   # Look for: -encodedcommand, rundll32 <dll>,<export>, suspicious paths\n\n4. Find injected memory:\n   python vol.py -q -f PhysicalMemory.raw windows.malfind\n   # PAGE_EXECUTE_READWRITE + private memory = injection\n\n5. Check network:\n   python vol.py -q -f PhysicalMemory.raw windows.netstat\n   python vol.py -q -f PhysicalMemory.raw windows.netscan   # more exhaustive\n   # Find: suspicious PIDs with ESTABLISHED connections, unexpected ports\n\n6. Dump suspicious process and scan:\n   python vol.py -q -f PhysicalMemory.raw windows.memmap --pid 3648 --dump\n   yara64.exe rules\\cobaltStrike.yar pid.3648.dmp\n\n7. Find loaded DLLs:\n   python vol.py -q -f PhysicalMemory.raw windows.dlllist --pid 3648\n   # Unusual path = suspicious (external drive, temp, etc.)\n\n8. Check handles:\n   python vol.py -q -f PhysicalMemory.raw windows.handles --pid 3648\n   # Files and registry keys show what malware is accessing",
+  "examples": [
+    {
+      "label": "System info from memory dump",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.info"
+    },
+    {
+      "label": "List all processes",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.pslist"
+    },
+    {
+      "label": "Process tree view",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.pstree"
+    },
+    {
+      "label": "Pool tag scan (finds DKOM-hidden processes)",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.psscan"
+    },
+    {
+      "label": "Get command lines for all processes",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.cmdline"
+    },
+    {
+      "label": "Find injected memory regions (PAGE_EXECUTE_READWRITE)",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.malfind"
+    },
+    {
+      "label": "Network connections (active)",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.netstat"
+    },
+    {
+      "label": "Network connections (exhaustive — includes CLOSED)",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.netscan"
+    },
+    {
+      "label": "Dump process memory to file",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.memmap --pid 3648 --dump"
+    },
+    {
+      "label": "List DLLs for suspicious process",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.dlllist --pid 3648"
+    },
+    {
+      "label": "List handles for suspicious process",
+      "command": "python vol.py -q -f PhysicalMemory.raw windows.handles --pid 3648"
+    },
+    {
+      "label": "YARA scan process dump (PowerShell loop)",
+      "command": "$rules = Get-ChildItem .\\rules\\*.yar; foreach ($rule in $rules) { yara64.exe rules\\$($rule.Name) pid.3648.dmp }"
+    },
+    {
+      "label": "Extract Cobalt Strike beacon config",
+      "command": "python parse_beacon_config.py E:\\payload.dll"
+    },
+    {
+      "label": "Volatility 2 — detect profile and list processes",
+      "command": "vol.py -f memdump.raw imageinfo && vol.py -f memdump.raw --profile=Win10x64_19041 pslist"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Introduction to Digital Forensics",
+      "url": "https://academy.hackthebox.com/module/details/237"
+    },
+    {
+      "title": "Volatility 3 GitHub",
+      "url": "https://github.com/volatilityfoundation/volatility3"
+    },
+    {
+      "title": "CobaltStrikeParser GitHub",
+      "url": "https://github.com/Sentinel-One/CobaltStrikeParser"
+    },
+    {
+      "title": "MITRE ATT&CK T1055 — Process Injection",
+      "url": "https://attack.mitre.org/techniques/T1055/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m13-evidence-acquisition",
+      "rel": "prereq",
+      "note": "Acquire memory dump first with WinPmem or Velociraptor before analysis."
+    },
+    {
+      "id": "cdsa-m13-disk-forensics",
+      "rel": "next",
+      "note": "Disk forensics: Autopsy, MFTECmd, EvtxECmd, Registry Explorer, Timeline Explorer."
+    }
+  ]
+}

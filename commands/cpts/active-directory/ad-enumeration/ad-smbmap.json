@@ -1,0 +1,83 @@
+{
+  "id": "ad-smbmap",
+  "name": "smbmap - Enumerate SMB Shares",
+  "command": "smbmap -u <user> -p <password> -d <domain> -H <target>",
+  "description": "Enumerates SMB shares and permissions on a target host using provided credentials. Shows READ/WRITE access per share, enables drive listing, and can spider shares for interesting files. Faster than manual smbclient browsing for share access discovery across multiple hosts.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "smb",
+    "shares",
+    "smbmap",
+    "enumeration",
+    "file-share"
+  ],
+  "mitre": [
+    "T1135"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT SMBMAP SHOWS ===\n  Disk     | Permissions\n  ---      | ---\n  ADMIN$   | NO ACCESS\n  C$       | NO ACCESS\n  IPC$     | READ ONLY\n  NETLOGON | READ ONLY\n  share1   | READ, WRITE   ← interesting!\n  SYSVOL   | READ ONLY\n\nWRITE access = drop files, potentially trigger execution (SCF files, etc.).\nREAD access = hunt for sensitive files, credentials, configs.\n\n=== FLAGS ===\n  -u / -p     → credentials\n  -d          → domain name\n  -H          → target host IP\n  -L          → just list shares (no content listing)\n  -r <share>  → recursively list a specific share\n  -A <regex>  → search for files matching pattern\n  --download  → download a file\n  -x <cmd>    → execute command (if admin access)\n\n=== WHAT TO LOOK FOR ===\nShares worth investigating:\n  - Non-standard share names (not ADMIN$, IPC$, NETLOGON, SYSVOL, C$)\n  - Any share with READ or WRITE access\n  - Departments shares (Finance, IT, HR, Legal) → credentials, contracts\n  - Backup shares → old credentials, configuration files\n\n=== COMPARE WITH CME ===\ncrackmapexec smb <dc> -u user -p pass --shares → same result, simpler output\nsmbmap → better for recursive listing and targeted file hunting",
+  "examples": [
+    {
+      "label": "List shares",
+      "command": "smbmap -u forend -p Klmcargo2 -d INLANEFREIGHT -H 172.16.5.5"
+    },
+    {
+      "label": "Recursively list a share",
+      "command": "smbmap -u forend -p Klmcargo2 -d INLANEFREIGHT -H 172.16.5.5 -r 'Department Shares'"
+    },
+    {
+      "label": "Null session check",
+      "command": "smbmap -u '' -p '' -H 172.16.5.5"
+    }
+  ],
+  "references": [
+    {
+      "title": "smbmap (ShawnDEvans)",
+      "url": "https://github.com/ShawnDEvans/smbmap"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-smbmap-recurse",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "smbmap lists SMB shares and access levels across hosts using credentials, mapping readable/writable data.",
+    "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
+    "impact": "A share/access map for pillaging.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "SMB tree-connects and access checks across hosts.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1135"
+    ],
+    "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
+    "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
+    "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+  },
+  "tools": [
+    "smbmap"
+  ]
+}

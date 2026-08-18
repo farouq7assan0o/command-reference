@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nRID cycling via Bash loop with rpcclient queryuser: increments RIDs from 500 to 1100 and retrieves account details for each valid RID. Bypasses enumdomusers restriction \u2014 queryuser is often permitted even when full user listing is blocked.\n\n=== RID MAP ===\n500 = built-in Administrator, 501 = Guest, 502 = KRBTGT (DC only), 1000+ = created domain users and groups. RIDs are sequential, predictable, and complete \u2014 no accounts are missed.\n\n=== CHAINING ===\nrpcclient null session \u2192 attempt enumdomusers (may be blocked) \u2192 fallback to RID cycling \u2192 collect all usernames \u2192 feed to password spray.",
+  "references": []
+}

@@ -1,0 +1,93 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [],
+  "tags": [
+    "robots",
+    "well-known",
+    "reference"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "Crawling",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "CPTS Ch05 — fetch robots.txt to find hidden paths",
+      "command": "curl http://inlanefreight.com/robots.txt"
+    },
+    {
+      "label": "Fetch OpenID config for OAuth endpoint discovery",
+      "command": "curl https://example.com/.well-known/openid-configuration"
+    }
+  ],
+  "notes": "robots.txt (www.example.com/robots.txt): Disallow/Allow paths often point at admin/private areas; Sitemap: lists pages.\nWell-known URIs (/.well-known/): security.txt, change-password, openid-configuration, assetlinks.json, mta-sts.txt.\nFiles of interest: .bak, .old, web.config, settings.php, error_log, access_log; dirs like /files/. Also covered in: OSCP PEN-200 Chapter 8 (Introduction to Web Application Attacks). robots.txt Disallow entries reveal admin paths, backup dirs, staging areas. /.well-known/ URIs expose security policy (security.txt), auth endpoints (openid-configuration), and password-change flows. Always check both during web recon. Also covered in: CPTS Ch05 (Information Gathering – Web Edition).",
+  "references": [
+    {
+      "title": "IANA Well-Known URIs",
+      "url": "https://www.iana.org/assignments/well-known-uris/well-known-uris.xhtml"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 - Introduction to Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "web-crawling",
+      "rel": "next",
+      "note": "Crawl the paths robots.txt reveals."
+    }
+  ],
+  "id": "ref-robots-wellknown",
+  "name": "Reference - robots.txt, Well-Known URIs & Files of Interest",
+  "command": "curl http://<domain>/robots.txt",
+  "description": "Standard discovery endpoints and the file types worth hunting while crawling.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1083"
+  ],
+  "variations": [
+    {
+      "description": "Fetch robots.txt to find disallowed paths",
+      "command": "curl http://<domain>/robots.txt",
+      "label": "GET request"
+    },
+    {
+      "description": "Fetch security.txt (contact/disclosure policy)",
+      "command": "curl https://<domain>/.well-known/security.txt",
+      "label": "GET request"
+    },
+    {
+      "description": "Fetch OpenID Connect discovery document (auth endpoints)",
+      "command": "curl https://<domain>/.well-known/openid-configuration",
+      "label": "GET request"
+    },
+    {
+      "description": "Fetch change-password well-known URI",
+      "command": "curl https://<domain>/.well-known/change-password",
+      "label": "GET request"
+    },
+    {
+      "description": "Fetch sitemap.xml referenced in robots.txt",
+      "command": "curl https://<domain>/sitemap.xml",
+      "label": "GET request"
+    }
+  ]
+}

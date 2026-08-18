@@ -1,0 +1,75 @@
+{
+  "id": "cdsa-m13-evidence-acquisition",
+  "name": "Forensic Evidence Acquisition — KAPE, Velociraptor & Memory Tools",
+  "command": "kape.exe --tsource D: --tdest C:\\investigation --target !SANS_Triage",
+  "description": "Acquiring forensic evidence from Windows systems. KAPE (disk triage): gkape.exe GUI or kape.exe CLI; --tsource=source drive, --tdest=output, --target=artifact target (e.g. !SANS_Triage compound target collects all critical artifacts). Velociraptor: Windows.KapeFiles.Targets with _SANS_Triage selector; Windows.Memory.Acquisition writes PhysicalMemory.raw. Memory acquisition tools: WinPmem (winpmem_mini_x64_rc2.exe memdump.raw), DumpIt, FTK Imager (GUI), LiME (Linux kernel module), Belkasoft RAM Capturer, Magnet RAM Capture. VM memory: suspend VM → .vmem file (VMware) or .bin (Hyper-V).",
+  "platform": "windows",
+  "type": "cheatsheet",
+  "opsec": "loud",
+  "category": "Digital Forensics",
+  "subcategory": "Evidence Acquisition",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 13: Introduction to Digital Forensics",
+  "tags": ["kape", "velociraptor", "winpmem", "memory-acquisition", "ftk-imager", "dfir", "triage", "forensics", "evidence-collection", "blue-team"],
+  "notes": "=== KAPE (Kroll Artifact Parser and Extractor) ===\nTwo modes:\n  gkape.exe    → GUI launcher\n  kape.exe     → CLI (for automation and scripting)\n\nCLI syntax:\n  kape.exe --tsource <drive> --tdest <output_dir> --target <target_name>\n\nCommon targets:\n  !SANS_Triage    → compound target collecting ALL critical forensic artifacts:\n                    MFT, USN Journal, prefetch, event logs, registry hives,\n                    LNK files, browser data, shellbags, amcache, SRUM, etc.\n\n  Individual targets also available:\n    $MFT, $J, Prefetch, RegistryHives, EventLogs, etc.\n\nFull triage example:\n  kape.exe --tsource D: --tdest C:\\investigation --target !SANS_Triage\n\nOutput structure:\n  C:\\investigation\\<source_drive>\\<artifact_paths>\n  e.g. C:\\investigation\\C%3A\\Windows\\Prefetch\\\n       C:\\investigation\\ntfs\\%5C%5C.%5CC%3A\\$Extend\\$UsnJrnl%3A$J\n\nKAPE processes (modules) can also parse artifacts after collection:\n  kape.exe --tsource ... --target ... --msource <dir> --mdest <dir> --module !EZParser\n\n=== VELOCIRAPTOR ===\nEndpoint agent for rapid forensic triage and memory acquisition.\n\nArtifact for disk triage (equivalent to KAPE !SANS_Triage):\n  Artifact: Windows.KapeFiles.Targets\n  Configuration: _SANS_Triage = True\n  Output: artifacts collected to server or local path\n\nArtifact for memory acquisition:\n  Artifact: Windows.Memory.Acquisition\n  Output: PhysicalMemory.raw (full physical memory dump)\n\nVelociraptor can run across multiple endpoints simultaneously.\nUseful for: fleet-wide triage, remote acquisition without physical access\n\n=== MEMORY ACQUISITION TOOLS ===\n\n--- WinPmem (recommended for Windows) ---\nLightweight, open-source, no installation required:\n  winpmem_mini_x64_rc2.exe memdump.raw\n  → Writes full physical memory to memdump.raw in current directory\n  → Requires Administrator privileges\n\nDownload: https://github.com/Velocidex/WinPmem/releases\n\n--- DumpIt ---\nSingle executable, creates memory dump in current directory:\n  DumpIt.exe\n  → Interactive confirmation prompt\n  → Output: <COMPUTERNAME>-<YYYY><MM><DD>-<HHMMSS>.dmp\n\n--- FTK Imager (Magnet Forensics) ---\nGUI tool, also supports:\n  → Memory acquisition (File → Capture Memory)\n  → Disk/volume imaging (bitstream copies)\n  → Viewing raw images and file systems\n  → Exporting individual files from images\n\n--- LiME (Linux Memory Extractor) ---\nLinux kernel module for live memory acquisition:\n  insmod lime.ko \"path=/tmp/memdump.lime format=lime\"\n  → Requires kernel module compilation matching target kernel\n  → Formats: lime (default), padded, raw\n\n--- Belkasoft RAM Capturer ---\nFree, supports 32/64-bit, works even when security software active\n\n--- Magnet RAM Capture ---\nFree, GUI-based, writes to .raw format\n\n=== VIRTUAL MACHINE MEMORY ===\nVMware:\n  → Suspend VM → <VM_name>.vmem file in VM directory\n  → Or use Velociraptor/WinPmem inside guest\n\nHyper-V:\n  → Checkpoints contain .bin file (memory)\n\nVirtualBox:\n  → VBoxManage debugvm <uuid> dumpvmcore --filename=dump.elf\n\n=== WRITE BLOCKERS ===\nHardware write blocker: prevents modification of source media during imaging\nSoftware write blocker: diskpart → select disk → attributes disk set readonly\nAlways image original media with write blocker — forensic soundness\n\n=== FORENSIC IMAGING WITH FTK IMAGER ===\n  File → Add Evidence Item → Physical Drive → select source\n  File → Create Disk Image → select format (E01/raw/AFF)\n  E01 format: includes metadata, verification hash, compression\n  After imaging: verify MD5/SHA1 hash matches FTK report\n\n=== CHAIN OF CUSTODY ===\nDocument for every piece of evidence:\n  - Who collected it\n  - When and where collected\n  - Storage/transfer log\n  - Verification hashes (MD5 + SHA256)\n  - Seal/tag physical media\n\n=== VOLATILITY MEMORY FILE FORMATS ===\nraw/lime/dd → supported natively\nE01 → ewf support (install libewf)\n.vmem + .vmss → VMware (need --profile matching)\n.mem → Hyper-V",
+  "examples": [
+    {
+      "label": "KAPE full triage (CLI)",
+      "command": "kape.exe --tsource D: --tdest C:\\investigation --target !SANS_Triage"
+    },
+    {
+      "label": "KAPE with processing module after collection",
+      "command": "kape.exe --tsource D: --tdest C:\\kape_out --target !SANS_Triage --msource C:\\kape_out --mdest C:\\parsed --module !EZParser"
+    },
+    {
+      "label": "WinPmem memory dump",
+      "command": "winpmem_mini_x64_rc2.exe memdump.raw"
+    },
+    {
+      "label": "LiME Linux memory acquisition",
+      "command": "sudo insmod lime.ko \"path=/tmp/memdump.lime format=lime\""
+    },
+    {
+      "label": "Velociraptor KAPE triage artifact (GUI configuration)",
+      "command": "# Artifact: Windows.KapeFiles.Targets — set _SANS_Triage: True"
+    },
+    {
+      "label": "Velociraptor memory acquisition artifact",
+      "command": "# Artifact: Windows.Memory.Acquisition — outputs PhysicalMemory.raw"
+    },
+    {
+      "label": "Verify memory dump hash",
+      "command": "Get-FileHash -Algorithm SHA256 memdump.raw"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Introduction to Digital Forensics",
+      "url": "https://academy.hackthebox.com/module/details/237"
+    },
+    {
+      "title": "KAPE Documentation",
+      "url": "https://ericzimmerman.github.io/KapeDocs/"
+    },
+    {
+      "title": "WinPmem GitHub",
+      "url": "https://github.com/Velocidex/WinPmem"
+    },
+    {
+      "title": "Velociraptor Documentation",
+      "url": "https://docs.velociraptor.app/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m13-windows-artifacts",
+      "rel": "prereq",
+      "note": "Windows artifact locations — know what KAPE is collecting before you collect it."
+    },
+    {
+      "id": "cdsa-m13-memory-forensics",
+      "rel": "next",
+      "note": "Analyze the PhysicalMemory.raw dump with Volatility v2/v3."
+    }
+  ]
+}

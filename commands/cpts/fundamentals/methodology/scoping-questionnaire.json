@@ -1,0 +1,51 @@
+{
+  "id": "scoping-questionnaire",
+  "name": "Pre-Engagement - Scoping Questions",
+  "command": "# Key questions that define scope & effort",
+  "description": "Pre-Engagement - Scoping Questions - reference (methodology, not a runnable command).",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Fundamentals",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 01: Penetration Testing Process",
+  "tags": [
+    "methodology",
+    "reference"
+  ],
+  "notes": "Core scoping inputs: # of live hosts; # of IPs/CIDR ranges; # of domains/subdomains; # of wireless SSIDs; # of web/mobile apps; authenticated roles; phishing target count; will client provide the list or gather via OSINT; physical locations; Red Team objective; out-of-scope activities; separate AD assessment; anonymous vs domain-user start; NAC bypass needed; black/grey/white box; non-evasive / hybrid-evasive / fully-evasive.",
+  "references": [
+    {
+      "title": "HTB Academy - Penetration Testing Process",
+      "url": "https://academy.hackthebox.com/module/details/90"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "exploitation-prioritization",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Network scope — enumerate all CIDRs and excluded hosts",
+      "command": "# Q: What IP ranges/CIDRs are in scope? Any excluded hosts (DC, prod DB)?"
+    },
+    {
+      "label": "Web scope — list all domains and authentication requirements",
+      "command": "# Q: Which domains/subdomains? Are authenticated tests required? WAF in place?"
+    },
+    {
+      "label": "Engagement type — define test style and deliverables",
+      "command": "# Q: Black/grey/white box? Evasion required? Report format (PTES/OWASP)?"
+    }
+  ],
+  "mitre": [
+    "T1591"
+  ]
+}

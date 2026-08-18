@@ -1,0 +1,107 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "smb",
+    "msrpc"
+  ],
+  "tools": [
+    "rpcclient"
+  ],
+  "tags": [
+    "smb",
+    "rpcclient",
+    "rid-cycling"
+  ],
+  "category": "Enumeration",
+  "subcategory": "SMB",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Null session, enumerate domain users",
+      "command": "rpcclient -U \"\" -N 10.129.14.128 -c \"enumdomusers\""
+    },
+    {
+      "label": "Lab example",
+      "command": "rpcclient -U \"\" 10.129.14.128"
+    }
+  ],
+  "notes": "Connect null (`-U '' -N`). `enumdomusers`/`enumdomgroups`/`querydominfo` for accounts and policy; `lsaenumsid`+`lookupsids` for RID cycling when enumdomusers is blocked. rpcclient reaches MS-RPC that enum4linux wraps.",
+  "references": [
+    {
+      "title": "rpcclient",
+      "url": "https://www.samba.org/samba/docs/current/man-html/rpcclient.1.html"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "smb-password-spray",
+      "rel": "escalation",
+      "note": "Spray the users you enumerated."
+    },
+    {
+      "id": "netexec-bruteforce",
+      "rel": "escalation",
+      "note": "Validate creds across hosts."
+    },
+    {
+      "id": "ref-smb-config",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "smb-rpcclient",
+  "name": "SMB - rpcclient & RID Cycling",
+  "command": "rpcclient -U \"\" <ip>",
+  "description": "rpcclient over a null session enumerates server info, domains, shares, and users. RID cycling recovers usernames even when direct enumeration is blocked.",
+  "steps": [
+    {
+      "label": "1. Null-session connect",
+      "command": "rpcclient -U \"\" 10.129.14.128"
+    },
+    {
+      "label": "2. Enumerate via rpcclient",
+      "command": "srvinfo\nenumdomains\nquerydominfo\nnetshareenumall\nnetsharegetinfo notes\nenumdomusers\nqueryuser 0x3e9\nquerygroup 0x201"
+    },
+    {
+      "label": "3. RID brute force loop",
+      "command": "for i in $(seq 500 1100);do rpcclient -N -U \"\" 10.129.14.128 -c \"queryuser 0x$(printf '%x\\n' $i)\" | grep \"User Name\\|user_rid\\|group_rid\" && echo \"\";done"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "rpcclient null sessions work when the SMB server allows anonymous RPC binding. This exposes user enumeration (querydispinfo, enumdomusers), share listings, and domain information without any credentials. The module notes that 'anonymous access can also lead to the discovery of other users, who can be attacked with brute-forcing.'\n\n[MITRE T1087.002] Adversaries enumerate domain accounts via net.exe, PowerShell, WMI, LDAP queries, or ldapsearch/samba tools (wbinfo -u) from non-domain-controller or non-admin endpoints — revealing valid usernames for password attacks and identifying high-value targets.",
+    "prerequisites": "Network access to SMB (TCP 445) with anonymous RPC binding permitted.",
+    "impact": "User, group, and domain enumeration via MS-RPC (querydispinfo, enumdomusers) without credentials.",
+    "detection": "[MITRE T1087.002 AN0363] Adversary enumeration of domain accounts using net.exe, PowerShell, WMI, or LDAP queries from non-domain controllers or non-admin endpoints. [AN0364] Domain account enumeration using ldapsearch, samba tools (wbinfo -u), or winbindd lookups.",
+    "artifacts": "RPC bind and query operations in server logs; an anonymous SMB session record.",
+    "prevention": "Disable null sessions and anonymous RPC access. Set 'restrict anonymous = 2' in smb.conf and ensure 'usershare allow guests = no' to prevent unauthenticated RPC binding.\n\n[MITRE T1087.002 M1028] Prevent administrator accounts from being enumerated when an application is elevating through UAC. Configure via GPO: Computer Configuration > Administrative Templates > Windows Components > Credential User Interface: 'Enumerate administrator accounts on elevation' → Disabled.",
+    "sources": [
+      "HTB M04",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
+    "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
+    "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+  }
+}

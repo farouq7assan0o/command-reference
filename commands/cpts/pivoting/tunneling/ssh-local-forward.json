@@ -1,0 +1,89 @@
+{
+  "id": "ssh-local-forward",
+  "name": "SSH - Local Port Forwarding",
+  "command": "ssh -L <local_port>:localhost:<remote_port> <user>@<pivot>",
+  "description": "Forwards a port on your machine through an SSH connection to a service reachable from the pivot host. Traffic to localhost:<local_port> emerges from the pivot to the target. Chain multiple -L flags to forward several ports at once.",
+  "platform": "linux",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "ssh"
+  ],
+  "tags": [
+    "ssh",
+    "local-forward",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "SSH Tunneling",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "Local forward (-L)",
+      "command": "ssh -L 1234:localhost:3306 ubuntu@10.129.202.64"
+    },
+    {
+      "label": "Local forward (-L)",
+      "command": "ssh -L 1234:localhost:3306 -L 8080:localhost:80 ubuntu@10.129.202.64"
+    },
+    {
+      "label": "OSCP Ch18 \u2014 SSH local forward (-L) binding on all interfaces to reach internal SMB",
+      "command": "ssh -N -L 0.0.0.0:4455:<internal_ip>:445 <user>@<pivot_ip>"
+    }
+  ],
+  "notes": "Verify the listener with netstat -antp | grep <local_port> and scan it with nmap -sV -p<local_port> localhost. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: -N prevents a remote shell (forward-only). Binding to 0.0.0.0 exposes the forwarded port to other machines on your network, not just localhost \u2014 useful when your tooling runs on a different host. The forwarded port should be verified with ss -ntplu before use.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "OffSec PEN-200 - Port Redirection and SSH Tunneling",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "proxychains-run",
+      "note": "Route tooling through the forwarded port.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1572"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SSH local forwarding (ssh -L) maps a local port to a remote host:port through the SSH pivot, exposing one internal service to the attacker.",
+    "prerequisites": "SSH access to a pivot that can reach the target service.",
+    "impact": "Direct access to one internal service (e.g. an internal DB) via a local port.",
+    "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
+    "artifacts": "A forwarded local port; an SSH session with -L; the pivot connecting to the internal service.",
+    "prevention": "[MITRE T1090.001 M1030 Network Segmentation] strict east-west firewall rules so one foothold can't reach other segments; egress filtering; IDS/IPS + NetFlow analysis for proxy patterns and long-lived flows; alert on unexpected listeners on servers.",
+    "evasion": "Tunnel over an allowed protocol/port (443) and encrypt the channel so the relay blends with normal traffic; keep the listener on a common-looking port.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1572"
+    ],
+    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
+  },
+  "variations": [
+    {
+      "label": "Multi-port",
+      "command": "ssh -L <local_port1>:localhost:<remote_port1> -L <local_port2>:localhost:<remote_port2> <user>@<pivot>",
+      "description": "Forward multiple ports in a single SSH connection \u2014 e.g. database on 1234 and web on 8080 simultaneously"
+    }
+  ]
+}

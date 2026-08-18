@@ -1,0 +1,85 @@
+{
+  "id": "nc-port-scan",
+  "name": "Netcat - TCP/UDP Port Sweep (-z)",
+  "command": "nc -nvv -w 1 -z <ip> <port>",
+  "description": "Netcat zero-I/O mode port scan. -z connects and immediately closes without sending data. -w sets a per-connection timeout in seconds. Faster than nmap for quick spot-checks when a full scanner is overkill or unavailable.",
+  "type": "command",
+  "platform": "linux",
+  "requires": ["network-access"],
+  "tools": ["nc", "netcat"],
+  "tags": ["port-scan", "enumeration", "nc", "netcat", "recon", "tcp", "udp"],
+  "category": "Enumeration",
+  "subcategory": "Network Discovery",
+  "certifications": ["OSCP"],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 Chapter 06: Information Gathering",
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": ["T1046"],
+  "variations": [
+    {
+      "label": "TCP single port",
+      "command": "nc -nv -w 1 -z <ip> <port>"
+    },
+    {
+      "label": "TCP port range",
+      "command": "nc -nvv -w 1 -z <ip> <port_start>-<port_end>"
+    },
+    {
+      "label": "UDP port range",
+      "command": "nc -nv -u -z -w 1 <ip> <port_start>-<port_end>"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Scan TCP 3388-3390 for RDP",
+      "command": "nc -nvv -w 1 -z 192.168.50.152 3388-3390"
+    },
+    {
+      "label": "Scan UDP 120-123 to find NTP",
+      "command": "nc -nv -u -z -w 1 192.168.50.149 120-123"
+    },
+    {
+      "label": "Single port TCP check",
+      "command": "nc -nv -w 1 -z 192.168.50.152 22"
+    }
+  ],
+  "notes": "Flags: -n no DNS, -v verbose (open/closed message), -vv more verbose, -w <sec> timeout per connection, -z zero-I/O (scan mode), -u UDP. UDP scanning is inherently unreliable — no response usually means open|filtered; an ICMP port-unreachable means closed. Use nmap -sU for reliable UDP with retries. nc -z is best for confirming a single port you already suspect is open.",
+  "recommended": [
+    {
+      "id": "nmap-tcp-connect-scan",
+      "rel": "next",
+      "note": "Follow with nmap for banner grabbing and service version detection on confirmed open ports."
+    },
+    {
+      "id": "nmap-udp-scan",
+      "rel": "alternative",
+      "note": "nmap -sU is more reliable for UDP — retries on no response and recognises ICMP unreachable."
+    }
+  ],
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Network Service Discovery (T1046)",
+      "url": "https://attack.mitre.org/techniques/T1046/"
+    },
+    {
+      "title": "nc(1) man page",
+      "url": "https://linux.die.net/man/1/nc"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Network access to the target host. nc is pre-installed on most Linux distributions and macOS.",
+    "why_it_works": "TCP: nc completes (or attempts) a three-way handshake on each port. A SYN-ACK response means the port is open; RST means closed; no response means filtered. UDP: nc sends an empty datagram; ICMP port-unreachable means closed, no response means open|filtered. -z sends no application data, so service-level IDS rules that inspect payloads are bypassed.",
+    "misconfiguration": "Hosts with open ports not protected by a host-based firewall. UDP services (NTP, SNMP, DNS) that respond to any source.",
+    "impact": "Confirms which ports are open before running heavier scanners. UDP scanning reveals services like NTP (123) and SNMP (161) that nmap may miss on quick scans.",
+    "detection": "Firewall/IPS logs showing sequential connection attempts from the same source IP. SYN packets without subsequent data (zero-I/O) are a pattern EDR and network sensors can flag. IDS rules for rapid sequential port probes from a single source.",
+    "artifacts": "Network PCAP: SYN packets from attacker IP to target across sequential ports. Firewall deny/accept logs.",
+    "prevention": "Host-based firewall denying unsolicited inbound connections. Network IPS rate-limiting SYN packets per source. IDS alert on sequential port probes.",
+    "evasion": "-w 1 keeps connections brief, reducing window for detection. Single-port nc checks for specific services generate less alerting than a range scan. nc lacks the timing and fragmentation evasion flags nmap has.",
+    "sources": ["PEN-200 Ch 6", "MITRE T1046"]
+  }
+}

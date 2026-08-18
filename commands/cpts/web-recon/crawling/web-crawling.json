@@ -1,0 +1,123 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "reconspider",
+    "scrapy"
+  ],
+  "tags": [
+    "crawling",
+    "spider",
+    "reconspider"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "Crawling",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "CPTS Ch05 — crawl inlanefreight.com with ReconSpider",
+      "command": "python3 ReconSpider.py http://inlanefreight.com"
+    },
+    {
+      "label": "Install and run",
+      "command": "wget -O ReconSpider.zip https://academy.hackthebox.com/storage/modules/144/ReconSpider.v1.2.zip\nunzip ReconSpider.zip\npython3 ReconSpider.py http://inlanefreight.com"
+    }
+  ],
+  "notes": "results.json fields: emails, links, external_files, js_files, form_fields, images, comments. Other crawlers: Burp Spider, OWASP ZAP, Apache Nutch. ReconSpider (Scrapy-based) crawls a target and extracts emails, internal/external links, JS files, images, form fields, and HTML comments into results.json. Use Scrapy directly for custom crawlers. Also covered in: CPTS Ch05 (Information Gathering – Web Edition).",
+  "references": [
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ffuf-directory",
+      "rel": "next",
+      "note": "Brute hidden directories (Module 15)."
+    },
+    {
+      "id": "google-dorks",
+      "rel": "next",
+      "note": "Cross-check with search-engine OSINT."
+    }
+  ],
+  "id": "web-crawling",
+  "name": "Web Crawling - ReconSpider",
+  "command": "python3 ReconSpider.py http://<domain>",
+  "description": "Crawl a site to harvest emails, links, JS files, external files, forms, and comments into results.json - a fast way to map the app and spot sensitive endpoints.",
+  "steps": [
+    {
+      "label": "1. Get ReconSpider",
+      "command": "wget -O ReconSpider.zip https://academy.hackthebox.com/storage/modules/144/ReconSpider.v1.2.zip\nunzip ReconSpider.zip"
+    },
+    {
+      "label": "2. Crawl the target",
+      "command": "python3 ReconSpider.py http://inlanefreight.com   # -> results.json"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1594"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Web crawlers systematically enumerate all discoverable paths on a website, following links and inspecting files like robots.txt and sitemap.xml. This reveals site structure, hidden directories, old technology references, contact information, and data that may feed into phishing or further exploitation.",
+    "prerequisites": "A reachable target website (URL). Public content needs no auth; authenticated crawling requires valid session cookies.",
+    "impact": "Maps the site's structure, hidden directories, parameters, source comments, and linked files — surfacing endpoints and inputs for injection, IDOR, and file-inclusion testing.",
+    "detection": "Detection risk is Low to Medium — crawlers can be detected when their behaviour is not carefully configured to mimic legitimate user traffic. Web server logs show high request rates, sequential path enumeration, or unusual user-agent strings. WAF and bot-detection platforms flag anomalous crawl patterns.\n\n[MITRE T1594 AN1942] Monitor for suspicious network traffic that could be indicative of adversary reconnaissance, such as rapid successions of requests indicative of web crawling and/or large quantities of requests originating from a single source. Analyzing web metadata may also reveal artifacts attributable to potentially malicious activity, such as referer or user-agent string HTTP/S fields.",
+    "artifacts": "Generates a high volume of sequential HTTP requests in web server access logs from a single source IP, often with a non-browser user-agent. May trigger WAF/bot-detection events.",
+    "prevention": "Deploy bot-detection and WAF solutions that fingerprint automated crawlers. Implement rate limiting at the web server or CDN layer. Restrict sensitive paths in robots.txt — note this is security-through-obscurity only, as robots.txt is publicly readable and commonly checked by attackers.\n\n[MITRE T1594 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "evasion": "Configure the crawler to use a realistic user-agent string and observe crawl-delay directives from robots.txt. Distribute requests across time or multiple source IPs to stay below rate-limit and single-source volume thresholds.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1594"
+    ],
+    "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
+    "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
+    "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
+  },
+  "variations": [
+    {
+      "description": "Install ReconSpider via wget + unzip",
+      "command": "wget -O ReconSpider.zip https://academy.hackthebox.com/storage/modules/144/ReconSpider.v1.2.zip\nunzip ReconSpider.zip",
+      "label": "Get ReconSpider"
+    },
+    {
+      "description": "Run ReconSpider against target (outputs results.json)",
+      "command": "python3 ReconSpider.py http://<domain>",
+      "label": "python3 ReconSpider.py http://<dom…"
+    },
+    {
+      "description": "Install Scrapy",
+      "command": "pip3 install scrapy",
+      "label": "pip3"
+    },
+    {
+      "description": "Scrapy shell for quick interactive crawl testing",
+      "command": "scrapy shell 'http://<domain>'",
+      "label": "scrapy"
+    },
+    {
+      "description": "View crawl output JSON",
+      "command": "cat results.json | jq .",
+      "label": "View JSON results"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\ndig ANY retrieves all available DNS record types in a single query: A, MX, NS, TXT, SOA, CNAME. Each type reveals different infrastructure intelligence. TXT records are especially valuable \u2014 SPF exposes internal IP ranges, verification tokens reveal the full SaaS stack.\n\n=== TXT RECORD INTEL ===\nSPF records expose internal IP ranges in their syntax. Service verification tokens (Atlassian, Google, LogMeIn, Mailgun, Outlook) fingerprint the entire third-party platform stack \u2014 each platform is its own attack surface.\n\n=== CHAINING ===\nANY query \u2192 extract NS records for zone transfer attempt (dig axfr) \u2192 extract MX for SMTP enumeration \u2192 extract TXT for SaaS stack fingerprinting \u2192 extract A records for active scan targets.",
+  "references": []
+}

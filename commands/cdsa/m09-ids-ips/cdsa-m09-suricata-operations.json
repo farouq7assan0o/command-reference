@@ -1,0 +1,81 @@
+{
+  "id": "cdsa-m09-suricata-operations",
+  "name": "Suricata Operations — Config, File Extraction & Ruleset Management",
+  "command": "sudo suricata -T -c /etc/suricata/suricata.yaml",
+  "description": "Suricata operational tasks: validating configuration (-T), managing rules (suricata-update, live reload via SIGUSR2), enabling file extraction (file-store in suricata.yaml + filestore rule), and inspecting extracted files (SHA256-named, organized by first 2 chars of hash). Key commands for ruleset management: list-sources, enable-source, suricata-update. Live reload avoids restart downtime.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "IDS/IPS",
+  "subcategory": "Suricata",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 09: Working with IDS/IPS",
+  "tags": ["suricata", "suricata-update", "file-extraction", "rule-reload", "emerging-threats", "yaml-config", "blue-team"],
+  "tools": ["suricata", "suricata-update", "systemctl", "xxd"],
+  "mitre": ["T1071.001"],
+  "notes": "=== VALIDATE CONFIGURATION ===\nsudo suricata -T -c /etc/suricata/suricata.yaml\n  → Runs test mode: checks config file + all referenced files\n  → Output: 'Configuration provided was successfully loaded. Exiting.'\n  → No traffic processing — just config validation\n\n=== ADD LOCAL RULES ===\n# 1. Create /home/htb-student/local.rules with rule\n# 2. Edit suricata.yaml:\nsudo vim /etc/suricata/suricata.yaml\n\n  rule-files:\n    - suricata.rules\n    - local.rules        ← add this line\n\n# 3. Verify rules loaded:\nls -lah /etc/suricata/rules/\nmore /etc/suricata/rules/emerging-malware.rules\n\n=== LIVE RULE RELOADING ===\n# In suricata.yaml:\ndetect-engine:\n  - reload: true\n\n# Then signal the running process to reload rules:\nsudo kill -usr2 $(pidof suricata)\n  → Reloads ruleset WITHOUT restarting Suricata\n  → No traffic gap during reload\n\n=== UPDATING RULESETS ===\n# Simple update (Emerging Threats Open by default):\nsudo suricata-update\n  → Fetches from https://rules.emergingthreats.net/open/\n  → Saves to /var/lib/suricata/rules/suricata.rules\n  → Tests with suricata -T after update\n\n# List available ruleset providers:\nsudo suricata-update list-sources\n  → et/open (Proofpoint, MIT)\n  → et/pro (Proofpoint, Commercial)\n  → oisf/trafficid (OISF, MIT)\n  → sslbl/ssl-fp-blacklist (Abuse.ch, Non-Commercial)\n  → sslbl/ja3-fingerprints (Abuse.ch JA3 hashes)\n  → tgreen/hunting (threat hunting rules, GPLv3)\n  → malsilo/win-malware (commodity malware, MIT)\n\n# Enable a specific ruleset source:\nsudo suricata-update enable-source et/open\nsudo suricata-update   ← then re-run update to pull new source\n\n# Restart Suricata after major ruleset changes:\nsudo systemctl restart suricata\n\n=== FILE EXTRACTION ===\n# 1. Edit suricata.yaml:\nfile-store:\n  version: 2\n  enabled: yes\n  force-filestore: yes  ← store ALL files (not just rule-triggered)\n  dir: /var/log/suricata/filestore  ← default location\n\n# 2. Add extraction rule to local.rules:\nalert http any any -> any any (msg:\"FILE store all\"; filestore; sid:2; rev:1;)\n  → This rule triggers file extraction for ALL HTTP transferred files\n\n# 3. Run Suricata:\nsuricata -r /home/htb-student/pcaps/vm-2.pcap\n  → Creates: eve.json, fast.log, stats.log, suricata.log, filestore/\n\n# 4. Inspect extracted files:\ncd filestore\nfind . -type f\n  → Files named by SHA256 hash\n  → Organized: filestore/XX/XXHASH... (first 2 chars of SHA256 = subdir)\n  → Example: f9bc6d... → filestore/f9/f9bc6d...\n\n# 5. Inspect file content:\nxxd ./21/21742fc621f83041db2e47b0899f5aea6caa00a4b67dbff0aae823e6817c5433 | head\n  → MZ header = Windows PE executable\n  → Look for file magic bytes to identify type",
+  "examples": [
+    {
+      "label": "Validate Suricata config",
+      "command": "sudo suricata -T -c /etc/suricata/suricata.yaml"
+    },
+    {
+      "label": "List installed rule files",
+      "command": "ls -lah /etc/suricata/rules/"
+    },
+    {
+      "label": "Inspect an emerging threats rule file",
+      "command": "more /etc/suricata/rules/emerging-malware.rules"
+    },
+    {
+      "label": "Reload rules without restart (SIGUSR2)",
+      "command": "sudo kill -usr2 $(pidof suricata)"
+    },
+    {
+      "label": "Update rulesets (Emerging Threats Open)",
+      "command": "sudo suricata-update"
+    },
+    {
+      "label": "List available ruleset providers",
+      "command": "sudo suricata-update list-sources"
+    },
+    {
+      "label": "Enable a specific ruleset source",
+      "command": "sudo suricata-update enable-source et/open"
+    },
+    {
+      "label": "Restart Suricata service",
+      "command": "sudo systemctl restart suricata"
+    },
+    {
+      "label": "Find all extracted files in filestore",
+      "command": "cd filestore && find . -type f"
+    },
+    {
+      "label": "Inspect extracted file (hex dump)",
+      "command": "xxd ./XX/<SHA256_HASH> | head"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Working with IDS/IPS",
+      "url": "https://academy.hackthebox.com/module/details/226"
+    },
+    {
+      "title": "Suricata File Extraction Documentation",
+      "url": "https://docs.suricata.io/en/suricata-6.0.13/file-extraction/file-extraction.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m09-ids-ips-fundamentals",
+      "rel": "prereq",
+      "note": "IDS/IPS concepts and Suricata modes — foundation before configuration."
+    },
+    {
+      "id": "cdsa-m09-suricata-rule-syntax",
+      "rel": "next",
+      "note": "Suricata rule anatomy and content modifiers for writing custom rules."
+    }
+  ]
+}

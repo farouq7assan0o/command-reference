@@ -1,0 +1,97 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "bash"
+  ],
+  "tags": [
+    "restricted-shell",
+    "escape"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Restricted Shells",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Backtick command substitution",
+      "command": "ls -l `pwd`"
+    },
+    {
+      "label": "Glob to list files without ls",
+      "command": "echo *"
+    },
+    {
+      "label": "Read a file with $(<file)",
+      "command": "echo \"$(</home/htb-user/flag.txt)\""
+    },
+    {
+      "label": "Chain commands with ; or |",
+      "command": "# cmd1 ; cmd2   |   cmd1 | cmd2"
+    }
+  ],
+  "notes": "Once you can invoke another interpreter (vi/awk/python/ed) or a GTFOBins binary, spawn an unrestricted shell.",
+  "references": [
+    {
+      "title": "Bash Restricted Shell",
+      "url": "https://www.gnu.org/software/bash/manual/html_node/The-Restricted-Shell.html"
+    },
+    {
+      "title": "GTFOBins",
+      "url": "https://gtfobins.github.io/"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "path-abuse",
+      "note": "Once out, abuse PATH on a callable binary.",
+      "rel": "next"
+    },
+    {
+      "id": "gtfobins-crossref",
+      "note": "Look for GTFOBins escapes from allowed binaries.",
+      "rel": "next"
+    }
+  ],
+  "id": "restricted-shell-escape",
+  "name": "Restricted Shell - Escape Techniques",
+  "command": "ls -l `pwd`",
+  "description": "rbash/rksh/rzsh block cd, redirection, and PATH changes but often allow command substitution and built-ins. Use backticks/$(), chaining metacharacters, and echo tricks to read files or break out.",
+  "opsec": "loud",
+  "mitre": [
+    "T1059.004"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Restricted shells (rbash, rzsh, rksh) limit available commands and disable certain operations (cd, PATH modification, output redirection). However, they fail to restrict command substitution (backtick or $()) and metacharacters (|, ;) in some implementations, allowing escape to a full shell. Other escapes include using allowed editors (vi, ed) or language interpreters that can spawn unrestricted shells.",
+    "prerequisites": "Shell access as a user placed in a restricted shell. The restricted shell has an escape vector (backtick substitution, pipe metacharacter, allowed editor/interpreter that can exec shell).",
+    "impact": "Escape from restricted shell to a fully functional bash/sh session, enabling access to all system commands, PATH manipulation, and further privilege escalation.",
+    "detection": "Unexpected command execution patterns in a restricted shell session. Process audit: bash or sh process spawned from rbash parent without restricted mode. SSH session executing unusual commands.",
+    "artifacts": "SSH audit log (session executing commands outside restricted shell scope) | Process audit: unrestricted shell spawned from rbash",
+    "prevention": "Properly configure restricted shell environments. Ensure the login shell is set to rbash in /etc/passwd. Restrict allowed commands to an allowlist. Use AppArmor/SELinux profile for the restricted shell user. Ensure editors and interpreters accessible in the restricted environment cannot spawn shell processes.",
+    "misconfiguration": "Restricted shell configured for a user but common escape vectors left open: editors (vi, awk, python) available, backtick substitution not restricted, or $SHELL variable settable.",
+    "vulnerable_config": "# /etc/passwd sets rbash\nhtb-user:x:1001:1001::/home/htb-user:/bin/rbash\n\n# But vi is accessible in PATH:\n# :!/bin/bash  <- shell escape from vi\n\n# Or backtick substitution works:\nls -l `pwd`  # executes pwd outside restricted context",
+    "secure_config": "# Strict rbash setup\n# 1. Set login shell to rbash in /etc/passwd\n# 2. Restrict PATH to controlled /home/user/bin/\n# 3. Make PATH read-only: readonly PATH\n# 4. Remove editors (vi, python, awk) from accessible PATH\n# 5. Use ForceCommand in sshd_config for SSH sessions:\n# Match User htb-user\n#   ForceCommand /usr/bin/restricted-menu.sh",
+    "sources": [
+      "HTB M25",
+      "MITRE T1059",
+      "MITRE T1548"
+    ]
+  }
+}

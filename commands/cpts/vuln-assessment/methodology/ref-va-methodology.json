@@ -1,0 +1,55 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [],
+  "tags": [
+    "reference",
+    "methodology",
+    "risk"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "The loop",
+      "command": "# Scope -> Scan -> Evaluate -> Interpret -> Remediate -> Rescan"
+    }
+  ],
+  "notes": "Steps: identify/analyze risk -> set scanning policies -> configure (targets, ports, protocols, aggressiveness, timing) -> scan -> evaluate risk -> interpret results -> remediation/mitigation plan.\nScan types: network, host-based, wireless, application.\nRisk model: Risk = Threat x Vulnerability. Assess by Likelihood x Impact (ISO 31000).\nStart from an asset inventory (on-prem, cloud, SaaS, apps, network devices).",
+  "references": [
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-scanner-overview",
+      "rel": "next",
+      "note": "Pick a scanner for the assessment."
+    }
+  ],
+  "id": "ref-va-methodology",
+  "name": "Reference - Vulnerability Assessment Methodology",
+  "command": "# scope -> scan -> evaluate -> interpret -> remediate",
+  "description": "The structured VA process and the risk model that drives prioritization.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1595"
+  ]
+}

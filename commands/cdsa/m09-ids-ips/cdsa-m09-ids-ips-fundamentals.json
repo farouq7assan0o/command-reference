@@ -1,0 +1,97 @@
+{
+  "id": "cdsa-m09-ids-ips-fundamentals",
+  "name": "IDS/IPS Fundamentals \u2014 Concepts, Modes & Suricata Inputs",
+  "command": "sudo suricata -r /home/htb-student/pcaps/suspicious.pcap -k none -l .",
+  "description": "IDS detects and alerts (passive); IPS detects and blocks (active). Suricata operates in 4 modes: IDS (passive LibPCAP/AF_PACKET), IPS (inline NFQ), IDPS (passive + TCP RST drops), NSM (logging only). Inputs: LibPCAP (offline PCAP or live), NFQ (Linux IPS via IPTables), AF_PACKET (performance live capture). EVE JSON is the recommended output format. All logs stored at /var/log/suricata/.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "IDS/IPS",
+  "subcategory": "Suricata",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 09: Working with IDS/IPS",
+  "tags": [
+    "suricata",
+    "snort",
+    "zeek",
+    "ids",
+    "ips",
+    "nids",
+    "nips",
+    "libpcap",
+    "af-packet",
+    "nfqueue",
+    "eve-json",
+    "blue-team"
+  ],
+  "tools": ["suricata", "iptables", "tcpreplay", "jq"],
+  "mitre": [
+    "T1040",
+    "T1059"
+  ],
+  "notes": "=== IDS vs IPS CONCEPTS ===\nIDS (Intrusion Detection System):\n  \u2192 Passive monitoring \u2014 copies of traffic analyzed\n  \u2192 Alerts generated but traffic NOT blocked\n  \u2192 Typically placed behind firewall (receives mirrored/span port traffic)\n  \u2192 False positives: less harmful (only alerts, no blocking)\n\nIPS (Intrusion Prevention System):\n  \u2192 Active inline monitoring \u2014 sits IN the traffic path\n  \u2192 Can block, drop, or reset malicious traffic\n  \u2192 Must be highly reliable \u2014 false positives drop legitimate traffic\n  \u2192 Typically placed between firewall and internal network\n\nIDPS (Hybrid):\n  \u2192 Passive monitoring + can send TCP RST to terminate sessions\n  \u2192 No need to be inline for session termination\n\nNSM (Network Security Monitoring):\n  \u2192 Logging-only mode \u2014 full traffic capture for forensics\n  \u2192 No detection/alerting \u2014 pure visibility\n\n=== SURICATA OPERATION MODES ===\n1. IDS Mode (default):\n   \u2192 Passive \u2014 listens, detects, alerts only\n   \u2192 AF_PACKET or LibPCAP input\n   \u2192 sudo suricata -i ens160     (AF_PACKET)\n   \u2192 sudo suricata --pcap=ens160  (LibPCAP live)\n   \u2192 suricata -r file.pcap        (LibPCAP offline)\n\n2. IPS Mode (inline):\n   \u2192 Active \u2014 inspects and can DROP packets\n   \u2192 Requires NFQ (Netfilter Queue) input\n   \u2192 sudo iptables -I FORWARD -j NFQUEUE   (redirect traffic)\n   \u2192 sudo suricata -q 0                     (IPS mode)\n\n3. IDPS Mode:\n   \u2192 Passive + TCP RST injection to kill connections\n   \u2192 Uses AF_PACKET in bypass mode\n\n4. NSM Mode:\n   \u2192 Pure logging, no detection rules required\n   \u2192 Good for traffic storage/forensics\n\n=== SURICATA INPUTS ===\nLibPCAP (offline + live):\n  \u2192 Offline PCAP: suricata -r file.pcap\n  \u2192 Live (LibPCAP mode): sudo suricata --pcap=ens160\n  \u2192 Configurable via suricata.yaml: buffer-size, BPF filters, checksum, threads, promiscuous mode\n  \u2192 Less performance than AF_PACKET\n\nNFQ (Netfilter Queue) \u2014 IPS mode only:\n  \u2192 Intercepts packets from Linux Netfilter (IPTables)\n  \u2192 Requires iptables rule to redirect to queue first\n  \u2192 sudo iptables -I FORWARD -j NFQUEUE\n  \u2192 sudo suricata -q 0\n  \u2192 Only supported on Linux\n\nAF_PACKET (performance live):\n  \u2192 Zero-copy packet access \u2014 best performance\n  \u2192 DEFAULT when using -i flag on Linux\n  \u2192 sudo suricata -i ens160  OR  sudo suricata --af-packet=ens160\n  \u2192 Does not support inline routing (no packet modification)\n  \u2192 Best for IDS/IDPS/NSM deployment\n\n=== SURICATA OUTPUTS ===\nAll logs default location: /var/log/suricata/\n\neve.json (recommended):\n  \u2192 JSON format: timestamp, flow_id, event_type, alert details\n  \u2192 event_type: stats, alert, dns, http, tls, ssh, flow, files, ...\n  \u2192 flow_id: unique per network flow (correlate events)\n  \u2192 pcap_cnt: packet position in PCAP file (for tracing)\n  \u2192 Filter: cat eve.json | jq -c 'select(.event_type == \"alert\")'\n  \u2192 Filter DNS: cat eve.json | jq -c 'select(.event_type == \"dns\")' | head -1 | jq .\n\nfast.log (text alerts only):\n  \u2192 Simple one-line alert format\n  \u2192 Format: TIMESTAMP [**] [GID:SID:REV] MSG [**] [Classification] [Priority] {PROTO} SRC -> DST\n  \u2192 cat /var/log/suricata/fast.log\n\nstats.log:\n  \u2192 Human-readable statistics (counter, TM Name, Value)\n  \u2192 Useful for debugging deployments\n  \u2192 cat /var/log/suricata/stats.log\n\nsuricata.log:\n  \u2192 Engine startup/shutdown messages, config errors\n\n=== SURICATA YAML CONFIG KEYS ===\n  HOME_NET: [10.0.0.0/8,172.16.0.0/12,192.168.0.0/16]\n  EXTERNAL_NET: !$HOME_NET\n  rule-files:\n    - suricata.rules\n    - local.rules        \u2190 add custom rules here\n  detect-engine:\n    - reload: true       \u2190 enable live rule reload\n  file-store:\n    version: 2\n    enabled: yes\n    force-filestore: yes \u2190 extract all files",
+  "examples": [
+    {
+      "label": "Run Suricata offline (PCAP file, skip checksum)",
+      "command": "suricata -r /home/htb-student/pcaps/suspicious.pcap -k none -l ."
+    },
+    {
+      "label": "Run Suricata live IDS mode (AF_PACKET)",
+      "command": "sudo suricata -i ens160"
+    },
+    {
+      "label": "Run Suricata live IDS mode (LibPCAP explicit)",
+      "command": "sudo suricata --pcap=ens160 -vv"
+    },
+    {
+      "label": "Run Suricata live IDS mode (AF_PACKET explicit)",
+      "command": "sudo suricata --af-packet=ens160"
+    },
+    {
+      "label": "IPS mode: redirect traffic to NFQ first",
+      "command": "sudo iptables -I FORWARD -j NFQUEUE"
+    },
+    {
+      "label": "IPS mode: start Suricata on queue 0",
+      "command": "sudo suricata -q 0"
+    },
+    {
+      "label": "Filter only alerts from EVE JSON",
+      "command": "cat /var/log/suricata/eve.json | jq -c 'select(.event_type == \"alert\")'"
+    },
+    {
+      "label": "Filter DNS events from EVE JSON (pretty-print first)",
+      "command": "cat /var/log/suricata/eve.json | jq -c 'select(.event_type == \"dns\")' | head -1 | jq ."
+    },
+    {
+      "label": "View text alerts (fast.log)",
+      "command": "cat /var/log/suricata/fast.log"
+    },
+    {
+      "label": "Replay PCAP on interface for live Suricata testing",
+      "command": "sudo tcpreplay -i ens160 /home/htb-student/pcaps/suspicious.pcap"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Working with IDS/IPS",
+      "url": "https://academy.hackthebox.com/module/details/226"
+    },
+    {
+      "title": "Suricata Documentation",
+      "url": "https://docs.suricata.io/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m09-suricata-operations",
+      "rel": "next",
+      "note": "Suricata configuration, file extraction, and ruleset management."
+    }
+  ],
+  "lint_ignore": [
+    "hardcoded-literal"
+  ]
+}

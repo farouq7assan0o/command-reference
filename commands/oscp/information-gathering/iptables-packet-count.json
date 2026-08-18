@@ -1,0 +1,88 @@
+{
+  "id": "iptables-packet-count",
+  "name": "iptables - Packet Counter for Scan Verification",
+  "command": "sudo iptables -I INPUT 1 -s <ip> -j ACCEPT",
+  "description": "Use iptables packet counters to measure exactly how many packets an nmap scan sends and receives. Set ACCEPT rules on INPUT and OUTPUT for the target, reset counters with -Z, run the scan, then read the counters. Lets you compare scan types (SYN vs connect vs UDP) in terms of packet noise before running against real targets.",
+  "type": "attack-chain",
+  "platform": "linux",
+  "requires": ["local-access"],
+  "tools": ["iptables"],
+  "tags": ["iptables", "nmap", "verification", "packet-count", "scan-noise", "opsec"],
+  "category": "Enumeration",
+  "subcategory": "Network Discovery",
+  "certifications": ["OSCP"],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 Chapter 06: Information Gathering",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1046"
+  ],
+  "steps": [
+    {
+      "label": "Accept all inbound from target",
+      "command": "sudo iptables -I INPUT 1 -s <ip> -j ACCEPT"
+    },
+    {
+      "label": "Accept all outbound to target",
+      "command": "sudo iptables -I OUTPUT 1 -d <ip> -j ACCEPT"
+    },
+    {
+      "label": "Reset packet/byte counters to zero",
+      "command": "sudo iptables -Z"
+    },
+    {
+      "label": "Run the nmap scan you want to measure",
+      "command": "nmap <ip>"
+    },
+    {
+      "label": "Read the counters (pkts/bytes per rule)",
+      "command": "sudo iptables -vn -L"
+    },
+    {
+      "label": "Reset counters again before next comparison scan",
+      "command": "sudo iptables -Z"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Full comparison sequence against 192.168.50.149",
+      "command": "sudo iptables -I INPUT 1 -s 192.168.50.149 -j ACCEPT && sudo iptables -I OUTPUT 1 -d 192.168.50.149 -j ACCEPT && sudo iptables -Z"
+    },
+    {
+      "label": "Read packet counters after scan",
+      "command": "sudo iptables -vn -L"
+    }
+  ],
+  "notes": "iptables -Z resets the byte/packet counters for all chains without removing the rules. -vn -L shows the counters. Compare: nmap default (TCP SYN) vs nmap -sT (connect) vs nmap -sU to understand which scan type generates more traffic before using on production networks or noisy engagements. This is a local analysis technique — entirely on your Kali box, no impact on the target.",
+  "recommended": [
+    {
+      "id": "nmap-syntax",
+      "rel": "next",
+      "note": "Run the nmap scan under test while iptables counters are live."
+    },
+    {
+      "id": "nmap-udp-scan",
+      "rel": "next",
+      "note": "UDP scans generate significantly more packets — verify before running on restricted engagements."
+    }
+  ],
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "iptables man page",
+      "url": "https://linux.die.net/man/8/iptables"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Local root/sudo access on the attacker's Kali machine. This technique makes no network calls — it is purely a local measurement tool.",
+    "why_it_works": "iptables maintains per-rule packet and byte counters. -I inserts a rule at position 1 (top of chain) so all matching traffic is counted before any other rule can drop it. -Z zeroes the counters atomically across all chains, giving a clean baseline. -vn -L prints the counters in numeric form (no DNS resolution). Because the ACCEPT rules are on the attacker's local machine, they do not touch the target at all.",
+    "impact": "No direct attack impact — this is a preparation and opsec-calibration technique. Knowing the packet cost of each scan type lets an operator choose the least-noisy option before engaging a real target.",
+    "artifacts": "None on the target. On the attacker: iptables rules remain until flushed (iptables -D INPUT 1, iptables -D OUTPUT 1) or the host reboots.",
+    "prevention": "N/A — this is a local attacker-side technique. Defenders cannot prevent an operator from measuring their own scan traffic.",
+    "sources": ["PEN-200 Ch 6"]
+  }
+}

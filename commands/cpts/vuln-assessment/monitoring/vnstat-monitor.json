@@ -1,0 +1,106 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "vnstat"
+  ],
+  "tags": [
+    "vnstat",
+    "bandwidth",
+    "monitoring"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Monitoring",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "CPTS Ch06 — monitor scan bandwidth impact",
+      "command": "sudo apt install vnstat\nsudo vnstat -l -i eth0\n# Run before and during Nessus/OpenVAS scan to observe bandwidth usage"
+    },
+    {
+      "label": "Check traffic before/after scan",
+      "command": "vnstat -d  # daily summary"
+    }
+  ],
+  "notes": "vnstat tracks bandwidth per interface - run it during active scanning to prove you stayed within agreed rate limits (RoE) and to spot when a scan is hammering the target. Evidence/hygiene, not an attack. Use vnstat to observe network impact of vulnerability scans. Unauthenticated Nessus scans typically generate ~150-400 kbit/s; authenticated scans are lower. Monitor to avoid exceeding agreed-upon bandwidth limits in client engagements. Also covered in: CPTS Ch06 (Vulnerability Assessment).",
+  "references": [
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nessus-setup",
+      "rel": "next",
+      "note": "Kick off the authenticated scan you're monitoring."
+    }
+  ],
+  "id": "vnstat-monitor",
+  "name": "vnstat - Monitor Scan Bandwidth",
+  "command": "vnstat -l -i eth0",
+  "description": "Watch live interface throughput while scanning so an aggressive scan doesn't saturate the link or trip network monitoring.",
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1040"
+  ],
+  "defense": {
+    "why_it_works": "vnstat is a console network-traffic monitor that logs per-interface bandwidth over time. In an assessment it is used to gauge how much traffic a scan generates - an opsec / monitoring aid, not an attack against the target.",
+    "prerequisites": "Local access on the testing host with vnstat installed and watching the scanning interface.",
+    "impact": "Awareness of scan bandwidth and footprint, helping the tester stay under rate-based detection thresholds and avoid disrupting the target network.",
+    "detection": "None on the target - vnstat only reads local interface counters and sends nothing to the target.",
+    "artifacts": "No victim-side evidence; a local vnstat database on the tester's host.",
+    "sources": [
+      "HTB M06"
+    ],
+    "misconfiguration": "Vulnerability scanning reveals services with unpatched CVEs, default configurations, or known-weak settings. The absence of a patch management process allows critical vulnerabilities to remain exploitable for months or years. Scan results that are not acted upon create a false sense of security.",
+    "vulnerable_config": "# OpenVAS/Nessus finding typical vulnerable targets:\n# CVSSv3: 9.8 - Apache Struts2 RCE (CVE-2017-5638) - unpatched\n# CVSSv3: 8.8 - Tomcat manager with default creds (admin/admin)\n# CVSSv3: 10.0 - MS17-010 (EternalBlue) - SMBv1 enabled, unpatched\n\n# Unpatched = patch not applied within SLA:\n# Critical (CVSS 9+): patch within 24-72 hours\n# High (CVSS 7-8.9): patch within 7 days\n# Medium: patch within 30 days",
+    "secure_config": "# Establish a vulnerability management program:\n# 1. Scan weekly with authenticated scans (Nessus/OpenVAS/Qualys)\n# 2. Integrate scan results with ticketing (Jira/ServiceNow)\n# 3. Set SLA by severity: Critical 72h, High 7d, Medium 30d\n# 4. Verify patches with re-scan\n\n# CVSS scoring -> risk-based prioritization:\n# Not all CVSSv3 9+ are exploitable in your environment\n# Use EPSS (Exploit Prediction Scoring System) to prioritize by actual exploitation likelihood\n\n# Defense-in-depth: patch is the fix, but compensating controls while patching:\n# WAF rule for web vuln CVEs\n# Network segment to isolate vulnerable service\n# IDS signature for exploit traffic"
+  },
+  "variations": [
+    {
+      "description": "Install vnstat",
+      "command": "sudo apt install vnstat",
+      "label": "Install vnstat"
+    },
+    {
+      "description": "Monitor live bandwidth on interface",
+      "command": "sudo vnstat -l -i <interface>",
+      "label": "sudo vnstat -l -i"
+    },
+    {
+      "description": "Show daily/monthly traffic summary",
+      "command": "vnstat -d\nvnstat -m",
+      "label": "vnstat -d vnstat -m"
+    },
+    {
+      "description": "Show top 10 traffic days",
+      "command": "vnstat --top10",
+      "label": "vnstat --top10"
+    },
+    {
+      "description": "Monitor specific interface in live mode",
+      "command": "vnstat -l -i eth0",
+      "label": "vnstat -l -i eth0"
+    },
+    {
+      "description": "Show all interfaces",
+      "command": "vnstat",
+      "label": "vnstat"
+    }
+  ]
+}

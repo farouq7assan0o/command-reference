@@ -1,0 +1,121 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "dnsenum"
+  ],
+  "tags": [
+    "subdomains",
+    "brute-force",
+    "dnsenum"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "Subdomains",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "CPTS Ch05 — dnsenum against inlanefreight.com",
+      "command": "dnsenum --enum inlanefreight.com -f /usr/share/seclists/Discovery/DNS/subdomains-top1million-20000.txt -r"
+    },
+    {
+      "label": "dnsenum with XML output",
+      "command": "dnsenum --enum inlanefreight.com -f /usr/share/seclists/Discovery/DNS/subdomains-top1million-20000.txt -o dnsenum_results.xml -r"
+    }
+  ],
+  "notes": "Wordlists: /usr/share/seclists/Discovery/DNS/subdomains-top1million-{20000,110000}.txt. Passive source: search operator site:example.com and Certificate Transparency logs. dnsenum performs DNS enumeration + subdomain brute-force. The -r flag enables recursive subdomain search. SecLists subdomains-top1million-20000.txt is the standard wordlist. Results include A records, NS records, MX records, and any subdomains found. Also covered in: CPTS Ch05 (Information Gathering – Web Edition).",
+  "references": [
+    {
+      "title": "dnsenum",
+      "url": "https://github.com/fwaeytens/dnsenum"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "vhost-brute",
+      "rel": "next",
+      "note": "Some subdomains are name-based vhosts on one IP."
+    },
+    {
+      "id": "web-fingerprinting",
+      "rel": "next",
+      "note": "Fingerprint each resolved host."
+    }
+  ],
+  "id": "dns-subdomain-brute-web",
+  "name": "Subdomains - Brute Force",
+  "command": "dnsenum --enum <domain> -f <wordlist> -r",
+  "description": "Discover subdomains by resolving a wordlist against the domain. -r recurses into found subdomains. Also try amass, fierce, puredns, assetfinder.",
+  "opsec": "loud",
+  "mitre": [
+    "T1590.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "DNS subdomain brute-forcing systematically queries for common subdomain names (dev, staging, admin, mail, api, vpn, etc.) against the target domain. Valid subdomains resolve to IPs; invalid ones return NXDOMAIN. This maps the full surface of internet-facing services not linked from the main website.",
+    "prerequisites": "A target domain, a subdomain wordlist, and a resolver willing to answer high query volumes.",
+    "impact": "Discovers internet-facing hosts not linked anywhere public (dev, staging, admin, vpn) — each a fresh, often less-hardened target for the exploitation phase.",
+    "detection": "Brute-forcing generates high DNS query volumes from a single source against the target's authoritative nameserver, which is abnormal traffic. Some DNS servers can detect and block excessive DNS queries. Use caution and respect rate limits — rate-limited DNS providers may blackhole sources issuing unusually high query volumes.\n\n[MITRE T1590.002 M1056] Monitor for suspicious DNS query patterns indicative of enumeration, such as high-volume sequential subdomain queries from a single source against a specific domain's nameservers.",
+    "artifacts": "Produces a large burst of sequential DNS queries from one source against the target's authoritative servers — visible in query logs as a clear enumeration signature.",
+    "prevention": "Implement rate limiting on authoritative DNS servers. Use DNS firewall/RPZ policies to block known resolver abuse. Minimize the enumerable attack surface by avoiding predictable subdomain names for sensitive services and using private DNS for internal-only services.\n\n[MITRE T1590.002 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "evasion": "Use a distributed resolver pool to spread queries across many source IPs. Slow the query rate below the server detection threshold. Use passive DNS databases instead of active brute-forcing to avoid generating any direct traffic to the target's nameservers.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1590.002"
+    ],
+    "misconfiguration": "DNS zone transfers (AXFR queries) are permitted to any requesting host — not restricted to authorized secondary DNS servers. This exposes the entire DNS zone (all hostnames, IPs, mail servers, internal naming conventions) to any attacker who can reach the DNS port. Even without AXFR, DNS servers that respond to ANY queries or provide detailed error messages leak zone structure.",
+    "vulnerable_config": "# BIND (named) — zone transfer unrestricted (vulnerable):\n# /etc/bind/named.conf or named.conf.local:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { any; };  // <-- allows AXFR from ANY host = zone exposure\n};\n\n# Windows DNS — no transfer restriction:\n# DNS Manager -> Zone -> Properties -> Zone Transfers tab:\n# 'Allow zone transfers' checked, 'To any server' selected",
+    "secure_config": "# BIND — restrict zone transfers to secondary DNS IPs only:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { 10.10.1.5; 10.10.1.6; };  // only secondary DNS servers\n    // Or disable entirely if using AD-integrated zones:\n    // allow-transfer { none; };\n};\n\n# Windows DNS (integrated zones) — disable zone transfers:\n# DNS Manager -> Zone -> Properties -> Zone Transfers:\n# Uncheck 'Allow zone transfers' entirely (AD-integrated zones replicate via AD replication)\n\n# Additional hardening:\n# Disable DNS recursion for external clients\n# Response Rate Limiting (RRL) to prevent DNS amplification\n# Split-horizon DNS — internal and external zones serve different records"
+  },
+  "variations": [
+    {
+      "description": "dnsenum subdomain brute-force with SecLists top-1M wordlist",
+      "command": "dnsenum --enum <domain> -f /usr/share/seclists/Discovery/DNS/subdomains-top1million-20000.txt -r",
+      "label": "dnsenum --enum -f /usr/share/secli…"
+    },
+    {
+      "description": "dnsenum with custom DNS server",
+      "command": "dnsenum --dnsserver <nameserver_ip> --enum <domain> -f <wordlist> -r",
+      "label": "dnsenum --dnsserver --enum -f"
+    },
+    {
+      "description": "dnsenum with XML output (for later parsing)",
+      "command": "dnsenum --enum <domain> -f <wordlist> -o <output.xml> -r",
+      "label": "XML output"
+    },
+    {
+      "description": "subfinder passive subdomain enumeration",
+      "command": "subfinder -d <domain>",
+      "label": "subfinder (passive)"
+    },
+    {
+      "description": "amass passive enumeration",
+      "command": "amass enum -passive -d <domain>",
+      "label": "amass (passive)"
+    },
+    {
+      "description": "amass active brute-force",
+      "command": "amass enum -active -brute -d <domain> -w <wordlist>",
+      "label": "amass (active brute)"
+    }
+  ]
+}

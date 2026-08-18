@@ -1,0 +1,113 @@
+{
+  "id": "win-file-search-ps",
+  "name": "Windows File Search (PowerShell Recursive)",
+  "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue",
+  "platform": "windows",
+  "category": "Credential Access",
+  "subcategory": "Credential Hunting",
+  "type": "command",
+  "description": "Recursively search Windows filesystem for credential files, configuration files, and sensitive documents using PowerShell Get-ChildItem. -ErrorAction SilentlyContinue suppresses access-denied errors from protected directories.",
+  "notes": "-Path specifies the root; -Include supports wildcards and multiple extensions (comma-separated); -File restricts to files only (not directories); -Recurse walks all subdirectories; -ErrorAction SilentlyContinue is essential to avoid noise from System32, etc. Combine with Select-Object or findstr for content searching. Also covered in: OSCP PEN-200 Chapter 16 (Windows Privilege Escalation).",
+  "variations": [
+    {
+      "command": "Get-ChildItem -Path C:\\xampp -Include *.txt,*.ini -File -Recurse -ErrorAction SilentlyContinue",
+      "caption": "Search XAMPP directory for config files with credentials",
+      "label": "Find *.txt"
+    },
+    {
+      "command": "Get-ChildItem -Path C:\\Users\\ -Include *.txt,*.pdf,*.xls,*.xlsx,*.doc,*.docx -File -Recurse -ErrorAction SilentlyContinue",
+      "caption": "Search all user profiles for document files",
+      "label": "Find *.txt"
+    },
+    {
+      "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue",
+      "caption": "Hunt for KeePass database files (*.kdbx)",
+      "label": "Find *.kdbx"
+    },
+    {
+      "command": "Get-ChildItem -Path C:\\ -Include web.config,*.config,appsettings.json,*.env -File -Recurse -ErrorAction SilentlyContinue",
+      "caption": "Hunt for web app config files with DB credentials",
+      "label": "Find web.config"
+    },
+    {
+      "command": "Get-ChildItem -Path C:\\ -Include id_rsa,*.pem,*.ppk -File -Recurse -ErrorAction SilentlyContinue",
+      "caption": "Hunt for SSH private keys",
+      "label": "Find id_rsa"
+    },
+    {
+      "command": "Get-ChildItem -Path C:\\inetpub -Include *.config,*.xml -File -Recurse -ErrorAction SilentlyContinue | Select-String -Pattern 'password|connectionString' -CaseSensitive:$false",
+      "caption": "IIS config: find and grep for password strings",
+      "label": "Find *.config"
+    },
+    {
+      "command": "Get-ChildItem -Path 'C:\\Program Files' -Include *.conf,*.cfg,*.ini -File -Recurse -ErrorAction SilentlyContinue",
+      "caption": "Search program files for configuration files",
+      "label": "Find *.conf"
+    },
+    {
+      "command": "Get-ChildItem -Path C:\\ -Include unattend.xml,sysprep.xml,unattended.xml -File -Recurse -ErrorAction SilentlyContinue",
+      "caption": "Hunt for unattend.xml (may contain base64-encoded admin passwords)",
+      "label": "Find unattend.xml"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Credential hunting pass: KeePass DBs + user documents",
+      "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue\nGet-ChildItem -Path C:\\Users\\ -Include *.txt,*.pdf,*.xls,*.xlsx,*.doc,*.docx -File -Recurse -ErrorAction SilentlyContinue"
+    },
+    {
+      "label": "Hunt PowerShell transcripts (may contain cleartext credentials)",
+      "command": "# Transcripts saved by admin if logging enabled:\nGet-ChildItem -Path C:\\Users\\ -Include transcript*.txt -File -Recurse -ErrorAction SilentlyContinue\n# Also check common locations:\ntype C:\\Users\\Public\\Transcripts\\transcript01.txt"
+    }
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 2024.11 Ch16",
+  "references": [
+    {
+      "title": "Get-ChildItem docs",
+      "url": "https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.management/get-childitem"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP Course)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "findstr-hunt",
+      "rel": "next",
+      "note": "findstr /SIM for content-based string search within files"
+    },
+    {
+      "id": "win-local-enum-ps",
+      "rel": "prereq",
+      "note": "Enumerate installed software first to know where to look"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Windows file systems often contain credential material in plaintext: web.config (database passwords), .config files, Unattend.xml (setup credentials), SAM/NTDS backups, SSH keys, KeePass databases, password manager exports, credential files (.cred, .pfx, .rdp). PowerShell's Get-ChildItem -Recurse with -Include patterns finds these quickly across the filesystem.",
+    "prerequisites": "Any local user. PowerShell execution. Read access to the filesystem (standard users can read most of C:\\ except protected system files).",
+    "impact": "T1552.001 Unsecured Credentials: Credentials in Files. Discovers plaintext credentials, private keys, and password databases leading to immediate privilege escalation or credential reuse across other systems.",
+    "detection": "Event 4104 SBL: recursive Get-ChildItem with credential-related Include patterns. EDR: bulk file system read across sensitive directories (C:\\Windows, C:\\Users, C:\\inetpub). Sysmon Event 11: access to known credential-containing file patterns.\nUnusual access to bash history, registry credential paths, or private key files by unauthorized or scripting tools (DET0412/AN1153).\nReading of sensitive files like .bash_history, /etc/shadow, or private key directories by unauthorized users (AN1154).\nUnusual access to ~/Library/Keychains, ~/.bash_history, or Terminal command history by unauthorized processes (AN1155).\nUnauthorized API or console calls to retrieve or reset password credentials, download key material, or modify SSO settings (AN1157).\nConfiguration backup utilities or CLI access dumping plaintext passwords, local user hashes, or SNMP strings (AN1159).",
+    "artifacts": "Event 4104: credential-hunting Get-ChildItem patterns | EDR: bulk FS enumeration | Sysmon Event 11: access to *.config, Unattend.xml, *.pfx | Windows Search index access patterns",
+    "prevention": "Encrypt sensitive config files (DPAPI, Azure Key Vault for application secrets). Use managed identities instead of embedded credentials. Regular credential hygiene audit (find and remove embedded credentials). Principle of least privilege on file permissions. Script Block Logging + AMSI.\nActive Directory Configuration: Remove vulnerable Group Policy Preferences (patch KB2962486).\nAudit: Proactively search for files containing credentials; take remediation action when found.\nEncrypt Sensitive Information: Store keys on separate cryptographic hardware rather than local system.\nFilter Network Traffic: Limit access to Instance Metadata API; use WAF to prevent SSRF exploitation.\nOperating System Configuration: Disable/restrict NTLM; consider set +o history and ln -s /dev/null ~/.bash_history.\nPassword Policies: Use strong passphrases for private keys; prohibit password storage in files or Registry.\nPrivileged Account Management: Limit permissions on Registry-stored credentials to minimize abuse.\nRestrict File and Directory Permissions: Restrict file shares to specific directories with need-to-know access.\nUpdate Software: Apply KB2962486 to prevent credentials being stored in GPPs.",
+    "evasion": "Search specific high-value paths rather than full recursive scan (C:\\inetpub, C:\\xampp, C:\\Users). Use findstr instead of PowerShell to avoid SBL.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1552/001/"
+    ],
+    "misconfiguration": "Credentials embedded in config files readable by standard users. Unattend.xml left on disk after OS installation. SSH keys in user home directories without passphrase. KeePass databases with weak master passwords.",
+    "vulnerable_config": "# Unattend.xml with plaintext credentials (common after Windows deployment):\nGet-ChildItem C:\\ -Recurse -Include 'Unattend.xml','sysprep.xml' -ErrorAction SilentlyContinue\n# Contains: <AdministratorPassword><Value>PlaintextPass123</Value></AdministratorPassword>\n\n# Web.config with database credentials:\nGet-ChildItem C:\\inetpub -Recurse -Include 'web.config' | Select-String 'password'",
+    "secure_config": "# Use DPAPI or Azure Key Vault for application secrets:\n# web.config — use ASP.NET encrypted config sections:\naspnet_regiis -pe 'connectionStrings' -app '/MyApp'\n# → connectionStrings section encrypted with machine key\n\n# Audit for embedded credentials:\nGet-ChildItem C:\\ -Recurse -Include '*.config','*.xml','*.ini','*.txt' -EA SilentlyContinue | Select-String -Pattern 'password\\s*=' -CaseSensitive:$false | Select-Object Filename,Line\n\n# Remove Unattend.xml after OS deployment:\nRemove-Item C:\\Windows\\Panther\\Unattend.xml -ErrorAction SilentlyContinue\nRemove-Item C:\\Windows\\System32\\sysprep\\Unattend.xml -ErrorAction SilentlyContinue"
+  }
+}

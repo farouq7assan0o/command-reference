@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nCrackMapExec (CME) enumerates SMB shares and their permissions in one command while also fingerprinting OS version, SMB signing state, and SMBv1 status. More information per query than smbclient or smbmap alone.\n\n=== CHAINING ===\nEnumerate shares \u2192 identify READ/WRITE permissions \u2192 drill into interesting shares with smbclient \u2192 look for credential files, scripts, or sensitive data \u2192 use rpcclient/enum4linux-ng for deeper user/group enumeration.\n\n=== PERMISSION FLAGS ===\nREAD = list + download contents. WRITE = can upload files (path to code execution if share is web-accessible or contains logon scripts). READ,WRITE = full access.\n\n=== NULL SESSION ===\nWithout -u/-p flags, CME attempts null session (unauthenticated). Many older environments permit null session share listing. Modern Windows requires authentication for share enumeration.",
+  "references": []
+}

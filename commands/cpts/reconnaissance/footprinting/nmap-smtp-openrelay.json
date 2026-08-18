@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nsmtp-open-relay NSE tests 16 different relay bypass techniques in a single run. A result of 16/16 is a confirmed open relay \u2014 the server will forward email from any sender to any recipient, enabling phishing with spoofed trusted addresses.\n\n=== OPEN RELAY IMPACT ===\nSend email appearing to originate from internal@company.com or ceo@company.com. Bypasses SPF checks if receiving server trusts the relay. Enables targeted phishing, spam campaigns, mail spoofing.\n\n=== mynetworks MISCONFIGURATION ===\nPostfix mynetworks = 0.0.0.0/0 allows any IP to relay. Should be restricted to localhost and internal mail infrastructure only.",
+  "references": []
+}

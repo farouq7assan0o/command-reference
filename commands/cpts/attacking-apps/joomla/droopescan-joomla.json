@@ -1,0 +1,96 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "droopescan",
+    "joomscan"
+  ],
+  "tags": [
+    "joomla",
+    "enumeration"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Joomla",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Scan Joomla with droopescan",
+      "command": "droopescan scan joomla --url http://dev.inlanefreight.local/"
+    },
+    {
+      "label": "joomscan alternative for the same target",
+      "command": "joomscan --url http://app.inlanefreight.local/"
+    },
+    {
+      "label": "joomlascan (Python 2.7) - component/CVE enumeration",
+      "command": "python2.7 joomlascan.py -u http://dev.inlanefreight.local"
+    }
+  ],
+  "notes": "droopescan is quiet but shallow on Joomla; joomscan is louder and enumerates components/CVEs. Run both - they miss different things.",
+  "references": [
+    {
+      "title": "droopescan (SamJoan)",
+      "url": "https://github.com/SamJoan/droopescan"
+    },
+    {
+      "title": "OWASP JoomScan",
+      "url": "https://github.com/OWASP/joomscan"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "joomla-detect",
+      "note": "Manual fingerprinting that scopes this scan.",
+      "rel": "prereq"
+    },
+    {
+      "id": "joomla-bruteforce",
+      "note": "Attack the admin login once enumerated.",
+      "rel": "next"
+    }
+  ],
+  "id": "droopescan-joomla",
+  "name": "Joomla - droopescan / joomscan Enumeration",
+  "command": "droopescan scan joomla --url http://<url>/",
+  "description": "Automated Joomla/Drupal enumerators. droopescan and joomscan fingerprint version, components, and modules to guide exploitation.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "droopescan probes known Joomla paths for installed extensions, plugins, and themes, then cross-references versions with vulnerability databases. It also checks administrative URLs and identifies outdated core versions from manifest files.",
+    "prerequisites": "HTTP access. No authentication required. Joomla running with default file layout.",
+    "impact": "Full extension inventory with CVE mapping — attacker knows which plugins have known RCE, LFI, or privilege escalation vulnerabilities before any login attempt.",
+    "detection": "Rapid sequential GET requests to Joomla manifest paths from one IP. User-Agent matching known scanners.",
+    "artifacts": "Access logs showing manifest/extension path enumeration | WAF alerts for scanner activity",
+    "prevention": "Deny direct access to /administrator/manifests/ via web server config. Keep all Joomla extensions updated. Restrict /administrator/ to known IPs.",
+    "misconfiguration": "Extension manifests at /administrator/manifests/packages/ accessible from unauthenticated requests.",
+    "vulnerable_config": "# Apache -- default config allows directory listing of /administrator/manifests/\n<Directory /var/www/html>\n    Options Indexes FollowSymLinks   # Indexes = directory listing enabled\n    AllowOverride None\n    Require all granted\n</Directory>\n\n# Joomla -- manifest files publicly readable, expose version info\n# /administrator/manifests/files/joomla.xml reveals exact CMS version",
+    "secure_config": "# Apache -- disable directory listing, restrict /administrator/\n<Directory /var/www/html>\n    Options -Indexes -FollowSymLinks\n    AllowOverride None\n    Require all granted\n</Directory>\n\n<Directory /var/www/html/administrator>\n    Require ip 10.0.0.0/8    # internal access only\n</Directory>\n\n# .htaccess in /administrator/manifests/\nDeny from all\n\n# Joomla Global Config: SEO URLs on, remove version meta tag\n# System > Global Configuration > Site > Show Joomla Version: No",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595.002"
+    ]
+  }
+}

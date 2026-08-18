@@ -1,0 +1,88 @@
+{
+  "id": "ad-lookupsid",
+  "name": "lookupsid.py - Enumerate Domain SIDs and Users",
+  "command": "lookupsid.py <domain>/<user>@<dc_ip>",
+  "description": "Brute-forces Windows SIDs against a target domain to enumerate users, groups, and the domain SID. Works across trust boundaries — can enumerate users in a foreign forest's domain using credentials from your current domain. Essential for obtaining foreign domain SIDs needed for ExtraSids attack (child→parent escalation).",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "Domain Trusts",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "sid-enumeration",
+    "impacket",
+    "domain-trusts",
+    "cross-forest",
+    "extrasids"
+  ],
+  "mitre": [
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY ENUMERATE SIDS ===\nThe ExtraSids (child→parent) golden ticket attack requires specific SIDs:\n  1. Child domain's SID (e.g., S-1-5-21-[child-specific values])\n  2. CHILD KRBTGT account's NT hash\n  3. Enterprise Admins group SID (parent domain: RID 519)\n     Formula: S-1-5-21-[PARENT domain SID]-519\n\nlookupsid.py gives you both the child domain SID AND the parent domain SID\n(by brute-forcing the parent DC): required for step 3.\n\n=== USING ACROSS TRUST BOUNDARIES ===\nTarget the PARENT domain's DC using child domain credentials:\n  lookupsid.py INLANEFREIGHT/user:pass@172.16.5.5  → maps INLANEFREIGHT.LOCAL SIDs\nFilter for 'Domain SID' in the output to get the exact SID string.\n\n=== WHAT OUTPUT LOOKS FOR ===\n  [*] Brute forcing SIDs at 172.16.5.5\n  [*] StringBinding ncacn_np:172.16.5.5[\\pipe\\lsarpc]\n  [*] Domain SID is: S-1-5-21-3842939050-3880317879-2865463114\n  498: INLANEFREIGHT\\Enterprise Read-only Domain Controllers (SidTypeGroup)\n  500: INLANEFREIGHT\\Administrator (SidTypeUser)\n  ...\n  519: INLANEFREIGHT\\Enterprise Admins (SidTypeGroup)\n\nRID 519 = Enterprise Admins → S-1-5-21-[PARENT SID]-519 is what you put in /sids\n\n=== ALTERNATIVE: POWERVIEW ===\nGet-DomainSID                          → current domain SID\nGet-DomainSID -Domain INLANEFREIGHT.LOCAL → specific domain SID\nGet-DomainGroup -Identity 'Enterprise Admins' -Domain INLANEFREIGHT.LOCAL → EA group SID",
+  "examples": [
+    {
+      "label": "Enumerate SIDs of parent domain",
+      "command": "lookupsid.py INLANEFREIGHT/forend:Klmcargo2@172.16.5.5"
+    },
+    {
+      "label": "Filter just for domain SID",
+      "command": "lookupsid.py INLANEFREIGHT/forend:Klmcargo2@172.16.5.5 | grep 'Domain SID'"
+    },
+    {
+      "label": "Filter for Enterprise Admins",
+      "command": "lookupsid.py INLANEFREIGHT/forend:Klmcargo2@172.16.5.5 | grep Enterprise"
+    },
+    {
+      "label": "Cross-forest SID enum",
+      "command": "lookupsid.py INLANEFREIGHT/forend:Klmcargo2@172.16.5.225 | tee sids.txt"
+    }
+  ],
+  "references": [
+    {
+      "title": "Impacket lookupsid.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/lookupsid.py"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-golden-ticket-mimikatz",
+      "rel": "next",
+      "note": "Use SIDs for extra-SID attacks."
+    }
+  ],
+  "defense": {
+    "why_it_works": "lookupsid.py uses the MS-LSAD/LSARPC protocol to brute-force RIDs starting from 500 upward, resolving each RID to an account/group name via LsarLookupSids calls. The protocol is accessible to any authenticated session over SMB (port 445) and does not require elevated privileges. The domain SID returned in the output is critical reconnaissance data for ExtraSids golden ticket attacks.",
+    "prerequisites": "Network access to the target's SMB port (445). Valid domain credentials for authentication (any domain user). The target DC must be reachable from the attacker's Linux host.",
+    "impact": "Full enumeration of all domain accounts and groups with their RIDs and SID values. Most critically, reveals the domain SID string required for ExtraSids (child→parent) golden ticket attacks. Also exposes account names for password spraying and group membership for privilege mapping.",
+    "detection": "Multiple sequential LsarLookupSids calls in rapid succession on port 445 — visible in SMB session logs and network captures. IDS signatures exist for SID brute-force enumeration patterns. Windows Security Event 4799 (security-enabled group membership enumerated) may fire depending on configuration. Network anomaly if source is a Linux host or non-admin workstation.",
+    "artifacts": "SMB session on the DC from the attacker's IP; LSARPC pipe usage logged in Windows firewall/network logs; sequential RID resolution pattern in packet capture.",
+    "prevention": "RestrictAnonymous registry value set to 2 (blocks null sessions). Firewall SMB port 445 inbound from non-domain workstations. SID filtering enabled on trust relationships to prevent SID-based privilege escalation. Audit cross-domain LSARPC access patterns.",
+    "evasion": "Rate-limit queries to avoid burst pattern detection. Operate from a domain-joined host to appear as a legitimate admin workstation. The tool's output includes all info needed from a single authenticated session — not a sustained connection.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

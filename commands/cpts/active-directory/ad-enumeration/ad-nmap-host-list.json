@@ -1,0 +1,82 @@
+{
+  "id": "ad-nmap-host-list",
+  "name": "nmap - Scan Host List from Discovery",
+  "command": "sudo nmap -v -A -iL <hostfile> -oN <outfile>",
+  "description": "Runs a comprehensive nmap scan against a list of live hosts (from fping). -A enables OS detection, version detection, script scanning, and traceroute. -iL reads targets from file. Output to file with -oN for reference. Identifies open services, OS versions, and initial AD infrastructure (DCs on 88/389/636/3268).",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "nmap",
+    "port-scanning",
+    "service-enumeration",
+    "recon"
+  ],
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== IDENTIFYING AD INFRASTRUCTURE FROM PORTS ===\nKey ports that reveal Domain Controllers:\n  88   → Kerberos (only on DCs)\n  389  → LDAP\n  636  → LDAPS\n  3268 → Global Catalog LDAP\n  3269 → Global Catalog LDAPS\n  135  → RPC\n  445  → SMB\n  53   → DNS (often on DCs)\n  5985 → WinRM\n\nA host with 88 + 389 + 445 + 53 open = definitely a DC.\n\n=== -A FLAG BREAKDOWN ===\n  -A   = -O (OS detection) + -sV (version detection) + -sC (default scripts) + --traceroute\n  -sC  runs NSE scripts including smb-security-mode, ldap-rootdse, etc.\n  -sV  identifies service versions (Windows Server 2019, Apache 2.4, etc.)\n\n=== QUIETER ALTERNATIVES ===\nFull -A scan is loud (many packets per host). For stealth:\n  nmap -sS -sV --open -p 21,22,25,80,443,445,88,389,3389 -iL targets.txt\n  Only common ports, SYN scan, show only open ports\n\n=== OUTPUT FORMATS ===\n  -oN  → normal text (human readable)\n  -oX  → XML (for import into other tools)\n  -oG  → grepable (for grep parsing)\n  -oA  → all three simultaneously",
+  "examples": [
+    {
+      "label": "Full service scan against live hosts",
+      "command": "sudo nmap -v -A -iL hosts_to_scan.txt -oN full_scan.txt"
+    },
+    {
+      "label": "Quiet targeted port scan",
+      "command": "sudo nmap -sS --open -p 22,80,443,445,88,389,3389,5985 -iL hosts.txt -oN targeted.txt"
+    },
+    {
+      "label": "Single host quick check",
+      "command": "nmap -sC -sV -Pn 172.16.5.5"
+    }
+  ],
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-fping-sweep",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Nmap scans the AD subnet to identify hosts and services (DCs, SQL, web) for targeting.",
+    "prerequisites": "Network access to the internal subnet.",
+    "impact": "A host/service map of the AD environment.",
+    "detection": "[MITRE T1046] scan probes across hosts/ports in firewall/IDS logs; internal scanning pattern.",
+    "artifacts": "Scan probes; the host/service inventory.",
+    "prevention": "Segmentation and east-west IDS; alert on internal scanning; minimise reachable services.",
+    "evasion": "Nmap timing/decoy options; scope to key ports to reduce noise.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "nmap"
+  ]
+}

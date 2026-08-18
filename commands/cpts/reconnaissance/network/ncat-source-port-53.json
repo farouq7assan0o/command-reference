@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nFirewalls and IDS/IPS frequently whitelist traffic from TCP/UDP port 53 because DNS is trusted infrastructure. Setting source port to 53 (--source-port 53 in Nmap, --source-port 53 in ncat) makes packets appear as DNS responses \u2014 many firewall rules pass them without inspection.\n\n=== VALIDATION ===\nAfter nmap --source-port 53 shows a port as open that was previously filtered, use ncat --source-port 53 to confirm the bypass holds for actual connections, not just Nmap probes. If ncat connects successfully, the full communication path is open.\n\n=== MECHANISM ===\nStateless firewall rules matching 'source port 53 = allow' are the target. Stateful firewalls tracking connection state won't be fooled. Technique works against misconfigured ACL-based filtering.",
+  "references": []
+}

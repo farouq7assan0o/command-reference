@@ -1,0 +1,94 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "https"
+  ],
+  "tools": [
+    "host",
+    "google-dorks"
+  ],
+  "tags": [
+    "cloud",
+    "s3",
+    "azure",
+    "osint"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Resolve subdomains (spot S3/blob hostnames)",
+      "command": "for i in $(cat subdomainlist);do host $i | grep \"has address\" | grep inlanefreight.com | cut -d\" \" -f1,4;done"
+    }
+  ],
+  "notes": "Target patterns: s3-website-us-west-2.amazonaws.com, blob.core.windows.net. Search sites: domain.glass, buckets.grayhatwarfare.com.",
+  "references": [
+    {
+      "title": "GrayHatWarfare Buckets",
+      "url": "https://buckets.grayhatwarfare.com/"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "subfinder-enum",
+      "rel": "next",
+      "note": "Enumerate more subdomains/assets to widen the cloud footprint."
+    },
+    {
+      "id": "staff-osint",
+      "rel": "next",
+      "note": "Pivot to employees who may leak bucket names/keys."
+    }
+  ],
+  "id": "cloud-recon",
+  "name": "Cloud Resources - Discovery",
+  "command": "intext:<company> inurl:amazonaws.com",
+  "description": "Find a company's exposed cloud storage (S3 buckets, Azure blobs) via Google dorks and specialized search sites - misconfigured buckets often leak keys, backups, and source.",
+  "variations": [
+    {
+      "label": "Google dork - AWS S3",
+      "command": "intext:<company_name> inurl:amazonaws.com"
+    },
+    {
+      "label": "Google dork - Azure Blob",
+      "command": "intext:<company_name> inurl:blob.core.windows.net"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1580"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Cloud providers expose APIs and CLI commands (AWS DescribeInstances, ListBuckets; GCP gcloud compute instances list; Azure az vm list) that return detailed infrastructure information to any authenticated caller. Adversaries with compromised credentials enumerate compute instances, storage buckets, and database resources to map the environment and identify high-value targets for the next phase.",
+    "prerequisites": "The target's cloud footprint (public buckets/APIs), and for authenticated calls, valid cloud credentials or keys.",
+    "impact": "Exposed cloud assets — open storage buckets, instance metadata, misconfigured APIs — often leaking data or credentials.",
+    "detection": "Monitor for suspicious enumeration of cloud infrastructure via discovery APIs or CLI tools: repeated listing operations (DescribeInstances, ListBuckets, az vm list) from new or untrusted identities, unusual geolocations or IPs, or rapid multi-service discovery in sequence. Correlate discovery API usage with later snapshot creation or instance modification.",
+    "artifacts": "Public bucket access logs; authenticated API calls recorded in cloud audit trails (e.g. AWS CloudTrail).",
+    "prevention": "Limit permissions to discover cloud infrastructure in accordance with least privilege. Minimize the number of users with IAM roles that have administrative privileges. Reduce permanent privileged role assignments and conduct periodic entitlement reviews on IAM users, roles, and policies.",
+    "sources": [
+      "MITRE T1580"
+    ],
+    "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
+    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  }
+}

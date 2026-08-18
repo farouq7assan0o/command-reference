@@ -1,0 +1,64 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "tmux"
+  ],
+  "tags": [
+    "tmux",
+    "terminal"
+  ],
+  "category": "Fundamentals",
+  "subcategory": "Basic Tools",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Install",
+      "command": "sudo apt install tmux -y"
+    },
+    {
+      "label": "Start",
+      "command": "tmux"
+    }
+  ],
+  "notes": "[CTRL+B] c   new window\n[CTRL+B] 0/1 switch to window 0/1\n[CTRL+B] SHIFT+%  split vertical pane\n[CTRL+B] SHIFT+\"  split horizontal pane\n[CTRL+B] arrows   move between panes",
+  "references": [
+    {
+      "title": "tmux wiki",
+      "url": "https://github.com/tmux/tmux/wiki"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-tty-upgrade",
+      "rel": "next",
+      "note": "Manage your upgraded shell in a persistent tmux session"
+    }
+  ],
+  "id": "gs-tmux",
+  "name": "Tmux - Terminal Multiplexer",
+  "command": "tmux",
+  "description": "Persistent, splittable terminal sessions - essential for keeping listeners and scans alive and organizing engagement panes. Prefix is CTRL+B.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1059.004"
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "type": "cheatsheet",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "coreutils",
+    "strace"
+  ],
+  "tags": [
+    "enumeration",
+    "services",
+    "packages"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Root-owned processes",
+      "command": "ps aux | grep root"
+    },
+    {
+      "label": "Command lines of every process via /proc",
+      "command": "find /proc -name cmdline -exec cat {} \\; 2>/dev/null | tr \" \" \"\\n\""
+    },
+    {
+      "label": "Installed-package list for GTFOBins",
+      "command": "apt list --installed | tr \"/\" \" \" | cut -d\" \" -f1,3 | sed 's/[0-9]://g' | tee -a installed_pkgs.list"
+    },
+    {
+      "label": "Trace syscalls of a helper to find opened paths",
+      "command": "strace ping -c1 <ip>"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 list loaded kernel modules (CVE matching)",
+      "command": "lsmod"
+    },
+    {
+      "label": "OSCP Ch17 \u2014 get module version for CVE matching",
+      "command": "/sbin/modinfo <module_name>"
+    }
+  ],
+  "notes": "Root-run services and their config files are prime targets; the installed-package list feeds the GTFOBins cross-reference. strace on a setuid/root helper often leaks paths it opens (hijack candidates). Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "proc(5) man page",
+      "url": "https://man7.org/linux/man-pages/man5/proc.5.html"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gtfobins-crossref",
+      "note": "Cross-reference the package list against GTFOBins.",
+      "rel": "next"
+    },
+    {
+      "id": "ref-vuln-versions",
+      "note": "Compare service versions against known-vuln list.",
+      "rel": "next"
+    },
+    {
+      "id": "cron-abuse-pspy",
+      "note": "Watch for root cron/services with pspy.",
+      "rel": "next"
+    }
+  ],
+  "id": "linux-enum-services-internals",
+  "name": "Enumeration - Services and Internals",
+  "command": "ps aux | grep root",
+  "description": "Dig into running processes, installed packages/binaries, sudo version (for CVEs), config and shell-script files, and live process command lines via /proc.",
+  "variations": [
+    {
+      "label": "Processes / proc",
+      "command": "ps aux | grep root\nfind /proc -name cmdline -exec cat {} \\; 2>/dev/null | tr \" \" \"\\n\"\nfind / -type f \\( -name *_hist -o -name *_history \\) -exec ls -l {} \\; 2>/dev/null"
+    },
+    {
+      "label": "Packages / binaries",
+      "command": "apt list --installed | tr \"/\" \" \" | cut -d\" \" -f1,3 | sed 's/[0-9]://g' | tee -a installed_pkgs.list\nsudo -V\nls -l /bin /usr/bin/ /usr/sbin/"
+    },
+    {
+      "label": "Configs / scripts",
+      "command": "find / -type f \\( -name *.conf -o -name *.config \\) -exec ls -l {} \\; 2>/dev/null\nfind / -type f -name \"*.sh\" 2>/dev/null | grep -v \"src\\|snap\\|share\"\nstrace ping -c1 <ip>"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1057",
+    "T1518"
+  ],
+  "exam": "exam-ok"
+}

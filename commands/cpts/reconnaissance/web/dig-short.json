@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n+short returns bare answer value only \u2014 just the IP address or record content, no headers, footers, or metadata. Ideal for scripting where output is piped directly into other commands.\n\n=== SCRIPTING USE ===\nIP=$(dig +short A target.com) \u2192 use $IP directly in subsequent commands.\nfor sub in $(cat subdomains.txt); do dig +short A ${sub}.target.com; done \u2192 mass resolution.\n\n=== vs +noall +answer ===\n+short: absolutely minimal (just the value). +noall +answer: preserves TTL and record type. Use +short when only the IP/value matters.",
+  "references": []
+}

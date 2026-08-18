@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nNmap UDP scan against port 623 with ipmi-version NSE fingerprints the IPMI version, BMC vendor, and firmware version. Confirms IPMI presence before attempting the RAKP hash dump.\n\n=== CHAINING ===\nnmap -sU -p 623 \u2192 ipmi-version NSE \u2192 if IPMI 2.0 confirmed \u2192 msf ipmi_dumphashes \u2192 hashcat \u2192 password reuse testing.\n\n=== BMC VENDORS ===\nHP iLO, Dell iDRAC, Supermicro IPMI each have known default credentials to test first. Version fingerprint also enables vendor-specific CVE lookup.",
+  "references": []
+}

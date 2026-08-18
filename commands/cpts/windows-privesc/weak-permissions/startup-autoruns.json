@@ -1,0 +1,76 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "startup",
+    "autoruns"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Weak Permissions",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Enumerate startup programs and their locations",
+      "command": "Get-CimInstance Win32_StartupCommand | select Name, command, Location, User | fl"
+    }
+  ],
+  "notes": "=== Startup Autorun Registry — Persistence and Privilege Abuse ===\nAutorun keys execute commands on user logon — writable entries allow arbitrary code execution.\n\n=== AUTORUN REGISTRY LOCATIONS ===\nHKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run     (all users)\nHKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce (all users, once)\nHKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run     (current user only)\nHKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce (current user, once)\nHKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run (32-bit on 64-bit)\n\n=== ENUMERATION ===\n  Get-CimInstance Win32_StartupCommand | Select Name,Command,Location,User\n  reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"\n  reg query \"HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"\n\nAutomated:\n  .\\SharpUp.exe audit ModifiableRegistryAutoRuns\n  Invoke-AllChecks (PowerUp)\n  wmic startup list full\n\n=== EXPLOITATION SCENARIOS ===\nScenario 1: Write access to registry key → add malicious entry\n  reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"Backdoor\" /t REG_SZ /d \"C:\\Tools\\shell.exe\" /f\n  → Executes as SYSTEM next time Windows starts (for HKLM entries)\n  → Executes as current user for HKCU entries (less useful for privesc, useful for persistence)\n\nScenario 2: Write access to binary referenced in existing autorun entry\n  If autorun points to C:\\Tools\\AppName.exe and C:\\Tools\\ is writable:\n  Replace AppName.exe with malicious binary\n  → Executes with same privileges as the account that triggers the autorun\n\n=== PATIENCE-BASED TECHNIQUE ===\nHKLM autoruns execute when ANY user logs on (including admins/SYSTEM for services).\nPlace malicious binary, wait for a privileged user to log on → get their privileges.\nUseful in long-term assessments when other paths are exhausted.\n\n=== CHAINING CONTEXT ===\nAutorun write access → place reverse shell → catch SYSTEM or admin callback at next login\nPersistence deployment → add reverse shell to HKCU Run after gaining initial foothold\nIT admin logs on after hours → admin-context autorun fires → new high-privilege session\nCombine with office hours scheduling: deploy on Friday, catch callback Monday morning\n\n=== WHAT TO LOOK FOR ===\nHKLM Run key writable by non-admin = privilege escalation\nHKCU Run key writable (always owned by user) = persistence vector\nAutorun binaries in writable directories = binary replacement opportunity\nwmic startup shows all — filter for entries pointing to user-writable paths",
+  "references": [
+    {
+      "title": "HackTricks - Autorun Binaries",
+      "url": "https://book.hacktricks.wiki/en/windows-hardening/windows-local-privilege-escalation/privilege-escalation-with-autorun-binaries.html"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sharpup-audit",
+      "note": "Broader weak-permission enumeration.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "startup-autoruns",
+  "name": "Weak Permissions - Startup / Autorun Enumeration",
+  "command": "Get-CimInstance Win32_StartupCommand | select Name, command, Location, User | fl",
+  "description": "Lists autostart programs. A startup entry or its target binary that is writable by your user runs when a higher-privileged user logs in - replace it with a payload.",
+  "opsec": "loud",
+  "mitre": [
+    "T1547.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Windows runs binaries listed in startup locations (registry Run keys, Startup folders, scheduled tasks, services) at user logon or system boot. If any startup binary or its containing directory is writable by the current user, replacing the binary plants code that executes in the startup context — often as another user who logs in next, or as SYSTEM for service-based autoruns.",
+    "prerequisites": "Shell access. Write access to a startup binary path or its directory. The target user (or SYSTEM) must log in or the system must reboot to trigger execution.",
+    "impact": "Persistent code execution as the startup context user (another user, SYSTEM, or domain admin if they log in to this system). Can provide privilege escalation on next system restart or user logon.",
+    "detection": "Get-CimInstance Win32_StartupCommand by standard user. Modification of startup binary by non-admin. Autoruns (Sysinternals) detecting unexpected entries. File integrity monitoring on startup executable paths.",
+    "artifacts": "Process log: Get-CimInstance Win32_StartupCommand queried by standard user | File: startup executable modified by non-admin | Registry: new Run key entry by non-admin",
+    "prevention": "Restrict write access to all startup binary directories. Audit startup entries with Autoruns regularly. Enable file integrity monitoring on startup paths. Monitor registry Run keys for changes.",
+    "misconfiguration": "Startup binary stored in C:\\Tools or user-writable directory with standard users having write access. No file integrity monitoring on startup paths. No audit of startup registry keys.",
+    "vulnerable_config": "# Enumerate startup programs:\nGet-CimInstance Win32_StartupCommand | select Name, Command, Location, User\n# Command: C:\\Tools\\check.bat <- check permissions\n\naccesschk.exe -wvu 'C:\\Tools\\check.bat'\n# BUILTIN\\Users: FILE_ALL_ACCESS <- writable!\n\n# Replace with malicious payload:\ncopy malicious.exe C:\\Tools\\check.bat",
+    "secure_config": "# Audit startup program paths:\nGet-CimInstance Win32_StartupCommand | ForEach-Object {\n    $path = $_.Command -replace '\"',''\n    icacls $path 2>$null\n}\n\n# Fix writable startup locations:\nicacls C:\\Tools /inheritance:r /grant 'SYSTEM:(OI)(CI)F' /grant 'Administrators:(OI)(CI)F'\n\n# Use Sysinternals Autoruns for comprehensive audit",
+    "sources": [
+      "HTB M26",
+      "MITRE T1547.001",
+      "MITRE T1543.003"
+    ]
+  }
+}

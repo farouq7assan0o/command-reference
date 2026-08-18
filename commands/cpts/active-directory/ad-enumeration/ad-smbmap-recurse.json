@@ -1,0 +1,85 @@
+{
+  "id": "ad-smbmap-recurse",
+  "name": "smbmap - Recursive Share Content Listing",
+  "command": "smbmap -u <user> -p <password> -d <domain> -H <target> --no-write-check -r <share>",
+  "description": "Recursively lists all contents of an accessible SMB share. --no-write-check skips testing write permissions for speed. Use -r to target a specific share by name. Key for finding sensitive files (configs, scripts, backups) in department or IT shares. Follow with -A pattern to filter for interesting file extensions.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "smb",
+    "shares",
+    "smbmap",
+    "file-hunting",
+    "credential-hunting"
+  ],
+  "mitre": [
+    "T1135",
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== SHARE CONTENT HUNTING STRATEGY ===\n1. smbmap -H <dc> → identify accessible shares\n2. smbmap -r <share> → list contents of each interesting share\n3. smbmap -A pattern → search for specific file types\n4. smbmap --download → grab interesting files\n\n=== FILE EXTENSIONS TO TARGET ===\nHigh-value file types in shares:\n  .ps1, .bat, .vbs    → scripts (often hardcoded creds)\n  .txt, .md, .rtf     → notes, docs with passwords\n  .config, .xml, .ini → application config files\n  .kdbx               → KeePass database\n  .xlsx, .docx        → spreadsheets/docs with creds\n  id_rsa, .pem, .ppk  → SSH/SSL private keys\n  web.config          → IIS config with DB connection strings\n\n=== -A PATTERN SEARCH ===\nsmbmap -u user -p pass -H <ip> -r 'share' -A '.*\\.ps1$'\n→ Only shows files matching the regex pattern\n→ Combine: -A '.*(password|cred|secret).*'\n\n=== DOWNLOAD A FILE ===\nsmbmap -u user -p pass -H <ip> --download 'share\\path\\file.txt'\n\n=== SNAFFLER AS ALTERNATIVE ===\nSnaffler.exe is more automated for credential hunting across all accessible shares.\nad-snaffler card covers this.",
+  "examples": [
+    {
+      "label": "Recurse a specific share",
+      "command": "smbmap -u forend -p Klmcargo2 -d INLANEFREIGHT -H 172.16.5.5 --no-write-check -r 'Department Shares'"
+    },
+    {
+      "label": "Search for PS1 scripts",
+      "command": "smbmap -u forend -p Klmcargo2 -d INLANEFREIGHT -H 172.16.5.5 -r 'Department Shares' -A '.*\\.ps1$'"
+    },
+    {
+      "label": "Download a found file",
+      "command": "smbmap -u forend -p Klmcargo2 -d INLANEFREIGHT -H 172.16.5.5 --download 'Department Shares\\IT\\scripts\\deploy.ps1'"
+    }
+  ],
+  "references": [
+    {
+      "title": "smbmap (ShawnDEvans)",
+      "url": "https://github.com/ShawnDEvans/smbmap"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-smbmap",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "smbmap -R recursively lists share contents to locate sensitive files across the domain.",
+    "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
+    "impact": "Located sensitive files within shares.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "Recursive SMB directory listing (many reads).",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1135",
+      "MITRE T1552.001"
+    ],
+    "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
+    "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
+    "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+  },
+  "tools": [
+    "smbmap"
+  ]
+}

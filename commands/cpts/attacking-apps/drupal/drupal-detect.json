@@ -1,0 +1,93 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl",
+    "droopescan"
+  ],
+  "tags": [
+    "drupal",
+    "fingerprinting"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Drupal",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Fingerprint Drupal in the page source",
+      "command": "curl -s http://drupal.inlanefreight.local | grep Drupal"
+    },
+    {
+      "label": "Read CHANGELOG.txt for the exact version",
+      "command": "curl -s http://drupal.inlanefreight.local/CHANGELOG.txt"
+    },
+    {
+      "label": "Enumerate with droopescan",
+      "command": "droopescan scan drupal -u http://drupal.inlanefreight.local"
+    }
+  ],
+  "notes": "CHANGELOG.txt is the quickest exact-version tell but is often removed on hardened installs; fall back to /node/1 rendering and droopescan fingerprints. Version dictates which Drupalgeddon works.",
+  "references": [
+    {
+      "title": "droopescan (SamJoan)",
+      "url": "https://github.com/SamJoan/droopescan"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "drupal-php-filter-webshell",
+      "note": "Older Drupal: enable the PHP filter and drop a webshell.",
+      "rel": "next"
+    },
+    {
+      "id": "drupalgeddon2",
+      "note": "Unauthenticated RCE for Drupal 7/8 (version-dependent).",
+      "rel": "alternative"
+    }
+  ],
+  "id": "drupal-detect",
+  "name": "Drupal - Detect and Version Enumeration",
+  "command": "curl -s http://<url>/CHANGELOG.txt | grep -m2 \"\"",
+  "description": "Confirms Drupal (page source, /node/1) and reads the version from CHANGELOG.txt; droopescan automates deeper module enumeration.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Drupal exposes its identity through /CHANGELOG.txt (exact version), the generator meta tag, /node/ enumeration, /robots.txt for admin paths. All are unauthenticated.",
+    "prerequisites": "HTTP access to the site. No credentials required.",
+    "impact": "Version confirmation enables precise CVE targeting: Drupalgeddon (SA-CORE-2014-005), Drupalgeddon2 (CVE-2018-7600), Drupalgeddon3 (CVE-2018-7602).",
+    "detection": "Sequential GET requests to /CHANGELOG.txt, /node/1, /robots.txt. droopescan User-Agent in access logs.",
+    "artifacts": "Web server access logs (enumeration GETs to CHANGELOG.txt) | WAF alerts for CMS scanner patterns",
+    "prevention": "Remove CHANGELOG.txt, README.txt, INSTALL.txt from production. Restrict /admin to known IPs. Keep Drupal and modules updated.",
+    "misconfiguration": "Drupal deployed with default CHANGELOG.txt in web root, revealing exact version to unauthenticated users.",
+    "vulnerable_config": "# Default Drupal webroot includes:\n# CHANGELOG.txt, README.txt, INSTALL.txt\n# /node/1 accessible without auth",
+    "secure_config": "rm /var/www/html/CHANGELOG.txt /var/www/html/README.txt\n# Apache\n<FilesMatch \"^(CHANGELOG|INSTALL|LICENSE|README|UPGRADE)\\.txt$\">\n  Require all denied\n</FilesMatch>",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595.002",
+      "OWASP A05:2021"
+    ]
+  }
+}

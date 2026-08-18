@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nFinalRecon is a modular Python framework covering headers, WHOIS, SSL, DNS, subdomains, crawling, directories, port scanning, and Wayback Machine in one tool. Flags combined freely to run only needed modules. --full runs everything. API keys unlock Shodan, VirusTotal for deeper enumeration.\n\n=== OUTPUT ===\nResults auto-exported to default directory (or custom -cd path). JSON format enables downstream processing. First-pass automation to surface broad landscape \u2014 then triage interesting findings manually.\n\n=== CHAINING ===\nFinalRecon first pass \u2192 interesting subdomains \u2192 targeted DNS analysis \u2192 interesting headers \u2192 fingerprinting \u2192 interesting directories \u2192 fuzz/crawl.\n\n=== TUNING ===\n-w: custom wordlist for directory enum. -dt: thread count for dirs. -pt: thread count for port scan. Trade speed vs stealth based on assessment type.",
+  "references": []
+}

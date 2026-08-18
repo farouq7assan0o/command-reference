@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nsmbclient -L lists all available shares on the target SMB server. -N flag skips password prompt for null session. Returns share names, types (Disk/IPC/Printer), and comments.\n\n=== CHAINING ===\nList shares \u2192 identify non-default shares (ADMIN$, C$, IPC$ are default; custom shares are more interesting) \u2192 check permissions with smbmap \u2192 connect to accessible shares with smbclient.\n\n=== IPC$ ===\nIPC$ (Inter-Process Communication) share enables null session RPC queries even when named shares require auth. rpcclient uses IPC$ for user/group enumeration.",
+  "references": []
+}

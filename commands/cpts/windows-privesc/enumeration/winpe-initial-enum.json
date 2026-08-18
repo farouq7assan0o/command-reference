@@ -1,0 +1,118 @@
+{
+  "type": "cheatsheet",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "cmd",
+    "powershell"
+  ],
+  "tags": [
+    "enumeration",
+    "system-info"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "OS, patch level, architecture",
+      "command": "systeminfo"
+    },
+    {
+      "label": "Installed hotfixes",
+      "command": "wmic qfe ; Get-HotFix | ft -AutoSize"
+    },
+    {
+      "label": "Running tasks and services",
+      "command": "tasklist /svc"
+    },
+    {
+      "label": "Installed products",
+      "command": "wmic product get name"
+    },
+    {
+      "label": "Listening ports and owners",
+      "command": "netstat -ano"
+    }
+  ],
+  "notes": "=== INITIAL ENUMERATION METHODOLOGY ===\nRun immediately after landing a foothold, before any exploitation attempt.\n\nCOMMAND SEQUENCE AND PURPOSE:\ntasklist /svc          → maps running processes to their service names\nset                    → dumps all environment variables (PATH leaks, temp dirs, credentials)\nsysteminfo             → OS version, patch level, architecture, domain membership\nwmic qfe list brief    → installed hotfixes with date — cross-ref with Watson/WES-NG\nnetstat -ano           → active connections + listening ports (find locally-bound services)\nwhoami /priv           → privilege token — first stop for escalation path selection\nwhoami /groups         → group membership including implicit groups (NETWORK SERVICE, etc.)\nnet user               → local account list\nnet localgroup         → local group membership\nnet localgroup administrators → confirm admin group members\n\n=== ACCESS TOKENS ===\nEvery process carries a primary token. Services impersonate via impersonation tokens.\nSeImpersonatePrivilege on a service account = Potato attack available.\nDisabled privileges in whoami /priv are still assigned — they can be enabled with scripts.\nNon-elevated admin sessions have privileges stripped by UAC — elevated session shows full set.\n\n=== CHAINING CONTEXT ===\nsysteminfo → Watson → kernel exploit path\nwhoami /priv → SeImpersonate → JuicyPotato/PrintSpoofer\nwhoami /groups → Backup Operators → NTDS.dit extraction\nnetstat -ano → locally bound service → Druva-style RPC exploitation\nnet localgroup → Event Log Readers → Security log credential harvest\n\n=== WHAT TO LOOK FOR ===\nAny privilege beyond SeChangeNotifyPrivilege on a standard account\nGroup memberships: Backup Operators, Print Operators, Server Operators, DnsAdmins, Event Log Readers\nDomain-joined vs workgroup — affects which AD escalation paths apply\nOS version + missing KBs → HiveNightmare (Win10), PrintNightmare (pre-patch), EternalBlue",
+  "references": [
+    {
+      "title": "PayloadsAllTheThings - Windows Privilege Escalation",
+      "url": "https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/Methodology%20and%20Resources/Windows%20-%20Privilege%20Escalation.md"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Check your privileges and group memberships next.",
+      "rel": "next"
+    },
+    {
+      "id": "winpe-protections-enum",
+      "note": "Fingerprint Defender/AppLocker before dropping tools.",
+      "rel": "next"
+    },
+    {
+      "id": "winpe-tools",
+      "note": "Run an automated enumerator (winPEAS/Seatbelt/SharpUp).",
+      "rel": "next"
+    },
+    {
+      "id": "missing-patch-enum",
+      "note": "Map missing patches to kernel exploits.",
+      "rel": "next"
+    }
+  ],
+  "id": "winpe-initial-enum",
+  "name": "WinPE - Initial System Enumeration",
+  "command": "systeminfo",
+  "description": "Baseline host enumeration: OS/patch level, running processes and services, installed software, hotfixes, and listening ports. Feeds patch/service-based escalation paths.",
+  "variations": [
+    {
+      "label": "System / patches",
+      "command": "systeminfo\nwmic qfe\nGet-HotFix | ft -AutoSize\nset"
+    },
+    {
+      "label": "Processes / services",
+      "command": "tasklist /svc\nsc query\nwmic product get name\nGet-WmiObject -Class Win32_Product | select Name,Version"
+    },
+    {
+      "label": "Network",
+      "command": "netstat -ano\nipconfig /all\narp -a\nroute print"
+    },
+    {
+      "label": "CimInstance services",
+      "command": "Get-CimInstance -ClassName win32_service | Select Name,State,PathName | Where-Object {$_.State -like 'Running'}\nGet-CimInstance win32_service | Where-Object {$_.StartName -notmatch 'LocalSystem|LocalService|NetworkService'} | Select Name,StartName,PathName"
+    },
+    {
+      "label": "CimInstance patches",
+      "command": "Get-CimInstance -Class win32_quickfixengineering | Where-Object { $_.Description -eq 'Security Update' } | Select HotFixID,InstalledOn | Sort InstalledOn"
+    },
+    {
+      "label": "PS history",
+      "command": "Get-History\nGet-Content \"$env:APPDATA\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt\""
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1082"
+  ],
+  "exam": "exam-ok"
+}

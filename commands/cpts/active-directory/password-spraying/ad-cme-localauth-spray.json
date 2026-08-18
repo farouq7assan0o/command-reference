@@ -1,0 +1,87 @@
+{
+  "id": "ad-cme-localauth-spray",
+  "name": "CrackMapExec - Local Auth Spray (Hash Reuse)",
+  "command": "crackmapexec smb --local-auth <cidr> -u administrator -H <nt_hash> | grep +",
+  "description": "Sprays a recovered local administrator hash or password across all hosts in a subnet using --local-auth. Exploits password reuse of the local administrator account. 'Pwn3d!' = local admin on that host. Essential after cracking any local admin hash.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Password Attacks",
+  "subcategory": "Password Spraying",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "password-spraying",
+    "crackmapexec",
+    "smb",
+    "local-admin",
+    "pass-the-hash",
+    "lateral-movement"
+  ],
+  "mitre": [
+    "T1110.003",
+    "T1550.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== THE LOCAL ADMIN REUSE PROBLEM ===\nBefore LAPS (Local Administrator Password Solution), organizations would build\nWindows images with the same local administrator password across ALL systems.\nEven with LAPS partially deployed, some machines are often missed.\n\nScenario: you crack LAPS password on one machine, or dump a local admin hash.\nSpray it across the whole subnet — any system with the same local admin password\nwill show 'Pwn3d!'. Common to find 30-50% of hosts vulnerable.\n\n=== --local-auth EXPLAINED ===\nWithout --local-auth: CME tries domain authentication against the DC\nWith --local-auth: CME authenticates against each TARGET'S local SAM database\nThis means you're not touching the DC — direct machine-to-machine authentication.\n\n=== WHY THIS MATTERS ===\nLocal admin gives you: SYSTEM shell, full disk access, credential dumping\nOnce on any machine via local admin:\n  → secretsdump.py to dump SAM/LSA\n  → Look for domain accounts with cached credentials\n  → Find service accounts, scheduled tasks with domain creds\n  → Pivot to more systems with recovered domain creds\n\n=== DETECTION CONSIDERATION ===\nLocal auth attempts don't generate domain logon events (4624/4625 on DC).\nThey generate Event 4624/4625 on each TARGET machine's local Security log.\nHarder to correlate centrally unless logs are forwarded to SIEM.\n\n=== LAPS DETECTION ===\nIf LAPS is deployed, local admin passwords are randomized per machine.\nIn that case: ad-laps-read to retrieve LAPS passwords instead.",
+  "examples": [
+    {
+      "label": "Local admin hash spray across subnet",
+      "command": "crackmapexec smb --local-auth 172.16.5.0/23 -u administrator -H 88ad09182de639ccc6579eb0849751cf | grep Pwn3d"
+    },
+    {
+      "label": "Local admin password spray",
+      "command": "crackmapexec smb --local-auth 172.16.5.0/23 -u administrator -p 'Password123!' | grep Pwn3d"
+    },
+    {
+      "label": "Dump SAM from all compromised local admin hosts",
+      "command": "crackmapexec smb --local-auth 172.16.5.0/23 -u administrator -H <hash> --sam | grep -v FAILED"
+    }
+  ],
+  "references": [
+    {
+      "title": "CrackMapExec wiki",
+      "url": "https://wiki.porchetta.industries/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-evil-winrm",
+      "rel": "next",
+      "note": "Use the recovered creds."
+    }
+  ],
+  "defense": {
+    "why_it_works": "nxc --local-auth sprays a local-account password/hash across many hosts, finding shared local admin credentials (also enables PtH).",
+    "prerequisites": "A domain user list, candidate password(s), and network access to the auth service.",
+    "impact": "Hosts sharing the same local-admin password/hash - broad lateral movement.",
+    "detection": "Failed-authentication bursts: Windows 4625 / Kerberos 4771; account lockouts (4740). Spraying = one password across MANY accounts (few failures each - a subtle, distributed pattern). Defender for Identity flags spraying.",
+    "artifacts": "Local-account logon attempts across many hosts; 4625 (local) bursts.",
+    "prevention": "[MITRE T1110.003 M1032 MFA] MFA defeats spraying; [M1027] strong/unique passwords + [M1036 Account Use Policies] lockout thresholds; alert on distributed failed logons and impossible travel.",
+    "evasion": "Spray one password low-and-slow with delays to avoid lockouts and volume alerts; rotate source hosts; Kerberos-based spraying avoids 4625.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1110.003",
+      "MITRE T1550.002"
+    ],
+    "misconfiguration": "The domain's lockout policy is either disabled or set with a threshold high enough (e.g., 10 attempts before lockout) that a low-and-slow spray — one guess per account per 30 minutes — never triggers lockout. Additionally, many accounts share the same simple passwords (company name + year, Season+Year), and the bad-password counter resets after the observation window elapses.",
+    "vulnerable_config": "# Weak lockout policy (domain default or intentionally lenient):\n# Fine-Grained Password Policy:\nGet-ADDefaultDomainPasswordPolicy\n# LockoutObservationWindow: 00:30:00\n# LockoutThreshold:         0          <-- DISABLED! No lockout ever\n# OR: LockoutThreshold: 10 (attacker sprays 9 per window, never locks)\n\n# Also: accounts with password = company name:\n# Common passwords: Summer2023!, Winter2024!, CompanyName1!",
+    "secure_config": "# Set a strong lockout policy:\n# Via Default Domain Policy or Fine-Grained Password Policy (PSO):\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00 \\\n    -LockoutThreshold 5\n# LockoutThreshold 5 means 5 bad attempts in 30 min = 30-min lockout\n\n# Fine-Grained PSO for admins (stricter):\nNew-ADFineGrainedPasswordPolicy -Name AdminPSO \\\n    -LockoutThreshold 3 -LockoutDuration 01:00:00 \\\n    -LockoutObservationWindow 01:00:00 \\\n    -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject AdminPSO -Subjects 'Domain Admins'\n\n# Enable Azure AD / Entra ID Password Protection (bans common passwords):\n# Also available on-premises via the Azure AD Password Protection agent\n\n# Monitor Event 4740 (Account Locked Out) — spray leaves a cluster of these"
+  },
+  "tools": [
+    "crackmapexec"
+  ]
+}

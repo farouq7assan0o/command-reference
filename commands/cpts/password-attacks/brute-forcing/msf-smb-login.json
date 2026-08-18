@@ -1,0 +1,94 @@
+{
+  "id": "msf-smb-login",
+  "name": "Metasploit - SMB Login Scanner",
+  "command": "use auxiliary/scanner/smb/smb_login",
+  "description": "Metasploit auxiliary module that validates SMB credentials across hosts. Useful when a target negotiates SMBv3 and other brute tools fall back or fail. Set user_file, pass_file, and rhosts, then run.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "metasploit"
+  ],
+  "tags": [
+    "metasploit",
+    "smb",
+    "brute-force"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Brute Forcing",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Load the SMB login scanner",
+      "command": "use auxiliary/scanner/smb/smb_login"
+    },
+    {
+      "label": "Set the username list",
+      "command": "set user_file user.list"
+    },
+    {
+      "label": "Set the password list",
+      "command": "set pass_file password.list"
+    },
+    {
+      "label": "Set the target",
+      "command": "set rhosts 10.129.42.197"
+    },
+    {
+      "label": "Run the scan",
+      "command": "run"
+    }
+  ],
+  "notes": "`auxiliary/scanner/smb/smb_login` validates credentials across an SMB range and flags local admin. DB-integrated, so results land in `creds`.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Metasploit",
+      "url": "https://www.metasploit.com/"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "pth-impacket",
+      "rel": "next",
+      "note": "Use validated creds for exec."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1110.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Metasploit's smb_login auxiliary tests SMB credentials across hosts, validating username/password (or hash) pairs at scale.",
+    "prerequisites": "Network access to SMB (445) and credential lists.",
+    "impact": "Validated SMB credentials and a map of where they work.",
+    "detection": "Failed authentication bursts: Windows 4625 (failed logon) and 4771 (Kerberos pre-auth failed) at abnormal rate/volume; account lockouts (4740); many attempts from one source, or - for spraying - one password across many accounts. SIEM correlation on failed-logon spikes.",
+    "artifacts": "SMB logon attempts (4625/4624 type 3) across many hosts from one source.",
+    "prevention": "[MITRE T1110 M1032 Multi-factor Authentication] MFA defeats password guessing; [M1027 Password Policies] strong passwords + [M1036 Account Use Policies] lockout thresholds; alert on failed-logon spikes and impossible-travel.",
+    "evasion": "Spray low-and-slow (one password, spaced attempts) to stay under lockout thresholds and volume alerts; distribute across source IPs; target accounts unlikely to be monitored.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.001"
+    ],
+    "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
+    "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
+    "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+  }
+}

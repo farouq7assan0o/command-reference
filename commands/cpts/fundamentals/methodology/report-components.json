@@ -1,0 +1,51 @@
+{
+  "id": "report-components",
+  "name": "Post-Engagement - Report Structure",
+  "command": "# What the deliverable must contain",
+  "description": "Post-Engagement - Report Structure - reference (methodology, not a runnable command).",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Fundamentals",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 01: Penetration Testing Process",
+  "tags": [
+    "methodology",
+    "reference"
+  ],
+  "notes": "Report components: attack chain narrative; executive summary (non-technical); detailed findings (risk rating, impact, remediation, external refs); steps to reproduce each finding; near/medium/long-term recommendations; appendices (scope, OSINT, cracked passwords, ports/services, compromised hosts/accounts, files transferred, system modifications, AD analysis, scan data).\nVersioning: DRAFT (for client review) -> FINAL (after feedback). Post-remediation table: # | Severity | Title | Status (Remediated/Not Remediated).",
+  "references": [
+    {
+      "title": "HTB Academy - Penetration Testing Process",
+      "url": "https://academy.hackthebox.com/module/details/90"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "pentest-lifecycle",
+      "rel": "prereq",
+      "note": "Reporting closes the lifecycle."
+    }
+  ],
+  "examples": [
+    {
+      "label": "Executive Summary — one page, business language, no CVEs",
+      "command": "# Risk summary (Critical/High/Medium/Low counts) + top 3 findings in plain English"
+    },
+    {
+      "label": "Technical Findings — one section per vuln",
+      "command": "# Title | CVSS | Description | PoC Steps | Evidence (screenshots) | Remediation"
+    },
+    {
+      "label": "Attack Chain Narrative — tell the story",
+      "command": "# Initial foothold → lateral movement → DA compromise → timeline with timestamps"
+    }
+  ],
+  "mitre": [
+    "T1591"
+  ]
+}

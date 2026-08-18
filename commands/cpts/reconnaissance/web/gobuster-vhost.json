@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\ngobuster vhost fuzzes the HTTP Host header against a target IP to discover virtual hosts with no DNS entries. A virtual host can exist without a public DNS record \u2014 DNS enumeration alone won't find it. Only discoverable by directly testing Host header values.\n\n=== HOW IT WORKS ===\nIterates wordlist \u2192 constructs Host: {word}.{domain} \u2192 sends HTTP request to target IP \u2192 records responses differing from baseline (by status code or response size).\n\n=== --append-domain ===\nRequired in newer gobuster versions to form full hostnames (word.domain.com) rather than sending bare wordlist words. Without it: malformed Host headers \u2192 unreliable results.\n\n=== DETECTION ===\nHigh request volume against single IP \u2014 detectable by IDS/WAF. -t flag increases threads for speed but increases detection risk. Active technique requiring authorization.\n\n=== vs SUBDOMAIN BRUTEFORCE ===\nVHost fuzzing: no DNS queries, tests Host header directly against IP. Subdomain bruteforce: queries DNS for each candidate. VHosts with no DNS records are only found by VHost fuzzing.",
+  "references": []
+}

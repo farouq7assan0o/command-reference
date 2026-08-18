@@ -1,0 +1,84 @@
+{
+  "id": "cdsa-m08-tunneling-detection",
+  "name": "Tunneling Detection — ICMP, DNS, Telnet & UDP Exfiltration",
+  "command": "icmp && frame.len > 100",
+  "description": "Attackers tunnel data inside legitimate-looking protocols to exfiltrate data or establish C2 while evading network controls. Common tunnel protocols: ICMP (data in payload > 48 bytes), DNS (data in TXT records or long queries), Telnet on non-standard ports, UDP, and IPv6 Telnet. Detection relies on payload size anomalies, unusual record types, and non-standard port usage. Base64 decode extracted data.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "Tunneling & Exfil Detection",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 08: Intermediate Network Traffic Analysis",
+  "tags": ["tunneling", "icmp-tunnel", "dns-tunnel", "telnet", "udp-exfil", "exfiltration", "c2", "wireshark", "blue-team", "nta"],
+  "mitre": ["T1048", "T1071.004", "T1071.001", "T1041"],
+  "notes": "=== ICMP TUNNELING ===\nHow it works:\n  → Attacker appends data to ICMP echo request payload\n  → Data hidden in common, often-allowed protocol\n  → May be encoded (base64) or encrypted for evasion\n  → Normal ICMP data length: ~48 bytes\n  → Tunneling ICMP data length: 1000s of bytes (may cause fragmentation)\n\nDetection:\n  # Filter ICMP only\n  icmp\n  \n  # Look for large ICMP payloads (tunneling IOC)\n  icmp && frame.len > 100    → any ICMP over 100 bytes = suspicious\n  \n  # Check packet details → ICMP → Data field length\n  → Normal: 48 bytes\n  → Tunneling: 38,000+ bytes → also triggers IP fragmentation\n\nInspecting payload:\n  1. Right-click suspicious ICMP packet → Packet Details → Data section\n  2. Hex dump in Packet Bytes pane (bottom right)\n  3. Look for readable text in ASCII column OR base64 pattern\n  4. Copy hex/data value → decode in Linux:\n\n# Decode base64-encoded ICMP payload\necho '<BASE64_VALUE>' | base64 -d\n\n# If double/triple encoded:\necho '<BASE64_VALUE>' | base64 -d | base64 -d\necho '<BASE64_VALUE>' | base64 -d | base64 -d | base64 -d\n\nPrevention:\n  → Block ICMP outbound (restrictive environments)\n  → Inspect ICMP payload content at perimeter (strip or alert on data > 48 bytes)\n\n=== DNS TUNNELING ===\nHow it works:\n  → Data appended to DNS TXT record queries\n  → Attacker controls authoritative DNS for their domain\n  → Client sends 'TXT query for <encoded_data>.attacker.com'\n  → Attacker's DNS server receives data, responds with commands\n  → Used for: C2, data exfil, bypassing HTTP/HTTPS proxies, DGA botnets\n\nDetection:\n  # DNS traffic\n  dns\n  \n  # Look for excessive TXT record queries from one host\n  dns.qry.type == 16    → TXT record queries (type 16)\n  \n  # High-volume DNS to one external resolver = tunneling or DGA\n  → Statistics → Conversations → UDP → sort by packets → one host + dns port = suspect\n\nInspecting DNS payload:\n  1. Filter: dns → find packets with unusual TXT field content\n  2. Expand: DNS → Answers → TXT record → data\n  3. Right-click data field → Copy → Value\n  4. Decode in Linux:\n\necho '<BASE64_VALUE>' | base64 -d | base64 -d | base64 -d\n\nDNS enumeration IOCs (different from tunneling):\n  → Rapid DNS queries for many subdomains = subdomain enumeration\n  → ANY query type = full zone info attempt\n  → Queries ending with ANY in Info column = suspicious\nFilter:\n  dns.qry.name contains \"<TARGET_DOMAIN>\"   → all queries for domain\n\nIPFS DNS/HTTPS tunneling:\n  → Watch for DNS/HTTP traffic to cloudflare-ipfs.com or similar IPFS gateways\n  → URIs like: https://cloudflare-ipfs.com/ipfs/<CID>\n  → Hard to block — peer-to-peer, legitimate CDN domain\n\n=== TELNET TUNNELING ===\nHow it works:\n  → Telnet is cleartext, bidirectional → easy to read and inject\n  → Port 23: traditional telnet (still used in legacy systems)\n  → Non-standard ports (e.g., 9999): attacker moves telnet to evade port-based detection\n  → IPv6: some environments don't monitor IPv6 telnet traffic\n\nDetection — Port 23 (traditional):\n  telnet              → Wireshark dissects as telnet protocol\n  tcp.port == 23      → show all traffic on port 23\n  → Follow TCP Stream → read cleartext commands/data\n\nDetection — Non-standard port:\n  tcp.port == <UNUSUAL_PORT>    → e.g., tcp.port == 9999\n  → Look for large amounts of TCP from one host on unusual port\n  → Follow TCP Stream → check if it looks like terminal I/O\n  → Hex/ASCII will reveal 'Telnet' in data field = not legitimate service\n\nDetection — IPv6:\n  → Any IPv6 in IPv4-only network = suspicious\n  ipv6 && telnet\n  ((ipv6.src_host == <SUSPECT_IPv6>) or (ipv6.dst_host == <SUSPECT_IPv6>)) and telnet\n  → Follow TCP Stream to inspect content\n\n=== UDP TUNNELING ===\nHow it works:\n  → Attacker uses UDP (connectionless, fast) for data exfiltration\n  → No handshake = packets immediately sent\n  → Often overlooked vs TCP — fewer controls inspect UDP\n\nDetection:\n  udp               → show all UDP traffic\n  udp.port == <PORT>  → target specific port\n  → Follow UDP Stream (right-click → Follow → UDP Stream)\n  → Look for alphabet sequences, encoded strings, or structured data in payload\n\nUDP IOCs:\n  → Large consistent UDP payload sizes (not varying like normal VoIP/DNS)\n  → One host sending UDP to one destination on one port continuously\n  → No DNS traffic preceding the connection (no legitimate service lookup)\n  → Unusual destination port (not 53/67/68/161/123 etc.)\n\nLegitimate UDP usage (not tunneling):\n  DNS (53), DHCP (67/68), SNMP (161), NTP (123), VoIP, gaming, streaming",
+  "examples": [
+    {
+      "label": "Filter ICMP traffic (tunneling hunt)",
+      "command": "icmp"
+    },
+    {
+      "label": "Find large ICMP payloads (tunneling IOC)",
+      "command": "icmp && frame.len > 100"
+    },
+    {
+      "label": "Decode base64 ICMP/DNS payload (single)",
+      "command": "echo '<BASE64_VALUE>' | base64 -d"
+    },
+    {
+      "label": "Decode triple-encoded base64",
+      "command": "echo '<BASE64_VALUE>' | base64 -d | base64 -d | base64 -d"
+    },
+    {
+      "label": "Filter DNS traffic",
+      "command": "dns"
+    },
+    {
+      "label": "Filter DNS TXT record queries (tunneling/exfil)",
+      "command": "dns.qry.type == 16"
+    },
+    {
+      "label": "Filter traditional Telnet (port 23)",
+      "command": "telnet"
+    },
+    {
+      "label": "Filter non-standard port Telnet",
+      "command": "tcp.port == <UNUSUAL_PORT>"
+    },
+    {
+      "label": "Filter IPv6 Telnet traffic",
+      "command": "((ipv6.src_host == <SUSPECT_IPv6>) or (ipv6.dst_host == <SUSPECT_IPv6>)) and telnet"
+    },
+    {
+      "label": "Filter UDP traffic for exfil hunting",
+      "command": "udp"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intermediate Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/229"
+    },
+    {
+      "title": "MITRE ATT&CK - Exfiltration Over Alternative Protocol (T1048)",
+      "url": "https://attack.mitre.org/techniques/T1048/"
+    },
+    {
+      "title": "MITRE ATT&CK - DNS Application Layer Protocol (T1071.004)",
+      "url": "https://attack.mitre.org/techniques/T1071/004/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m08-tcp-abnormalities",
+      "rel": "prereq",
+      "note": "TCP scan detection — attackers scan first, then establish tunnels."
+    },
+    {
+      "id": "cdsa-m08-http-anomalies",
+      "rel": "next",
+      "note": "HTTP anomaly detection — web server fuzzing, strange headers, XSS via traffic."
+    }
+  ]
+}

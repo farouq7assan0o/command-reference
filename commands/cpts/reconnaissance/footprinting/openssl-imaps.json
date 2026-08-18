@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nopenssl s_client against port 993 (IMAPS) provides interactive raw IMAP session over TLS after initial handshake. Used for manual mail enumeration: folder listing, message selection, reading mail content.\n\n=== IMAP COMMANDS ===\n1 LOGIN user pass \u2192 authenticate\n1 LIST \"\" * \u2192 list all folders\n1 SELECT INBOX \u2192 select folder\n1 FETCH 1 (BODY[]) \u2192 read first message\n1 LOGOUT \u2192 close session\n\n=== CERTIFICATE ===\nopenssl exposes full cert chain: CN (hostname), O (organization), email \u2192 cross-reference with DNS SOA admin email, SNMP contact.",
+  "references": []
+}

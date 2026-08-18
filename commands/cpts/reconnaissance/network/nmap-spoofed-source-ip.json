@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-S spoofs the source IP address in outgoing packets. Combined with -e (specify network interface) for routing to a different subnet. When firewall rules block based on source subnet, spoofing a permitted internal IP may bypass the rule.\n\n=== VALIDATION ===\nIn the CPTS example: port 445 appears 'filtered' from attacker's real IP \u2192 -S 10.129.2.200 (spoofed internal IP) \u2192 port 445 appears 'open'. Confirms subnet-based firewall ACL.\n\n=== LIMITATION ===\nResponses go to the spoofed IP, not the attacker. Attacker only sees RST/SYN-ACK if they can sniff the traffic on the same segment. Works best on local networks where attacker can observe responses via promiscuous mode or ARP poisoning.\n\n=== INTERFACE ===\n-e eth0 specifies which interface to send through \u2014 required when spoofed IP is on a different subnet than the attacker's default route.",
+  "references": []
+}

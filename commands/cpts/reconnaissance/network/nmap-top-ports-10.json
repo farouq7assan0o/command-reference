@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n--top-ports N scans only the N most commonly open ports based on Nmap's frequency database. Useful for rapid initial discovery across many hosts \u2014 trade thoroughness for speed.\n\n=== WORKFLOW INTEGRATION ===\nQuick top-10/top-100 scan for rapid alive host + service identification \u2192 feed interesting hosts to full -p- scan. Top-ports scan gives immediate actionable results while comprehensive scan runs in background.\n\n=== PORT FREQUENCY ===\nNmap's port frequency database is based on real-world scan data. Top 10: 21, 22, 23, 25, 80, 110, 139, 443, 445, 3389. Top 100 catches the vast majority of common services.",
+  "references": []
+}

@@ -1,0 +1,64 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [],
+  "tags": [
+    "reference",
+    "cvss",
+    "scoring",
+    "dread"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "CVSS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "A critical base vector scores 9.8",
+      "command": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H  ->  9.8 (Critical)"
+    }
+  ],
+  "notes": "Base Metric Group: Attack Vector, Attack Complexity, Privileges Required, User Interaction, Scope, Confidentiality/Integrity/Availability impact.\nTemporal: Exploit Code Maturity, Remediation Level, Report Confidence.\nEnvironmental: Modified base metrics + C/I/A requirements.\nDREAD (Microsoft): Damage, Reproducibility, Exploitability, Affected users, Discoverability.\nCalculator: nvd.nist.gov/vuln-metrics/cvss/v3-calculator",
+  "references": [
+    {
+      "title": "FIRST CVSS",
+      "url": "https://www.first.org/cvss/"
+    },
+    {
+      "title": "NVD CVSS v3.1 Calculator",
+      "url": "https://nvd.nist.gov/vuln-metrics/cvss/v3-calculator"
+    },
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "exploitation-prioritization",
+      "rel": "next",
+      "note": "Use CVSS to prioritize which findings to exploit."
+    }
+  ],
+  "id": "ref-cvss",
+  "name": "Reference - CVSS Scoring",
+  "command": "# score severity: Base (+ Temporal + Environmental)",
+  "description": "CVSS metric groups used to score vulnerability severity, plus the DREAD alternative.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1190"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [],
+  "tags": [
+    "reference",
+    "assessment-types",
+    "methodology"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "Breadth vs depth",
+      "command": "# Vulnerability Assessment = find every issue (breadth); Penetration Test = exploit to prove impact (depth)"
+    }
+  ],
+  "notes": "Vulnerability Assessment: breadth, automated scanning, list findings (no exploitation).\nPenetration Test: exploit to prove impact. Black box (no info) / Grey box (some) / White box (full).\nTypes: Application, Network/Infra, Physical, Social Engineering.\nSecurity Audit: compliance-focused. Bug Bounty: crowdsourced, scoped.\nRed Team: goal-driven adversary simulation, stealth. Purple Team: red + blue collaborating.",
+  "references": [
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-va-methodology",
+      "rel": "next",
+      "note": "The methodology for the chosen assessment."
+    }
+  ],
+  "id": "ref-assessment-types",
+  "name": "Reference - Security Assessment Types",
+  "command": "# know which engagement you're on - it sets scope, depth, and rules",
+  "description": "The spectrum of security assessments and how they differ - so you frame findings correctly for the engagement type.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1591"
+  ]
+}

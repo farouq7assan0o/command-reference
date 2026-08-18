@@ -1,0 +1,92 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "linpeas"
+  ],
+  "tags": [
+    "privesc",
+    "enumeration",
+    "linpeas"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Basics",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "List installed packages",
+      "command": "dpkg -l"
+    },
+    {
+      "label": "Check sudo rights",
+      "command": "sudo -l"
+    },
+    {
+      "label": "Grep configs for creds",
+      "command": "# e.g. /var/www/html/config.php -> db_user / password123"
+    },
+    {
+      "label": "unix-privesc-check — manual alternative to linpeas (no external binary needed)",
+      "command": "./unix-privesc-check standard > output.txt\ngrep WARNING output.txt\n# WARNING: /etc/passwd is a critical config file. World write is set for /etc/passwd"
+    }
+  ],
+  "notes": "Tools: LinPEAS, LinEnum, linuxprivchecker, Seatbelt, JAWS. Refs: GTFOBins, LOLBAS, HackTricks, PayloadsAllTheThings.",
+  "references": [
+    {
+      "title": "linPEAS (PEASS-ng)",
+      "url": "https://github.com/carlospolop/PEASS-ng/tree/master/linPEAS"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-sudo-su-basics",
+      "rel": "next",
+      "note": "Check sudo rights."
+    },
+    {
+      "id": "gs-ssh-key-abuse",
+      "rel": "escalation",
+      "note": "Abuse readable/writable SSH keys."
+    }
+  ],
+  "id": "gs-privesc-enum",
+  "name": "Privilege Escalation - Enumeration Basics",
+  "command": "./linpeas.sh",
+  "description": "First moves after a foothold: run an enumeration script and check the obvious wins - installed packages, sudo rights, and readable configs with credentials.",
+  "opsec": "loud",
+  "mitre": [
+    "T1082"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Post-exploitation enumeration inventories the host's configuration and the current user's privileges — OS/kernel version, users, groups, sudo rights, SUID binaries, cron jobs — to find a path from a low-privileged foothold to root/SYSTEM.",
+    "prerequisites": "An initial foothold (any shell) on the target host.",
+    "impact": "A map of privilege-escalation opportunities: writable sensitive files, misconfigured sudo, SUID/SGID binaries, scheduled tasks, and stored credentials.",
+    "detection": "Automated enumeration scripts like LinPEAS run many commands associated with vulnerability identification and create significant 'noise' that may trigger antivirus or security monitoring software watching for these event patterns. In some cases this will prevent the script from running or trigger an alert that the system has been compromised.",
+    "artifacts": "A burst of enumeration commands (whoami, id, uname, sudo -l, find / -perm) in shell history and process-creation logs; automated enum scripts (e.g. linpeas) touching many files rapidly.",
+    "evasion": "Run individual manual enumeration commands instead of automated scripts to avoid generating the volume of suspicious events that triggers security tooling.",
+    "sources": [
+      "HTB M02"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

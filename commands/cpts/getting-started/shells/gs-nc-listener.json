@@ -1,0 +1,84 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "netcat"
+  ],
+  "tags": [
+    "netcat",
+    "listener",
+    "reverse-shell"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Shells & Payloads",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Listen for a reverse shell",
+      "command": "nc -lvnp 1234"
+    },
+    {
+      "label": "Find your VPN IP",
+      "command": "ip a   # tun0"
+    },
+    {
+      "label": "Connect to a bind shell",
+      "command": "nc 10.10.10.1 1234"
+    }
+  ],
+  "notes": "The classic netcat reverse-shell listener. Always start the listener BEFORE triggering the payload on the target. Use rlwrap for arrow-key/history support: rlwrap nc -lvnp <lport>. Switch to -k (keep-open) to catch multiple connections.",
+  "references": [
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-reverse-shells",
+      "rel": "next",
+      "note": "Fire the reverse shell into this listener."
+    },
+    {
+      "id": "gs-tty-upgrade",
+      "rel": "next",
+      "note": "Upgrade the caught shell to a TTY."
+    }
+  ],
+  "id": "gs-nc-listener",
+  "name": "Netcat - Start a Listener",
+  "command": "nc -lvnp <port>",
+  "description": "Open a listener to catch a reverse shell (or connect to a bind shell). -l listen, -v verbose, -n no DNS, -p port.",
+  "opsec": "loud",
+  "mitre": [
+    "T1059"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries abuse built-in command and scripting interpreters present on virtually all operating systems. Because these are legitimate system tools, their use is difficult to distinguish from normal administration — providing a low-noise execution path for running malicious commands or payloads.",
+    "prerequisites": "The ability to run netcat (or an equivalent) on one host, with a reachable port between the two hosts.",
+    "impact": "A channel to catch a reverse shell or transfer data between attacker and target.",
+    "detection": "Monitor for execution of scripting or command interpreters outside expected administrative time windows, from unusual user contexts, or with encoded/obfuscated arguments. Secondary execution events spawned from interpreters (e.g., a shell spawning another shell or a network tool) are particularly significant.",
+    "artifacts": "A listening socket; the netcat process; the inbound/outbound connection recorded in network logs.",
+    "prevention": "Use antivirus/antimalware to automatically quarantine suspicious scripts. Employ application control to restrict which scripts and interpreters can execute. Monitor and restrict the execution of interpreters (bash, sh, python, etc.) where not explicitly required.",
+    "sources": [
+      "MITRE T1059"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

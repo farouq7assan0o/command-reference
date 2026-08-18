@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nGoogle Dork targeting Azure Blob Storage URLs (.blob.core.windows.net). Same concept as AWS S3 dork \u2014 publicly accessible Azure storage containers indexed by Google. Company name or abbreviation in intext: value.\n\n=== CHAINING ===\nIdentify Azure blob URL from dork \u2192 attempt direct access \u2192 check for anonymous read permission \u2192 enumerate container contents \u2192 look for sensitive files.\n\n=== DETECTION SIGNAL ===\nAzure blob URLs appearing in source code (link prefetch hints, CDN references) are another discovery path \u2014 check page source of target web applications for blob.core.windows.net references.",
+  "references": []
+}

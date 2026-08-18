@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nService/version scan of NFS ports (111 rpcbind, 2049 NFS). Confirms NFS is running and identifies the RPC service registration. Precursor to showmount and NSE enumeration.\n\n=== CHAINING ===\nPort scan 111+2049 \u2192 confirm NFS/RPC running \u2192 showmount -e for export list \u2192 nmap nfs-ls NSE for content \u2192 mount for direct access.",
+  "references": []
+}

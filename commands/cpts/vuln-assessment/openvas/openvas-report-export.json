@@ -1,0 +1,110 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "openvasreporting"
+  ],
+  "tags": [
+    "openvas",
+    "reporting",
+    "xlsx"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Reporting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "CPTS Ch06 — convert GVM XML report to Excel",
+      "command": "python3 -m openvasreporting -i report-2bf466b5-627d-4659-bea6-1758b43235b1.xml -f xlsx"
+    },
+    {
+      "label": "Export high+ findings only to docx",
+      "command": "python3 -m openvasreporting -i report.xml -f docx --min-lvl high"
+    }
+  ],
+  "notes": "OpenVAS export formats: XML, CSV, PDF, ITG, TXT. Export the OpenVAS report as XML from the Greenbone UI, then convert with openvasreporting. Supports xlsx (Excel) and docx (Word) output. Filter with --min-lvl to focus on high/critical. Useful for client deliverables. Also covered in: CPTS Ch06 (Vulnerability Assessment).",
+  "references": [
+    {
+      "title": "OpenVAS Reporting",
+      "url": "https://github.com/TheGroundZero/openvasreporting"
+    },
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-va-report",
+      "rel": "next",
+      "note": "Structure the findings into a report."
+    }
+  ],
+  "id": "openvas-report-export",
+  "name": "OpenVAS - Export Report to XLSX",
+  "command": "python3 -m openvasreporting -i <report>.xml -f xlsx",
+  "description": "Convert an exported OpenVAS XML report into a formatted Excel workbook with openvasreporting - handy for deliverables and triage.",
+  "opsec": "moderate",
+  "exam": "restricted",
+  "mitre": [
+    "T1595.002"
+  ],
+  "defense": {
+    "why_it_works": "Exports a completed OpenVAS scan's findings to XLSX for reporting and hand-off. This is a post-scan reporting step performed on the scanner - it does not interact with the target.",
+    "prerequisites": "A completed OpenVAS scan/report on the GVM instance.",
+    "impact": "A portable vulnerability report (XLSX) for the assessment deliverable.",
+    "detection": "None on the target side - the export is local to the scanner and generates no target traffic.",
+    "artifacts": "The exported report file on the scanner host; no victim-side evidence.",
+    "sources": [
+      "HTB M06"
+    ],
+    "misconfiguration": "Vulnerability scanning reveals services with unpatched CVEs, default configurations, or known-weak settings. The absence of a patch management process allows critical vulnerabilities to remain exploitable for months or years. Scan results that are not acted upon create a false sense of security.",
+    "vulnerable_config": "# OpenVAS/Nessus finding typical vulnerable targets:\n# CVSSv3: 9.8 - Apache Struts2 RCE (CVE-2017-5638) - unpatched\n# CVSSv3: 8.8 - Tomcat manager with default creds (admin/admin)\n# CVSSv3: 10.0 - MS17-010 (EternalBlue) - SMBv1 enabled, unpatched\n\n# Unpatched = patch not applied within SLA:\n# Critical (CVSS 9+): patch within 24-72 hours\n# High (CVSS 7-8.9): patch within 7 days\n# Medium: patch within 30 days",
+    "secure_config": "# Establish a vulnerability management program:\n# 1. Scan weekly with authenticated scans (Nessus/OpenVAS/Qualys)\n# 2. Integrate scan results with ticketing (Jira/ServiceNow)\n# 3. Set SLA by severity: Critical 72h, High 7d, Medium 30d\n# 4. Verify patches with re-scan\n\n# CVSS scoring -> risk-based prioritization:\n# Not all CVSSv3 9+ are exploitable in your environment\n# Use EPSS (Exploit Prediction Scoring System) to prioritize by actual exploitation likelihood\n\n# Defense-in-depth: patch is the fix, but compensating controls while patching:\n# WAF rule for web vuln CVEs\n# Network segment to isolate vulnerable service\n# IDS signature for exploit traffic"
+  },
+  "variations": [
+    {
+      "description": "Install openvasreporting Python tool",
+      "command": "pip3 install openvasreporting",
+      "label": "pip3"
+    },
+    {
+      "description": "Export OpenVAS XML report to XLSX",
+      "command": "python3 -m openvasreporting -i <report>.xml -f xlsx",
+      "label": "python3 -m openvasreporting -i"
+    },
+    {
+      "description": "Export to Word DOCX format",
+      "command": "python3 -m openvasreporting -i <report>.xml -f docx",
+      "label": "python3 -m openvasreporting -i"
+    },
+    {
+      "description": "Export multiple XML reports into one spreadsheet",
+      "command": "python3 -m openvasreporting -i <report1>.xml <report2>.xml -f xlsx",
+      "label": "python3 -m openvasreporting -i"
+    },
+    {
+      "description": "Filter by minimum severity (critical/high/medium/low)",
+      "command": "python3 -m openvasreporting -i <report>.xml -f xlsx --min-lvl high",
+      "label": "python3 -m openvasreporting -i"
+    },
+    {
+      "description": "Export from UI — XML format (for tool import)",
+      "command": "# Greenbone UI: Reports → select report → Export → XML format",
+      "label": "Greenbone UI: Reports → select rep…"
+    }
+  ]
+}

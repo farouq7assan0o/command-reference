@@ -1,0 +1,84 @@
+{
+  "id": "ad-getuserspns-list",
+  "name": "Impacket GetUserSPNs - List SPN Accounts",
+  "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user>",
+  "description": "Lists all domain accounts with a Service Principal Name (SPN) \u2014 the Kerberoasting target list. No -request flag means no tickets are pulled yet; this is pure enumeration. Only needs any valid domain credential.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "loud",
+  "category": "Password Attacks",
+  "subcategory": "Kerberoasting",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "kerberoasting",
+    "enumeration",
+    "spn",
+    "impacket",
+    "kerberos"
+  ],
+  "mitre": [
+    "T1558.003"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY KERBEROASTING WORKS ===\nKerberos design: any authenticated domain user can request a TGS ticket for any\nSPN-registered service account. The DC encrypts the TGS using the service account's\nNT hash. That encrypted ticket can be taken offline and cracked \u2014 NO lockout,\nNO alerting in default Windows auditing (Event 4769 is logged but rarely monitored).\n\nThis is by design, not a bug. The weakness is weak service account passwords.\n\n=== WHAT AN SPN IS ===\nSPN maps a service to a domain account:\n  MSSQLSvc/DEV-PRE-SQL.inlanefreight.local:1433 \u2192 service runs as sqldev\n  HTTP/ACADEMY-EA-CA01.inlanefreight.local       \u2192 runs as iis_svc\n\nAny account with an SPN is Kerberoastable. Priority targets:\n  - SQL service accounts \u2014 often set with weak passwords and never rotated\n  - Accounts with admincount=1 (were in a privileged group at some point)\n  - Old PasswordLastSet dates \u2014 nobody is rotating, likely weak\n\n=== THIS COMMAND: LIST MODE ===\nNo -request flag = LDAP query only, no TGS tickets requested.\nOutput columns: ServicePrincipalName | Name | MemberOf | PasswordLastSet | LastLogon\n\nLook for: old PasswordLastSet + Domain Admins MemberOf = jackpot.\nIf sqlsvc is a Domain Admin with password set 5 years ago \u2014 roast it first.\n\n=== LINUX vs WINDOWS ===\nGetUserSPNs.py  (Linux)   \u2192 network-based query; needs creds + DC IP; no agent on target\nRubeus.exe      (Windows) \u2192 runs from domain host; /stats, /outfile, /rc4opsec flags\nPowerView       (Windows) \u2192 Get-DomainUser -SPN for recon only (no ticket pull)\nUse GetUserSPNs.py from Linux pivot; Rubeus when already on Windows host. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "examples": [
+    {
+      "label": "List kerberoastable accounts",
+      "command": "GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend"
+    },
+    {
+      "label": "With explicit password",
+      "command": "GetUserSPNs.py -dc-ip 172.16.5.5 INLANEFREIGHT.LOCAL/forend:Klmcargo2"
+    }
+  ],
+  "references": [
+    {
+      "title": "Impacket",
+      "url": "https://github.com/fortra/impacket"
+    },
+    {
+      "title": "GetUserSPNs.py (Impacket)",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/GetUserSPNs.py"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-getuserspns-request",
+      "note": "Pull the TGS hashes for all SPN accounts.",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "impacket GetUserSPNs lists domain accounts that have a Service Principal Name registered - the Kerberoasting target list - via LDAP.",
+    "prerequisites": "Valid domain credentials and LDAP access to the DC.",
+    "impact": "The set of Kerberoastable service accounts to target.",
+    "detection": "[MITRE T1558.003] LDAP queries filtering on servicePrincipalName / userAccountControl (Event 4662; Defender for Identity recon); one host reading roastable-account attributes.",
+    "artifacts": "LDAP query on servicePrincipalName; the SPN account list.",
+    "prevention": "Use 100+ character passwords or gMSA for service accounts; disable RC4 (force AES); audit and remove unused SPNs; deploy honeypot SPN accounts to catch roasting; Defender for Identity flags mass TGS requests.",
+    "evasion": "A single scoped LDAP query blends with normal directory reads; this step generates no 4769 yet.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords \u2014 or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
+    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state \u2014 password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket \u2014 short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
+    "secure_config": "# Fix 1 \u2014 Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 \u2014 For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 \u2014 Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nFTP anonymous login allows access without credentials (username: anonymous, any password). When combined with write access (anon_upload_enable=YES), creates a path to RCE: upload a web shell to FTP root that overlaps with web root \u2192 access via HTTP.\n\n=== CHAINING ===\nnmap ftp-anon NSE confirms anonymous access \u2192 list directory (ls -la) \u2192 check for write permissions \u2192 if web root accessible: upload webshell \u2192 trigger via HTTP \u2192 RCE.\n\n=== LOG POISONING ===\nIf FTP logs are readable via LFI, inject PHP code in the username field during login \u2192 include log file via LFI \u2192 code execution. Depends on FTP log path and LFI capability.\n\n=== DETECTION ===\nAnonymous FTP logins logged in vsftpd/proftpd logs. Bulk directory listing (wget -m mirror) generates abnormal traffic volume.",
+  "references": []
+}

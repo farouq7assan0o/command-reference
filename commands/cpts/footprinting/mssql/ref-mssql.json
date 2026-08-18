@@ -1,0 +1,57 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "impacket-mssqlclient"
+  ],
+  "tags": [
+    "mssql",
+    "reference",
+    "misconfig"
+  ],
+  "category": "Enumeration",
+  "subcategory": "MSSQL",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Fingerprint MSSQL over 1433",
+      "command": "nmap -sV -p1433 --script ms-sql-info 10.129.201.248"
+    }
+  ],
+  "notes": "Ports: 1433/tcp (MSSQL), 1434/tcp (DAC)\nSystem DBs: master, model, msdb, tempdb, resource\nNamed pipe: \\\\<host>\\pipe\\sql\\query\nDangerous: unencrypted client connections, self-signed certs, named pipes enabled, weak/default sa creds",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "mssql-enum",
+      "note": "Run NSE and mssqlclient.py against port 1433",
+      "rel": "next"
+    }
+  ],
+  "id": "ref-mssql",
+  "name": "Reference - MSSQL Ports, Defaults & Dangerous Settings",
+  "command": "# MSSQL ports, system DBs, and weak-config indicators",
+  "description": "MSSQL ports, default system databases, named-pipe paths, and the settings that make it attackable.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1210"
+  ]
+}

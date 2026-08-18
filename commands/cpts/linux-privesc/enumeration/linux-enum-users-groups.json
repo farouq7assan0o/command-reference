@@ -1,0 +1,88 @@
+{
+  "type": "cheatsheet",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "coreutils"
+  ],
+  "tags": [
+    "enumeration",
+    "users",
+    "groups"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Just the usernames",
+      "command": "cat /etc/passwd | cut -f1 -d:"
+    },
+    {
+      "label": "Users with a login shell",
+      "command": "grep \"sh$\" /etc/passwd"
+    },
+    {
+      "label": "All groups and members of a group",
+      "command": "cat /etc/group; getent group sudo"
+    },
+    {
+      "label": "Last logins / who is on now",
+      "command": "lastlog; w"
+    }
+  ],
+  "notes": "Group membership is the fast win: docker/lxd/disk/adm all convert directly to root. getent expands a group to its members; grep 'sh$' shows who has a real login shell. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "references": [
+    {
+      "title": "getent man page",
+      "url": "https://man7.org/linux/man-pages/man1/getent.1.html"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Linux Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "group-docker",
+      "note": "If you're in the docker group, escape to host root.",
+      "rel": "next"
+    },
+    {
+      "id": "group-lxd-lxc",
+      "note": "If you're in lxd/lxc, escape via a privileged container.",
+      "rel": "next"
+    }
+  ],
+  "id": "linux-enum-users-groups",
+  "name": "Enumeration - Users and Groups",
+  "command": "cat /etc/passwd",
+  "description": "Enumerate accounts, which ones have login shells (attack targets), group definitions, and membership of privileged groups like sudo/docker/lxd/disk/adm.",
+  "variations": [
+    {
+      "label": "Users",
+      "command": "cat /etc/passwd\ncat /etc/passwd | cut -f1 -d:\ngrep \"sh$\" /etc/passwd"
+    },
+    {
+      "label": "Groups",
+      "command": "cat /etc/group\ngetent group sudo\nls /home"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1087.001"
+  ],
+  "exam": "exam-ok"
+}

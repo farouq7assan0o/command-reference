@@ -1,0 +1,60 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [],
+  "tags": [
+    "reference",
+    "oval",
+    "cve",
+    "scap"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "OVAL & CVE",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "The difference",
+      "command": "# CVE-2017-0144 = the identifier for the flaw; OVAL = the machine-readable test that checks whether a host is vulnerable to it"
+    }
+  ],
+  "notes": "OVAL (part of SCAP): definition classes Vulnerability/Compliance/Inventory/Patch. ID: oval:<org domain>:<type>:<value>, types def/obj/ste/var. Formats: XML/XCCDF.\nCVE: assigned by a CNA (CVE Numbering Authority). Criteria: independently fixable, one codebase, vendor-acknowledged.\nLifecycle: identify -> vendor notify -> CNA -> web form -> confirm -> assign -> disclose -> announce -> NVD publish.\nDisclosure models: Responsible Disclosure vs Zero Day.",
+  "references": [
+    {
+      "title": "MITRE CVE",
+      "url": "https://cve.mitre.org/"
+    },
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ref-cvss",
+      "rel": "next",
+      "note": "Score the CVEs you map."
+    }
+  ],
+  "id": "ref-oval-cve",
+  "name": "Reference - OVAL & CVE",
+  "command": "# OVAL = machine-readable checks ; CVE = the vulnerability identifiers",
+  "description": "OVAL/SCAP for automated compliance checks and the CVE lifecycle/identifier scheme.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1190"
+  ]
+}

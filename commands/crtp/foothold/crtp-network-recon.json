@@ -1,0 +1,76 @@
+{
+  "id": "crtp-network-recon",
+  "name": "Network Recon (CRTP Foothold)",
+  "command": "nmap -sV -sC -p 53,88,135,139,389,445,464,636,3268,3269 <dc_ip>",
+  "description": "Initial network reconnaissance targeting common AD service ports on the Domain Controller to confirm domain infrastructure.",
+  "platform": "linux",
+  "category": "Active Directory",
+  "subcategory": "Foothold",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "loud",
+  "mitre": [
+    "T1046"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "recon",
+    "nmap",
+    "ad",
+    "foothold"
+  ],
+  "examples": [
+    {
+      "label": "Scan DC standard AD ports",
+      "command": "nmap -sV -sC -p 53,88,135,139,389,445,464,636,3268,3269 10.10.10.10"
+    },
+    {
+      "label": "Aggressive scan with OS detection",
+      "command": "nmap -A -p 53,88,135,139,389,445 10.10.10.10"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-user-enumeration",
+      "note": "Enumerate domain users after mapping ports",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-llmnr-poisoning",
+      "note": "Capture hashes via LLMNR poisoning",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-powerview-domain",
+      "note": "Domain enum once inside",
+      "rel": "next"
+    }
+  ],
+  "notes": "Ports 88 (Kerberos), 389/636 (LDAP), 445 (SMB) confirm DC role.",
+  "references": [
+    {
+      "title": "CRTP - Network Recon",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Port scanning and host discovery using built-in Windows tools (Test-NetConnection, ping sweeps) or Nmap avoids bringing external binaries onto the host. Identifying live hosts, open ports, and service banners maps the internal network topology from a compromised foothold, revealing additional pivot targets.",
+    "prerequisites": "Code execution on a domain-joined host inside the target network. ICMP or TCP access to target subnet. Basic PowerShell execution policy bypass.",
+    "impact": "T1046 Network Service Discovery. Attacker maps internal network \u2014 identifies DCs, file servers, MSSQL instances, web apps, and jump hosts for lateral movement planning.",
+    "detection": "Unusual ICMP sweep bursts or sequential TCP SYN patterns from internal workstations. Windows Event 5156 (WFP connection) in bulk from a workstation. EDR network telemetry flags internal port scans from non-IT hosts. Netflow: single source contacting many destinations on the same port.\nProcesses performing network enumeration (port scans, service probing) by correlating process creation, socket connections, and sequential destination IP probing within a time window (DET0376/AN1057).\nUse of network scanning utilities or scripts performing rapid connections to multiple services or hosts using auditd and netflow/pcap telemetry (AN1058).\nBonjour-based mDNS enumeration or use of system tools (dns-sd, nmap) to find active services via multicast probing or targeted scans (AN1059).\nLateral discovery or container breakout attempts using netcat, curl, or custom binaries probing other services within the same namespace or VPC subnet (AN1060).",
+    "artifacts": "Windows Event 5156 bulk connection log | EDR network telemetry: internal sweep from workstation | Netflow: sequential port contacts from single internal IP | IDS: TCP SYN without established connection to >N hosts/min",
+    "prevention": "Micro-segmentation: workstations should not reach other workstations on admin ports (445, 3389, 5985, 1433). Host-based firewalls via GPO. NDR/NAC alerting on internal sweep behavior. Deny ICMP echo between workstation VLANs.\nDisable or Remove Feature or Program: Close unnecessary ports and services to reduce discovery and exploitation risk.\nNetwork Intrusion Prevention: Use network IDS/IPS to detect and prevent remote service scans.\nNetwork Segmentation: Ensure proper segmentation to protect critical servers and devices.",
+    "evasion": "Use Test-NetConnection (built-in, no new process). Limit scan to specific known targets. Scan during business hours. Use RPC/WMI-based discovery to avoid raw TCP sweeps.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1046/"
+    ],
+    "misconfiguration": "Flat internal network \u2014 workstations can reach all hosts on all ports. No NDR/netflow analysis between VLANs. Host firewall GPO not enforced.",
+    "vulnerable_config": "# No host firewall GPO applied \u2014 workstations can reach all internal hosts:\n# Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Windows Defender Firewall\n# \u2192 Domain Profile: No inbound restrictions between workstation VLANs\n\n# No network segmentation:\n# Workstations and servers in same VLAN",
+    "secure_config": "# GPO: restrict workstation-to-workstation traffic:\nNew-NetFirewallRule -DisplayName 'Block W2W RDP' -Direction Inbound -Protocol TCP -LocalPort 3389 -RemoteAddress 10.0.0.0/8 -Action Block\nNew-NetFirewallRule -DisplayName 'Block W2W SMB' -Direction Inbound -Protocol TCP -LocalPort 445 -RemoteAddress 10.0.0.0/8 -Action Block\nNew-NetFirewallRule -DisplayName 'Block W2W WinRM' -Direction Inbound -Protocol TCP -LocalPort 5985,5986 -RemoteAddress 10.0.0.0/8 -Action Block\n\n# Network segmentation:\n# Workstation VLAN \u2192 default-deny to Server VLAN except explicitly allowed services"
+  }
+}

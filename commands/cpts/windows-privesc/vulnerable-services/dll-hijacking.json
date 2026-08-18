@@ -1,0 +1,101 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "c-compiler"
+  ],
+  "tags": [
+    "dll-hijacking",
+    "proxy-dll"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - DLL Hijacking",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "ProcMon filter for missing DLL loads",
+      "command": "# filter: Result = NAME NOT FOUND, path ends .dll"
+    },
+    {
+      "label": "Proxy-DLL rename steps (forwards real exports)",
+      "command": "# rename library.dll -> library.o.dll ; rename tamper.dll -> library.dll"
+    },
+    {
+      "label": "Invalid-library rename (just runs DllMain)",
+      "command": "# rename hijack.dll -> x.dll"
+    },
+    {
+      "label": "SafeDllSearchMode registry note",
+      "command": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\SafeDllSearchMode"
+    },
+    {
+      "label": "OSCP Ch16 — cross-compile malicious DLL with DllMain that runs net user/localgroup",
+      "command": "x86_64-w64-mingw32-gcc <malicious.cpp> --shared -o <TextShaping.dll>"
+    },
+    {
+      "label": "OSCP Ch16 — verify write access to app dir before deploying DLL",
+      "command": "icacls \"C:\\<app_dir>\" | findstr Users"
+    }
+  ],
+  "notes": "=== DLL Injection and Hijacking ===\nForce a process to load attacker-controlled code — inheriting the process's privileges.\n\n=== DLL INJECTION TECHNIQUES ===\nLoadLibrary injection (classic, well-monitored by AV/EDR):\n  1. OpenProcess → target process handle\n  2. VirtualAllocEx → allocate memory in target for DLL path\n  3. WriteProcessMemory → write DLL path into allocated memory\n  4. GetProcAddress(LoadLibraryA) → same address in all processes (kernel32 ASLR exception)\n  5. CreateRemoteThread → start thread in target at LoadLibraryA with DLL path as arg\n  Drawback: CreateRemoteThread + LoadLibrary are heavily monitored by EDR\n\nManual mapping (avoids LoadLibrary API hook):\n  Read DLL as raw bytes → map PE sections into target manually → resolve imports → execute DllMain\n  Harder to detect but complex to implement\n\nReflective DLL injection (no LoadLibrary, no Windows loader):\n  DLL contains its own ReflectiveLoader export\n  Self-loads from arbitrary memory location, resolves its own imports\n  No trace in standard module list — hardest to detect\n\n=== DLL HIJACKING (most practical for privilege escalation) ===\nExploits Windows DLL search order:\n  1. Application directory\n  2. System directory (System32)\n  3. Windows directory\n  4. Current directory\n  5. Directories in PATH\n\nIdentifying hijack opportunities:\n  Process Monitor (Procmon) → filter on \"Load Image\" + \"NAME NOT FOUND\"\n  Shows DLLs the process tries to load but cannot find → prime hijack targets\n\nINVALID LIBRARY HIJACK (missing DLL):\n  Process looks for DLL that doesn't exist → place file with that name in searched directory\n  DllMain DLL_PROCESS_ATTACH case executes automatically when DLL loads\n  No interaction needed after placement\n\nPROXY DLL HIJACK (DLL exists, must keep working):\n  Rename original: library.dll → library.o.dll\n  Create malicious proxy with same exports that calls original functions\n  Application sees no errors, proxy code also executes\n\n=== PRIVILEGE ESCALATION APPLICATION ===\nTarget: SYSTEM-level process or auto-elevating binary that loads a DLL from user-writable directory\nExample: UAC bypass via srrstr.dll (see uac-bypass-srrstr card) uses this exact technique\nProcmon on elevated process → find NAME NOT FOUND in writable PATH locations → place malicious DLL\n\n=== CHAINING CONTEXT ===\nAuto-elevating binary + writable PATH directory → DLL hijack → UAC bypass → full token\nSYSTEM process loading DLL from writable directory → DLL hijack → SYSTEM code execution\nService startup DLL loading from writable path → hijack → SYSTEM at next service start\nPersistence: DLL hijack persists across reboots/service restarts\n\n=== WHAT TO LOOK FOR ===\nRun Procmon on target processes to find missing DLL loads\nServices loading DLLs from C:\\ProgramData or user profile directories\nApplications with custom DLL paths in insecure locations\nauto-elevate manifest in binary (check with sigcheck.exe or strings on binary manifest) OSCP Ch16 pattern: (1) confirm app tries to load a missing DLL (ProcMon filter: Process Name=app.exe, Operation=CreateFile, Result=NAME NOT FOUND, Path contains DLL name); (2) confirm write access to app directory; (3) x86_64-w64-mingw32-gcc malicious.cpp --shared -o missing.dll; (4) deploy to app dir (first in search order); (5) wait for privileged user to launch app. Also covered in: OSCP PEN-200 Chapter 16 (Windows Privilege Escalation).",
+  "references": [
+    {
+      "title": "HackTricks - DLL Hijacking",
+      "url": "https://book.hacktricks.wiki/en/windows-hardening/windows-local-privilege-escalation/dll-hijacking/index.html"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 - Windows Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "druva-insync-poc",
+      "note": "Another vulnerable-service class.",
+      "rel": "alternative"
+    },
+    {
+      "id": "sharpup-audit",
+      "note": "Enumeration that can flag hijackable services.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "dll-hijacking",
+  "name": "DLL Hijacking - Missing / Proxy DLL",
+  "command": "# place a malicious DLL earlier in the search order than the real one",
+  "description": "If an application loads a DLL by name from a writable/earlier search-order location, drop a malicious DLL there. Proxy-DLL technique: rename the real lib to library.o.dll and supply a tamper DLL named library.dll that forwards exports while running your code in DllMain.",
+  "opsec": "loud",
+  "mitre": [
+    "T1574.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "When an application loads a DLL without specifying an absolute path, Windows resolves it via DLL search order: application directory, System32, Windows directory, then directories in PATH. If the application directory (or another path before System32) is writable by the attacker, planting a malicious DLL with the expected name causes it to be loaded instead of the legitimate one, executing attacker code in the application's security context.",
+    "prerequisites": "A target application that loads a DLL without full path (identified via Process Monitor or known vulnerability). Write access to the application directory or a directory in PATH before System32. Application must be executed (by the target user or a scheduled mechanism).",
+    "impact": "Code execution in the context of the application loading the DLL. If the application runs as SYSTEM, admin, or another privileged account, this achieves privilege escalation.",
+    "detection": "Process Monitor: 'NAME NOT FOUND' for DLL load attempts in writable directories. New DLL files in application directories. Sysmon Event 7: DLL loaded from unexpected path. File creation monitoring on application directories.",
+    "artifacts": "Process Monitor: DLL load failure then success from unexpected path | Sysmon Event 7: image load from non-System32 path | File: new DLL in application directory | Process: elevated execution following DLL plant",
+    "prevention": "Use absolute paths when loading DLLs (LoadLibrary with full path). Restrict write access on application directories to SYSTEM and Administrators. Enable SafeDllSearchMode (default enabled). Apply code signing — load only signed DLLs in controlled applications.",
+    "misconfiguration": "Application directory has write access for standard users. Application loads DLL by name only without full path. SafeDllSearchMode disabled. No file integrity monitoring on application directories.",
+    "vulnerable_config": "# Process Monitor shows:\n# DISM.exe -> CreateFile -> C:\\Users\\user\\AppData\\Local\\Temp\\version.dll -> NAME NOT FOUND\n# Plant malicious DLL:\ncopy C:\\Tools\\shell.dll C:\\Users\\user\\AppData\\Local\\Temp\\version.dll\n# Run DISM or trigger application -> DLL hijacked",
+    "secure_config": "# Fix application (developer-side):\n# Use SetDllDirectory('') + LoadLibrary('C:\\Program Files\\App\\lib.dll')\n\n# OS-side: restrict app directory permissions:\nicacls 'C:\\Program Files\\VulnApp' /inheritance:r /grant 'SYSTEM:(OI)(CI)F' /grant 'Administrators:(OI)(CI)F'\n\n# Enable SafeDllSearchMode:\nreg add HKLM\\System\\CurrentControlSet\\Control\\Session\\ Manager /v SafeDllSearchMode /t REG_DWORD /d 1 /f",
+    "sources": [
+      "HTB M26",
+      "MITRE T1574.001",
+      "MITRE T1574.002"
+    ]
+  }
+}

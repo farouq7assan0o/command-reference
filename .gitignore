@@ -1,0 +1,10 @@
+node_modules/
+package-lock.json
+smoke.js
+jsmoke.js
+.DS_Store
+
+# scratch / working generators (module processors, one-off migration scripts)
+_*
+*.log
+Thumbs.db

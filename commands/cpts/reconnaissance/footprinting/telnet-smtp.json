@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nTelnet to port 25 provides a raw SMTP session for manual testing \u2014 VRFY, EXPN, EHLO commands sent interactively. Useful for confirming SMTP behavior, testing open relay manually, and exploring commands without Nmap script overhead.\n\n=== SMTP COMMANDS ===\nEHLO domain \u2192 capability list\nVRFY username \u2192 check if user exists (often unreliable \u2014 returns 252 for everything)\nMAIL FROM: \u2192 specify sender\nRCPT TO: \u2192 specify recipient (test open relay: use external domain)\nDATA \u2192 begin message body\nQUIT \u2192 close session\n\n=== OPEN RELAY TEST ===\nMAIL FROM: attacker@external.com + RCPT TO: victim@other-external.com \u2192 if accepted without auth, confirmed open relay.",
+  "references": []
+}

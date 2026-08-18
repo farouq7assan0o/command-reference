@@ -1,0 +1,65 @@
+{
+  "id": "cdsa-dll-hijack-detection",
+  "name": "DLL Hijacking Detection via Sysmon Event 7",
+  "command": "Get-WinEvent -Path 'C:\\Logs\\DLLHijack\\sysmon.evtx' | Where-Object {$_.Id -eq 7} | Select-Object TimeCreated, Message | Format-List",
+  "description": "Detect DLL hijacking attacks using Sysmon Event ID 7 (ImageLoad). DLL hijacking occurs when a legitimate application loads a malicious DLL from an attacker-controlled path instead of the intended system path.",
+  "platform": "windows",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Windows Events/Forensics",
+  "subcategory": "Threat Detection",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 03: Windows Event Logs & Finding Evil",
+  "tags": ["dll-hijacking", "sysmon", "imageload", "detection", "forensics", "blue-team"],
+  "notes": "DLL Search Order Hijacking (how the attack works):\n  Windows loads DLLs in this order:\n    1. Directory of the executable\n    2. System directory (C:\\Windows\\System32)\n    3. Windows directory (C:\\Windows)\n    4. Current directory\n    5. PATH entries\n  Attacker: places malicious DLL with a legitimate name in a directory\n    searched BEFORE the real DLL location.\n\nSysmon Event ID 7 (ImageLoad) key fields:\n  Image         → the process loading the DLL\n  ImageLoaded   → full path of the DLL that was loaded\n  Hashes        → MD5, SHA256, ImpHash of loaded DLL\n  Signed        → true/false — is the DLL signed?\n  Signature     → signing certificate / vendor\n  SignatureStatus → Valid, Expired, Revoked, Unchecked\n\nDetection IOCs:\n  → Signed=false for a DLL that should always be signed (e.g. Windows system DLLs)\n  → ImageLoaded path outside System32 for a known system DLL name\n  → Same DLL name loaded from two different paths across processes\n  → Low/no-reputation DLL loaded by high-privilege process\n  → ImpHash matches known malware family\n\nLab analysis path: C:\\Logs\\DLLHijack\\\n  → Contains sysmon.evtx with DLL hijack evidence\n  → Look for Event 7 where Signed=false or ImageLoaded path is suspicious\n\nXML query for unsigned DLL loads:\n  $query = @'\n  <QueryList><Query Id=\"0\">\n    <Select Path=\"Microsoft-Windows-Sysmon/Operational\">\n      *[System[EventID=7]] and *[EventData[Data[@Name='Signed']='false']]\n    </Select>\n  </Query></QueryList>\n  '@\n  Get-WinEvent -FilterXml $query",
+  "mitre": ["T1574.001", "T1574.002"],
+  "examples": [
+    {
+      "label": "Read DLLHijack lab evtx — all Event 7 (ImageLoad) events",
+      "command": "Get-WinEvent -Path 'C:\\Logs\\DLLHijack\\sysmon.evtx' | Where-Object {$_.Id -eq 7} | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Filter Event 7 for unsigned DLL loads from live Sysmon log",
+      "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath \"*[System[EventID=7] and EventData[Data[@Name='Signed']='false']]\" | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Parse Event 7 XML to extract Image, ImageLoaded, Signed fields",
+      "command": "Get-WinEvent -Path 'C:\\Logs\\DLLHijack\\sysmon.evtx' | Where-Object {$_.Id -eq 7} | ForEach-Object { $xml=[xml]$_.ToXml(); $data=$xml.Event.EventData.Data; [PSCustomObject]@{Time=$_.TimeCreated; Process=($data|?{$_.Name -eq 'Image'}).'#text'; DLL=($data|?{$_.Name -eq 'ImageLoaded'}).'#text'; Signed=($data|?{$_.Name -eq 'Signed'}).'#text'} } | Format-Table -AutoSize"
+    },
+    {
+      "label": "FilterXml query for unsigned DLL loads",
+      "command": "$q='<QueryList><Query Id=\"0\"><Select Path=\"Microsoft-Windows-Sysmon/Operational\">*[System[EventID=7]] and *[EventData[Data[@Name=\"Signed\"]=\"false\"]]</Select></Query></QueryList>'; Get-WinEvent -FilterXml $q | Format-List"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Event Logs & Finding Evil",
+      "url": "https://academy.hackthebox.com/module/details/216"
+    },
+    {
+      "title": "MITRE ATT&CK - T1574.001 DLL Search Order Hijacking",
+      "url": "https://attack.mitre.org/techniques/T1574/001/"
+    },
+    {
+      "title": "Microsoft - Dynamic-Link Library Security",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-security"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-sysmon-event-ids",
+      "rel": "prereq",
+      "note": "Sysmon Event 7 is the ImageLoad event used for this detection."
+    },
+    {
+      "id": "cdsa-get-winevent",
+      "rel": "prereq",
+      "note": "Get-WinEvent patterns for querying .evtx files and live logs."
+    },
+    {
+      "id": "cdsa-lsass-dump-detection",
+      "rel": "next",
+      "note": "Similar Sysmon-based detection for credential dumping."
+    }
+  ]
+}

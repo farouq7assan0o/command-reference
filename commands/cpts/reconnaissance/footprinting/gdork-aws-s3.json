@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nGoogle Dork targeting AWS S3 bucket URLs using inurl: and intext: operators. Google indexes publicly accessible S3 content \u2014 documents, configs, and code stored without access controls appear in search results. Entirely passive from the target's perspective.\n\n=== CHAINING ===\nRun dork \u2192 identify S3 bucket names \u2192 check bucket with aws s3 ls s3://bucket-name --no-sign-request (unauthenticated) \u2192 if accessible: look for id_rsa, config files, credentials, source code.\n\n=== CRITICAL FINDING ===\nSSH private keys (id_rsa) in S3 buckets are critical severity findings \u2014 direct SSH access to internal systems with no auth required. Credentials in config files provide immediate access to other services.",
+  "references": []
+}

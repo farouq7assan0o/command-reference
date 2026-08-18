@@ -1,0 +1,106 @@
+{
+  "id": "cdsa-m09-suricata-rule-examples",
+  "name": "Suricata C2 Detection Rules \u2014 Empire, Covenant, Sliver & Dridex",
+  "command": "sudo suricata -r /home/htb-student/pcaps/psempire.pcap -l . -k none",
+  "description": "Real-world Suricata rule examples for detecting common C2 frameworks. PowerShell Empire: HTTP GET with specific URIs + base64 cookie + user-agent + missing headers. Covenant: body string '<title>Hello World!</title>' with detection_filter; OR fixed dsize:312. Sliver HTTP: URI PCRE + Set-Cookie regex. Sliver TLS: JA3 hash match. Dridex TLS: SSL certificate byte patterns + OID inspection. Demonstrates signature, anomaly, and TLS fingerprinting approaches.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "IDS/IPS",
+  "subcategory": "Suricata",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 09: Working with IDS/IPS",
+  "tags": [
+    "suricata",
+    "c2-detection",
+    "powershell-empire",
+    "covenant",
+    "sliver",
+    "dridex",
+    "ja3",
+    "tls-fingerprint",
+    "rule-writing",
+    "blue-team"
+  ],
+  "tools": ["suricata", "ja3"],
+  "mitre": [
+    "T1071.001",
+    "T1071.004",
+    "T1573",
+    "T1059.001"
+  ],
+  "notes": "=== EXAMPLE 1: PowerShell Empire (HTTP C2) ===\nRule (ET SID 2027512):\n  alert http $HOME_NET any -> $EXTERNAL_NET any (\n    msg:\"ET MALWARE Possible PowerShell Empire Activity Outbound\";\n    flow:established,to_server;\n    content:\"GET\"; http_method;\n    content:\"/\"; http_uri; depth:1;\n    pcre:\"/^(?:login\\/process|admin\\/get|news)\\.php$/RU\";\n    content:\"session=\"; http_cookie;\n    pcre:\"/^(?:[A-Z0-9+/]{4})*(?:[A-Z0-9+/]{2}==|[A-Z0-9+/]{3}=|[A-Z0-9+/]{4})$/CRi\";\n    content:\"Mozilla|2f|5.0|20 28|Windows|20|NT|20|6.1\"; http_user_agent; http_start;\n    content:\".php|20|HTTP|2f|1.1|0d 0a|Cookie|3a 20|session=\"; fast_pattern; http_header_names;\n    content:!\"Referer\"; content:!\"Cache\"; content:!\"Accept\";\n    sid:2027512; rev:1;\n  )\n\nWhy it works:\n  \u2192 URI must be login/process.php, admin/get.php, or news.php (Empire agent URIs)\n  \u2192 Cookie 'session=' value must be base64-encoded string\n  \u2192 User-Agent: Mozilla/5.0 (Windows NT 6.1 (Empire default)\n  \u2192 Missing Referer, Cache, Accept headers (non-browser pattern)\n  \u2192 PCRE CRi: cookie buffer (C), relative (R), case-insensitive (i)\n\nPCAP for testing: /home/htb-student/pcaps/psempire.pcap\nAgency reference: https://github.com/EmpireProject/Empire/blob/master/data/agent/agent.ps1#L78\n\n=== EXAMPLE 2: Covenant C2 (Body Content) ===\nRule (SID 3000011):\n  alert tcp any any -> $HOME_NET any (\n    msg:\"detected by body\";\n    content:\"<title>Hello World!</title>\";\n    detection_filter: track by_src, count 4, seconds 10;\n    priority:1;\n    sid:3000011;\n  )\n\nWhy it works:\n  \u2192 Covenant C2 HTTP profile returns <title>Hello World!</title>\n  \u2192 detection_filter: must fire \u22654 times in 10s from same src (reduces FP)\n  \u2192 Reference: https://github.com/cobbr/Covenant/blob/master/Covenant/Data/Profiles/DefaultHttpProfile.yaml#L35\n\nNote: rule is intentionally marked 'inefficient' \u2014 false positives possible\nPCAP for testing: /home/htb-student/pcaps/covenant.pcap\n\n=== EXAMPLE 3: Covenant C2 (Beacon Size / Analytics) ===\nRule (SID 3000001):\n  alert tcp $HOME_NET any -> any any (\n    msg:\"detected by size and counter\";\n    dsize:312;\n    detection_filter: track by_src, count 3, seconds 10;\n    priority:1;\n    sid:3000001;\n  )\n\nWhy it works:\n  \u2192 Covenant heartbeat = fixed 312-byte payload\n  \u2192 detection_filter: \u22653 occurrences from same src in 10s\n  \u2192 Anomaly-based detection \u2014 no content inspection needed\n  \u2192 Harder to evade than string patterns\n\n=== EXAMPLE 4: Sliver C2 (HTTP URI) ===\nRule (SID 1000007):\n  alert tcp any any -> any any (\n    msg:\"Sliver C2 Implant Detected\";\n    content:\"POST\";\n    pcre:\"/\\/(php|api|upload|actions|rest|v1|oauth2callback|authenticate|oauth2|oauth|auth|database|db|namespaces)(.*?)((login|signin|api|samples|rpc|index|admin|register|sign-up)\\.php)\\?[a-z_]{1,2}=[a-z0-9]{1,10}/i\";\n    sid:1000007; rev:1;\n  )\n\nSliver Set-Cookie rule (SID 1000003):\n  alert tcp any any -> any any (\n    msg:\"Sliver C2 Implant Detected - Cookie\";\n    content:\"Set-Cookie\";\n    pcre:\"/(PHPSESSID|SID|SSID|APISID|csrf-state|AWSALBCORS)\\=[a-z0-9]{32}\\;/\";\n    sid:1000003; rev:1;\n  )\n\nWhy it works:\n  \u2192 Sliver HTTP profile uses specific directory/file name patterns for URIs\n  \u2192 Set-Cookie name is fixed (PHPSESSID/SID/etc.) with 32-char hex value\n  \u2192 Reference: https://github.com/BishopFox/sliver/blob/master/server/configs/http-c2.go#L294\n\nPCAP for testing: /home/htb-student/pcaps/sliver.pcap\n\n=== EXAMPLE 5: Dridex (TLS Certificate Inspection) ===\nRule (ET SID 2023476):\n  alert tls $EXTERNAL_NET any -> $HOME_NET any (\n    msg:\"ET MALWARE ABUSE.CH SSL Blacklist Malicious SSL certificate detected (Dridex)\";\n    flow:established,from_server;\n    content:\"|16|\"; content:\"|0b|\"; within:8;     \u2190 TLS handshake + certificate type\n    byte_test:3,<,1200,0,relative;\n    content:\"|03 02 01 02 02 09 00|\"; fast_pattern;\n    content:\"|30 09 06 03 55 04 06 13 02|\"; distance:0;  \u2190 OID countryName\n    pcre:\"/^[A-Z]{2}/R\";               \u2190 country code format\n    content:\"|55 04 07|\"; distance:0;   \u2190 OID localityName\n    content:\"|55 04 0a|\"; distance:0;   \u2190 OID organizationName\n    content:\"|55 04 03|\"; distance:0;   \u2190 OID commonName\n    byte_test:1,>,13,1,relative;        \u2190 CN length > 13\n    content:!\"www.\"; distance:2; within:4;\n    pcre:\"...\";                         \u2190 DGA-like CN pattern\n    content:!\"|2a 86 48 86 f7 0d 01 09 01|\";  \u2190 not email OID\n    content:!\"GoDaddy\";\n    sid:2023476; rev:5;\n  )\n\nKey OIDs:\n  |30 09 06 03 55 04 06 13 02| \u2192 countryName (2.5.4.6)\n  |55 04 07|                   \u2192 localityName (2.5.4.7)\n  |55 04 0a|                   \u2192 organizationName (2.5.4.10)\n  |55 04 03|                   \u2192 commonName (2.5.4.3)\n\nPCAP for testing: /home/htb-student/pcaps/dridex.pcap\nReference: https://unit42.paloaltonetworks.com/wireshark-tutorial-dridex-infection-traffic/\n\n=== EXAMPLE 6: Sliver (TLS JA3 Fingerprint) ===\nRule (SID 1002):\n  alert tls any any -> any any (\n    msg:\"Sliver C2 SSL\";\n    ja3.hash;\n    content:\"473cd7cb9faa642487833865d516e578\";\n    sid:1002; rev:1;\n  )\n\nHow to get JA3 hash:\n  ja3 -a --json /home/htb-student/pcaps/sliverenc.pcap\n    \u2192 Shows ja3_digest: 473cd7cb9faa642487833865d516e578\n    \u2192 JA3 derived from Client Hello: TLS version + cipher suites + extensions + elliptic curves\n    \u2192 Different Sliver versions = different JA3 hashes\n\nPCAP for testing: /home/htb-student/pcaps/sliverenc.pcap\nJA3 tool: https://github.com/salesforce/ja3\n\n=== APPROACH COMPARISON ===\nSignature:  content matches  \u2192 precise, known threats, bypassable with obfuscation\nAnalytics:  dsize + counter  \u2192 behavioral, obfuscation-resistant, higher FP rate\nTLS certs:  OID byte match   \u2192 works on encrypted traffic, cert must be default\nJA3 hash:   TLS fingerprint  \u2192 very precise, breaks on TLS version/cipher changes",
+  "examples": [
+    {
+      "label": "Test Empire rule against psempire.pcap",
+      "command": "sudo suricata -r /home/htb-student/pcaps/psempire.pcap -l . -k none"
+    },
+    {
+      "label": "Test Covenant rule against covenant.pcap",
+      "command": "sudo suricata -r /home/htb-student/pcaps/covenant.pcap -l . -k none"
+    },
+    {
+      "label": "Test Sliver rule against sliver.pcap",
+      "command": "sudo suricata -r /home/htb-student/pcaps/sliver.pcap -l . -k none"
+    },
+    {
+      "label": "Test Dridex TLS rule against dridex.pcap",
+      "command": "sudo suricata -r /home/htb-student/pcaps/dridex.pcap -l . -k none"
+    },
+    {
+      "label": "Test Sliver JA3 rule against sliverenc.pcap",
+      "command": "sudo suricata -r /home/htb-student/pcaps/sliverenc.pcap -l . -k none"
+    },
+    {
+      "label": "View fast.log alerts after test",
+      "command": "cat fast.log"
+    },
+    {
+      "label": "Calculate JA3 hash from PCAP",
+      "command": "ja3 -a --json /home/htb-student/pcaps/sliverenc.pcap"
+    },
+    {
+      "label": "PSEmpire rule (full)",
+      "command": "alert http $HOME_NET any -> $EXTERNAL_NET any (msg:\"ET MALWARE Possible PowerShell Empire Activity Outbound\"; flow:established,to_server; content:\"GET\"; http_method; content:\"/\"; http_uri; depth:1; pcre:\"/^(?:login\\/process|admin\\/get|news)\\.php$/RU\"; content:\"session=\"; http_cookie; pcre:\"/^(?:[A-Z0-9+/]{4})*(?:[A-Z0-9+/]{2}==|[A-Z0-9+/]{3}=|[A-Z0-9+/]{4})$/CRi\"; content:\"Mozilla|2f|5.0|20 28|Windows|20|NT|20|6.1\"; http_user_agent; http_start; content:\".php|20|HTTP|2f|1.1|0d 0a|Cookie|3a 20|session=\"; fast_pattern; http_header_names; content:!\"Referer\"; content:!\"Cache\"; content:!\"Accept\"; sid:2027512; rev:1;)"
+    },
+    {
+      "label": "Covenant body rule (full)",
+      "command": "alert tcp any any -> $HOME_NET any (msg:\"detected by body\"; content:\"<title>Hello World!</title>\"; detection_filter: track by_src, count 4, seconds 10; priority:1; sid:3000011;)"
+    },
+    {
+      "label": "Covenant analytics rule (dsize)",
+      "command": "alert tcp $HOME_NET any -> any any (msg:\"detected by size and counter\"; dsize:312; detection_filter: track by_src, count 3, seconds 10; priority:1; sid:3000001;)"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Working with IDS/IPS",
+      "url": "https://academy.hackthebox.com/module/details/226"
+    },
+    {
+      "title": "JA3 TLS Fingerprinting",
+      "url": "https://github.com/salesforce/ja3"
+    },
+    {
+      "title": "Dridex SSL Certificate Analysis (Palo Alto)",
+      "url": "https://unit42.paloaltonetworks.com/wireshark-tutorial-dridex-infection-traffic/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m09-suricata-rule-syntax",
+      "rel": "prereq",
+      "note": "Rule syntax and content modifiers \u2014 understand structure before reading examples."
+    },
+    {
+      "id": "cdsa-m09-snort-fundamentals",
+      "rel": "next",
+      "note": "Snort fundamentals \u2014 similar rule structure, different deployment model."
+    }
+  ],
+  "lint_ignore": [
+    "hardcoded-literal"
+  ]
+}

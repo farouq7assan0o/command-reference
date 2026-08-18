@@ -1,0 +1,85 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl",
+    "gobuster"
+  ],
+  "tags": [
+    "tomcat",
+    "fingerprinting"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Tomcat",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Fingerprint Tomcat via the docs page",
+      "command": "curl -s http://app-dev.inlanefreight.local:8080/docs/ | grep Tomcat"
+    },
+    {
+      "label": "Brute-force paths to find /manager, /host-manager, etc.",
+      "command": "gobuster dir -u http://web01.inlanefreight.local:8180/ -w /usr/share/dirbuster/wordlists/directory-list-2.3-small.txt"
+    }
+  ],
+  "notes": "/docs and /manager confirm Tomcat and its version; the manager app is the real target. If /manager 403s from your IP it may still be reachable via the AJP/Ghostcat path.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "tomcat-mgr-bruteforce",
+      "note": "Attack the manager login once found.",
+      "rel": "next"
+    },
+    {
+      "id": "tomcat-ghostcat",
+      "note": "If AJP/8009 is exposed, read config files without creds.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "tomcat-discovery",
+  "name": "Tomcat - Detect and Enumerate",
+  "command": "curl -s http://<url>:8080/docs/ | grep Tomcat",
+  "description": "Fingerprints Tomcat via the /docs page and brute-forces paths. Key targets: /manager, /host-manager (deploy WARs), and tomcat-users.xml for credentials.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1595.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Tomcat exposes version information in error pages, /docs/ page, and well-known paths /manager, /host-manager. Gobuster or direct curl retrieves the version string reliably without authentication.",
+    "prerequisites": "Network access to port 8080/8443. No credentials required for fingerprinting.",
+    "impact": "Version confirmation enables CVE targeting. Manager URL confirmed for credential attack.",
+    "detection": "GET requests to /docs/, /manager/html, /examples/ from unauthenticated IP. Gobuster patterns in access logs.",
+    "artifacts": "Access logs (GET /docs/, /manager, /examples/) | IDS alerts for web server enumeration pattern",
+    "prevention": "Remove /docs, /examples, /host-manager webapps from production. Set server.xml Server attribute to empty string. Restrict /manager to localhost only.",
+    "misconfiguration": "Default Tomcat installation includes /docs, /examples, and /manager accessible from any IP with verbose error pages revealing the exact version.",
+    "vulnerable_config": "# server.xml default\n<Connector port=\"8080\" Server=\"Apache-Coyote/1.1\"/>\n# webapps contains: docs/, examples/, manager/, host-manager/",
+    "secure_config": "# Suppress version\n<Connector port=\"8080\" Server=\" \"/>\n# Remove unused webapps\nrm -rf $CATALINA_HOME/webapps/docs $CATALINA_HOME/webapps/examples\n# Restrict manager to localhost\n<Valve className=\"org.apache.catalina.valves.RemoteAddrValve\"\n       allow=\"127\\.\\d+\\.\\d+\\.\\d+\"/>",
+    "sources": [
+      "HTB M24",
+      "MITRE T1595.002",
+      "OWASP A05:2021"
+    ]
+  }
+}

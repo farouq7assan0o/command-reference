@@ -1,0 +1,88 @@
+{
+  "id": "ad-evil-winrm",
+  "name": "Evil-WinRM - Shell via WinRM",
+  "command": "evil-winrm -i <target> -u <user> -p <password>",
+  "description": "Opens an interactive PowerShell shell over WinRM (port 5985 TCP for HTTP, 5986 for HTTPS) using domain or local credentials. Requires the target to have WinRM enabled and the user to be a member of Remote Management Users, Administrators, or WinRM access configured. Primary tool for interactive shell access on Windows targets.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Lateral Movement",
+  "subcategory": "Privileged Access",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "winrm",
+    "evil-winrm",
+    "shell",
+    "lateral-movement",
+    "powershell"
+  ],
+  "mitre": [
+    "T1021.006"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHEN WINRM IS AVAILABLE ===\nWinRM (Windows Remote Management) runs on:\n  Port 5985 (HTTP, most common) — use -i <ip> or hostname\n  Port 5986 (HTTPS with cert) — use -S flag\n\nWho can connect:\n  - Administrators group members\n  - Remote Management Users group members\n  - Custom WinRM access GPOs\n\nCheck if open: crackmapexec winrm <target> or nmap -p5985,5986 <target>\n\n=== AUTH OPTIONS ===\n  -u / -p       → username + password\n  -H            → pass-the-hash (NT hash)\n  -k            → Kerberos TGT (KRB5CCNAME env var must be set)\n  -S            → use HTTPS (port 5986)\n  -P            → specify port\n  -c / -k cert  → SSL certificate options\n\n=== PASS THE HASH VIA EVIL-WINRM ===\nevil-winrm -i 172.16.5.25 -u administrator -H 88ad09182de639ccc6579eb0849751cf\nNTLM PTH works because WinRM supports NTLM auth by default.\n\n=== USEFUL BUILT-IN COMMANDS ===\nOnce in the WinRM session:\n  upload localfile remotepath    → upload files to target\n  download remotefile localpath  → download from target\n  menu                          → load .NET assemblies\n  Bypass-4MSI                   → try to bypass AMSI\n  load /path/to/ps.ps1          → load PS scripts\n\n=== CHAIN POSITION ===\nEvil-WinRM is usually the destination of a successful credential chain:\n  LLMNR poison → crack hash → evil-winrm\n  Password spray → valid creds → evil-winrm\n  Kerberoast → crack → evil-winrm\n  ACL abuse → ForceChangePassword → evil-winrm\n  DCSync → PtH with DA hash → evil-winrm on DC\n\n=== OPSEC ===\nWinRM creates Event 4624 Type 3 logon. Connections to DCs with WinRM are\natypical and can alert. Use wmiexec.py or psexec.py if WinRM is monitored.",
+  "examples": [
+    {
+      "label": "Connect with password",
+      "command": "evil-winrm -i 10.129.43.13 -u administrator -p 'Password123!'"
+    },
+    {
+      "label": "Pass the hash",
+      "command": "evil-winrm -i 172.16.5.25 -u administrator -H 88ad09182de639ccc6579eb0849751cf"
+    },
+    {
+      "label": "Kerberos auth",
+      "command": "KRB5CCNAME=/tmp/administrator.ccache evil-winrm -i dc01.inlanefreight.local -r INLANEFREIGHT.LOCAL"
+    },
+    {
+      "label": "Connect with domain account",
+      "command": "evil-winrm -i 172.16.5.5 -u forend -p Klmcargo2"
+    }
+  ],
+  "references": [
+    {
+      "title": "Evil-WinRM (Hackplayers)",
+      "url": "https://github.com/Hackplayers/evil-winrm"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "windows-cred-locations",
+      "rel": "next",
+      "note": "Hunt further creds on the host."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Evil-WinRM is a WinRM client that speaks the same protocol as Enter-PSSession — it establishes an authenticated PowerShell session over HTTP/HTTPS to port 5985/5986. Authentication can use password, NTLM hash (-H, pass-the-hash), or Kerberos ticket (-k). The WinRM service on the target validates the credentials and grants the session if the account is in Administrators or Remote Management Users. Additional features (upload/download, AMSI bypass menu, .NET assembly loading) run as PowerShell commands within the authenticated session.",
+    "prerequisites": "WinRM enabled on target (TCP 5985/5986 reachable). Valid credentials: password, NT hash (for NTLM/PtH), or Kerberos ccache. Account must be in local Administrators or Remote Management Users on the target. Linux host with Evil-WinRM gem installed.",
+    "impact": "Full interactive PowerShell shell on target with upload/download, in-memory assembly loading, and AMSI bypass capability. Enables complete post-exploitation from a Linux host. Pass-the-hash support means a cracked NT hash can directly provide shell access without knowing the plaintext password.",
+    "detection": "Windows Security Event 4624 (type 3 network logon) on target. Event 4648 when using explicit credentials. WinRM operational log (Microsoft-Windows-WinRM/Operational) records session establishment. Network traffic on TCP 5985/5986 from a Linux source IP to a Windows host is anomalous in many environments. EDR may detect WinRM sessions from unusual source IPs or non-administrative accounts.",
+    "artifacts": "Event 4624 type 3 on target; WinRM session entries in operational log; LSASS logon session for authenticated user; uploaded files persist on disk if not cleaned; network traffic on 5985/5986.",
+    "prevention": "Disable WinRM on workstations (default off — verify via GPO). Firewall TCP 5985/5986 — allowlist only designated admin jump hosts. Restrict Remote Management Users group membership. Require NTLMv2-only + credential guard to limit hash abuse. HTTPS-only WinRM (5986) to prevent traffic inspection. Network detection: alert on Linux user-agent or non-standard WinRM clients connecting to Windows WinRM endpoints.",
+    "evasion": "WinRM traffic on 5985 may bypass port-based filters as HTTP. -S flag (HTTPS/5986) encrypts session content. Kerberos auth (-k) avoids NTLM which is more commonly flagged. Operates as a standard WinRM client — protocol-level indistinguishable from legitimate admin use. Minimize session duration and clean up uploaded files.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1021.006"
+    ],
+    "misconfiguration": "WinRM (Windows Remote Management) is enabled on servers and workstations, and domain admin credentials are used directly on remote hosts — placing their NTLM hash/TGT in LSASS on those machines. Enter-PSSession and evil-winrm both use WinRM to open remote PowerShell sessions. Privileged credentials touching non-Tier-0 machines is the core 'double hop' and credential exposure problem.",
+    "vulnerable_config": "# WinRM enabled and listening on all interfaces:\nGet-WSManInstance -ResourceURI winrm/config/listener -SelectorSet @{Transport='HTTP'}\n# Address: *  (all interfaces — not restricted to management VLAN)\n\n# Domain admin used directly on workstations (credential exposure):\nEnter-PSSession -ComputerName workstation01 -Credential domain\\Administrator\n# Administrator hash/TGT now in LSASS on workstation01\n# If workstation01 is compromised, admin credentials are extracted",
+    "secure_config": "# Restrict WinRM listener to management subnet:\nNew-WSManInstance winrm/config/listener \\\n    -SelectorSet @{Transport='HTTP'; Address='10.10.1.0/24'}\n\n# Tier 0 admin accounts NEVER log into Tier 1/2 machines:\n# Privileged Access Workstations (PAW) model\n# Domain Admins only RDP/PSSession to DCs from dedicated PAW machines\n\n# Use JEA (Just Enough Administration) for delegated tasks:\n# Constrained runspaces that only allow specific commands\nNew-PSSessionConfigurationFile -Path admin.pssc -SessionType RestrictedRemoteServer\nRegister-PSSessionConfiguration -Path admin.pssc -Name 'HelpDesk'\n\n# Monitor: Event 4624 (logon type 3) for Domain Admins on non-DC machines\n# Alert on admin credentials used on workstations"
+  },
+  "tools": [
+    "evil-winrm"
+  ]
+}

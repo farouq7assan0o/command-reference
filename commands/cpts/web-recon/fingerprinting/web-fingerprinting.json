@@ -1,0 +1,111 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl",
+    "wafw00f",
+    "nikto",
+    "whatweb"
+  ],
+  "tags": [
+    "fingerprinting",
+    "waf",
+    "nikto",
+    "headers"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "Fingerprinting",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "Install wafw00f",
+      "command": "pip3 install git+https://github.com/EnableSecurity/wafw00f"
+    },
+    {
+      "label": "Install Nikto",
+      "command": "git clone https://github.com/sullo/nikto\ncd nikto/program && chmod +x ./nikto.pl"
+    }
+  ],
+  "notes": "Other tools: Wappalyzer, BuiltWith, WhatWeb, Netcraft. -Tuning b limits Nikto to software identification.",
+  "references": [
+    {
+      "title": "WhatWeb",
+      "url": "https://github.com/urbanadventurer/WhatWeb"
+    },
+    {
+      "title": "Nikto",
+      "url": "https://github.com/sullo/nikto"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "web-crawling",
+      "rel": "next",
+      "note": "Crawl the app for content/endpoints."
+    },
+    {
+      "id": "finalrecon",
+      "rel": "alternative",
+      "note": "Automated all-in-one recon."
+    }
+  ],
+  "id": "web-fingerprinting",
+  "name": "Web Fingerprinting",
+  "command": "curl -I https://<domain>",
+  "description": "Identify the web stack, WAF, and known issues. Headers reveal server/tech; wafw00f detects WAFs; Nikto flags misconfigurations and outdated components.",
+  "variations": [
+    {
+      "label": "Header banner grab",
+      "command": "curl -I https://<domain>.com"
+    },
+    {
+      "label": "Detect a WAF",
+      "command": "wafw00f <domain>.com"
+    },
+    {
+      "label": "Nikto fingerprint scan",
+      "command": "nikto -h <domain>.com -Tuning b"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1592.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Web fingerprinting identifies the software stack behind a web application — web server (Apache/Nginx/IIS), frameworks, CMS versions, backend language, and WAF presence — by analyzing HTTP response headers, cookies, error pages, and HTML source. Version disclosure allows attackers to cross-reference against known CVEs for targeted exploitation.",
+    "prerequisites": "A reachable target web application (URL).",
+    "impact": "Identifies the exact server, framework, CMS, and version in use — letting the attacker look up matching CVEs and select a working exploit for the next phase.",
+    "detection": "Detection risk is Low: banner grabbing involves minimal interaction but can still be logged. OS fingerprinting is usually passive, but some advanced techniques can be detected. Service enumeration can be logged but is less likely to trigger alerts. Header stripping reduces passive fingerprinting exposure but does not prevent active probing.\n\n[MITRE T1592.002 AN2020] Internet scanners may be used to look for patterns associated with malicious content designed to collect host software information from visitors. Much of this activity may have a very high occurrence and associated false positive rate, and may take place outside the visibility of the target organization. Detection efforts may be focused on related stages of the adversary lifecycle, such as during Initial Access.",
+    "artifacts": "Passive fingerprinting (header/HTML analysis) leaves only a normal page request. Active probes (e.g., forcing error pages) add a small number of access-log entries.",
+    "prevention": "Remove or obfuscate `Server`, `X-Powered-By`, `X-Generator`, and similar HTTP response headers that disclose software and version. Use generic, non-version-specific error pages. Keep software updated so that any disclosed version corresponds to a patched, non-vulnerable release.\n\n[MITRE T1592.002 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "evasion": "Passive fingerprinting (header analysis, HTML inspection, cookie naming) generates no extra traffic beyond a normal page request and is indistinguishable from regular browsing.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1592.002"
+    ],
+    "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
+    "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
+    "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
+  }
+}

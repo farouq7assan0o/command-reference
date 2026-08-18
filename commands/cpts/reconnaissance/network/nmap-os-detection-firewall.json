@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-O OS detection combined with -Pn (skip host discovery, treat as alive) and -n (no DNS resolution) for scanning targets that don't respond to ping. Used when firewall blocks ICMP but TCP ports are open.\n\n=== HOW OS DETECTION WORKS ===\nNmap sends a series of TCP/UDP/ICMP probes and analyzes responses against its OS fingerprint database. TTL values, TCP window sizes, and IP/TCP option sequences identify the OS family and version.\n\n=== FIREWALL CONTEXT ===\nFirewalls often block ICMP entirely \u2014 host appears 'down' to normal host discovery. -Pn skips discovery and assumes host is alive, proceeding directly to port scanning. Essential for scanning through firewalls.",
+  "references": []
+}

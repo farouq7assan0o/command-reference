@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nrsync over port 873 (unauthenticated by default) allows direct file download from exposed shares. rsync -av rsync://target/share pulls all files in the share. Commonly exposes .ssh directories, secrets.yaml, configuration files.\n\n=== CHAINING ===\nnc probe reveals share names \u2192 rsync -av --list-only (enumerate without downloading) \u2192 rsync -av to download \u2192 grep for credentials, SSH keys, configs.\n\n=== CRITICAL FINDINGS ===\n.ssh/id_rsa or id_rsa.pub in rsync shares: immediate critical finding. SSH keys pulled from rsync \u2192 direct SSH access with no further exploitation needed.",
+  "references": []
+}

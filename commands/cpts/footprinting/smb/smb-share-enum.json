@@ -1,0 +1,146 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tools": [
+    "smbclient",
+    "smbmap",
+    "crackmapexec",
+    "nmap"
+  ],
+  "tags": [
+    "smb",
+    "shares",
+    "null-session"
+  ],
+  "category": "Enumeration",
+  "subcategory": "SMB",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Inside an smbclient session",
+      "command": "ls\nls -R\nget prep-prod.txt\n!ls\n!cat prep-prod.txt"
+    },
+    {
+      "label": "Null session list — lab",
+      "command": "smbclient -N -L //10.129.14.128"
+    },
+    {
+      "label": "Authenticated list — lab (SA Medium walkthrough)",
+      "command": "smbclient -U alex -L //10.129.60.10/"
+    },
+    {
+      "label": "Authenticated connect + download file — lab",
+      "command": "smbclient -U alex //10.129.60.10/devshare\n# Inside session:\nget important.txt"
+    }
+  ],
+  "notes": "smbmap/smbclient list shares and permissions. READ shares often hold configs, scripts, and creds; WRITE shares enable SCF/lnk poisoning or webshell drops. Recurse (`smbmap -R`) and grep for password/config files.",
+  "references": [
+    {
+      "title": "smbclient",
+      "url": "https://www.samba.org/samba/docs/current/man-html/smbclient.1.html"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "smb-share-rw",
+      "rel": "escalation",
+      "note": "Read/write files; drop a poisoning payload."
+    },
+    {
+      "id": "smb-rce-psexec",
+      "rel": "escalation",
+      "note": "Admin share write -> psexec RCE."
+    },
+    {
+      "id": "smb-smbstatus",
+      "note": "Check active sessions and open files server-side with smbstatus",
+      "rel": "alternative"
+    },
+    {
+      "id": "ref-smb-config",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "smb-share-enum",
+  "name": "SMB - Share Enumeration",
+  "command": "smbclient -N -L //<ip>",
+  "description": "Enumerate SMB shares over a null session, then connect to read files. smbmap and crackmapexec give share permissions at a glance.",
+  "variations": [
+    {
+      "label": "List shares (null session)",
+      "command": "smbclient -N -L //<ip>"
+    },
+    {
+      "label": "Connect to a share (null session)",
+      "command": "smbclient //<ip>/notes"
+    },
+    {
+      "label": "List shares (authenticated)",
+      "command": "smbclient -U <user> -L //<ip>"
+    },
+    {
+      "label": "Connect to a share (authenticated)",
+      "command": "smbclient -U <user> //<ip>/<share>"
+    },
+    {
+      "label": "smbmap - share permissions",
+      "command": "smbmap -H <ip>"
+    },
+    {
+      "label": "smbmap - authenticated",
+      "command": "smbmap -H <ip> -u <user> -p <password>"
+    },
+    {
+      "label": "crackmapexec - shares (null)",
+      "command": "crackmapexec smb <ip> --shares -u '' -p ''"
+    },
+    {
+      "label": "crackmapexec - shares (authenticated)",
+      "command": "crackmapexec smb <ip> --shares -u <user> -p <password>"
+    },
+    {
+      "label": "Nmap SMB scan",
+      "command": "sudo nmap <ip> -sV -sC -p139,445"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1135"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "SMB shares are accessible anonymously when the server permits guest access or null sessions. Exposed shares may contain sensitive files, credentials, or configuration data. The module shows anonymous enumeration of share names and permissions without supplying any password.",
+    "prerequisites": "Network access to SMB (TCP 445) with guest/null access permitted.",
+    "impact": "A list of shares and readable files, frequently exposing credentials or sensitive documents.",
+    "detection": "[MITRE T1135 AN0513] Process or script enumerates network shares via CLI (net view, net share, PowerShell Get-SmbShare/WMI) or OS APIs (NetShareEnum, srvsvc.NetShareEnumAll RPC) → bursts of outbound SMB/RPC connections (port 445/139) to many hosts within a short window → optional follow-on file listing or copy operations.",
+    "artifacts": "Tree-connect events (Windows Event 5140/5145 with share auditing) and a connection to 445.",
+    "prevention": "Remove guest access and disable null sessions. Audit all shares and restrict access to authenticated users who explicitly need it. Avoid storing sensitive data on shares accessible without credentials.\n\n[MITRE T1135 M1028] Enable Windows Group Policy setting 'Do Not Allow Anonymous Enumeration of SAM Accounts and Shares' to limit which users can enumerate network shares. Enforce least-privilege access to shares so only authorized users can list them.",
+    "sources": [
+      "HTB M04",
+      "MITRE T1135"
+    ],
+    "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
+    "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
+    "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+  }
+}

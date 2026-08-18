@@ -1,0 +1,68 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "reference",
+    "scan-types"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Nmap - Introduction",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 03: Network Enumeration with Nmap",
+  "examples": [
+    {
+      "label": "TCP SYN (stealth) scan",
+      "command": "sudo nmap -sS 10.129.2.28"
+    },
+    {
+      "label": "UDP scan",
+      "command": "sudo nmap -sU 10.129.2.28"
+    }
+  ],
+  "notes": "-sS  TCP SYN (stealth, default w/ root)\n-sT  TCP connect (no root)\n-sA  TCP ACK (firewall mapping)\n-sW  TCP Window   -sM  TCP Maimon\n-sU  UDP scan\n-sN/-sF/-sX  Null / FIN / Xmas\n--scanflags <flags>  custom TCP flags\n-sI <zombie[:port]>  idle/zombie scan\n-sY/-sZ  SCTP INIT / COOKIE-ECHO\n-sO  IP protocol scan\n-b <FTP relay host>  FTP bounce Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Network Enumeration with Nmap",
+      "url": "https://academy.hackthebox.com/module/details/19"
+    },
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nmap-tcp-connect-scan",
+      "rel": "next",
+      "note": "Apply a scan type against a target"
+    }
+  ],
+  "id": "ref-nmap-scan-types",
+  "name": "Reference - Nmap Scan-Type Flags",
+  "command": "# pick the scan technique with these flags",
+  "description": "The scan-technique flags and what each does - the first part of any Nmap command.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1595.001",
+    "T1046"
+  ]
+}

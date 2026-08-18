@@ -1,0 +1,85 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "accesschk",
+    "pipelist"
+  ],
+  "tags": [
+    "enumeration",
+    "named-pipes"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "List named pipes (pipelist / gci)",
+      "command": "pipelist.exe /accepteula\ngci \\\\.\\pipe\\"
+    },
+    {
+      "label": "Check write access on a specific service pipe",
+      "command": "accesschk.exe -accepteula -w \\pipe\\WindscribeService -v"
+    }
+  ],
+  "notes": "=== NAMED PIPES ENUMERATION ===\nNamed pipes are an IPC mechanism often used by services running as SYSTEM.\nA writable pipe to a SYSTEM process can enable token impersonation.\n\nENUMERATION COMMANDS:\npipelist.exe /accepteula                          → list all named pipes\naccesschk.exe /accepteula -w \\\\.\\pipe\\*         → find writable pipes\naccesschk.exe -accepteula -p <PID>               → check process pipe permissions\n[System.IO.Directory]::GetFiles('\\\\\\\\.\\\\pipe\\\\') → PowerShell pipe enumeration\n\nEXAMPLE FINDING: WindscribeService\naccesschk on \\\\.\\pipe\\WindscribeService showed Everyone:W\nThis means any user can write to the pipe and send commands to the SYSTEM-level service\n\n=== CHAINING CONTEXT ===\nWritable pipe to SYSTEM service → token impersonation or command injection into service context\nNamed pipe servers can be abused with tools like PipeCapture or custom clients\nPotato attacks (JuicyPotato/PrintSpoofer) create named pipes to coerce SYSTEM authentication\nPrintSpoofer specifically creates a pipe and coerces Spooler to connect to it\n\n=== WHAT TO LOOK FOR ===\nPipes writable by low-privilege groups (Everyone, BUILTIN\\\\Users, NETWORK SERVICE)\nCustom application pipes (non-Microsoft) — vendor implementations are less hardened\nPipes belonging to services running as LocalSystem",
+  "references": [
+    {
+      "title": "Microsoft Sysinternals - AccessChk",
+      "url": "https://learn.microsoft.com/en-us/sysinternals/downloads/accesschk"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "weak-service-acl-binpath",
+      "note": "A writable service pipe often means a weak-ACL service.",
+      "rel": "next"
+    },
+    {
+      "id": "druva-insync-poc",
+      "note": "Local-only service on a pipe/port -> vulnerable-service exploit.",
+      "rel": "next"
+    }
+  ],
+  "id": "winpe-named-pipes-enum",
+  "name": "WinPE - Named Pipe Enumeration",
+  "command": "accesschk.exe -accepteula -w \\pipe\\* -v",
+  "description": "Lists named pipes and their DACLs. A pipe writable by your user (e.g. an insecure service pipe like WindscribeService) can allow impersonation or command execution - see CVE-2020-27350-style abuses.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1057"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Named pipes are Windows IPC channels. If a named pipe grants write access to broad groups (Everyone, Authenticated Users) but is owned by a privileged process, an attacker can interact with the pipe to trigger privilege escalation. Enumeration with pipelist.exe and accesschk.exe reveals such misconfigured pipes.",
+    "prerequisites": "Shell access. Sysinternals PipeList and AccessChk available. Named pipe with weak DACL accessible by the attacker's user.",
+    "impact": "Identifies named pipe abuse vectors. If a SYSTEM-level service owns a pipe accessible to all users, interaction may trigger token impersonation or other escalation.",
+    "detection": "pipelist.exe / accesschk.exe execution by non-admin. gci \\\\.\\pipe\\ PowerShell command. Unusual process connections to named pipes.",
+    "artifacts": "Process log: pipelist.exe and accesschk.exe executed | Named pipe access audit events",
+    "prevention": "Audit named pipe DACLs regularly. Ensure pipes used by privileged services are not accessible to Everyone or Authenticated Users for write. Apply principle of least privilege on pipe security descriptors.",
+    "misconfiguration": "Third-party application creates a named pipe with write access to Everyone while the owning service runs as SYSTEM (e.g., WindscribeService). No auditing of named pipe ACLs.",
+    "vulnerable_config": "# Find writable named pipes:\naccesschk.exe -w \\pipe\\* -v\n# WindscribeService: \\pipe\\WindscribeService grants FILE_ALL_ACCESS to Everyone\n\n# Exploit: interact with pipe to escalate via Exploit-DB 48021",
+    "secure_config": "# Audit named pipe permissions\naccesschk.exe /accepteula \\pipe\\ -v | findstr 'Everyone\\|Authenticated Users'\n\n# Fix overly permissive pipes via application vendor or service configuration\n# Restrict pipe DACL to only legitimate client processes\n# Monitor: new named pipe creation by non-SYSTEM processes",
+    "sources": [
+      "HTB M26",
+      "MITRE T1559.001"
+    ]
+  }
+}

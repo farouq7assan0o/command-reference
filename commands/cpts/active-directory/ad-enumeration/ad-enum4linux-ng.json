@@ -1,0 +1,85 @@
+{
+  "id": "ad-enum4linux-ng",
+  "name": "enum4linux-ng - Enhanced SMB/RPC Enumeration",
+  "command": "enum4linux-ng -P <dc_ip> -oA <outfile>",
+  "description": "Modern Python rewrite of enum4linux with cleaner output, JSON/YAML export, and better handling of modern Windows. -P dumps the password policy. -oA saves output to both JSON and YAML. Critical early step: know the lockout threshold BEFORE password spraying to avoid locking accounts.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "smb",
+    "rpc",
+    "enumeration",
+    "password-policy",
+    "lockout"
+  ],
+  "mitre": [
+    "T1201",
+    "T1087.002"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY THE PASSWORD POLICY IS CRITICAL ===\nBefore ANY password spraying, you must know:\n  1. Account Lockout Threshold → how many failures before lockout\n  2. Observation Window → time before failed attempt counter resets\n  3. Lockout Duration → how long accounts stay locked\n\nIf threshold=5 and you spray 5 wrong passwords: accounts locked = engagement blown.\nSafe rule: spray no more than (threshold - 2) attempts, then wait > observation window.\n\n=== PASSWORD POLICY IN OUTPUT ===\n  account_lockout_threshold: 5\n  account_lockout_duration: 30 minutes\n  reset_account_lockout_counter: 30 minutes\n  password_complexity: enabled\n  minimum_password_length: 8\n\n=== ENUM4LINUX-NG FLAGS ===\n  -A    → all enumeration (users, groups, shares, policy)\n  -P    → password policy only\n  -U    → user enumeration\n  -G    → group enumeration\n  -S    → share enumeration\n  -oA   → output to <prefix>.json and <prefix>.yaml\n  -u/-p → provide credentials\n\n=== WITH CREDENTIALS FOR MORE DATA ===\nenum4linux-ng -u forend -p Klmcargo2 -A 172.16.5.5 -oA inlanefreight_enum\nAuthenticated = more data especially on hardened DCs.\n\n=== ALTERNATIVE FOR PASSWORD POLICY ===\nCME:       crackmapexec smb <dc> -u user -p pass --pass-pol\nnet:       net accounts /domain (from Windows domain member)\nPowerView: Get-DomainPasswordPolicy",
+  "examples": [
+    {
+      "label": "Get password policy (unauthenticated)",
+      "command": "enum4linux-ng -P 172.16.5.5 -oA inlanefreight_policy"
+    },
+    {
+      "label": "Full enumeration with output",
+      "command": "enum4linux-ng -A 172.16.5.5 -oA inlanefreight_full"
+    },
+    {
+      "label": "Authenticated full enum",
+      "command": "enum4linux-ng -u forend -p Klmcargo2 -A 172.16.5.5 -oA inlanefreight_auth"
+    }
+  ],
+  "references": [
+    {
+      "title": "enum4linux-ng (cddmp)",
+      "url": "https://github.com/cddmp/enum4linux-ng"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-admodule-spn",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "enum4linux-ng is the modernised enumerator (users, groups, shares, policy, RID cycling) with cleaner output.",
+    "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
+    "impact": "Structured SMB/RPC enumeration incl. password policy.",
+    "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
+    "artifacts": "Null/authenticated RPC queries; RID cycling.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1201",
+      "MITRE T1087.002"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "enum4linux-ng"
+  ]
+}

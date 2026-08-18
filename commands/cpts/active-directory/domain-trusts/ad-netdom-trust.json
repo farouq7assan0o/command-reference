@@ -1,0 +1,87 @@
+{
+  "id": "ad-netdom-trust",
+  "name": "netdom - Enumerate Domain Trusts",
+  "command": "netdom query /domain:<domain> trust",
+  "description": "Enumerates domain trust relationships using the built-in Windows netdom tool. Shows trust direction (inbound/outbound/bidirectional), trust type (parent-child, forest, external), and which domains are trusted. Essential first step in trust-based attack chains — reveals paths to parent domains and foreign forests.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "Domain Trusts",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "domain-trusts",
+    "netdom",
+    "enumeration",
+    "forest",
+    "child-domain"
+  ],
+  "mitre": [
+    "T1482"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== UNDERSTANDING DOMAIN TRUSTS ===\nTrusts define authentication relationships between domains/forests:\n  Parent-child trust: automatic, bidirectional, transitive (within same forest)\n    e.g., LOGISTICS.INLANEFREIGHT.LOCAL ↔ INLANEFREIGHT.LOCAL\n  Forest trust: between two separate forests (can be one-way or bidirectional)\n    e.g., INLANEFREIGHT.LOCAL ↔ FREIGHTLOGISTICS.LOCAL\n  External trust: to a domain in another forest, non-transitive\n  Shortcut trust: within forest, optimizes Kerberos paths\n\n=== TRUST DIRECTION vs WHAT YOU CAN DO ===\n  Inbound trust:  DOMAIN-A trusts DOMAIN-B = B users can auth to A's resources\n  Outbound trust: DOMAIN-A trusts DOMAIN-C = A users can auth to C's resources\n  Bidirectional:  both directions (most common for same-forest)\n\nFrom attacker perspective:\n  YOU ARE IN DOMAIN-B, domain-B has outbound trust to DOMAIN-A:\n  → You can authenticate TO DOMAIN-A using domain-B credentials\n  → You can kerberoast accounts IN DOMAIN-A with domain-B creds\n\n=== POWERVIEW ALTERNATIVE ===\n  Get-DomainTrust                      → trust info with more details\n  Get-DomainTrustMapping               → recursive trust map\n  Get-ForestDomain -Forest <fqdn>      → enumerate foreign forest domains\n  ([System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()).GetAllTrustRelationships()\n\n=== CHAIN POSITION ===\nThis is always the first card in trust-based attacks:\n  1. Enumerate trusts (this card)\n  2. Identify parent domain (child→parent ExtraSids attack) or forest trust\n  3. Enumerate foreign forest for kerberoastable accounts or group members\n  4. Escalate from child domain to parent (raiseChild.py or golden ticket ExtraSids)",
+  "examples": [
+    {
+      "label": "Enumerate trusts for current domain",
+      "command": "netdom query /domain:INLANEFREIGHT.LOCAL trust"
+    },
+    {
+      "label": "PowerView alternative",
+      "command": "Get-DomainTrust"
+    },
+    {
+      "label": "Map all trusts recursively",
+      "command": "Get-DomainTrustMapping"
+    },
+    {
+      "label": "CME from Linux",
+      "command": "crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 --shares"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "MITRE T1482 - Domain Trust Discovery",
+      "url": "https://attack.mitre.org/techniques/T1482/"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-golden-ticket-mimikatz",
+      "rel": "next",
+      "note": "Leverage trust data for cross-domain forging."
+    }
+  ],
+  "defense": {
+    "why_it_works": "netdom is a built-in Windows administrative tool that queries the domain's trustedDomain objects via LDAP. Any authenticated domain user can enumerate trust relationships — trust topology is stored in the domain NC and readable by all domain members by design. No privilege escalation is required.",
+    "prerequisites": "Any valid domain account. Domain-joined Windows host (or runas /netonly with domain credentials). netdom is installed by default on Windows Server; on workstations requires RSAT.",
+    "impact": "Reconnaissance output: trust directions (inbound/outbound/bidirectional), trust types (parent-child/forest/external), and trusted domain FQDNs. This is the attack-planning map — identifies paths to parent domains (child→parent ExtraSids attack) and foreign forests (cross-forest Kerberoasting). No immediate compromise, but critical for planning subsequent steps.",
+    "detection": "No dedicated event for trust enumeration via netdom. EDR process telemetry may flag netdom.exe execution on non-server workstations (rare in normal environments). LDAP query to trustedDomain objects in the domain NC is not individually logged but may appear in LDAP audit logs if enabled.",
+    "prevention": "Trust topology is readable by all domain members by design — cannot be restricted without breaking legitimate AD functionality. Prevention focuses on limiting who is domain-joined (zero-trust workstation policy) and detecting lateral movement that leads to the enumeration.",
+    "evasion": "netdom is a signed Microsoft binary (LOLBin) — does not trigger AV. Single command, minimal noise. Get-DomainTrust (PowerView) or native .NET API are alternatives that generate the same LDAP traffic without spawning netdom.exe.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1482"
+    ],
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+  },
+  "tools": [
+    "netdom"
+  ]
+}

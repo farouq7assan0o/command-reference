@@ -1,0 +1,122 @@
+{
+  "id": "aws-iam-scope-permissions",
+  "name": "AWS - IAM Permission Scoping with Compromised Credentials",
+  "command": "aws --profile <profile> iam list-user-policies --user-name <username>\naws --profile <profile> iam list-attached-user-policies --user-name <username>\naws --profile <profile> iam list-groups-for-user --user-name <username>\naws --profile <profile> iam list-attached-group-policies --group-name <groupname>\naws --profile <profile> iam get-policy-version --policy-arn <arn> --version-id <version>",
+  "description": "Map the exact IAM permissions of a compromised AWS identity. Start with sts get-caller-identity to get the username/role name, then enumerate: (1) inline user policies, (2) managed policies attached directly to the user, (3) groups the user belongs to, (4) group-attached policies, (5) get the policy document for each policy version to read the actual Allow/Deny statements. This maps the attack surface \u2014 what services and actions are available with these credentials.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "aws-cli-profile",
+    "iam-read-permissions"
+  ],
+  "tools": [
+    "awscli"
+  ],
+  "tags": [
+    "aws",
+    "cloud",
+    "iam",
+    "permissions",
+    "enumeration",
+    "post-exploitation"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - AWS",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.4.3)",
+  "examples": [
+    {
+      "label": "Step 1 - Identify the compromised user from STS",
+      "command": "aws --profile target sts get-caller-identity\n# Arn: arn:aws:iam::123456789012:user/support/clouddesk-plove -> username = clouddesk-plove"
+    },
+    {
+      "label": "Step 2 - Check inline policies on the user",
+      "command": "aws --profile target iam list-user-policies --user-name clouddesk-plove"
+    },
+    {
+      "label": "Step 3 - Check managed policies attached to the user",
+      "command": "aws --profile target iam list-attached-user-policies --user-name clouddesk-plove"
+    },
+    {
+      "label": "Step 4 - Find what groups the user belongs to",
+      "command": "aws --profile target iam list-groups-for-user --user-name clouddesk-plove"
+    },
+    {
+      "label": "Step 5 - List inline policies on the group",
+      "command": "aws --profile target iam list-group-policies --group-name support"
+    },
+    {
+      "label": "Step 6 - List managed policies attached to the group",
+      "command": "aws --profile target iam list-attached-group-policies --group-name support"
+    },
+    {
+      "label": "Step 7 - Find the current version of a managed policy",
+      "command": "aws --profile target iam list-policy-versions --policy-arn \"arn:aws:iam::aws:policy/job-function/SupportUser\"\n# Look for IsDefaultVersion: true -> that's the active version"
+    },
+    {
+      "label": "Step 8 - Read the actual policy document (what is allowed/denied)",
+      "command": "aws --profile target iam get-policy-version --policy-arn arn:aws:iam::aws:policy/job-function/SupportUser --version-id v8"
+    },
+    {
+      "label": "Step 9 - Check what IAM read permissions are available",
+      "command": "aws --profile target iam get-policy-version --policy-arn <arn> --version-id <v> | grep '\"iam\"'"
+    }
+  ],
+  "notes": "IAM permissions can come from: (1) inline user policy, (2) managed policy directly attached to user, (3) group membership -> group inline or managed policies, (4) resource-based policies on services (S3, Lambda, etc.), (5) permission boundaries. Permission boundaries RESTRICT the maximum effective permissions \u2014 a boundary that allows only S3 means even if a policy grants EC2 access, the user cannot use EC2. Explicit Deny always overrides Allow regardless of source. AWS-managed policies (arn:aws:iam::aws:policy/) can be read via get-policy-version even by the subject user \u2014 they are public. Customer-managed policies (arn:aws:iam::<account_id>:policy/) require iam:GetPolicyVersion which may not be granted. Workaround: use get-account-authorization-details (see aws-iam-full-dump) if broader read permissions exist.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Enumerating AWS Cloud Infrastructure",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "AWS IAM - list-attached-user-policies",
+      "url": "https://docs.aws.amazon.com/cli/latest/reference/iam/list-attached-user-policies.html"
+    },
+    {
+      "title": "MITRE ATT&CK - Cloud Account Discovery",
+      "url": "https://attack.mitre.org/techniques/T1087/004/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "aws-cli-setup",
+      "rel": "prereq",
+      "note": "Run sts get-caller-identity first to get the username for subsequent commands."
+    },
+    {
+      "id": "aws-iam-full-dump",
+      "rel": "next",
+      "note": "If iam:Get*/List* permissions are available, use get-account-authorization-details for a full IAM dump."
+    },
+    {
+      "id": "aws-pacu-enum",
+      "rel": "alternative",
+      "note": "Pacu iam__enum_permissions automates this permission enumeration."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1087.004",
+    "T1069.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "After initial IAM enumeration, scoping determines the specific permissions of the current credential \u2014 what actions the attacker can actually perform. aws iam simulate-principal-policy, enumerate-iam (tool), or checking attached policies reveals which services and actions are allowed. This avoids triggering alerts from calling unauthorized APIs and identifies the exact privilege escalation path available (e.g., has iam:CreatePolicyVersion but not iam:CreateUser \u2014 can escalate via policy version).",
+    "prerequisites": "AWS credentials with at least iam:GetUser and iam:ListAttachedUserPolicies. AWS CLI. enumerate-iam tool (or manual policy inspection). Understanding of IAM escalation paths.",
+    "impact": "T1087.004 Account Discovery: Cloud Account + T1069.003 Permission Groups Discovery: Cloud Groups. Identifies exact permissions of the current credential \u2014 maps specific privilege escalation paths, determines which resources are accessible, and prioritizes attack actions.",
+    "detection": "CloudTrail: iam:SimulatePrincipalPolicy is an unusual API call that developers rarely make \u2014 highly suspicious. iam:GetUser + iam:ListAttachedUserPolicies + iam:GetPolicyVersion sequence from a single principal. enumerate-iam generates many parallel API calls that appear as high-volume errors in CloudTrail.\nProcesses performing local or domain account enumeration by invoking account directory queries or security APIs followed by structured output of account lists (DET0587/AN1612).\nSuspicious shell commands or unauthorized access to /etc/passwd or /etc/shadow (AN1613).\nDirectory service queries or system utilities accessing account metadata stores, producing enumeration output (AN1614).\nCloud provider API calls where principals retrieve IAM users or roles in rapid succession (AN1615).\nESXi host account configuration or management APIs queried to retrieve user account listings (AN1617).",
+    "artifacts": "CloudTrail: iam:SimulatePrincipalPolicy call | CloudTrail: high-volume failed API calls from enumerate-iam (AccessDenied errors) | GuardDuty: 'Discovery:IAMUser/AnomalousBehavior'",
+    "prevention": "Same as IAM enumeration: least-privilege policies, CloudTrail alerting. Specifically alert on iam:SimulatePrincipalPolicy calls \u2014 rare in production, common in attacker enumeration. Use IAM Access Analyzer to proactively identify over-permissioned resources before attackers find them.\nOperating System Configuration: Prevent administrator account enumeration via UAC (GPO: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\CredUI\\EnumerateAdministrators).\nUser Account Management: Manage creation, modification, use, and permissions associated with user accounts.",
+    "evasion": "Use iam:SimulatePrincipalPolicy sparingly or not at all. Manually read attached policy documents instead of simulate (generates fewer suspicious API calls). Infer permissions from successful API calls rather than explicit simulation.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1087/004/",
+      "https://attack.mitre.org/techniques/T1069/003/"
+    ],
+    "misconfiguration": "No alerting on iam:SimulatePrincipalPolicy. No CloudTrail enabled in all regions. IAM policies not reviewed for escalation paths (iam:PassRole, iam:CreatePolicyVersion, iam:AttachUserPolicy are common escalation primitives).",
+    "vulnerable_config": "# IAM escalation path example \u2014 has PassRole + CreateFunction:\n# Attacker finds:\n# aws iam get-user-policy \u2192 allows lambda:CreateFunction + iam:PassRole\n# \u2192 Can create Lambda with admin role \u2192 PrivEsc to admin\n\n# IAM Access Analyzer not enabled:\naws accessanalyzer list-analyzers\n# \u2192 No analyzers = no proactive permission review",
+    "secure_config": "# Enable IAM Access Analyzer:\naws accessanalyzer create-analyzer --analyzer-name account-analyzer --type ACCOUNT\n# \u2192 Identifies external access and cross-account resource sharing\n\n# CloudTrail alert on SimulatePrincipalPolicy:\n# CloudWatch metric filter:\n# { $.eventName = 'SimulatePrincipalPolicy' }\n# Alarm: any occurrence \u2192 immediate SNS alert\n\n# Review escalation paths with Cloudsplaining:\n# pip install cloudsplaining\n# aws iam get-account-authorization-details > iam-full.json\n# cloudsplaining scan --input iam-full.json --output report/\n# \u2192 Identifies dangerous permission combinations"
+  }
+}

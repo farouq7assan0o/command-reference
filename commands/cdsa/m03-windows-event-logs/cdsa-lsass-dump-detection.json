@@ -1,0 +1,65 @@
+{
+  "id": "cdsa-lsass-dump-detection",
+  "name": "LSASS Credential Dump Detection via Sysmon Event 10",
+  "command": "Get-WinEvent -Path 'C:\\Logs\\Dump\\sysmon.evtx' | Where-Object {$_.Id -eq 10} | Select-Object TimeCreated, Message | Format-List",
+  "description": "Detect credential dumping from LSASS memory using Sysmon Event ID 10 (ProcessAccess). Tools like Mimikatz open a handle to lsass.exe with specific access rights — Sysmon captures this handle request and records the calling process, enabling detection.",
+  "platform": "windows",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Windows Events/Forensics",
+  "subcategory": "Threat Detection",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 03: Windows Event Logs & Finding Evil",
+  "tags": ["lsass", "credential-dumping", "mimikatz", "sysmon", "processaccess", "blue-team"],
+  "notes": "Sysmon Event ID 10 (ProcessAccess) key fields:\n  SourceImage        → process that opened the handle (attacker's process)\n  TargetImage        → target process being accessed (lsass.exe)\n  GrantedAccess      → access rights mask granted (key for detection)\n  CallTrace          → stack trace of the API call chain\n\nMalicious GrantedAccess values for lsass.exe:\n  0x1010  → PROCESS_VM_READ | PROCESS_QUERY_LIMITED_INFORMATION\n  0x1410  → PROCESS_VM_READ | PROCESS_QUERY_INFORMATION | ...\n  0x1fffff → PROCESS_ALL_ACCESS (loud — full access requested)\n  → Any access to lsass.exe from a non-system process is suspicious\n\nMimikatz commands (attack reference):\n  privilege::debug           → enable SeDebugPrivilege (required for lsass access)\n  sekurlsa::logonpasswords   → dump plaintext credentials and hashes from LSASS memory\n\nCallTrace analysis:\n  Legitimate lsass access (e.g. AV): callstack shows signed system DLLs\n  Malicious access (Mimikatz): callstack may show unknown/unsigned modules\n  → Look for UNKNOWN regions in CallTrace (indicates reflective injection)\n\nLab analysis path: C:\\Logs\\Dump\\\n  → Contains sysmon.evtx with LSASS dump evidence\n  → Look for Event 10 where TargetImage = C:\\Windows\\System32\\lsass.exe\n\nAdditional detections:\n  Security Event 4656 → Handle request to an object (if object access auditing enabled)\n  Security Event 4663 → Access attempt to LSASS process object\n  Windows Defender → 'Credential Theft' alert triggered by Mimikatz signatures\n\nFiltering lsass access via XPath:\n  Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath\n    \"*[System[EventID=10] and EventData[Data[@Name='TargetImage']='C:\\\\Windows\\\\System32\\\\lsass.exe']]\"",
+  "mitre": ["T1003.001"],
+  "examples": [
+    {
+      "label": "Read Dump lab evtx — all Event 10 (ProcessAccess) events",
+      "command": "Get-WinEvent -Path 'C:\\Logs\\Dump\\sysmon.evtx' | Where-Object {$_.Id -eq 10} | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Live detection — filter Sysmon Event 10 where target is lsass.exe",
+      "command": "Get-WinEvent -LogName 'Microsoft-Windows-Sysmon/Operational' -FilterXPath \"*[System[EventID=10] and EventData[Data[@Name='TargetImage']='C:\\Windows\\System32\\lsass.exe']]\" | Select-Object TimeCreated, Message | Format-List"
+    },
+    {
+      "label": "Parse Event 10 XML — extract SourceImage, TargetImage, GrantedAccess",
+      "command": "Get-WinEvent -Path 'C:\\Logs\\Dump\\sysmon.evtx' | Where-Object {$_.Id -eq 10} | ForEach-Object { $xml=[xml]$_.ToXml(); $data=$xml.Event.EventData.Data; [PSCustomObject]@{Time=$_.TimeCreated; Source=($data|?{$_.Name -eq 'SourceImage'}).'#text'; Target=($data|?{$_.Name -eq 'TargetImage'}).'#text'; Access=($data|?{$_.Name -eq 'GrantedAccess'}).'#text'} } | Format-Table -AutoSize"
+    },
+    {
+      "label": "Attack: Mimikatz privilege escalation + credential dump",
+      "command": "mimikatz.exe; privilege::debug; sekurlsa::logonpasswords"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Event Logs & Finding Evil",
+      "url": "https://academy.hackthebox.com/module/details/216"
+    },
+    {
+      "title": "MITRE ATT&CK - T1003.001 OS Credential Dumping: LSASS Memory",
+      "url": "https://attack.mitre.org/techniques/T1003/001/"
+    },
+    {
+      "title": "Microsoft - Local Security Authority Subsystem Service",
+      "url": "https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/configuring-additional-lsa-protection"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-sysmon-event-ids",
+      "rel": "prereq",
+      "note": "Sysmon Event 10 (ProcessAccess) is the key event for this detection."
+    },
+    {
+      "id": "cdsa-get-winevent",
+      "rel": "prereq",
+      "note": "Get-WinEvent patterns for filtering and parsing Event 10."
+    },
+    {
+      "id": "cdsa-dll-hijack-detection",
+      "rel": "next",
+      "note": "Similar Sysmon-based detection methodology."
+    }
+  ]
+}

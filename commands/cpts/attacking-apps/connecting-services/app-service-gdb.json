@@ -1,0 +1,102 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "gdb"
+  ],
+  "tags": [
+    "thick-client",
+    "reversing",
+    "credentials"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Apps Connecting to Services",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Intel syntax for readable disassembly",
+      "command": "set disassembly-flavor intel"
+    },
+    {
+      "label": "Disassemble main to find the connect call",
+      "command": "disas main"
+    },
+    {
+      "label": "Break on SQLDriverConnect",
+      "command": "b *0x5555555551b0"
+    },
+    {
+      "label": "RDX holds the plaintext DB connection string at the breakpoint",
+      "command": "# RDX -> DRIVER={ODBC Driver 17...};SERVER=localhost,1401;UID=username;PWD=password;"
+    },
+    {
+      "label": "Inspect a bundled .NET DLL for more secrets",
+      "command": "Get-FileMetaData .\\MultimasterAPI.dll   # inspect .NET DLL"
+    }
+  ],
+  "notes": "Break on the driver connect call (SQLDriverConnect) and read RDX to grab the plaintext DB connection string a compiled client hides. Set intel flavor first so the disassembly is readable.",
+  "references": [
+    {
+      "title": "GDB documentation",
+      "url": "https://www.sourceware.org/gdb/documentation/"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "thickclient-analysis",
+      "note": "Related binary reverse-engineering workflow.",
+      "rel": "alternative"
+    },
+    {
+      "id": "aws-container-enum",
+      "rel": "prereq",
+      "note": "Confirm/enumerate this first"
+    }
+  ],
+  "id": "app-service-gdb",
+  "name": "Apps Connecting to Services - Extract Credentials via gdb",
+  "command": "gdb ./<binary>\nb *<SQLDriverConnect_addr>\nrun   # then inspect RDX for the connection string",
+  "description": "For a compiled client that connects to a DB, breakpoint on the connect call (e.g. SQLDriverConnect) and read the registers to recover the plaintext connection string (SERVER/UID/PWD). .NET DLLs can be read with dnSpy.",
+  "opsec": "loud",
+  "mitre": [
+    "T1552.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Thick client applications construct database connection strings at runtime, often assembling from encrypted components before passing to the database driver. A GDB breakpoint at SQLDriverConnect captures the fully assembled plaintext connection string from CPU registers before use.",
+    "prerequisites": "Access to the thick client binary. Ability to run GDB on the host. Application process is debuggable (no anti-debug protection).",
+    "impact": "Extraction of database credentials enabling direct database access and full data exfiltration, bypassing all application-layer access controls.",
+    "detection": "GDB process attached to the application (ptrace syscall). Debugger listed in process table as parent of application. Auditd log: ptrace on application PID.",
+    "artifacts": "Auditd log: ptrace syscall on application PID | Process table: gdb parent of application | Linux audit: PTRACE_ATTACH on protected process",
+    "prevention": "Enable prctl(PR_SET_DUMPABLE, 0) to prevent ptrace attachment. Store credentials in OS keychain. Use a backend API that authenticates clients with tokens -- never expose DB credentials to the client.",
+    "misconfiguration": "Application holds DB connection string with plaintext credentials in process memory. Application is debuggable (default) with no ptrace protection.",
+    "vulnerable_config": "# Process memory contains:\nDRIVER={ODBC Driver 17}; SERVER=localhost,1401; UID=app_user; PWD=P@ssw0rd!\n# prctl(PR_SET_DUMPABLE, 1)  # default -- allows debugging",
+    "secure_config": "// Protect from ptrace\n#include <sys/prctl.h>\nprctl(PR_SET_DUMPABLE, 0);\n\n// Architectural fix: use backend API\n// Client -> authenticates with token -> API -> DB\n// Client never holds DB credentials",
+    "sources": [
+      "HTB M24",
+      "MITRE T1552",
+      "MITRE T1552.001",
+      "OWASP A02:2021"
+    ]
+  }
+}

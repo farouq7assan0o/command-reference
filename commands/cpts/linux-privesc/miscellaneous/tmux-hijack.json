@@ -1,0 +1,85 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "tmux"
+  ],
+  "tags": [
+    "tmux",
+    "session-hijack",
+    "shared-socket"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Miscellaneous",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Set up a shared socket session (victim side)",
+      "command": "tmux -S /shareds new -s debugsess\nchown root:devs /shareds"
+    },
+    {
+      "label": "Find sockets and check your group access",
+      "command": "ps aux | grep tmux\nls -la /shareds\nid"
+    },
+    {
+      "label": "Attach to the privileged session",
+      "command": "tmux -S /shareds"
+    }
+  ],
+  "notes": "A shared tmux socket owned by a privileged user and group-readable by you lets you attach to their live root session. Find the socket, confirm your group matches, attach.",
+  "references": [
+    {
+      "title": "tmux",
+      "url": "https://en.wikipedia.org/wiki/Tmux"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "linux-enum-users-groups",
+      "note": "Group membership is what grants socket access.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "tmux-hijack",
+  "name": "Misc - Hijack Shared tmux Session",
+  "command": "tmux -S /shareds",
+  "description": "A tmux session started on a group-writable socket by a privileged user can be attached by any group member - inheriting that user's shell.",
+  "opsec": "loud",
+  "mitre": [
+    "T1563"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "tmux sessions are accessible via UNIX socket files. If a privileged user creates a shared tmux session with a socket accessible by a group the attacker belongs to, the attacker can attach to that session and interact with it as the socket owner (e.g., root). This provides a full interactive shell as the privileged user.",
+    "prerequisites": "A privileged user's tmux socket file is readable/accessible by the attacker's group. Attacker is a member of that group (e.g., 'devs'). tmux installed.",
+    "impact": "Full interactive shell access as the socket owner (root or another privileged user). Can execute any command, read any file, and install persistent backdoors.",
+    "detection": "Unexpected attachment to a tmux session by a different user (tmux session logging). Auditd: tmux process opened by non-socket-owner user. who/w showing unexpected users in privileged sessions.",
+    "artifacts": "tmux server log (new client attached) | Auditd: open() on tmux socket by attacker | w/who output showing attacker in privileged session",
+    "prevention": "Never create tmux sockets in shared directories or with group permissions accessible to untrusted users. Use private socket locations with strict permissions (700). Use tmux -S only with fully trusted session participants.",
+    "misconfiguration": "Root creates tmux session with socket /shareds owned by root:devs with permissions 770. Attacker is a member of 'devs' group and can attach to root's session.",
+    "vulnerable_config": "# Insecure shared tmux session\ntmux -S /shareds new -s debugsess\nchown root:devs /shareds\n# srwxrwx--- 1 root devs /shareds  <- devs group can attach",
+    "secure_config": "# If sharing is needed, use strict permissions\ntmux -S /tmp/tmux-$(id -u)-private new-session\nchmod 700 /tmp/tmux-$(id -u)-private\n\n# Never chown tmux socket to shared group\n# Monitor active sessions: tmux list-sessions",
+    "sources": [
+      "HTB M25",
+      "MITRE T1563",
+      "MITRE T1055"
+    ]
+  }
+}

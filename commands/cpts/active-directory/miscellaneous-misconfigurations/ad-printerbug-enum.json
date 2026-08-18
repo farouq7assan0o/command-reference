@@ -1,0 +1,82 @@
+{
+  "id": "ad-printerbug-enum",
+  "name": "Check Print Spooler Status on Domain Hosts",
+  "command": "Import-Module .\\SecurityAssessment.ps1\nGet-SpoolStatus -ComputerName ACADEMY-EA-DC01",
+  "description": "Checks if the Print Spooler service is running on target hosts. The Print Spooler is required for PrintNightmare (CVE-2021-1675) and the Printer Bug (SpoolSample) coercion attack. Running on DCs is a significant misconfiguration \u2014 DCs should never run the Spooler unless actively printing.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "Miscellaneous Misconfigurations",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "print-spooler",
+    "printnightmare",
+    "printer-bug",
+    "enumeration",
+    "spoolsample"
+  ],
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY CHECK THE SPOOLER ===\nThe Windows Print Spooler (spoolsv.exe) enables two critical attacks:\n\n1. PrintNightmare (CVE-2021-1675 / CVE-2021-34527):\n   Load a malicious DLL as SYSTEM via RpcAddPrinterDriverEx\n   \u2192 Direct SYSTEM code execution on the target\n\n2. SpoolSample / Printer Bug:\n   Force a machine to authenticate to an attacker-controlled host\n   (MS-RPRN RpcRemoteFindFirstPrinterChangeNotification)\n   \u2192 NTLM relay or NTLMv2 hash capture from the machine account\n   \u2192 Used with ntlmrelayx or Responder\n   \u2192 Alternative to PetitPotam for forcing DC authentication\n\n=== WHAT TO DO IF SPOOLER IS RUNNING ON DC ===\n  Option 1: PrintNightmare (direct SYSTEM on DC)\n  Option 2: SpoolSample to force DC auth \u2192 relay to ADCS \u2192 PKINIT chain\n  Option 3: SpoolSample \u2192 relay to another host \u2192 lateral movement\n\n=== CHECKING VIA POWERSHELL (NO MODULE) ===\nGet-Service -ComputerName ACADEMY-EA-DC01 -Name Spooler\nor via registry:\nInvoke-Command -ComputerName DC01 -ScriptBlock { (Get-Service Spooler).Status }\n\n=== LINUX CHECK ===\nrpcdump.py @<target_ip> | grep -i spol\nor via crackmapexec:\ncrackmapexec smb <target> -u user -p pass -M spooler",
+  "examples": [
+    {
+      "label": "Check spooler via module",
+      "command": "Import-Module .\\SecurityAssessment.ps1\nGet-SpoolStatus -ComputerName ACADEMY-EA-DC01"
+    },
+    {
+      "label": "Check via native PowerShell",
+      "command": "Get-Service -ComputerName ACADEMY-EA-DC01 -Name Spooler"
+    },
+    {
+      "label": "Check via CME from Linux",
+      "command": "crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 -M spooler"
+    },
+    {
+      "label": "Check via rpcdump from Linux",
+      "command": "rpcdump.py @172.16.5.5 | grep -i 'spol\\|print'"
+    }
+  ],
+  "references": [
+    {
+      "title": "PrintNightmare / SpoolSample",
+      "url": "https://github.com/dirkjanm/krbrelayx/blob/master/printerbug.py"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-domainpasswordspray",
+      "rel": "next",
+      "note": "Reuse any recovered credentials."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Enumerates hosts with the MS-RPRN Print System (Spooler) exposed - the PrinterBug coercion surface for forcing authentications.",
+    "prerequisites": "Domain credentials and RPC reachability to candidate hosts.",
+    "impact": "A list of coercible hosts (Spooler enabled) for relay/coercion attacks.",
+    "detection": "[MITRE T1046] RPC binds to MS-RPRN across hosts; enumeration fan-out.",
+    "artifacts": "MS-RPRN RPC binds; the coercible-host list.",
+    "prevention": "Disable Print Spooler on servers/DCs that don't need it; monitor MS-RPRN enumeration; SMB signing + EPA to blunt downstream relay.",
+    "evasion": "A quiet, targeted RPC check per host avoids the fan-out signature.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Administrative shortcuts create persistent misconfigurations: passwords stored in AD Description/Info attributes (visible to all users), accounts with PasswordNotRequired flag set (blank passwords allowed), LAPS attribute readable by non-admin groups, gMSA readable by unintended principals, or SYSVOL containing scripts with embedded credentials.",
+    "vulnerable_config": "# Passwords in AD Description field:\nGet-ADUser -Filter * -Properties Description | Where-Object {$_.Description -ne $null}\n# Returns: svc_backup  Description: 'Temp password: Welcome1!'\n\n# PasswordNotRequired flag (UAC 0x20 = PASSWD_NOTREQD):\nGet-ADUser -Filter {PasswordNotRequired -eq $true}\n\n# LAPS password readable by Domain Users (misconfigured ACL):\nGet-ADComputer -Filter * -Properties ms-Mcs-AdmPwd | Select-Object Name,'ms-Mcs-AdmPwd'\n# Should only be readable by admins + specific LAPS readers group",
+    "secure_config": "# Remove passwords from Description/Info fields:\nGet-ADUser -Filter * -Properties Description,Info |\n    Where-Object {$_.Description -match 'pass|pwd|temp|welcome'} |\n    Set-ADUser -Description $null\n\n# Fix PasswordNotRequired accounts:\nGet-ADUser -Filter {PasswordNotRequired -eq $true} |\n    Set-ADAccountControl -PasswordNotRequired $false\n\n# LAPS ACL hardening \u2014 restrict ms-Mcs-AdmPwd reads:\n# Only specific LAPS-Readers security group should have Read on this attribute\n# Run: Set-AdmPwdComputerSelfPermission, Set-AdmPwdReadPasswordPermission\n\n# Audit gMSA readers:\nGet-ADServiceAccount -Filter * -Properties PrincipalsAllowedToRetrieveManagedPassword |\n    Select-Object Name, PrincipalsAllowedToRetrieveManagedPassword"
+  },
+  "tools": [
+    "impacket"
+  ]
+}

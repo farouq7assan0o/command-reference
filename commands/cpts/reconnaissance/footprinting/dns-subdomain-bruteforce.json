@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nWhen AXFR is blocked, brute-force subdomain discovery by querying the DNS server directly for each entry in a wordlist. Bash loop or tools like DNSenum automate this. Fallback when zone transfer fails.\n\n=== CHAINING ===\nAttempt AXFR first \u2192 if blocked, brute force with wordlist \u2192 append valid results to subdomains.txt \u2192 resolve to IPs \u2192 feed to nmap.\n\n=== TOOL OPTIONS ===\nBash dig loop: fine-grained control. DNSenum: automated NS discovery + AXFR attempt + brute force in one run. Also resolves MX records. Use tee -a to accumulate results across runs.",
+  "references": []
+}

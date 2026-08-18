@@ -1,0 +1,71 @@
+{
+  "id": "openssl-gzip-crack",
+  "name": "OpenSSL - Brute Force Encrypted Archive",
+  "command": "for i in $(cat rockyou.txt); do openssl enc -aes-256-cbc -d -in <file> -k $i 2>/dev/null | tar xz; done",
+  "description": "Brute forces an OpenSSL AES-256-CBC encrypted archive by trying each wordlist entry as the passphrase (-k) and piping successful decryptions into tar to extract. Only the correct key produces valid tar output.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "openssl"
+  ],
+  "tags": [
+    "openssl",
+    "brute-force",
+    "archive"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Cracking Protected Files",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Brute-force an AES-encrypted gzip with rockyou",
+      "command": "for i in $(cat rockyou.txt);do openssl enc -aes-256-cbc -d -in GZIP.gzip -k $i 2>/dev/null| tar xz;done"
+    }
+  ],
+  "notes": "Detect the archive/crypto type, extract the crackable hash, then hashcat/john it. openssl-encrypted or password-protected gzip/zip yields a hash for offline cracking.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "john-crack",
+      "rel": "next",
+      "note": "Crack the extracted hash."
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Brute-forces the password of an openssl-encrypted (or similarly protected) archive by trying to decrypt with each candidate until valid gzip/output appears.",
+    "prerequisites": "The encrypted archive and a wordlist.",
+    "impact": "The archive password and its decrypted contents.",
+    "prevention": "Use a strong passphrase; prefer authenticated encryption so wrong guesses fail cleanly but still cannot be rushed.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Authentication protocols store or transmit passwords in formats that are offline-crackable: NTLM hashes (no salt, fast GPU attack), NTLMv2 net hashes (slightly slower but crackable), Kerberos RC4 hashes from Kerberoasting (offline crack without network contact), MD5/SHA1 web app hashes (no key stretching). Weak passwords crack in minutes; even complex ones crack with sufficient GPU power if hashing is fast.",
+    "vulnerable_config": "# NTLM hash \u2014 no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
+    "secure_config": "# Web apps \u2014 use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python \u2014 Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
+  }
+}

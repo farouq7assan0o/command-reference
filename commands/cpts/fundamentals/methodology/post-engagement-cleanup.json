@@ -1,0 +1,51 @@
+{
+  "id": "post-engagement-cleanup",
+  "name": "Post-Engagement - Cleanup & Data Retention",
+  "command": "# Leave the environment clean; retain evidence safely",
+  "description": "Post-Engagement - Cleanup & Data Retention - reference (methodology, not a runnable command).",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Fundamentals",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 01: Penetration Testing Process",
+  "tags": [
+    "methodology",
+    "reference"
+  ],
+  "notes": "Cleanup: delete uploaded tools/scripts; revert config changes; document anything that couldn't be removed and all changes made (accounts, configs) in appendices.\nData retention: keep evidence in case questions arise; store in a firm-controlled secure location; encrypt at rest; wipe tester systems at conclusion; build a fresh client-specific VM for post-remediation testing. (Ref: PCI DSS Penetration Testing Guidance.)",
+  "references": [
+    {
+      "title": "HTB Academy - Penetration Testing Process",
+      "url": "https://academy.hackthebox.com/module/details/90"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "exploitation-prioritization",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Remove uploaded tools and reverse shells from target",
+      "command": "# rm -rf /tmp/linpeas.sh /tmp/chisel /var/www/html/shell.php"
+    },
+    {
+      "label": "Revert firewall rule added during testing",
+      "command": "# iptables -D INPUT -p tcp --dport 4444 -j ACCEPT"
+    },
+    {
+      "label": "Document everything before deleting",
+      "command": "# Screenshot evidence → zip with timestamps → delete from target → confirm with client"
+    }
+  ],
+  "mitre": [
+    "T1070"
+  ]
+}

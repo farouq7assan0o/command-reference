@@ -1,0 +1,51 @@
+{
+  "id": "pre-engagement-docs",
+  "name": "Pre-Engagement - Documents & Timing",
+  "command": "# The 7 documents and when each is signed",
+  "description": "Pre-Engagement - Documents & Timing - reference (methodology, not a runnable command).",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Fundamentals",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 01: Penetration Testing Process",
+  "tags": [
+    "methodology",
+    "reference"
+  ],
+  "notes": "Order and timing:\n1. NDA - after initial contact.\n2. Scoping Questionnaire - before the pre-engagement meeting.\n3. Scoping Document - during the pre-engagement meeting.\n4. Penetration Testing Proposal / SoW (Contract) - during pre-engagement.\n5. Rules of Engagement (RoE) - before kick-off.\n6. Contractors Agreement (physical assessments) - before kick-off.\n7. Reports - during and after the test.\nAuthorized signatories: CEO/CTO/CISO/CSO/CRO/CIO, VP Internal Audit, Director of IT/InfoSec.",
+  "references": [
+    {
+      "title": "HTB Academy - Penetration Testing Process",
+      "url": "https://academy.hackthebox.com/module/details/90"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "exploitation-prioritization",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Document 1 — NDA (sign first, before any discussion)",
+      "command": "# Mutual NDA signed before sharing any scope details with client"
+    },
+    {
+      "label": "Document 4 — Rules of Engagement",
+      "command": "# RoE defines: in-scope IPs, allowed techniques, emergency contacts, test hours"
+    },
+    {
+      "label": "Document 7 — Debriefing report (sign-off after findings walk-through)",
+      "command": "# Final meeting: walk through findings, get written acceptance, hand over report"
+    }
+  ],
+  "mitre": [
+    "T1591"
+  ]
+}

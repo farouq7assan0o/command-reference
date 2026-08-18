@@ -1,0 +1,84 @@
+{
+  "id": "cdsa-m08-ssl-dns-anomalies",
+  "name": "SSL Renegotiation & DNS Anomaly Detection",
+  "command": "ssl.record.content_type == 22",
+  "description": "SSL/TLS renegotiation attacks: attacker repeatedly sends Client Hello to trigger renegotiation — targeting cipher downgrade, DoS from crypto overhead, or cryptanalysis. DNS anomalies: bulk queries to many subdomains (enumeration), ANY query type (zone info), excessive TXT records (tunneling), and IPFS gateway traffic (advanced C2). Wireshark filters for TLS handshake analysis and DNS record type inspection.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Network Traffic Analysis",
+  "subcategory": "SSL & DNS Detection",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 08: Intermediate Network Traffic Analysis",
+  "tags": ["ssl", "tls", "ssl-renegotiation", "dns", "dns-enumeration", "dns-tunneling", "ipfs", "wireshark", "blue-team", "nta"],
+  "mitre": ["T1499.004", "T1071.004", "T1046"],
+  "notes": "=== TLS/SSL HANDSHAKE OVERVIEW ===\nNormal HTTPS connection steps:\n  1. TCP 3-way handshake\n  2. Client Hello → advertise supported TLS versions, cipher suites, nonce\n  3. Server Hello → choose TLS version, cipher, send nonce\n  4. Certificate Exchange → server sends certificate (public key)\n  5. Key Exchange → client generates premaster secret, encrypts with server pubkey\n  6. Session Key Derivation → both derive session keys from nonces + premaster secret\n     MasterSecret = PRF(PremasterSecret, 'master secret', ClientNonce + ServerNonce)\n  7. Finished Messages → verify handshake integrity\n  8. Encrypted data exchange\n\n=== SSL RENEGOTIATION ATTACKS ===\nHow it works:\n  → After established TLS session, attacker sends new Client Hello\n  → Triggers renegotiation of cipher suite\n  → Goal: downgrade to weaker cipher, cause DoS (crypto overhead), cryptanalysis\n\nPurposes:\n  1. DoS — TLS renegotiation is expensive server-side\n  2. Cipher downgrade — force weaker encryption\n  3. Cryptanalysis — repeated negotiations to analyze patterns\n\nDetection:\n  # Filter TLS handshake messages only (content_type 22 = Handshake)\n  ssl.record.content_type == 22\n  → Look for: multiple Client Hello from same source in short timeframe\n  → Look for: Client Hello AFTER handshake completion = renegotiation\n\n  # Alternative (newer Wireshark)\n  tls.record.content_type == 22\n\nRenegotiation IOCs:\n  → Multiple 'Client Hello' packets from same IP in rapid succession\n  → Client Hello appearing after 'Finished' message (post-handshake)\n  → Server under high CPU load with many TLS clients connecting\n\n=== DNS RECORD TYPES REFERENCE ===\nA     → IPv4 address\nAAAA  → IPv6 address\nCNAME → Alias / canonical name\nMX    → Mail exchange server\nNS    → Authoritative name server\nPTR   → Reverse lookup (IP → hostname)\nTXT   → Arbitrary text (used for: SPF, DMARC, DNS tunneling)\nSOA   → Start of Authority (zone administration info)\nANY   → All records (bulk enumeration)\n\n=== DNS ENUMERATION DETECTION ===\nHow it works:\n  → Attacker uses tools (dnsenum, fierce, subfinder) to enumerate subdomains\n  → Sends rapid DNS queries for many subdomains of target\n  → Queries DNS for ANY record to get full zone response\n\nWireshark detection:\n  # Filter all DNS\n  dns\n  \n  # Look for excessive queries to target domain\n  dns.qry.name contains \"<TARGET_DOMAIN>\"\n  \n  # Filter ANY queries (full zone info attempt)\n  dns.qry.type == 255     → type 255 = ANY\n  \n  # High DNS volume from one source\n  dns && ip.src == <SUSPICIOUS_HOST>\n\nEnumeration IOCs:\n  → Rapid DNS requests to same TLD (many subdomains probed)\n  → ANY query type (type 255) from non-authorized host\n  → Queries ending in domain for which host has no legitimate need\n  → Large volume of NXDOMAIN responses (domain doesn't exist)\n\n=== DNS TUNNELING DETECTION ===\nHow it works:\n  → Attacker appends data to DNS TXT queries: data.attacker.com TXT?\n  → Attacker controls authoritative DNS → receives exfiltrated data in query\n  → Also used for C2: DNS response contains encoded commands\n  → DGAs (Domain Generation Algorithms): malware auto-generates C2 domains\n\nWireshark detection:\n  # DNS with TXT records\n  dns.qry.type == 16    → TXT record queries (type 16 = TXT)\n  \n  # High entropy query names (base64-like strings) = tunneling\n  dns\n  → Look for unusually long or high-entropy query names\n  → Check DNS → Answers → TXT record value → looks encoded/random\n\nPayload extraction:\n  1. Filter: dns.qry.type == 16\n  2. Expand packet: DNS → Answers → Text (TXT record value)\n  3. Right-click value → Copy → Value\n  4. Decode:\n     echo '<BASE64_VALUE>' | base64 -d\n     echo '<BASE64_VALUE>' | base64 -d | base64 -d | base64 -d\n\nDNS tunneling IOCs:\n  → Many TXT record queries from one host\n  → Query names contain high-entropy strings (not real subdomains)\n  → All queries go to same unusual authoritative server\n  → Unusual length DNS requests (normal < 50 chars; tunneling = 100s)\n\n=== IPFS TRACKING ===\nInterplanetary File System (IPFS) used by advanced threat actors:\n  → Files stored on decentralized P2P network — hard to take down\n  → Accessed via legitimate CDN URLs (Cloudflare, Pinata, etc.)\n  → Pattern: https://cloudflare-ipfs.com/ipfs/<CONTENT_ID>\n\nDetection:\n  → DNS queries to cloudflare-ipfs.com or ipfs.io\n  → HTTP/HTTPS traffic to IPFS gateway domains\n  → URL path starts with /ipfs/ followed by long hash (CID)\n\nFilter:\n  http.host contains \"ipfs\"     → HTTP IPFS access\n  dns.qry.name contains \"ipfs\"  → DNS lookup for IPFS gateways",
+  "examples": [
+    {
+      "label": "Filter TLS handshake messages (SSL renegotiation hunt)",
+      "command": "ssl.record.content_type == 22"
+    },
+    {
+      "label": "Filter TLS handshake (newer Wireshark versions)",
+      "command": "tls.record.content_type == 22"
+    },
+    {
+      "label": "All DNS traffic",
+      "command": "dns"
+    },
+    {
+      "label": "DNS TXT record queries (tunneling detection)",
+      "command": "dns.qry.type == 16"
+    },
+    {
+      "label": "DNS ANY queries (zone enumeration)",
+      "command": "dns.qry.type == 255"
+    },
+    {
+      "label": "DNS queries to specific domain (subdomain enum)",
+      "command": "dns.qry.name contains \"<TARGET_DOMAIN>\""
+    },
+    {
+      "label": "High-volume DNS from suspicious host",
+      "command": "dns && ip.src == <SUSPICIOUS_HOST>"
+    },
+    {
+      "label": "Decode base64-encoded DNS tunnel payload",
+      "command": "echo '<BASE64_VALUE>' | base64 -d | base64 -d | base64 -d"
+    },
+    {
+      "label": "Detect IPFS traffic via HTTP host header",
+      "command": "http.host contains \"ipfs\""
+    },
+    {
+      "label": "Detect IPFS DNS lookups",
+      "command": "dns.qry.name contains \"ipfs\""
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Intermediate Network Traffic Analysis",
+      "url": "https://academy.hackthebox.com/module/details/229"
+    },
+    {
+      "title": "MITRE ATT&CK - DNS Application Layer Protocol (T1071.004)",
+      "url": "https://attack.mitre.org/techniques/T1071/004/"
+    },
+    {
+      "title": "Cloudflare IPFS Gateway",
+      "url": "https://developers.cloudflare.com/web3/ipfs-gateway/concepts/ipfs/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m08-http-anomalies",
+      "rel": "prereq",
+      "note": "HTTP anomaly detection — application layer baseline before HTTPS/DNS analysis."
+    },
+    {
+      "id": "cdsa-m08-tunneling-detection",
+      "rel": "prereq",
+      "note": "General tunneling detection — DNS/ICMP tunneling share same base64 decode workflow."
+    }
+  ]
+}

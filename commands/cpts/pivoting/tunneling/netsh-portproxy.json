@@ -1,0 +1,108 @@
+{
+  "id": "netsh-portproxy",
+  "name": "Windows - Port Forwarding with Netsh",
+  "command": "netsh.exe interface portproxy add v4tov4 listenport=<listen_port> listenaddress=<pivot_ip> connectport=<target_port> connectaddress=<target_ip>",
+  "description": "Uses the built-in netsh portproxy on a Windows pivot to forward a listening port to an internal target - no tools to upload. Connect to the pivot's <listen_port> to reach <target_ip>:<target_port>. Requires an administrator prompt.",
+  "platform": "windows",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "netsh"
+  ],
+  "tags": [
+    "netsh",
+    "port-forwarding",
+    "windows",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "Port Forwarding",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "netsh portproxy",
+      "command": "netsh.exe interface portproxy add v4tov4 listenport=8080 listenaddress=10.129.15.150 connectport=3389 connectaddress=172.16.5.25"
+    },
+    {
+      "label": "netsh portproxy",
+      "command": "netsh.exe interface portproxy show v4tov4"
+    },
+    {
+      "label": "xfreerdp example",
+      "command": "xfreerdp /v:10.129.15.150:8080 /u:victor /p:pass@123"
+    },
+    {
+      "label": "OSCP Ch18 \u2014 netsh portproxy for SSH: expose internal SSH on external interface",
+      "command": "netsh interface portproxy add v4tov4 listenport=2222 listenaddress=<pivot_external_ip> connectport=22 connectaddress=<internal_ip>"
+    },
+    {
+      "label": "OSCP Ch18 \u2014 open Windows firewall for the portproxy listener port",
+      "command": "netsh advfirewall firewall add rule name=\"port_forward_ssh_2222\" protocol=TCP dir=in localip=<pivot_ip> localport=2222 action=allow"
+    },
+    {
+      "label": "OSCP Ch18 \u2014 verify the portproxy is listening",
+      "command": "netstat -anp TCP | find \"2222\""
+    },
+    {
+      "label": "OSCP Ch18 \u2014 cleanup: delete firewall rule and portproxy (always run during cleanup)",
+      "command": "netsh advfirewall firewall delete rule name=\"port_forward_ssh_2222\"\nnetsh interface portproxy del v4tov4 listenport=2222 listenaddress=<pivot_ip>"
+    }
+  ],
+  "notes": "`netsh interface portproxy add v4tov4` turns a compromised Windows host into a port forwarder without extra tools (native LOLBIN) - relay an internal service out through the pivot. Remember to open the firewall and delete the rule during cleanup. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: portproxy alone is not enough \u2014 you MUST also open the Windows firewall with netsh advfirewall. Verify the rule with netstat -anp TCP | find \"<port>\". The portproxy rule persists across reboots (written to registry). Always clean up: delete the firewall rule first, then del the portproxy, and confirm with portproxy show all.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "netsh",
+      "url": "https://docs.microsoft.com/en-us/windows-server/networking/technologies/netsh/netsh-contexts"
+    },
+    {
+      "title": "OffSec PEN-200 - Port Redirection and SSH Tunneling",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "socat-reverse-redirect",
+      "note": "Alternate redirector when netsh is unavailable.",
+      "rel": "alternative"
+    },
+    {
+      "id": "rdp-enum",
+      "rel": "next",
+      "note": "RDP to the target through the netsh portproxy rule on the Windows pivot."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1090.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "netsh interface portproxy adds a Windows port-forwarding rule (v4tov4) so the pivot relays a local port to an internal host:port - a native, no-tool forwarder.",
+    "prerequisites": "Admin on a Windows pivot that can reach the internal target.",
+    "impact": "A native port forward through the Windows pivot to an internal service.",
+    "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
+    "artifacts": "A netsh portproxy rule (persisted in registry); the pivot relaying to the internal host.",
+    "prevention": "[MITRE T1090.001 M1030 Network Segmentation] strict east-west firewall rules so one foothold can't reach other segments; egress filtering; IDS/IPS + NetFlow analysis for proxy patterns and long-lived flows; alert on unexpected listeners on servers.",
+    "evasion": "Uses a built-in Windows feature (no dropped tool); the portproxy rule persists but looks like admin config.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1090.001"
+    ],
+    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
+  }
+}

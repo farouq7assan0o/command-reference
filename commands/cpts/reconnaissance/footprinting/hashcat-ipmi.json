@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nAfter retrieving IPMI RAKP hashes (via msf-ipmi-dumphashes), crack them offline with Hashcat mode 7300. HP iLO uses a predictable factory default format: exactly 8 characters, uppercase letters and digits only. Mask attack (-a 3) is faster than dictionary for this constrained keyspace.\n\n=== CHAINING ===\nmsf ipmi_dumphashes \u2192 save hashes \u2192 hashcat -m 7300 -a 3 ?1?1?1?1?1?1?1?1 -1 ?d?u \u2192 cracked password \u2192 test reuse via SSH on all discovered hosts.\n\n=== PASSWORD REUSE ===\nBMC passwords are infrequently rotated and often reused across all servers managed by the same administrator. One cracked IPMI hash can unlock SSH access to many servers simultaneously.\n\n=== CRITICAL IMPACT ===\nBMC access = physical-equivalent access. Power cycling, BIOS modification, virtual media mounting, OS reinstall, serial console access \u2014 all possible without OS involvement.",
+  "references": []
+}

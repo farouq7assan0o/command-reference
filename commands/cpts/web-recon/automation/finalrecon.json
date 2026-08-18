@@ -1,0 +1,141 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "finalrecon"
+  ],
+  "tags": [
+    "automation",
+    "finalrecon",
+    "osint"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "Recon Automation",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "CPTS Ch05 — headers + WHOIS against inlanefreight.com",
+      "command": "./finalrecon.py --headers --whois --url http://inlanefreight.com"
+    },
+    {
+      "label": "Full scan with JSON export",
+      "command": "./finalrecon.py --full --url http://inlanefreight.com -o json"
+    }
+  ],
+  "notes": "Key flags: --headers --sslinfo --whois --crawl --dns --sub --dir --wayback --ps --full ; -e ext , -w wordlist , -k shodan@key. Output: ~/.local/share/finalrecon/dumps/. Other frameworks: Recon-ng, theHarvester, SpiderFoot. FinalRecon is an all-in-one web recon tool. Use --full for a complete pass or combine individual flags. Results are exported to ~/.local/share/finalrecon/dumps/ by default. Use -o json for machine-readable output. Also covered in: CPTS Ch05 (Information Gathering – Web Edition).",
+  "references": [
+    {
+      "title": "FinalRecon",
+      "url": "https://github.com/thewhiteh4t/FinalRecon"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "web-fingerprinting",
+      "rel": "alternative",
+      "note": "Manual fingerprinting to confirm."
+    },
+    {
+      "id": "web-crawling",
+      "rel": "next",
+      "note": "Crawl what it found."
+    }
+  ],
+  "id": "finalrecon",
+  "name": "Recon Automation - FinalRecon",
+  "command": "./finalrecon.py --headers --whois --url http://<domain>",
+  "description": "FinalRecon chains headers, WHOIS, SSL, DNS, subdomains, crawling, directory search, Wayback, and port scan into one run. Good for a fast full-surface sweep.",
+  "steps": [
+    {
+      "label": "1. Install",
+      "command": "git clone https://github.com/thewhiteh4t/FinalRecon.git && cd FinalRecon\npip3 install -r requirements.txt && chmod +x ./finalrecon.py"
+    },
+    {
+      "label": "2. Run selected modules",
+      "command": "./finalrecon.py --headers --whois --url http://inlanefreight.com\n# full recon: ./finalrecon.py --full --url http://inlanefreight.com"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1595"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "FinalRecon combines multiple active reconnaissance techniques — subdomain enumeration, HTTP header analysis, WHOIS lookup, SSL certificate inspection, and crawling — in a single automated run, giving attackers a comprehensive fingerprint of the target in one pass.",
+    "prerequisites": "A target domain or IP. FinalRecon is an external recon tool — no prior access or credentials needed.",
+    "impact": "Produces a consolidated recon profile — subdomains, HTTP headers, WHOIS, SSL certificate details, and crawled links — that feeds subdomain takeover, vhost discovery, and targeted exploitation in later phases.",
+    "detection": "Detection risk is High: direct interaction with target infrastructure triggers IDS/firewalls. The tool's automated, multi-technique nature generates a burst of diverse query types that stands out in server logs and network monitoring.\n\n[MITRE T1595 AN1962] Monitor network data for uncommon data flows. Monitor and analyze traffic patterns and packet inspection associated with protocol(s) that do not follow expected standards and traffic flows (extraneous packets, gratuitous or anomalous traffic patterns, anomalous syntax or structure). Consider correlation with process monitoring and command line arguments associated to traffic patterns.",
+    "artifacts": "Active modules generate server-side log entries: HTTP requests across many paths plus a burst of DNS lookups from a single source. On the attacker host, results are written to FinalRecon's dump directory.",
+    "prevention": "[MITRE T1595 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside the scope of enterprise defenses and controls. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "evasion": "Slow the scan rate to avoid triggering rate-limit thresholds. Route through proxies or distribute requests across multiple source IPs to avoid single-source volume detection.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1595"
+    ],
+    "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
+    "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
+    "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
+  },
+  "variations": [
+    {
+      "description": "Install FinalRecon",
+      "command": "git clone https://github.com/thewhiteh4t/FinalRecon.git\ncd FinalRecon\npip3 install -r requirements.txt\nchmod +x ./finalrecon.py",
+      "label": "git clone (install)"
+    },
+    {
+      "description": "Full recon (all modules)",
+      "command": "./finalrecon.py --full --url http://<domain>",
+      "label": "finalrecon.py"
+    },
+    {
+      "description": "Headers + WHOIS only",
+      "command": "./finalrecon.py --headers --whois --url http://<domain>",
+      "label": "finalrecon.py"
+    },
+    {
+      "description": "DNS enumeration + subdomain brute-force",
+      "command": "./finalrecon.py --dns --sub --url http://<domain>",
+      "label": "finalrecon.py"
+    },
+    {
+      "description": "SSL certificate info",
+      "command": "./finalrecon.py --sslinfo --url https://<domain>",
+      "label": "finalrecon.py"
+    },
+    {
+      "description": "Crawl + Wayback URLs",
+      "command": "./finalrecon.py --crawl --wayback --url http://<domain>",
+      "label": "finalrecon.py"
+    },
+    {
+      "description": "Fast port scan + directory search",
+      "command": "./finalrecon.py --ps --dir --url http://<domain>",
+      "label": "finalrecon.py"
+    },
+    {
+      "description": "Export results in JSON format",
+      "command": "./finalrecon.py --full --url http://<domain> -o json",
+      "label": "finalrecon.py"
+    }
+  ]
+}

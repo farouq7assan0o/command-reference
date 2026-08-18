@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-A is shorthand for four simultaneous operations: -sV (version), -O (OS detection), --traceroute, -sC (default scripts). Comprehensive single-command enumeration \u2014 surfaces service versions, OS, network path, and script output in one run.\n\n=== OUTPUT VALUE ===\nIn one scan against port 80: Apache version, WordPress version, page title, probable OS, common paths. Against SMTP: OS distribution in banner + EHLO capability list. -A is comprehensive but loud \u2014 significantly more traffic and service interaction than individual flags.\n\n=== WHEN TO USE ===\nPost-initial-discovery when targeting specific confirmed open ports. Avoid -A in full port range scans \u2014 combine -p- (discovery) then targeted -A on found ports.\n\n=== DETECTION ===\n-A generates high volumes of diverse probe types. IDS signatures for Nmap -A scans are widely deployed. In sensitive environments, use individual flags instead.",
+  "references": []
+}

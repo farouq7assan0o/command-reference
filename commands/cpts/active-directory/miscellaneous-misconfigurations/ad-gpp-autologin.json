@@ -1,0 +1,79 @@
+{
+  "id": "ad-gpp-autologin",
+  "name": "CrackMapExec - Find AutoLogon Credentials (GPP)",
+  "command": "crackmapexec smb <dc_ip> -u <user> -p <password> -M gpp_autologin",
+  "description": "Enumerates Group Policy Preferences for autologon credentials — username/password stored in SYSVOL for automatic logon configurations. These credentials are stored in plaintext (not encrypted like cpassword) in the Registry.pol or related GPP files. Often admin-level credentials set by sysadmins for kiosk or service accounts.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Credential Access",
+  "subcategory": "Miscellaneous Misconfigurations",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "gpp",
+    "autologon",
+    "sysvol",
+    "credential-hunting",
+    "group-policy",
+    "crackmapexec"
+  ],
+  "mitre": [
+    "T1552.006"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== GPP AUTOLOGON vs GPP PASSWORD ===\nGPP stores two types of credentials:\n  1. cpassword (gpp_password module) → AES encrypted, trivially decrypted\n  2. AutoLogon (this card) → PLAINTEXT username and password in Registry.pol\n     for Winlogon automatic logon configuration\n\nAutologon credentials are set when admins want machines to log in automatically\n(kiosks, dedicated workstations). They end up in SYSVOL and any domain user can read them.\n\n=== WHAT TO EXPECT IN OUTPUT ===\n  [+] Found autologin credentials:\n      Username: INLANEFREIGHT\\bob\n      Password: Str0ngP@ss!\nAnyone with domain read access can see these.\n\n=== MANUAL SEARCH ===\nSearch SYSVOL for autologon in Registry.xml files:\n  Get-ChildItem -Path \\\\<domain>\\SYSVOL -Recurse -Filter Registry.xml | Select-String -Pattern 'DefaultUserName|DefaultPassword' -List\n\n=== TYPICAL FINDS ===\n  - Local Administrator password (spray across machines)\n  - IT service desk account (often domain-wide access)\n  - Domain Admin set up for a process (jackpot)\n  - SQL service account credentials\n\nAlways test recovered passwords against: Evil-WinRM, CME spray, WinRM, SQL.",
+  "examples": [
+    {
+      "label": "Scan for autologon creds via CME",
+      "command": "crackmapexec smb 172.16.5.5 -u forend -p Klmcargo2 -M gpp_autologin"
+    },
+    {
+      "label": "Manual search in SYSVOL",
+      "command": "Get-ChildItem -Path \\\\INLANEFREIGHT.LOCAL\\SYSVOL -Recurse -ErrorAction SilentlyContinue | Select-String DefaultPassword"
+    }
+  ],
+  "references": [
+    {
+      "title": "CrackMapExec Modules",
+      "url": "https://wiki.porchetta.industries/smb-protocol/enumeration"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-domainpasswordspray",
+      "rel": "next",
+      "note": "Reuse any recovered credentials."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Group Policy Preferences can configure Windows AutoLogon by writing credentials (username/password) to SYSVOL in Registry.pol files. SYSVOL is replicated to all DCs and readable by all authenticated domain users via SMB (\\\\domain\\SYSVOL). Unlike cpassword (which is AES-encrypted with a published key), AutoLogon credentials in some GPP configurations are stored with minimal or no protection in the Registry.pol binary format or related XML files.",
+    "prerequisites": "Domain membership, network access to DC on port 445. CrackMapExec (--gpp-autologin flag) or manual SYSVOL browse. No elevated privileges.",
+    "impact": "Plaintext admin credentials for kiosk, service, or privileged accounts configured for AutoLogon — often domain admin or high-privilege accounts set by sysadmins for automated sign-in. Immediate credential compromise enabling full lateral movement or privilege escalation.",
+    "detection": "SMB access to SYSVOL (Event 5140 — network share object access) if share auditing is enabled on DCs. Access to specific Registry.pol files in Policies subdirectory. Normal policy refresh also reads SYSVOL, so distinguishing malicious browsing from policy processing requires behavioral context (e.g., access from a non-workstation IP, access outside policy refresh cycles).",
+    "prevention": "Audit SYSVOL for any GPP files containing AutoLogon configuration: search Policies subdirectory for Registry.pol files containing DefaultUserName/DefaultPassword strings. Remove AutoLogon GPP configurations — use LAPS for local admin accounts or managed service accounts for services. Do not configure AutoLogon via GPP in domain environments.",
+    "evasion": "SYSVOL reads are normal domain behavior — indistinguishable from policy refresh without behavioral analytics. CrackMapExec --gpp-autologin performs the same operation as reading the files manually. Single query per DC.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1552.006"
+    ],
+    "misconfiguration": "Group Policy Preferences (GPP) allowed administrators to push local administrator credentials to machines via XML files stored in SYSVOL (\\\\domain\\SYSVOL\\...). These files were encrypted with AES-256, but Microsoft published the static key in MSDN documentation. Any authenticated domain user can read SYSVOL, so any account configured this way has its password exposed to every domain user. MS14-025 (KB2962486, May 2014) removed the GUI option but left existing files in place.",
+    "vulnerable_config": "# SYSVOL Group Policy file containing encrypted password:\n# Path: \\\\corp.local\\SYSVOL\\corp.local\\Policies\\{GUID}\\Machine\\Preferences\\Groups\\Groups.xml\n# Content:\n# <Properties action='U' userName='Administrator' cpassword='edBSHOwhZLTjt...' />\n# The cpassword value is AES-256 encrypted with the static key Microsoft published:\n# Key: 4e 99 06 e8 fc b6 6c c9 fa f4 93 10 62 0f fe e8 f4 96 e8 06 cc 05 79 90 20 9b 09 a4 33 b6 6c 1b\n# gpp-decrypt or Get-GPPPassword decrypts it instantly",
+    "secure_config": "# 1. Apply MS14-025 (KB2962486) — blocks new GPP passwords from being created\n#    (already applied if any patch from 2014+ is installed)\n\n# 2. Find and delete all existing cpassword entries in SYSVOL:\n# PowerShell — find all GPP files with cpassword:\nGet-ChildItem -Path '\\\\corp.local\\SYSVOL' -Recurse -Include '*.xml' |\n    Select-String -Pattern 'cpassword' | Select-Object Path\n# Then delete or edit those files to remove the cpassword attribute\n\n# 3. Rotate any passwords that were stored in GPP immediately\n# (assume all were read by every domain user since GPP file creation)\n\n# 4. Use LAPS instead of GPP for local admin passwords:\n# LAPS stores unique per-machine passwords in a protected AD attribute\n# Only members of a specific group can read the LAPS attribute"
+  },
+  "tools": [
+    "crackmapexec"
+  ]
+}

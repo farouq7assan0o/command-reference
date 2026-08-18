@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nODAT (Oracle Database Attacking Tool) runs all available modules sequentially against an Oracle TNS target: SID guessing, credential brute force, privilege checks, file upload/download, OS command execution capability tests.\n\n=== DEFAULT CREDS ===\nscott:tiger is a well-known Oracle default \u2014 always test first. DBSNMP:dbsnmp, SYS:change_on_install (Oracle 9), system:manager. Oracle 10+ no longer ships defaults but these persist in legacy installations.\n\n=== SYSDBA ESCALATION ===\nEven non-admin accounts may have SYSDBA privilege granted. Connect as sysdba \u2192 access SYS user \u2192 full DBA rights \u2192 sys.user$ table \u2192 all account password hashes.\n\n=== FILE UPLOAD CHAIN ===\nodat utlfile --putFile /var/www/html shell.php \u2192 curl GET confirms \u2192 web shell accessible \u2192 RCE on the OS level.",
+  "references": []
+}

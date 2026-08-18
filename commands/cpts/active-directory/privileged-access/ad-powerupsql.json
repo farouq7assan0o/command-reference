@@ -1,0 +1,90 @@
+{
+  "id": "ad-powerupsql",
+  "name": "PowerUpSQL - Enumerate MSSQL Instances",
+  "command": "Import-Module .\\PowerUpSQL.ps1\nGet-SQLInstanceDomain\nGet-SQLQuery -Instance <instance> -Query 'SELECT SYSTEM_USER, IS_SRVROLEMEMBER(\"sysadmin\")'",
+  "description": "PowerShell toolkit for auditing and attacking MSSQL instances in an AD environment. Discovers all SQL Server instances registered in AD (via SPNs), checks access, and identifies privilege escalation paths including sysadmin rights, linked server abuse, and impersonation chains.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "Privileged Access",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "mssql",
+    "powerupsql",
+    "enumeration",
+    "sql-server",
+    "spn"
+  ],
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHY SQL SERVER IN AD MATTERS ===\nSQL Server instances register Service Principal Names (SPNs) in AD. This means:\n  1. You can find ALL SQL instances in the domain without network scanning:\n     Get-SQLInstanceDomain\n  2. Service accounts hosting SQL may be kerberoastable (have SPNs)\n  3. SQL may run as high-privilege service accounts (even SYSTEM)\n\n=== KEY COMMANDS ===\n  Get-SQLInstanceDomain          → find all SQL instances via AD SPNs\n  Get-SQLConnectionTest          → test which instances you can connect to\n  Get-SQLServerInfo              → get version, auth mode, service account info\n  Get-SQLQuery -Query '...'      → execute a SQL query\n  Invoke-SQLAudit                → automated security audit\n  Get-SQLServerLinkCrawl         → crawl linked servers (important!)\n  Invoke-SQLEscalatePriv         → automated priv esc check\n\n=== LINKED SERVER ABUSE ===\nSQL Server 'Linked Servers' allow one SQL instance to query another.\nIf instance A has a linked server to B running as sysadmin:\n  On A: EXEC('SELECT SYSTEM_USER') AT [B]\n  → Returns the service account for B, which may be sysadmin on B\nGet-SQLServerLinkCrawl maps this entire linked server chain.\nUsing openquery() you can chain queries: A → B → C → RCE on C.\n\n=== TYPICAL CHAIN ===\n1. Get-SQLInstanceDomain → find instances\n2. Get-SQLConnectionTest → which are accessible\n3. Get-SQLServerInfo → check service account, is sysadmin?\n4. If sysadmin: enable xp_cmdshell → RCE\n5. If not: Invoke-SQLAudit → find escalation paths\n6. Get-SQLServerLinkCrawl → find linked servers with higher access\n\n=== FINDING THE KERBEROASTABLE SQL SERVICE ACCOUNTS ===\nGet-SQLInstanceDomain returns the service account name.\nIf the account has an SPN (which it does — SQL registers it),\nit's kerberoastable: GetUserSPNs.py → target that specific account.",
+  "examples": [
+    {
+      "label": "Find all SQL instances in domain",
+      "command": "Get-SQLInstanceDomain"
+    },
+    {
+      "label": "Test connectivity to all instances",
+      "command": "Get-SQLInstanceDomain | Get-SQLConnectionTest | ft -AutoSize"
+    },
+    {
+      "label": "Get server info from accessible instance",
+      "command": "Get-SQLInstanceDomain | Get-SQLServerInfo -Verbose"
+    },
+    {
+      "label": "Execute query against specific instance",
+      "command": "Get-SQLQuery -Instance 'ACADEMY-EA-DB01\\SQLEXPRESS,1433' -Query 'SELECT SYSTEM_USER, IS_SRVROLEMEMBER(''sysadmin'')'"
+    },
+    {
+      "label": "Crawl linked servers",
+      "command": "Get-SQLServerLinkCrawl -Instance 'ACADEMY-EA-DB01\\SQLEXPRESS,1433' -Verbose"
+    }
+  ],
+  "references": [
+    {
+      "title": "PowerUpSQL (NetSPI)",
+      "url": "https://github.com/NetSPI/PowerUpSQL"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-mssqlclient",
+      "note": "Get command execution through the SQL instance.",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "why_it_works": "SQL Server instances register MSSQLSvc Service Principal Names (SPNs) in AD — any authenticated domain user can query LDAP for these SPNs to discover all SQL instances without network scanning. Get-SQLInstanceDomain queries LDAP; Get-SQLConnectionTest then probes each discovered instance with the current user's credentials. If the domain account has SQL login rights, connection succeeds and Get-SQLServerInfo returns service account, version, and privilege level — exposing the attack surface for xp_cmdshell and linked server abuse.",
+    "prerequisites": "PowerShell, PowerUpSQL module loaded (.ps1 import or module install). Any domain user account with network connectivity to SQL instances on TCP 1433. LDAP access to DC (always available to domain members).",
+    "impact": "Complete SQL attack surface map: all instances in the domain (via SPN query), which are accessible with current credentials, service account names (for Kerberoasting), privilege level, linked server chains (for pivoting). Enables automated privilege escalation discovery (Invoke-SQLAudit, Invoke-SQLEscalatePriv) and linked-server chain exploitation across the domain's SQL mesh.",
+    "detection": "PowerShell Script Block Logging (Event 4104) if enabled captures PowerUpSQL function calls. Kerberos Event 4769 for MSSQLSvc SPN requests during Get-SQLInstanceDomain. TCP connections to multiple SQL instances on port 1433 in rapid succession from a single non-DBA host. LDAP queries for servicePrincipalName=MSSQLSvc* on DC — detectable via LDAP audit logs.",
+    "prevention": "Enable PowerShell Script Block Logging and AMSI to catch PowerUpSQL. Restrict SQL Server network access via firewall — allow only app servers to reach TCP 1433. Audit SQL Server logins — remove unnecessary domain user access. Disable linked servers where not operationally required. Run SQL Service as gMSA with minimal OS rights (not SYSTEM). Kerberoasting defense on SQL service accounts: long random passwords.",
+    "evasion": "Get-SQLInstanceDomain (LDAP-only) avoids network port scanning noise. Use -Verbose sparingly to reduce log volume. Operate from a domain-joined workstation to blend LDAP queries with normal user activity. Target only specific known instances rather than using Get-SQLConnectionTest on all discovered instances.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
+    "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
+    "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+  },
+  "tools": [
+    "PowerUpSQL"
+  ]
+}

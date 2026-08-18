@@ -1,0 +1,55 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [],
+  "tags": [
+    "reference",
+    "reporting",
+    "deliverable"
+  ],
+  "category": "Vulnerability Assessment",
+  "subcategory": "Reporting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 06: Vulnerability Assessment",
+  "examples": [
+    {
+      "label": "Deliverable skeleton",
+      "command": "# Executive Summary -> Methodology -> Findings (with CVSS + evidence) -> Remediation -> Appendices (raw scan data)"
+    }
+  ],
+  "notes": "Sections: Executive Summary, Overview of Assessment, Scope, Vulnerabilities and Recommendations. Graph: vulnerability count by severity.\nSeverity: Critical/High/Medium/Low.\nPer-vulnerability fields: Name, CVE, CVSS, Description, References, Remediation steps, Proof of Concept, Affected systems.",
+  "references": [
+    {
+      "title": "HTB Academy - Vulnerability Assessment",
+      "url": "https://academy.hackthebox.com/module/details/108"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "report-components",
+      "rel": "next",
+      "note": "Full report structure (Module 01)."
+    }
+  ],
+  "id": "ref-va-report",
+  "name": "Reference - Vulnerability Assessment Report",
+  "command": "# what goes in the deliverable",
+  "description": "The sections and per-vulnerability fields a VA report should contain.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1591"
+  ]
+}

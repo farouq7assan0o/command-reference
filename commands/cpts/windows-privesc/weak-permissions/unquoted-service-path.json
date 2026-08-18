@@ -1,0 +1,89 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "wmic",
+    "sc"
+  ],
+  "tags": [
+    "unquoted-path",
+    "service"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Weak Permissions",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Find unquoted auto-start service paths",
+      "command": "wmic service get name,displayname,pathname,startmode | findstr /i \"auto\" | findstr /i /v \"c:\\windows\\\\\" | findstr /i /v \"\\\"\""
+    },
+    {
+      "label": "Inspect a specific service's binPath",
+      "command": "sc qc SystemExplorerHelpService"
+    },
+    {
+      "label": "Plant the payload at an earlier path segment",
+      "command": "# e.g. C:\\Program Files (x86)\\System.exe for path C:\\Program Files (x86)\\System Explorer\\service\\SystemExplorerService64.exe"
+    }
+  ],
+  "notes": "=== Unquoted Service Path — Space Ambiguity Exploitation ===\nUnquoted paths with spaces create candidate execution paths Windows tries before continuing.\n\n=== HOW WINDOWS PARSES UNQUOTED PATHS ===\nFor path: C:\\Program Files (x86)\\SomeApp\\service.exe\nWindows tries in order:\n  1. C:\\Program.exe\n  2. C:\\Program Files.exe\n  3. C:\\Program Files (x86)\\SomeApp\\service.exe (actual binary)\n\nIf attacker can write C:\\Program.exe or C:\\Program Files (x86)\\SomeApp.exe → it executes first as SYSTEM.\n\n  wmic service where \"PathName like '% %'\" get name,pathname,startmode\n  Get-WmiObject Win32_Service | Where-Object {$_.PathName -match ' '} | Select Name,PathName\n  Get-WmiObject Win32_Service | Where-Object {$_.PathName -notlike '\"*' -and $_.PathName -like '* *'} | Select Name,PathName\n\nAutomated:\n  .\\SharpUp.exe audit UnquotedServicePath\n  Invoke-AllChecks (PowerUp) → also flags this\n\n=== PRACTICAL LIMITATION ===\nRequires write access to one of the intermediate directories.\nWrite to C:\\ or C:\\Program Files usually requires admin → makes it often unexploitable in practice.\nBUT: custom install directories (C:\\SomeVendor\\App Name\\) may have writable parent folders.\nAlways check actual directory ACLs with icacls before dismissing.\n\n=== ATTACK FLOW (WHEN DIRECTORY IS WRITABLE) ===\n1. Identify path: C:\\Some Vendor\\app name\\service.exe\n2. Candidate paths: C:\\Some.exe, C:\\Some Vendor\\app.exe\n3. Check directory write access: icacls \"C:\\Some Vendor\"\n4. If writable: place malicious binary at candidate path (e.g., C:\\Some Vendor\\app.exe)\n5. Restart service → malicious binary executes as SYSTEM\n\n=== CHAINING CONTEXT ===\nUnquoted path + writable directory → SYSTEM on service restart\nOften found alongside other weak permission issues in the same application\nSharpUp/PowerUp identify this automatically\nReport even if not exploitable — it's a misconfiguration that requires immediate quoting fix\n\n=== WHAT TO LOOK FOR ===\nThird-party software install directories outside C:\\Windows and C:\\Program Files\nCustom directories created by MSI installers often inherit too-permissive ACLs\nService paths with 2+ spaces = more candidate paths = more potential exploitation points OSCP Ch16: wmic service get name,pathname | findstr to find unquoted paths. Then icacls each segment to find write-access. Write-ServiceBinary -Name from PowerUp, or manual: place Current.exe in writable dir, Start-Service triggers it. Also covered in: OSCP PEN-200 Chapter 16 (Windows Privilege Escalation).",
+  "references": [
+    {
+      "title": "HackTricks - Unquoted Service Paths",
+      "url": "https://book.hacktricks.wiki/en/windows-hardening/windows-local-privilege-escalation/index.html"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 - Windows Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "sharpup-audit",
+      "note": "Where the finding came from.",
+      "rel": "prereq"
+    },
+    {
+      "id": "weak-service-binary",
+      "note": "Direct binary overwrite alternative.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "unquoted-service-path",
+  "name": "Weak Permissions - Unquoted Service Path",
+  "command": "wmic service get name,displayname,pathname,startmode | findstr /i \"auto\" | findstr /i /v \"c:\\windows\\\\\" | findstr /i /v \"\\\"\"",
+  "description": "An unquoted service path with spaces makes Windows try each space-delimited prefix (C:\\Program.exe, C:\\Program Files (x86)\\System.exe, ...). If you can write one of those paths, place a payload named to match and restart the service.",
+  "opsec": "loud",
+  "mitre": [
+    "T1574.009"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "When a Windows service binary path contains spaces and is not enclosed in quotes, the Service Control Manager parses it ambiguously. Windows tries each space-separated token as a possible binary path, so 'C:\\Program Files\\My App\\service.exe' becomes candidates: C:\\Program.exe, C:\\Program Files\\My.exe, etc. Planting a binary at an earlier candidate path (if that directory is writable) executes it when the service starts, in the service's security context.",
+    "prerequisites": "A service with an unquoted binary path containing spaces. Write access to an intermediate directory (e.g., C:\\Program Files\\) or a path prefix. Ability to restart the service (or wait for system reboot).",
+    "impact": "Code execution as the service account (often SYSTEM or local admin) by exploiting ambiguous path resolution, enabling privilege escalation.",
+    "detection": "sc qc or WMI service enumeration showing unquoted paths with spaces. SharpUp/PowerUp reporting unquoted paths. New executable appearing in intermediate paths. sc stop/start or service restart activity. Sysmon Event 1: unexpected binary in intermediate path executed by SCM.",
+    "artifacts": "Process: sc.exe qc querying service config by standard user | File: malicious binary planted at intermediate path | Sysmon Event 1: intermediate path binary executed by services.exe",
+    "prevention": "Quote all service binary paths. Automate detection with SharpUp/PowerUp. Restrict write access to all intermediate path directories. CIS Benchmark script to audit all unquoted service paths.",
+    "misconfiguration": "Service installed with: sc create MySvc binPath= C:\\Program Files\\MyApp\\svc.exe (missing quotes). Directory C:\\Program Files\\ has write access for standard users (very rare on default installs, but may exist on custom software installs).",
+    "vulnerable_config": "# Service with unquoted path:\nsc qc 'GraceNote Service'\n# BINARY_PATH_NAME: C:\\Program Files (x86)\\GraceNote CDDB\\GraceNote MediaDetector.exe\n\n# SCM tries: C:\\Program.exe, C:\\Program Files.exe, C:\\Program Files (x86)\\GraceNote.exe\n# If C:\\Program.exe writable: plant payload there\ncopy malicious.exe 'C:\\Program.exe'\nsc start 'GraceNote Service'  # executes C:\\Program.exe as SYSTEM",
+    "secure_config": "# Fix unquoted service path:\nsc config 'GraceNote Service' binPath= '\"C:\\Program Files (x86)\\GraceNote CDDB\\GraceNote MediaDetector.exe\"'\n\n# Audit all unquoted paths:\nwmic service get PathName | findstr /v '\"' | findstr ' '\n\n# Restrict intermediate directory permissions:\nicacls 'C:\\Program Files (x86)' /inheritance:r /grant 'SYSTEM:(OI)(CI)F' /grant 'Administrators:(OI)(CI)F'",
+    "sources": [
+      "HTB M26",
+      "MITRE T1574.009"
+    ]
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "id": "cdsa-m09-zeek-fundamentals",
+  "name": "Zeek Fundamentals \u2014 Architecture, Logs & zeek-cut",
+  "command": "/usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/suspicious.pcap",
+  "description": "Zeek (formerly Bro) is a network traffic analyzer for passive analysis, logging, and scripting-based detection. Architecture: event engine (packets \u2192 high-level events) + script interpreter (events \u2192 actions via Zeek scripts). Key logs: conn.log, dns.log, http.log, ftp.log, smtp.log, smb_files.log, dce_rpc.log. zeek-cut extracts specific columns from TSV logs. Older logs are gzip-compressed hourly into YYYY-MM-DD directories.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "IDS/IPS",
+  "subcategory": "Zeek",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 09: Working with IDS/IPS",
+  "tags": [
+    "zeek",
+    "bro",
+    "nsm",
+    "network-monitoring",
+    "zeek-cut",
+    "conn-log",
+    "dns-log",
+    "http-log",
+    "blue-team",
+    "threat-hunting"
+  ],
+  "tools": ["zeek", "zeek-cut", "datamash", "scp", "zgrep"],
+  "mitre": ["T1040"],
+  "notes": "=== ZEEK OVERVIEW ===\nZeek is NOT a signature-based IDS \u2014 it's a semantic analysis platform:\n  \u2192 Semantic misuse detection\n  \u2192 Anomaly detection\n  \u2192 Behavioral analysis\n  \u2192 Full application-layer protocol decoding\n  \u2192 Generates structured TSV logs for all observed traffic\n\nZeek analyzes application-layer protocols regardless of port number.\n\n=== OPERATION MODES ===\n  Fully passive traffic analysis\n  libpcap interface for packet capture\n  Real-time and offline (PCAP-based) analysis\n  Cluster support for large-scale deployments\n\n=== ARCHITECTURE ===\n1. Event Engine (Core):\n   \u2192 Converts raw packet stream into high-level events\n   \u2192 Events are policy-neutral (describe WHAT happened, not if it's bad)\n   \u2192 Example: HTTP request \u2192 http_request event (all details, no judgment)\n   \u2192 Events queued and processed first-come, first-served\n   \u2192 Most events defined in .bif files at:\n     /scripts/base/bif/plugins/\n   \u2192 Event reference: https://docs.zeek.org/en/stable/scripts/base/bif/\n\n2. Script Interpreter:\n   \u2192 Executes Zeek scripts (event handlers written in Zeek's scripting language)\n   \u2192 Scripts express the 'site security policy'\n   \u2192 Scripts define what to DO when certain events are detected\n   \u2192 Similar in concept to Suricata rules but much more powerful (Turing complete)\n\n=== RUNNING ZEEK ===\nOffline PCAP analysis:\n  /usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/suspicious.pcap\n    \u2192 -C: ignore checksum errors\n    \u2192 -r: read from PCAP file\n    \u2192 Logs written to current directory\n\nLive analysis:\n  /usr/local/zeek/bin/zeek -i ens160\n    \u2192 Live capture on interface\n\nDownload PCAP from target for local analysis:\n  scp htb-student@<TARGET_IP>:/home/htb-student/pcaps/psempire.pcap .\n\n=== KEY LOG FILES ===\nconn.log:\n  \u2192 All IP/TCP/UDP/ICMP connections\n  \u2192 Fields: ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p,\n             proto, service, duration, orig_bytes, resp_bytes, conn_state,\n             history, orig_pkts, orig_ip_bytes, resp_pkts, resp_ip_bytes\n  \u2192 Use for: traffic volume analysis, beaconing detection, connection patterns\n\ndns.log:\n  \u2192 All DNS queries and responses\n  \u2192 Fields: ts, uid, id.orig_h, id.resp_h, query, qtype, qtype_name,\n             rcode, rcode_name, answers, TTLs\n  \u2192 Use for: DNS enumeration, tunneling, DGA detection\n\nhttp.log:\n  \u2192 HTTP requests and responses\n  \u2192 Fields: host (domain/IP), uri, referrer, user_agent, status_code\n  \u2192 Use for: web activity, C2 beaconing, file downloads\n\nftp.log:\n  \u2192 FTP requests and responses\n\nsmtp.log:\n  \u2192 SMTP transactions (sender, recipient, subject)\n\nsmb_files.log:\n  \u2192 SMB file operations (open, write, delete)\n  \u2192 Key for PsExec detection (PSEXESVC.exe on ADMIN$)\n\ndce_rpc.log:\n  \u2192 DCE/RPC calls over named pipes\n  \u2192 Key for PsExec (svcctl: CreateServiceW, StartServiceW, DeleteService)\n\nsmb_mapping.log:\n  \u2192 SMB share mappings (\\\\host\\ADMIN$, \\\\host\\IPC$)\n\nfiles.log:\n  \u2192 Files extracted from network traffic\n\nssl.log:\n  \u2192 TLS/SSL session metadata\n\n=== ZEEK-CUT UTILITY ===\nzeek-cut: extracts specific columns from Zeek TSV logs\n  \u2192 Reads from stdin (pipe logs into it)\n  \u2192 Outputs only specified column(s)\n\nSyntax:\n  cat conn.log | /usr/local/zeek/bin/zeek-cut <field1> <field2> ...\n\nExamples:\n  # Extract query field from dns.log:\n  cat dns.log | /usr/local/zeek/bin/zeek-cut query | cut -d . -f1-7\n\n  # Sum bytes per src/dst pair (TLS exfil detection):\n  cat conn.log | /usr/local/zeek/bin/zeek-cut id.orig_h id.resp_h orig_bytes \\\n    | sort | grep -v -e '^$' | grep -v '-' \\\n    | datamash -g 1,2 sum 3 | sort -k 3 -rn | head -10\n    \u2192 datamash -g 1,2: group by columns 1+2 (src+dst IPs)\n    \u2192 sum 3: sum column 3 (orig_bytes)\n    \u2192 sort -k 3 -rn: sort by bytes descending\n    \u2192 Reveals top talkers / exfil destinations\n\n=== LOG COMPRESSION ===\nZeek compresses logs hourly by default:\n  \u2192 Older logs: gzip compressed\n  \u2192 Moved to YYYY-MM-DD/ directory\n\nWorking with compressed logs:\n  gzcat log.gz          \u2192 print gzipped log\n  zgrep 'pattern' *.gz  \u2192 search within gzipped logs\n\nReference: https://blog.rapid7.com/2016/06/02/working-with-bro-logs-queries-by-example/\n\n=== CONN_STATE VALUES ===\nSF  \u2192 normal established + closed connection\nS0  \u2192 connection attempt seen, no reply\nS1  \u2192 connection established, not closed\nRST \u2192 connection reset\nREJ \u2192 connection rejected\n\n=== ZEEK KEY FEATURES ===\n  Comprehensive logging of all network activity\n  Application-layer protocol analysis (regardless of port)\n  File content inspection across protocols\n  IPv6 support\n  Tunnel detection and analysis\n  Protocol sanity checking\n  IDS-like pattern matching\n  Powerful domain-aware scripting language\n  Outputs structured ASCII TSV logs (or ElasticSearch/DataSeries)\n  Real-time external input integration\n  External C library for sharing events with other programs",
+  "examples": [
+    {
+      "label": "Analyze PCAP with Zeek (ignore checksums)",
+      "command": "/usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/suspicious.pcap"
+    },
+    {
+      "label": "View connection log",
+      "command": "cat conn.log"
+    },
+    {
+      "label": "View DNS query log",
+      "command": "cat dns.log"
+    },
+    {
+      "label": "Extract DNS query fields with zeek-cut",
+      "command": "cat dns.log | /usr/local/zeek/bin/zeek-cut query | cut -d . -f1-7"
+    },
+    {
+      "label": "Sum bytes per src+dst pair (exfil hunting one-liner)",
+      "command": "cat conn.log | /usr/local/zeek/bin/zeek-cut id.orig_h id.resp_h orig_bytes | sort | grep -v -e '^$' | grep -v '-' | datamash -g 1,2 sum 3 | sort -k 3 -rn | head -10"
+    },
+    {
+      "label": "Download PCAP from target via SCP",
+      "command": "scp htb-student@<TARGET_IP>:/home/htb-student/pcaps/psempire.pcap ."
+    },
+    {
+      "label": "Search within gzip-compressed Zeek logs",
+      "command": "zgrep '<PATTERN>' *.gz"
+    },
+    {
+      "label": "View SMB file operations (PsExec detection)",
+      "command": "cat smb_files.log"
+    },
+    {
+      "label": "View DCE/RPC calls (PsExec service operations)",
+      "command": "cat dce_rpc.log"
+    },
+    {
+      "label": "View SMB share mappings",
+      "command": "cat smb_mapping.log"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Working with IDS/IPS",
+      "url": "https://academy.hackthebox.com/module/details/226"
+    },
+    {
+      "title": "Zeek Documentation",
+      "url": "https://docs.zeek.org/en/stable/"
+    },
+    {
+      "title": "Zeek Log Reference",
+      "url": "https://docs.zeek.org/en/master/logs/index.html"
+    },
+    {
+      "title": "Working with Zeek Logs",
+      "url": "https://blog.rapid7.com/2016/06/02/working-with-bro-logs-queries-by-example/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m09-snort-fundamentals",
+      "rel": "prereq",
+      "note": "Snort fundamentals \u2014 signature-based IDS context before Zeek behavioral analysis."
+    },
+    {
+      "id": "cdsa-m09-zeek-detection",
+      "rel": "next",
+      "note": "Zeek intrusion detection examples: beaconing, DNS exfil, TLS exfil, PsExec."
+    }
+  ],
+  "lint_ignore": [
+    "hardcoded-literal"
+  ]
+}

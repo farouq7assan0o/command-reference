@@ -1,0 +1,90 @@
+{
+  "id": "ad-register-pssession",
+  "name": "Register-PSSessionConfiguration - Fix Kerberos Double Hop",
+  "command": "Register-PSSessionConfiguration -Name <sessname> -RunAsCredential <domain>\\<user> -Force",
+  "description": "Creates a custom PSSession configuration that runs as a specific credential, enabling Kerberos double-hop — passing credentials through a remote session to access a third machine. Solves the problem where Enter-PSSession or Invoke-Command can reach host 2 but can't access host 3 because TGTs don't forward by default.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Lateral Movement",
+  "subcategory": "Double Hop",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "double-hop",
+    "kerberos",
+    "pssession",
+    "lateral-movement",
+    "winrm"
+  ],
+  "mitre": [
+    "T1021.006"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== THE KERBEROS DOUBLE-HOP PROBLEM ===\nKerberos TGTs are not forwarded across sessions by default:\n  AttackHost → PSSession WS01 (hop 1 works — TGT presented to WS01)\n  WS01 → try to access DC01 from INSIDE the session (hop 2 FAILS)\n  Why: WS01 got a service ticket for WinRM, but your TGT wasn't forwarded.\n       WS01 has no TGT to present to DC01.\n\nSymptom: 'Access denied' or 'no logon servers' when accessing network resources\nfrom inside a remote PS session.\n\n=== FIX: Register-PSSessionConfiguration ===\n# ON THE INTERMEDIATE HOST (WS01), run as admin:\nRegister-PSSessionConfiguration -Name MyConfig -RunAsCredential INLANEFREIGHT\\forend -Force\n\n# Then restart WinRM:\nRestart-Service WinRM\n\n# From attacker host:\nEnter-PSSession -ComputerName WS01 -Credential $cred -ConfigurationName MyConfig\n\n# Now INSIDE the session, credentials are available for hop 2:\nls \\\\DC01\\C$  → works now\nInvoke-Command -ComputerName DC01 -ScriptBlock { whoami }  → works\n\n=== WHY THIS WORKS ===\nThe custom configuration tells WinRM: 'When a session connects using MyConfig,\nrun AS the RunAsCredential account.' This loads a fresh logon session for\nINLANEFREIGHT\\forend on WS01, including a usable TGT that can be forwarded.\n\n=== ALTERNATIVE APPROACHES ===\n1. CredSSP (unsafe in prod — stores creds in LSASS of remote host)\n2. Explicit -Credential in every command inside session (more noise)\n3. Rubeus request TGT on remote host + inject → inject and use\n4. PTH or PtT inside the remote session manually\n\n=== CLEANUP ===\nUnregister-PSSessionConfiguration -Name MyConfig\nThis removes the config to avoid leaving artifacts on the intermediate host.",
+  "examples": [
+    {
+      "label": "Register config on intermediate host",
+      "command": "Register-PSSessionConfiguration -Name backupadm -RunAsCredential INLANEFREIGHT\\backupadm -Force"
+    },
+    {
+      "label": "Restart WinRM after registration",
+      "command": "Restart-Service WinRM"
+    },
+    {
+      "label": "Connect using the new config",
+      "command": "Enter-PSSession -ComputerName DEV01 -Credential $cred -ConfigurationName backupadm"
+    },
+    {
+      "label": "Test double-hop access",
+      "command": "ls \\\\ACADEMY-EA-DC01\\C$"
+    },
+    {
+      "label": "Remove config (cleanup)",
+      "command": "Unregister-PSSessionConfiguration -Name backupadm"
+    }
+  ],
+  "references": [
+    {
+      "title": "Kerberos Double Hop Problem (Microsoft)",
+      "url": "https://docs.microsoft.com/en-us/powershell/scripting/learn/remoting/ps-remoting-second-hop"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-evil-winrm",
+      "rel": "next",
+      "note": "Use the forwarded credentials."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Register-PSSessionConfiguration creates a WinRM endpoint that runs under a specified RunAsCredential. When a remote session connects to this named configuration, WinRM starts a new logon session for the RunAsCredential account on the intermediate host — including a full Kerberos TGT. Subsequent commands in that session can present this TGT for third-hop authentication, bypassing the default Kerberos double-hop limitation (which prevents TGT forwarding across remoting hops).",
+    "prerequisites": "Local admin on the intermediate host (to register a PSSession configuration). WinRM enabled on intermediate host. Valid credentials for the RunAsCredential account. Attacker access to the intermediate host via an existing remote session.",
+    "impact": "Enables credential forwarding through multi-hop PowerShell sessions — allows reaching a third host (e.g., DC) from inside a session on an intermediate host. Embedded credentials in the endpoint configuration persist until explicitly unregistered, creating a standing backdoor for credential reuse.",
+    "detection": "Windows Security Event 4104 (Script Block Logging) for Register-PSSessionConfiguration if PowerShell logging is enabled. New PSSession configuration appearing in WSMan:\\localhost\\Plugin (visible via Get-PSSessionConfiguration). Event 400/800 in PowerShell operational log when sessions use the new endpoint. Event 4624 type 3 for the RunAsCredential account logging on when sessions connect. Monitoring Get-PSSessionConfiguration output for non-standard endpoint names.",
+    "prevention": "Restrict who can register PSSession configurations (requires local admin — enforce this via LAPS and tiered admin). Monitor WSMan:\\localhost\\Plugin for unexpected configurations. Disable WinRM on hosts that don't require remote management. JEA (Just Enough Administration) provides constrained endpoints that limit what commands can run — use instead of full RunAs configurations. Clean up (Unregister-PSSessionConfiguration) any non-default configurations as part of hardening.",
+    "evasion": "Give the configuration a name matching a legitimate-sounding administrative endpoint (e.g., 'ITAdmin', 'BackupService'). Use Unregister-PSSessionConfiguration immediately after the double-hop operation completes to remove the artifact. The RunAsCredential account's logon events on the intermediate host appear as normal network logons — no special indicator for 'RunAs via WinRM config'.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1021.006"
+    ],
+    "misconfiguration": "WinRM (Windows Remote Management) is enabled on servers and workstations, and domain admin credentials are used directly on remote hosts — placing their NTLM hash/TGT in LSASS on those machines. Enter-PSSession and evil-winrm both use WinRM to open remote PowerShell sessions. Privileged credentials touching non-Tier-0 machines is the core 'double hop' and credential exposure problem.",
+    "vulnerable_config": "# WinRM enabled and listening on all interfaces:\nGet-WSManInstance -ResourceURI winrm/config/listener -SelectorSet @{Transport='HTTP'}\n# Address: *  (all interfaces — not restricted to management VLAN)\n\n# Domain admin used directly on workstations (credential exposure):\nEnter-PSSession -ComputerName workstation01 -Credential domain\\Administrator\n# Administrator hash/TGT now in LSASS on workstation01\n# If workstation01 is compromised, admin credentials are extracted",
+    "secure_config": "# Restrict WinRM listener to management subnet:\nNew-WSManInstance winrm/config/listener \\\n    -SelectorSet @{Transport='HTTP'; Address='10.10.1.0/24'}\n\n# Tier 0 admin accounts NEVER log into Tier 1/2 machines:\n# Privileged Access Workstations (PAW) model\n# Domain Admins only RDP/PSSession to DCs from dedicated PAW machines\n\n# Use JEA (Just Enough Administration) for delegated tasks:\n# Constrained runspaces that only allow specific commands\nNew-PSSessionConfigurationFile -Path admin.pssc -SessionType RestrictedRemoteServer\nRegister-PSSessionConfiguration -Path admin.pssc -Name 'HelpDesk'\n\n# Monitor: Event 4624 (logon type 3) for Domain Admins on non-DC machines\n# Alert on admin credentials used on workstations"
+  },
+  "tools": [
+    "powershell"
+  ]
+}

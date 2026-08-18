@@ -1,0 +1,111 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "https"
+  ],
+  "tools": [
+    "curl",
+    "jq"
+  ],
+  "tags": [
+    "certificate-transparency",
+    "crtsh",
+    "subdomains"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "Certificate Transparency",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "CPTS Ch05 — find dev subdomains from facebook.com CT logs",
+      "command": "curl -s \"https://crt.sh/?q=facebook.com&output=json\" | jq -r '.[] | select(.name_value | contains(\"dev\")) | .name_value' | sort -u"
+    },
+    {
+      "label": "All subdomains for target domain",
+      "command": "curl -s \"https://crt.sh/?q=inlanefreight.com&output=json\" | jq -r '.[].name_value' | sort -u"
+    }
+  ],
+  "notes": "API pattern: https://crt.sh/?q=<domain>&output=json . Also search Censys. CT logs are publicly auditable records of all issued TLS certificates. crt.sh aggregates them — filter by keyword (dev, staging, admin, api) to find non-obvious subdomains. The wildcard prefix query (%.<domain>) may return more results than exact match. Also covered in: CPTS Ch05 (Information Gathering – Web Edition).",
+  "references": [
+    {
+      "title": "crt.sh",
+      "url": "https://crt.sh/"
+    },
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dns-subdomain-brute-web",
+      "rel": "next",
+      "note": "Resolve/expand the CT-discovered subdomains."
+    },
+    {
+      "id": "web-fingerprinting",
+      "rel": "next",
+      "note": "Fingerprint the hosts found."
+    }
+  ],
+  "id": "crtsh-ct-logs",
+  "name": "Certificate Transparency - crt.sh",
+  "command": "curl -s \"https://crt.sh/?q=<domain>&output=json\" | jq -r '.[] | .name_value' | sort -u",
+  "description": "CT logs record every issued TLS certificate, exposing subdomains (including internal-sounding ones) without touching the target. Filter by a substring to focus.",
+  "opsec": "silent",
+  "mitre": [
+    "T1596.003"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Certificate Transparency (CT) logs are public, append-only ledgers that record every SSL/TLS certificate issued by a Certificate Authority. Querying crt.sh exposes all certificates ever issued for a domain, revealing subdomains, infrastructure naming patterns, and historical data — without any direct interaction with the target.",
+    "prerequisites": "Only the target's root domain name. Fully passive — the query hits the public crt.sh database, never the target.",
+    "impact": "Reveals subdomains and internal naming conventions from issued certificates — including hosts that never resolve via DNS brute force — expanding the attack surface for the next phase.",
+    "detection": "Very low detection risk: CT log queries are passive, targeting a public third-party database (crt.sh). The target organization has no visibility into who queries the logs. Defenders can however subscribe to CT log monitoring services to receive alerts when new certificates are issued for their domains, enabling early detection of unauthorized or rogue certificate issuance.\n\n[MITRE T1596.003 AN1963] Much of this activity may have a very high occurrence and associated false positive rate, as well as potentially taking place outside the visibility of the target organization, making detection difficult for defenders. Detection efforts may be focused on related stages of the adversary lifecycle, such as during Initial Access.",
+    "artifacts": "No artifacts on the target side — the request goes to crt.sh, not the organization's infrastructure. Nothing is logged by the victim.",
+    "prevention": "Actively monitor CT logs for your own domains using services such as crt.sh alerts or dedicated monitoring platforms. Revoke unauthorized certificates promptly upon discovery.\n\n[MITRE T1596.003 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
+    "sources": [
+      "HTB M05",
+      "MITRE T1596.003"
+    ],
+    "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
+    "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
+    "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
+  },
+  "variations": [
+    {
+      "description": "Filter CT results for specific keyword subdomains (e.g. dev, staging, admin)",
+      "command": "curl -s \"https://crt.sh/?q=<domain>&output=json\" | jq -r '.[] | select(.name_value | contains(\"<keyword>\")) | .name_value' | sort -u",
+      "label": "crt.sh JSON"
+    },
+    {
+      "description": "List all subdomains from CT logs, deduplicated",
+      "command": "curl -s \"https://crt.sh/?q=%.<domain>&output=json\" | jq -r '.[].name_value' | sort -u",
+      "label": "crt.sh JSON"
+    },
+    {
+      "description": "Show issuer + name_value fields (CA + domain)",
+      "command": "curl -s \"https://crt.sh/?q=<domain>&output=json\" | jq -r '.[] | [.name_value,.issuer_name] | @csv' | sort -u",
+      "label": "crt.sh JSON"
+    },
+    {
+      "description": "Query CT logs via certspotter API",
+      "command": "curl -s \"https://api.certspotter.com/v1/issuances?domain=<domain>&include_subdomains=true&expand=dns_names\" | jq '.[].dns_names[]' | tr -d '\"' | sort -u",
+      "label": "certspotter API"
+    }
+  ]
+}

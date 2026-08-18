@@ -1,0 +1,76 @@
+{
+  "id": "cdsa-kql-fundamentals",
+  "name": "KQL - Kibana Query Language Fundamentals",
+  "command": "field:value AND field2:value2 NOT field3:value3",
+  "description": "Kibana Query Language (KQL) syntax for querying Elastic SIEM data. Used in Discover and Dashboard visualizations to hunt events, filter data, and build detection rules.",
+  "platform": "linux",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "SIEM",
+  "subcategory": "KQL",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 02: Security Monitoring & SIEM Fundamentals",
+  "tags": ["kql", "kibana", "elastic", "siem", "query", "blue-team"],
+  "notes": "KQL runs at http://<TARGET_IP>:5601 → Discover (or Dashboard filter bar).\n\nBasic syntax:\n  field:value                           exact match\n  field: value1 OR value2              multiple values same field\n  field:value1 AND field2:value2       both conditions\n  NOT field:value  or  field:!value    negation\n  field: prefix*                       wildcard\n  field:>5  field:>=5  field:<5        comparison (numeric)\n  @timestamp >= \"2023-03-03T00:00:00.000Z\"  timestamp range\n\nImportant field types:\n  event.code        → Windows event ID (ECS preferred)\n  winlog.event_id   → Windows event ID (Winlogbeat specific)\n  user.name         → username (use user.name: not user.name.keyword in KQL)\n  user.name.keyword → use .keyword variant for aggregations/visualizations\n  host.hostname     → host reporting the event\n  @timestamp        → event timestamp\n  winlog.logon.type → logon type (Interactive, RemoteInteractive, Network...)\n  winlog.event_data.SubStatus → failure reason sub-code\n  winlog.channel    → Security, System, Application, etc.\n  event.action      → action string (e.g. 'logged-on', 'logoff')\n  group.name        → group name (local group membership events)\n  related.ip        → IPs involved in the event\n\nUseful SubStatus values for event 4625 (failed logon):\n  0xC0000072 → Account disabled\n  0xC000006A → Wrong password\n  0xC0000064 → Username does not exist\n  0xC0000234 → Account locked out",
+  "mitre": ["T1110", "T1078"],
+  "examples": [
+    {
+      "label": "Find all failed logon attempts (Event 4625)",
+      "command": "event.code:4625"
+    },
+    {
+      "label": "Failed logons against disabled accounts",
+      "command": "event.code:4625 AND winlog.event_data.SubStatus:0xC0000072"
+    },
+    {
+      "label": "Disabled-account failed logons in a date range",
+      "command": "event.code:4625 AND winlog.event_data.SubStatus:0xC0000072 AND @timestamp >= \"2023-03-03T00:00:00.000Z\" AND @timestamp <= \"2023-03-06T23:59:59.999Z\""
+    },
+    {
+      "label": "Failed logons for admin* accounts",
+      "command": "event.code:4625 AND user.name: admin*"
+    },
+    {
+      "label": "Exclude computer accounts (ending in $) and non-Security channel",
+      "command": "NOT user.name: *$ AND winlog.channel.keyword: Security"
+    },
+    {
+      "label": "Successful RDP logons by service accounts (svc- prefix)",
+      "command": "event.code:4624 AND winlog.logon.type: RemoteInteractive AND user.name: svc-*"
+    },
+    {
+      "label": "Local Administrators group membership changes",
+      "command": "(event.code:4732 OR event.code:4733) AND group.name: administrators"
+    },
+    {
+      "label": "Free text search across all fields",
+      "command": "\"svc-sql1\""
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Security Monitoring & SIEM Fundamentals",
+      "url": "https://academy.hackthebox.com/module/details/211"
+    },
+    {
+      "title": "Kibana Query Language Documentation",
+      "url": "https://www.elastic.co/guide/en/kibana/current/kuery-query.html"
+    },
+    {
+      "title": "Elastic Common Schema (ECS) - Event Fields",
+      "url": "https://www.elastic.co/guide/en/ecs/current/ecs-event.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-windows-event-ids-siem",
+      "rel": "next",
+      "note": "Key Windows event IDs to use in KQL queries."
+    },
+    {
+      "id": "cdsa-kibana-visualizations",
+      "rel": "next",
+      "note": "Build Kibana dashboards on top of KQL queries."
+    }
+  ]
+}

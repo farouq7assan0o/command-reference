@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nDNSenum automates subdomain brute-forcing plus zone transfer attempts, NS discovery, MX enumeration, and reverse lookups in one run. --enum shortcut enables default enumeration options. -r enables recursive brute-forcing \u2014 discovered subdomains are themselves tested as new enumeration targets.\n\n=== WORDLIST STRATEGY ===\nSecLists subdomains-top1million-20000.txt: standard starting point, statistically most common names. Custom wordlists: more efficient when target's naming conventions are known from job postings, documentation, or prior passive recon.\n\n=== DETECTION ===\nHigh volume of DNS queries in short period \u2014 detectable by DNS logging or rate-limiting on target's nameservers. Active technique \u2014 requires authorization. Generates as many queries as wordlist entries \u00d7 target domains.",
+  "references": []
+}

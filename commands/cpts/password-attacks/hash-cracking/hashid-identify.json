@@ -1,0 +1,84 @@
+{
+  "id": "hashid-identify",
+  "name": "hashID - Identify Hash Type",
+  "command": "hashid -m '<hash>'",
+  "description": "Identifies the likely algorithm behind an unknown hash and, with -m, prints the matching Hashcat mode number so you can pass it to -m. Always confirm the mode before launching a long crack.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "hashid"
+  ],
+  "tags": [
+    "hash",
+    "identify",
+    "hashcat"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Hash Cracking",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Identify a hash and show its hashcat mode",
+      "command": "hashid -m '$1$FNr44XZC$wQxY6HHLrgrGX0e1195k.1'"
+    }
+  ],
+  "notes": "Identify a hash type before cracking - hashid/hash-identifier guess the algorithm and hashcat mode. Match the format ($1$, $6$, aad3b..., $krb5tgs$) to the right `-m` mode or you'll waste GPU time.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "hashID",
+      "url": "https://github.com/psypanda/hashID"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hashcat-dictionary",
+      "note": "Crack the hash once the mode is known.",
+      "rel": "next"
+    },
+    {
+      "id": "hashcat-modes",
+      "note": "Reference of the -m mode numbers for hash types you meet most in CPTS labs, so you don't have to grep --help mid-engagement.",
+      "rel": "alternative"
+    },
+    {
+      "id": "john-crack",
+      "note": "Cracks hashes with John the Ripper.",
+      "rel": "alternative"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1110.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "hashid/hashcat --identify inspects a hash string and reports its likely algorithm/hash-mode so the right cracking mode is chosen.",
+    "prerequisites": "A hash string to analyse.",
+    "impact": "The hash type/mode - a purely offline, attacker-side lookup with no target contact.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Authentication protocols store or transmit passwords in formats that are offline-crackable: NTLM hashes (no salt, fast GPU attack), NTLMv2 net hashes (slightly slower but crackable), Kerberos RC4 hashes from Kerberoasting (offline crack without network contact), MD5/SHA1 web app hashes (no key stretching). Weak passwords crack in minutes; even complex ones crack with sufficient GPU power if hashing is fast.",
+    "vulnerable_config": "# NTLM hash — no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
+    "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
+  }
+}

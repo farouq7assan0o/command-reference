@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nQueries for NS (nameserver) records to identify all authoritative nameservers for a domain. Each NS record is an additional AXFR attempt target \u2014 secondary nameservers are often less hardened than primary.\n\n=== CHAINING ===\ndig ns domain \u2192 list all nameservers \u2192 attempt dig axfr @each-NS \u2192 try zone transfer against every NS before assuming it's blocked.\n\n=== WHY MULTIPLE NS ===\nAdministrators often harden the primary nameserver but forget secondary/tertiary NSes. Zone transfer attempts should be made against every NS record, not just the first one returned.",
+  "references": []
+}

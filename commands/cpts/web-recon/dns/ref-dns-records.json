@@ -1,0 +1,60 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "dig"
+  ],
+  "tags": [
+    "dns",
+    "reference",
+    "records"
+  ],
+  "category": "Reconnaissance",
+  "subcategory": "DNS",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 05: Information Gathering - Web Edition",
+  "examples": [
+    {
+      "label": "See every record for a domain",
+      "command": "dig inlanefreight.com ANY +noall +answer"
+    }
+  ],
+  "notes": "Record types:\n A -> IPv4 | AAAA -> IPv6 | CNAME -> alias | MX -> mail | NS -> name server\n TXT -> text (SPF/verification) | SOA -> zone authority | SRV -> service | PTR -> reverse\nHosts file: /etc/hosts (Linux), C:\\Windows\\System32\\drivers\\etc\\hosts (Windows)\n Format: <IP>  <hostname> [alias ...]   e.g. 192.168.1.20  testserver.local\nPublic resolvers: 8.8.8.8, 1.1.1.1",
+  "references": [
+    {
+      "title": "HTB Academy - Information Gathering - Web Edition",
+      "url": "https://academy.hackthebox.com/module/details/144"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dig-record-query",
+      "rel": "next",
+      "note": "Query these record types."
+    }
+  ],
+  "id": "ref-dns-records",
+  "name": "Reference - DNS Records & Hosts File",
+  "command": "# DNS record types, zone-file anatomy, and the local hosts file",
+  "description": "Lookup for DNS record types and the local hosts file used to map hostnames to IPs (needed to reach vhosts by name).",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1590.002"
+  ]
+}

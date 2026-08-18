@@ -1,0 +1,131 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "ftp"
+  ],
+  "tools": [
+    "ftp",
+    "wget",
+    "nmap",
+    "netcat",
+    "openssl"
+  ],
+  "tags": [
+    "ftp",
+    "anonymous",
+    "enumeration"
+  ],
+  "category": "Enumeration",
+  "subcategory": "FTP",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "FTP client commands",
+      "command": "ls\nls -R\nstatus\nget Important\\ Notes.txt\nput testupload.txt\nexit"
+    },
+    {
+      "label": "Manual interaction (nc / telnet)",
+      "command": "nc -nv 10.129.14.136 21\ntelnet 10.129.14.136 21"
+    },
+    {
+      "label": "TLS/SSL FTP via OpenSSL",
+      "command": "openssl s_client -connect 10.129.14.136:21 -starttls ftp"
+    },
+    {
+      "label": "Find FTP NSE scripts",
+      "command": "sudo nmap --script-updatedb\nfind / -type f -name ftp* 2>/dev/null | grep scripts"
+    },
+    {
+      "label": "Lab example",
+      "command": "ftp 10.129.14.136"
+    }
+  ],
+  "notes": "Always try anonymous login first (anonymous:anonymous). Note the banner/software+version for known CVEs. `ls -la` for hidden files; download everything with `wget -m`. Writable root often means webshell upload if FTP serves a web dir.",
+  "references": [
+    {
+      "title": "vsFTPd",
+      "url": "https://security.appspot.com/vsftpd.html"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ftp-bruteforce",
+      "rel": "escalation",
+      "note": "Brute the login if anonymous fails."
+    },
+    {
+      "id": "coreftp-path-traversal",
+      "rel": "escalation",
+      "note": "CoreFTP CVE-2022-22836 arbitrary file write."
+    },
+    {
+      "id": "ftp-bounce",
+      "rel": "alternative",
+      "note": "Use the server to scan other hosts."
+    },
+    {
+      "id": "ref-ftp-config",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "ftp-enum",
+  "name": "FTP - Enumeration",
+  "command": "ftp <ip>",
+  "description": "Enumerate FTP: try anonymous login, browse/mirror files, run NSE scripts, and interact manually with nc/telnet/openssl to read the banner and test commands.",
+  "variations": [
+    {
+      "label": "Anonymous login (user: anonymous)",
+      "command": "ftp <ip>"
+    },
+    {
+      "label": "Mirror everything via wget",
+      "command": "wget -m --no-passive ftp://anonymous:anonymous@<ip>"
+    },
+    {
+      "label": "Nmap FTP scan",
+      "command": "sudo nmap -sV -p21 -sC -A <ip>"
+    },
+    {
+      "label": "Nmap with script trace",
+      "command": "sudo nmap -sV -p21 -sC -A <ip> --script-trace"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "FTP is a clear-text protocol, meaning credentials and data can be sniffed if an attacker is on the network. Anonymous FTP login is a misconfiguration common on internal servers whose administrators assume they are not discoverable — 'configuration errors are found on servers that the administrators think are not discoverable.' This attitude means internal systems are often left without hardening.",
+    "prerequisites": "Network access to an FTP service (TCP 21), ideally permitting anonymous/guest login.",
+    "impact": "A directory listing and downloadable files (possibly credentials or sensitive data) plus the server version for CVE matching.",
+    "detection": "[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "An FTP connection and login command in the server log; plaintext control-channel traffic visible to sniffers.",
+    "prevention": "Disable anonymous FTP access. Enable TLS/SSL (FTPS) to encrypt credentials and data in transit. Set hide_ids=YES to prevent local usernames from appearing in directory listings, removing targets for brute-force. Deploy fail2ban to block IPs after repeated failed login attempts — described in the module as 'a standard implementation of any infrastructure.'\n\n[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "sources": [
+      "HTB M04",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "The FTP server allows anonymous login (username 'anonymous', any password), which may expose sensitive files. Additionally, FTP transmits credentials in cleartext over the network — any passive eavesdropper on the same network segment can capture usernames and passwords. FTPS or SFTP should replace FTP in all cases.",
+    "vulnerable_config": "# vsftpd — anonymous login enabled (common default):\n# /etc/vsftpd.conf:\nanonymous_enable=YES       # allows login as 'anonymous'\nanon_upload_enable=YES     # anonymous can upload files\nanon_mkdir_write_enable=YES # anonymous can create directories\nwrite_enable=YES\n# No encryption — credentials and data in cleartext (port 21)",
+    "secure_config": "# vsftpd — disable anonymous, enforce encryption:\n# /etc/vsftpd.conf:\nanonymous_enable=NO        # disable anonymous login\nlocal_enable=YES\nwrite_enable=NO            # read-only by default\nchroot_local_user=YES      # jail users to their home directory\n\n# Enable FTPS (TLS):\nssl_enable=YES\nrsa_cert_file=/etc/ssl/certs/vsftpd.crt\nrsa_private_key_file=/etc/ssl/private/vsftpd.key\nforce_local_logins_ssl=YES  # require TLS for all logins\nforce_local_data_ssl=YES    # require TLS for all data transfers\nssl_tlsv1_2=YES\n\n# Better alternative: use SFTP (SSH subsystem) instead of FTP entirely:\n# sshd_config: Subsystem sftp /usr/lib/openssh/sftp-server\n# chroot via Match User block"
+  }
+}

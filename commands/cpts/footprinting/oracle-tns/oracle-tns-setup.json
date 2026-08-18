@@ -1,0 +1,68 @@
+{
+  "type": "script",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "oracle"
+  ],
+  "tools": [
+    "odat",
+    "sqlplus"
+  ],
+  "tags": [
+    "oracle",
+    "setup",
+    "odat"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Oracle TNS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Install deps + ODAT",
+      "command": "sudo apt-get install -y build-essential python3-dev libaio1 python3-scapy\ngit clone https://github.com/quentinhardy/odat.git && cd odat/\ngit submodule init && git submodule update\nsudo pip3 install colorlog termcolor passlib python-libnmap pycryptodome\n./odat.py -h"
+    },
+    {
+      "label": "Fix sqlplus libclntsh error",
+      "command": "sudo sh -c \"echo /usr/lib/oracle/12.2/client64/lib > /etc/ld.so.conf.d/oracle-instantclient.conf\";sudo ldconfig"
+    }
+  ],
+  "notes": "Config files: $ORACLE_HOME/network/admin/{tnsnames.ora,listener.ora}.",
+  "references": [
+    {
+      "title": "ODAT",
+      "url": "https://github.com/quentinhardy/odat"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "oracle-tns-enum",
+      "rel": "next",
+      "note": "Now enumerate SIDs and accounts."
+    }
+  ],
+  "id": "oracle-tns-setup",
+  "name": "Oracle TNS - ODAT / sqlplus Setup",
+  "command": "git clone https://github.com/quentinhardy/odat.git && cd odat/",
+  "description": "One-time install of the Oracle client (cx_Oracle) and ODAT toolkit needed to attack TNS, plus the fix for the common sqlplus shared-library error.",
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok"
+}

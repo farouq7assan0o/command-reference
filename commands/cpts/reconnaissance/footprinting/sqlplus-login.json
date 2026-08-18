@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nsqlplus is Oracle's native SQL client. After ODAT discovers valid credentials (scott/tiger or others), sqlplus provides an interactive SQL session. sysdba connection (sqlplus user/pass@SID as sysdba) escalates to SYS user with full DBA privileges.\n\n=== KEY QUERIES ===\nSELECT * FROM sys.user$ \u2192 all user password hashes\nSELECT * FROM user_tables \u2192 current user's accessible tables\nSELECT table_name FROM all_tables WHERE owner = 'HR' \u2192 enumerate specific schema\nEXEC utl_file.fwrite(...) \u2192 file write if UTL_FILE access granted\n\n=== SYSDBA PATH ===\nAny account with SYSDBA privilege: sqlplus user/pass@SID as sysdba \u2192 SYS user \u2192 full control \u2192 sys.user$ hash extraction for offline cracking.",
+  "references": []
+}

@@ -1,0 +1,88 @@
+{
+  "id": "ad-admodule-trust",
+  "name": "ActiveDirectory Module - Get-ADTrust",
+  "command": "Get-ADTrust -Filter *",
+  "description": "Enumerates all Active Directory trust relationships for the current domain. Shows trust direction (Inbound/Outbound/Bidirectional), trust type (Forest/External/Realm), and whether SID filtering is enforced. Critical first step for cross-domain and cross-forest attack paths.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP",
+    "CRTP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "trusts",
+    "cross-domain",
+    "cross-forest",
+    "active-directory-module",
+    "powershell"
+  ],
+  "mitre": [
+    "T1482"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== UNDERSTANDING TRUST DIRECTION ===\nTrust direction = direction of ACCESS, which is OPPOSITE to authentication flow:\n  Trusting domain (source of the trust arrow) → allows access to its resources\n  Trusted domain (target of the trust arrow) → accounts are trusted here\n\n  Outbound trust from A to B: A trusts B → B's users can access A's resources\n  Inbound trust from A to B: A is trusted by B → A's users can access B's resources\n  Bidirectional: both sides can access each other\n\nMemory aid: 'The trust goes TO the domain you trust (whose accounts you accept)'\n\n=== KEY OUTPUT FIELDS ===\n  Source        → the current domain (where you ran the command)\n  Target        → the other domain in the trust\n  Direction     → Inbound / Outbound / BiDirectional\n  TrustType     → Forest (cross-forest) / External (domain-to-domain)\n  SIDFilteringForestAware → True means SID history attacks are blocked\n  SIDFilteringQuarantined → True means extra protection — ExtraSids attack blocked\n\n=== TRUST ATTACK PATHS ===\nBidirectional trust + SIDFiltering=False → ExtraSids attack possible\n  (child → parent domain escalation via golden ticket + /sids flag)\nBidirectional cross-forest trust → Kerberoasting across forest boundary\n  GetUserSPNs.py with -target-domain <FOREIGN.DOMAIN>\nExternal trust (domain-level) → more restricted, no transitive access\n\n=== WHAT TO DO WITH THIS ===\n1. Map all trusts (this command)\n2. Check SIDFiltering status — if false on a parent-child pair → ExtraSids\n3. Enumerate users/groups in trusted domains: Get-ADUser -Server <trusted_dc>\n4. Look for foreign group memberships: Get-DomainForeignGroupMember (PowerView)",
+  "examples": [
+    {
+      "label": "List all trusts for current domain",
+      "command": "Get-ADTrust -Filter *"
+    },
+    {
+      "label": "Get trusts for a specific domain",
+      "command": "Get-ADTrust -Filter * -Server LOGISTICS.INLANEFREIGHT.LOCAL"
+    },
+    {
+      "label": "PowerView equivalent",
+      "command": "Get-DomainTrustMapping"
+    },
+    {
+      "label": "Check SID filtering status",
+      "command": "Get-ADTrust -Filter * | Select Name,Direction,SIDFilteringForestAware,SIDFilteringQuarantined"
+    }
+  ],
+  "references": [
+    {
+      "title": "Get-ADTrust (Microsoft)",
+      "url": "https://docs.microsoft.com/en-us/powershell/module/activedirectory/get-adtrust"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-admodule-spn",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Get-ADTrust enumerates domain/forest trust relationships for cross-domain attack paths.",
+    "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
+    "impact": "A map of trusts to pivot across domains/forests.",
+    "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
+    "artifacts": "LDAP/trust queries for trustedDomain objects.",
+    "prevention": "AD is readable by any authenticated user by design, so prevention is limited - focus on DETECTION (Defender for Identity, LDAP/SMB anomaly monitoring), least privilege, disabling anonymous/null sessions, and REDUCING what's exposed (remove unnecessary SPNs, descriptions with secrets, over-shared folders).",
+    "evasion": "Use built-in tools (net, AD module, dsquery) that blend with normal admin activity; throttle and scope collection; avoid the noisiest methods (full BloodHound sweeps, RID brute) where Defender for Identity is present.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1482"
+    ],
+    "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+  },
+  "tools": [
+    "ActiveDirectory"
+  ]
+}

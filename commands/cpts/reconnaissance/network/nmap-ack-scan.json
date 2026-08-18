@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\nTCP ACK scan (-sA) sends ACK packets rather than SYN. Firewalls commonly block inbound SYN (new connections from external sources) but pass ACK (associated with established connections). ACK scan identifies which ports are filtered vs unfiltered regardless of open/closed state.\n\n=== STATE INTERPRETATION ===\nRST response = unfiltered (port reachable, firewall passed the ACK)\nNo response = filtered (firewall blocked the ACK)\nNote: 'unfiltered' does NOT mean open \u2014 ACK scan cannot distinguish open from closed. Combine with SYN scan to confirm open status.\n\n=== USE CASE ===\nCharacterizing firewall ruleset: port showing 'open' under -sS but 'unfiltered' under -sA confirms stateless ACK passthrough rule. Use to understand which ports the firewall inspects and which it passes.",
+  "references": []
+}

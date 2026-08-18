@@ -1,0 +1,90 @@
+{
+  "id": "win-bof-eip-control",
+  "name": "Windows BOF - Step 2: EIP Control (Pattern Offset)",
+  "command": "msf-pattern_create -l <crash_length>\nmsf-pattern_offset -l <crash_length> -q <EIP_value>",
+  "description": "Send a de Bruijn cyclic pattern instead of 'A's. When the service crashes, read the 4-byte value in EIP from Immunity Debugger and feed it to pattern_offset to find the exact number of bytes before EIP \u2014 the offset. Confirm by sending offset bytes of 'A', then 'BBBB' (42424242) in EIP, and padding after.",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "python",
+    "msfvenom"
+  ],
+  "tags": [
+    "bof",
+    "buffer-overflow",
+    "eip",
+    "offset",
+    "pattern",
+    "exploit-dev"
+  ],
+  "category": "Exploitation",
+  "subcategory": "Buffer Overflow",
+  "certifications": [
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "source": "OSCP Classic - Windows Buffer Overflow Methodology",
+  "examples": [
+    {
+      "label": "Generate a cyclic pattern (use crash length + 400 bytes padding)",
+      "command": "msf-pattern_create -l 2400"
+    },
+    {
+      "label": "Find exact offset from EIP value seen in Immunity",
+      "command": "msf-pattern_offset -l 2400 -q 39694438"
+    },
+    {
+      "label": "Confirm control: 'A'*offset + 'B'*4 + 'C'*rest",
+      "command": "# EIP should show 42424242 (BBBB) on crash -> offset is correct"
+    },
+    {
+      "label": "Alternative: mona in Immunity Debugger",
+      "command": "!mona pc 2400     # create pattern\n!mona po 39694438  # find offset"
+    }
+  ],
+  "notes": "Make the pattern longer than your fuzz crash length to be safe (add 400 bytes). After finding the offset, ALWAYS confirm it: send exactly offset 'A's + 'BBBB' + 'C's to fill the rest \u2014 if EIP = 42424242 you have clean control. Mona (!mona pc / !mona po) is the Immunity-native equivalent of msf-pattern_* and works without switching windows. [Note: BOF labs removed from PEN-200 2024 curriculum but remain in OSCP practice machines and TryHackMe/HackTheBox prep.]",
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Windows Buffer Overflows",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "win-bof-fuzzing",
+      "rel": "prereq",
+      "note": "Fuzzing gives you the approximate crash length needed here."
+    },
+    {
+      "id": "win-bof-badchars",
+      "rel": "next",
+      "note": "With EIP confirmed, identify which bytes corrupt the stack."
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1203"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "After fuzzing identifies the crash offset, a cyclic pattern (Metasploit pattern_create or cyclic) is sent to determine the exact byte offset at which the saved EIP is overwritten. When the application crashes, the unique 4-byte value in EIP maps back to an exact offset in the pattern. This gives the precise number of bytes of padding needed before the 4-byte return address override \u2014 enabling controlled EIP overwrite to redirect execution.",
+    "prerequisites": "Confirmed buffer overflow from fuzzing phase. Immunity Debugger + Mona.py on test system. Metasploit pattern_create tool. Exact offset value needed before crafting working exploit.",
+    "impact": "T1203 Exploitation for Client Execution. Precise EIP control enables redirection of execution to attacker-controlled shellcode. This is the core primitive for exploiting a stack buffer overflow into arbitrary code execution.",
+    "detection": "Same as fuzzing \u2014 application crash with a recognizable cyclic pattern in EIP is a strong indicator of active exploit development. WER/crash dumps. IDS: malformed input with Metasploit cyclic pattern bytes (Aa0A, Aa1A... are recognizable patterns).\nClient app (browser, Office, PDF/reader) crashes or loads from unusual location, then drops/modifies files in user-writable paths, spawns unexpected child (powershell/cmd/mshta/rundll32), and establishes outbound C2-like connections; correlate app logs, file writes, process lineage, and network egress (DET0287/AN0797).\nBrowser/Office/reader process logs crash/segfault; new executable/script in /sessions/magical-confident-franklin (Downloads, ~/.cache, /tmp); unexpected child like curl/wget/bash opens network connections (AN0798).\nApp crash in unified logs for Safari/Chrome/Office/Preview; new files in ~/Library, ~/Downloads, /private/var/folders/*; unexpected child (osascript, zsh, bash, curl) spawned; new outbound connections (AN0799).",
+    "artifacts": "Application crash (Event 1000) | WER crash dump containing cyclic pattern | IDS: Metasploit cyclic pattern string in input | Debugger: specific cyclic 4-byte value in EIP register",
+    "prevention": "Stack canaries detect overwrite before EIP is reached. DEP/NX prevents execution of injected shellcode. ASLR randomizes return address \u2014 even with EIP control, return address must be known. CFG (Control Flow Guard): validates indirect call targets.\nApplication Isolation and Sandboxing: Browser sandboxes can mitigate exploitation impact; other virtualization/microsegmentation may also help.\nExploit Protection: Use WDEG/EMET to mitigate exploitation behavior; control flow integrity checking can identify and stop software exploits.\nUpdate Software: Perform regular software updates to mitigate exploitation risk.",
+    "evasion": "Generate a custom (non-Metasploit) cyclic pattern to evade signature detection on the pattern bytes. Target offline test environment. Use non-standard input vector.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1203/"
+    ],
+    "misconfiguration": "No stack canary: EIP overwrite reaches saved return address undetected. ASLR disabled: return addresses are predictable. No CFG: arbitrary EIP redirection succeeds without control flow validation.",
+    "vulnerable_config": "# Verify no stack canary (Immunity Debugger/mona):\n# !mona modules\n# \u2192 GS: False (no stack canary) for vulnerable module\n# \u2192 ASLR: False (fixed base address)\n# \u2192 Rebase: False\n# \u2192 SafeSEH: False\n# \u2192 NXCompat: False\n# ALL False = fully exploitable",
+    "secure_config": "# Enable all binary mitigations:\n# cl.exe /GS /DYNAMICBASE /NXCOMPAT /GUARD:cf vuln.c\n\n# Verify mitigations on existing binary:\n# PowerShell:\n$binary = 'C:\\Program Files\\App\\app.exe'\n$pe = [System.Reflection.Assembly]::LoadFile($binary)\n# Or use:\n# Get-PEHeader $binary | Select-Object ASLR, DEP, SafeSEH, CFGuard\n\n# Process Mitigation Policy via PowerShell:\nSet-ProcessMitigation -Name app.exe -Enable DEP,ASLR,StrictHandleChecks,CFG"
+  }
+}

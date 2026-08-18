@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-p- scans all 65535 ports. --stats-every=5s prints progress updates automatically every 5 seconds (vs pressing spacebar manually). -v reports open ports to terminal as discovered rather than only at completion.\n\n=== WORKFLOW ===\nTwo-phase approach: quick top-port scan first \u2192 -p- full scan in background while analyzing initial results \u2192 once -p- completes, target confirmed open ports with -sV.\n\n=== WHY FULL SCAN ===\nServices on non-standard ports (web apps on 8080/8443, SSH on 2222, databases on high ports) are missed by default top-1000-ports scan. Full port scan is mandatory for thorough enumeration.",
+  "references": []
+}

@@ -1,0 +1,51 @@
+{
+  "id": "cdsa-cyber-kill-chain",
+  "name": "Cyber Kill Chain & Pyramid of Pain",
+  "command": "# Kill Chain: Recon → Weaponize → Deliver → Exploit → Install → C2 → Action on Objectives",
+  "description": "Lockheed Martin's 7-phase Cyber Kill Chain and the Pyramid of Pain — two foundational frameworks for understanding attacker TTPs and prioritizing defensive responses.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Incident Response",
+  "subcategory": "IR Process",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 01: Incident Handling Process",
+  "tags": ["kill-chain", "pyramid-of-pain", "framework", "ttp", "reference"],
+  "notes": "Cyber Kill Chain phases:\n1. Reconnaissance — OSINT, scanning, social engineering targets.\n2. Weaponization — Build exploit + payload (malware, malicious doc).\n3. Delivery — Email phishing, drive-by download, USB drop.\n4. Exploitation — Trigger vulnerability, execute payload.\n5. Installation — Establish persistence (registry, service, scheduled task).\n6. Command & Control (C2) — Beacon to attacker-controlled infra.\n7. Actions on Objectives — Exfiltration, encryption, lateral movement.\n\nPyramid of Pain (hardest IOC to change at top, easiest at bottom):\n[Top]  TTPs (hardest — changing forces attacker to retool)\n       Tools (binaries, RATs)\n       Network/Host Artefacts (registry keys, mutexes)\n       Domain Names\n       IP Addresses\n[Base] Hash Values (trivial recompile = new hash)\n\nDetector takeaway: push detections up the pyramid. Hash-only detections are easily evaded; TTP-based detections (Sigma, YARA) survive recompilation.",
+  "mitre": ["T1595", "T1566", "T1059", "T1071", "T1560"],
+  "examples": [
+    {
+      "label": "Map an alert to kill chain phase",
+      "command": "# Sysmon Event 1 cmd.exe spawned by Word.exe → Exploitation/Installation phase"
+    },
+    {
+      "label": "Identify where to break the chain",
+      "command": "# Delivery blocked by mail filter → chain ends at phase 3; no exploitation possible"
+    },
+    {
+      "label": "Apply Pyramid of Pain to detection",
+      "command": "# Write Sigma rule for 'cmd.exe /c whoami' pattern (TTP) instead of blocking single hash"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Incident Handling Process",
+      "url": "https://academy.hackthebox.com/module/details/148"
+    },
+    {
+      "title": "Lockheed Martin - Intelligence-Driven Computer Network Defense",
+      "url": "https://lockheedmartin.com/content/dam/lockheed-martin/rms/documents/cyber/LM-White-Paper-Intel-Driven-Defense.pdf"
+    },
+    {
+      "title": "Pyramid of Pain (David Bianco)",
+      "url": "https://detect-respond.blogspot.com/2013/03/the-pyramid-of-pain.html"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-ir-lifecycle",
+      "rel": "next",
+      "note": "Use kill chain mapping during Detection & Analysis stage."
+    }
+  ]
+}

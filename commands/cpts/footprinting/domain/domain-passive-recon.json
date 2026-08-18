@@ -1,0 +1,115 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "https",
+    "dns"
+  ],
+  "tools": [
+    "curl",
+    "jq",
+    "host",
+    "dig",
+    "shodan"
+  ],
+  "tags": [
+    "osint",
+    "subdomains",
+    "crtsh",
+    "shodan"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Domain Information",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "All DNS record types for a domain",
+      "command": "dig any inlanefreight.com"
+    },
+    {
+      "label": "Lab example",
+      "command": "curl -s 'https://crt.sh/?q=inlanefreight.com&output=json' | jq ."
+    }
+  ],
+  "notes": "TXT/SPF records leak third-party services (Atlassian, Gmail, LogMeIn, Mailgun, Outlook) and internal IP ranges. Data sources: crt.sh, Shodan, domain.glass.",
+  "references": [
+    {
+      "title": "crt.sh",
+      "url": "https://crt.sh/"
+    },
+    {
+      "title": "Shodan",
+      "url": "https://www.shodan.io/"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cloud-recon",
+      "rel": "next",
+      "note": "Hunt cloud assets from the resolved IPs."
+    },
+    {
+      "id": "staff-osint",
+      "rel": "next",
+      "note": "Profile employees for username/OSINT."
+    },
+    {
+      "id": "subfinder-enum",
+      "rel": "next",
+      "note": "Expand the subdomain set."
+    }
+  ],
+  "id": "domain-passive-recon",
+  "name": "Domain Information - Passive Recon",
+  "command": "curl -s 'https://crt.sh/?q=<domain>.com&output=json' | jq .",
+  "description": "Passively map a company's internet presence from certificate transparency logs, DNS, and Shodan - no packets to the target's own infrastructure.",
+  "steps": [
+    {
+      "label": "1. Pull subdomains from crt.sh",
+      "command": "curl -s 'https://crt.sh/?q=inlanefreight.com&output=json' | jq . | grep name | cut -d\":\" -f2 | grep -v \"CN=\" | cut -d'\"' -f2 | awk '{gsub(/\\\\n/,\"\\n\");}1;' | sort -u"
+    },
+    {
+      "label": "2. Resolve subdomains to IPs",
+      "command": "for i in $(cat subdomainlist);do host $i | grep \"has address\" | grep inlanefreight.com | cut -d\" \" -f1,4;done"
+    },
+    {
+      "label": "3. Query each IP in Shodan",
+      "command": "for i in $(cat subdomainlist);do host $i | grep \"has address\" | grep inlanefreight.com | cut -d\" \" -f4 >> ip-addresses.txt;done\nfor i in $(cat ip-addresses.txt);do shodan host $i;done"
+    }
+  ],
+  "opsec": "silent",
+  "mitre": [
+    "T1590"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries gather network information (IP ranges, domain names, topology, operational details) through direct collection actions, public databases, DNS queries, and active scanning — all before any attack begins. This reconnaissance shapes the subsequent attack by identifying accessible systems, exposed services, and network architecture.",
+    "prerequisites": "Only the target domain or organization name.",
+    "impact": "IP ranges, domains, topology, and operational details assembled from public/OSINT sources.",
+    "detection": "Much of this activity takes place outside the visibility of the target organization and has a high false positive rate. Detection efforts are more effective when focused on related stages of the adversary lifecycle, such as during Initial Access.",
+    "artifacts": "None on the target — passive OSINT queries third-party sources, not the victim's infrastructure.",
+    "prevention": "This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside of enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of network information available to external parties.",
+    "sources": [
+      "MITRE T1590"
+    ],
+    "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
+    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  }
+}

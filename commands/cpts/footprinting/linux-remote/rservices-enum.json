@@ -1,0 +1,103 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "rservices"
+  ],
+  "tools": [
+    "nmap",
+    "rlogin",
+    "rusers"
+  ],
+  "tags": [
+    "r-services",
+    "rlogin",
+    "trust"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Linux Remote Management",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "examples": [
+    {
+      "label": "Trust files to check",
+      "command": "cat /etc/hosts.equiv\ncat .rhosts   # a '+ +' entry trusts everyone"
+    },
+    {
+      "label": "Lab example",
+      "command": "sudo nmap -sV -p 512,513,514 10.0.17.2"
+    },
+    {
+      "label": "Enumerate logged-in users via rusers",
+      "command": "rusers -al 10.0.17.5"
+    }
+  ],
+  "notes": "Ports: 512 rexec, 513 rlogin, 514 rsh/rcp, 513/udp rwho.",
+  "references": [
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hydra-bruteforce",
+      "rel": "escalation",
+      "note": "Brute rlogin/rsh/rexec on 512-514."
+    },
+    {
+      "id": "rsync-enum",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "rservices-enum",
+  "name": "R-Services - Enumeration",
+  "command": "sudo nmap -sV -p 512,513,514 <ip>",
+  "description": "Legacy r-services (rlogin/rsh/rexec) trust hosts listed in .rhosts/hosts.equiv. A wildcard (+) entry lets anyone log in without a password.",
+  "variations": [
+    {
+      "label": "Scan r-services",
+      "command": "sudo nmap -sV -p 512,513,514 <ip>"
+    },
+    {
+      "label": "rlogin",
+      "command": "rlogin <ip> -l <user>"
+    },
+    {
+      "label": "Enumerate users on the network",
+      "command": "rwho\nrusers -al <ip>"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "'The primary concern for r-services, and one of the primary reasons SSH was introduced to replace it, is the inherent issues regarding access control.' R-services rely on /etc/hosts.equiv and .rhosts files that 'contain a list of hosts (IPs or Hostnames) and users that are trusted by the local host.' Hosts listed in these files can authenticate without a password, bypassing PAM authentication entirely based on source hostname or IP — which can be spoofed.",
+    "prerequisites": "Network access to r-services (TCP 512/513/514) and a trusted host relationship or valid account.",
+    "impact": "Command execution or login via trust relationships (.rhosts / hosts.equiv) without a password.",
+    "detection": "[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "rlogin/rsh/rexec connections in service logs; .rhosts trust abuse.",
+    "prevention": "Remove or disable all r-services (rlogin, rsh, rexec) and replace with SSH, which was designed specifically to address these weaknesses. Delete or strictly restrict /etc/hosts.equiv and all user .rhosts files. Block r-service ports (512, 513, 514) at the firewall.\n\n[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "sources": [
+      "HTB M04",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
+    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  }
+}

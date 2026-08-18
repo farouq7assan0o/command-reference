@@ -1,0 +1,112 @@
+{
+  "id": "msf-autoroute",
+  "name": "Metasploit - AutoRoute and SOCKS Proxy",
+  "command": "run autoroute -s <subnet>",
+  "description": "Adds a route through a Meterpreter session so Metasploit modules can reach an internal subnet, then optionally starts a socks_proxy server so external proxychains-aware tools can use the same route. Core of pivoting inside MSF.",
+  "platform": "linux",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "metasploit"
+  ],
+  "tags": [
+    "metasploit",
+    "autoroute",
+    "socks",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "Metasploit Pivoting",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "Meterpreter autoroute",
+      "command": "run autoroute -s 172.16.5.0/23"
+    },
+    {
+      "label": "Meterpreter autoroute",
+      "command": "run autoroute -p"
+    },
+    {
+      "label": "use example",
+      "command": "use auxiliary/server/socks_proxy\nset SRVPORT 9050\nset VERSION 4a\nrun"
+    },
+    {
+      "label": "OSCP Ch20 \u2014 add manual route to subnet via a specific session",
+      "command": "route add <subnet/cidr> <session_id>"
+    },
+    {
+      "label": "OSCP Ch20 \u2014 print active routing table",
+      "command": "route print"
+    },
+    {
+      "label": "OSCP Ch20 \u2014 add SOCKS5 proxy over the session route (pair with proxychains)",
+      "command": "use auxiliary/server/socks_proxy\nset SRVPORT 1080\nset VERSION 5\nrun -j"
+    }
+  ],
+  "notes": "autoroute -p lists active routes. Pair socks_proxy with a proxychains 'socks4 127.0.0.1 9050' entry. Also covered in: OSCP PEN-200 Chapter 20 (The Metasploit Framework). OSCP Ch20: 'route add <cidr> <session_id>' adds a manual route; autoroute post module (use multi/manage/autoroute) does the same automatically. After routing, use auxiliary/server/socks_proxy to expose a SOCKS proxy \u2014 add 'socks5 127.0.0.1 1080' to proxychains4.conf then proxychains any tool into the internal network. Alternatively use auxiliary/scanner/portscan/tcp to scan through the route directly from MSF without proxychains.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "OffSec PEN-200 - The Metasploit Framework",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "proxychains-run",
+      "note": "Run external tools over the MSF SOCKS proxy.",
+      "rel": "next"
+    },
+    {
+      "id": "msf-portfwd",
+      "note": "Creates a local TCP relay through a Meterpreter session: connections to the attack host's <local_port> are forwarded to <target>:<remote_...",
+      "rel": "alternative"
+    },
+    {
+      "id": "ping-sweep",
+      "note": "Once on a pivot, sweep the internal subnet for live hosts using native tools so you do not need to upload a scanner.",
+      "rel": "prereq"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1090.001"
+  ],
+  "exam": "msf-one-machine",
+  "defense": {
+    "why_it_works": "post/multi/manage/autoroute adds routes through a Meterpreter session so Metasploit modules (and, with socks_proxy, external tools) reach the session's internal networks.",
+    "prerequisites": "An active Meterpreter session on a pivot with internal reachability.",
+    "impact": "Metasploit traffic (and proxied tools) routed into the internal network via the session.",
+    "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
+    "artifacts": "Routes added in the MSF session; internal connections sourced from the pivot host; the Meterpreter C2.",
+    "prevention": "[MITRE T1090.001 M1030 Network Segmentation] strict east-west firewall rules so one foothold can't reach other segments; egress filtering; IDS/IPS + NetFlow analysis for proxy patterns and long-lived flows; alert on unexpected listeners on servers.",
+    "evasion": "Tunnel over an allowed protocol/port (443) and encrypt the channel so the relay blends with normal traffic; keep the listener on a common-looking port.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1090.001"
+    ],
+    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
+  },
+  "variations": [
+    {
+      "label": "MSF SOCKS Proxy",
+      "command": "use auxiliary/server/socks_proxy\nset SRVPORT 9050\nset SRVHOST 0.0.0.0\nset version 4a\nrun\njobs",
+      "description": "Start a SOCKS4a proxy listener in MSF so proxychains can route traffic through the autoroute tunnel"
+    }
+  ]
+}

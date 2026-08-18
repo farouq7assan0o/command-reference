@@ -1,0 +1,160 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "snmp"
+  ],
+  "tools": [
+    "snmpwalk",
+    "braa"
+  ],
+  "tags": [
+    "snmp",
+    "oid",
+    "mib",
+    "enumeration"
+  ],
+  "category": "Enumeration",
+  "subcategory": "SNMP",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 04: Footprinting",
+  "id": "snmpwalk-community",
+  "name": "snmpwalk - MIB Enumeration with Community String",
+  "description": "Walk the SNMP MIB tree with a validated community string to dump OS, processes, users, installed packages, network interfaces, and routing table.",
+  "command": "snmpwalk -c <community> -v2c <ip>",
+  "variations": [
+    {
+      "description": "SNMPv2c full walk (preferred where supported)",
+      "command": "snmpwalk -c <community> -v2c <ip>",
+      "label": "SNMP v2c"
+    },
+    {
+      "description": "SNMPv1 walk with timeout (for slow/legacy targets)",
+      "command": "snmpwalk -c <community> -v1 -t 10 <ip>",
+      "label": "SNMP v1 (timeout)"
+    },
+    {
+      "description": "Walk specific OID subtree",
+      "command": "snmpwalk -c <community> -v2c <ip> <oid>",
+      "label": "SNMP v2c"
+    },
+    {
+      "description": "Bulk walk for speed (SNMPv2c only)",
+      "command": "snmpbulkwalk -c <community> -v2c <ip>",
+      "label": "snmpbulkwalk (bulk)"
+    },
+    {
+      "description": "braa - bulk OID query against multiple hosts",
+      "command": "braa <community>@<ip>:.1.3.6.*",
+      "label": "braa (fast OID)"
+    },
+    {
+      "description": "Windows users OID",
+      "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.4.1.77.1.2.25",
+      "label": "Windows users"
+    },
+    {
+      "description": "Running processes OID",
+      "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.2.1.25.4.2.1.2",
+      "label": "Running processes"
+    },
+    {
+      "description": "Installed software OID",
+      "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.2.1.25.6.3.1.2",
+      "label": "Installed software"
+    },
+    {
+      "description": "Open TCP ports OID",
+      "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.2.1.6.13.1.3",
+      "label": "Open TCP ports"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Full walk with validated community (v2c)",
+      "command": "snmpwalk -c public -v2c 10.129.14.128"
+    },
+    {
+      "label": "SNMPv1 walk with 10s timeout (OSCP Ch06 style)",
+      "command": "snmpwalk -c public -v1 -t 10 192.168.50.151"
+    },
+    {
+      "label": "Dump Windows user accounts",
+      "command": "snmpwalk -c public -v1 192.168.50.151 1.3.6.1.4.1.77.1.2.25"
+    },
+    {
+      "label": "Dump running processes (cross-reference with known services)",
+      "command": "snmpwalk -c public -v1 192.168.50.151 1.3.6.1.2.1.25.4.2.1.2"
+    },
+    {
+      "label": "Dump installed packages with versions (CVE lookup)",
+      "command": "snmpwalk -c public -v1 192.168.50.151 1.3.6.1.2.1.25.6.3.1.2"
+    },
+    {
+      "label": "braa bulk OID dump against host",
+      "command": "braa public@192.168.50.151:.1.3.6.*"
+    }
+  ],
+  "notes": "A full MIB walk against a system with a known community string yields: OS version/kernel, hostname, contact, location, uptime, boot parameters, running processes, user accounts, and installed packages with versions. HIGH-VALUE: installed package list with versions enables targeted CVE lookup without running a scanner. Contact email cross-validates infrastructure ownership with DNS SOA and cert admin email. Boot command line parameters can expose filesystem UUIDs. Key Windows OIDs: users (1.3.6.1.4.1.77.1.2.25), processes (1.3.6.1.2.1.25.4.2.1.2), installed software (1.3.6.1.2.1.25.6.3.1.2), open TCP ports (1.3.6.1.2.1.6.13.1.3). Chaining: onesixtyone → valid community string → snmpwalk system OID → package versions for CVE lookup → braa for bulk extended OID enumeration. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "opsec": "moderate",
+  "mitre": [
+    "T1046",
+    "T1082"
+  ],
+  "exam": "exam-ok",
+  "references": [
+    {
+      "title": "net-snmp / snmpwalk man page",
+      "url": "https://net-snmp.sourceforge.io/docs/man/snmpwalk.html"
+    },
+    {
+      "title": "HTB Academy - Footprinting",
+      "url": "https://academy.hackthebox.com/module/details/112"
+    },
+    {
+      "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - System Information Discovery",
+      "url": "https://attack.mitre.org/techniques/T1082/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "onesixtyone-brute",
+      "rel": "prereq",
+      "note": "Use onesixtyone to discover a valid community string before walking the MIB."
+    },
+    {
+      "id": "snmp-enum",
+      "rel": "alternative",
+      "note": "snmp-enum card covers the combined workflow including nmap SNMP host discovery."
+    }
+  ],
+  "defense": {
+    "why_it_works": "SNMPv1/v2c transmits data in cleartext and uses community strings for authentication with no session expiry. Once the community string is known (bruted or sniffed), the full MIB is accessible.",
+    "prerequisites": "UDP 161 reachable and valid community string obtained (via onesixtyone or sniffing).",
+    "misconfiguration": "Community string left as default 'public'. No restriction on which OID subtrees are readable. SNMP accessible from any IP.",
+    "vulnerable_config": "# snmpd.conf\nrocommunity public default   # world-readable, default string",
+    "secure_config": "# Upgrade to SNMPv3 auth+priv, disable v1/v2c\ncreateUser monitor SHA 'Auth@Pass1!' AES 'Priv@Pass2!'\nrouser monitor authPriv .1\n# Remove all rocommunity/rwcommunity lines",
+    "impact": "Full system inventory: OS version, running processes, installed packages, network config, user accounts — enough to identify exploitable services without an active scanner.",
+    "detection": "SNMP walk generates many GET-NEXT requests in rapid succession against all OIDs. Visible in network capture or SNMP agent logs as sequential OID traversal from a single source.",
+    "artifacts": "Network traffic on UDP 161 with sequential OID requests. SNMP agent access log entries.",
+    "prevention": "Upgrade to SNMPv3. Disable SNMP if not used. Restrict SNMP to management VLAN. Audit snmpd.conf for world-readable community strings.",
+    "evasion": "Query specific high-value OIDs individually rather than walking the full tree to reduce request volume.",
+    "sources": [
+      "HTB M04",
+      "OSCP Ch06",
+      "MITRE T1046",
+      "MITRE T1082"
+    ]
+  }
+}

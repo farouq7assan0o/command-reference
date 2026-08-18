@@ -1,0 +1,48 @@
+{
+  "id": "cdsa-incident-categories",
+  "name": "Security Incident Categories",
+  "command": "# Incident types: Ransomware | Data Breach | Insider Threat | Phishing | Unauthorized Access | DoS/DDoS | APT",
+  "description": "Common incident classification categories used during the Detection & Analysis phase to prioritize response effort and assign correct playbook.",
+  "platform": "linux",
+  "type": "reference",
+  "opsec": "silent",
+  "category": "Incident Response",
+  "subcategory": "IR Process",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 01: Incident Handling Process",
+  "tags": ["reference", "triage", "classification", "incident-types"],
+  "notes": "Category → Typical severity & response:\n• Ransomware — Critical; immediate isolation, offline backups, ransom policy.\n• Data Breach — High/Critical; legal/compliance notification, forensics, data audit.\n• Insider Threat — High; discreet investigation, preserve evidence before tipping off.\n• Phishing/BEC — Medium; user remediation, credential reset, mail rule review.\n• Unauthorized Access — High; scope how far pivot went, check lateral movement.\n• DoS/DDoS — Varies; rate-limit/null-route, coordinate with ISP.\n• APT/Long-term Intrusion — Critical; assume full network, extensive forensics.\n\nPyramid of Pain (hardest-to-replace IOC at top):\nTTP > Tools > Network/Host Artefacts > Domain > IP > Hash",
+  "mitre": ["T1486", "T1566", "T1078"],
+  "examples": [
+    {
+      "label": "Classify by observable indicators",
+      "command": "# Encrypted files + ransom note → Ransomware playbook; Sysmon Event 1 unusual parent → Code Execution playbook"
+    },
+    {
+      "label": "Severity matrix quick-ref",
+      "command": "# P1=Critical(data exfil/ransomware), P2=High(unauthorised access), P3=Med(phishing), P4=Low(policy violation)"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Incident Handling Process",
+      "url": "https://academy.hackthebox.com/module/details/148"
+    },
+    {
+      "title": "SANS Incident Handler's Handbook",
+      "url": "https://www.sans.org/white-papers/33901/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-ir-lifecycle",
+      "rel": "prereq",
+      "note": "Know the IR lifecycle before classifying."
+    },
+    {
+      "id": "cdsa-thehive-platform",
+      "rel": "next",
+      "note": "Open a case in TheHive once classified."
+    }
+  ]
+}

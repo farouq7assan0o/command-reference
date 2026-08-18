@@ -1,0 +1,70 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "lynis"
+  ],
+  "tags": [
+    "reference",
+    "hardening",
+    "lynis"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Linux - Reference",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 25: Linux Privilege Escalation",
+  "examples": [
+    {
+      "label": "Run a Lynis audit",
+      "command": "./lynis audit system"
+    },
+    {
+      "label": "Core checklist",
+      "command": "# audit SUID/world-writable, absolute paths in cron+sudo, no cleartext creds, least-privilege groups, patch kernel"
+    }
+  ],
+  "notes": "- Audit writable files/dirs and SUID binaries\n- Use absolute paths in cron and sudoers entries\n- No cleartext creds in world-readable files\n- Clean home dirs and bash history\n- Restrict low-priv users from modifying custom libraries\n- Remove unneeded packages/services; apply SELinux\n- Least-privilege sudo/group assignments\n- Log valid+invalid logons; enforce strong passphrases (PAM /etc/security/opasswd)\n- Periodic audits (Lynis); enable unattended-upgrades / yum-cron",
+  "references": [
+    {
+      "title": "Lynis (CISOfy)",
+      "url": "https://github.com/CISOfy/lynis"
+    },
+    {
+      "title": "HTB Academy - Linux Privilege Escalation",
+      "url": "https://academy.hackthebox.com/module/details/51"
+    },
+    {
+      "title": "OffSec PEN-200 - Privilege Escalation",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "linux-enum-orientation",
+      "note": "The attacker-side counterpart to this checklist.",
+      "rel": "alternative"
+    },
+    {
+      "id": "ref-vuln-versions",
+      "rel": "next",
+      "note": "Continue enumeration/technique in this area"
+    }
+  ],
+  "id": "ref-linux-hardening",
+  "name": "Reference - Linux Hardening Checklist",
+  "command": "./lynis audit system",
+  "description": "Defensive counterpart: the hardening measures that close the escalation paths in this module, plus Lynis for automated auditing.",
+  "opsec": "silent",
+  "mitre": [
+    "T1068"
+  ],
+  "exam": "exam-ok"
+}

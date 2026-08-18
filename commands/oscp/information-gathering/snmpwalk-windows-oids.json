@@ -1,0 +1,104 @@
+{
+  "id": "snmpwalk-windows-oids",
+  "name": "SNMP - Windows OID Enumeration (Users, Processes, Software, Ports)",
+  "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.4.1.77.1.2.25",
+  "description": "snmpwalk queries targeting Windows-specific SNMP OID branches to enumerate local user accounts, running processes, installed software, and open TCP ports. More targeted than a full walk — extracts high-value recon data quickly when you know the community string.",
+  "type": "command",
+  "platform": "linux",
+  "requires": ["network-access"],
+  "protocols": ["snmp"],
+  "tools": ["snmpwalk"],
+  "tags": ["snmp", "enumeration", "windows", "oid", "users", "processes", "software", "ports"],
+  "category": "Enumeration",
+  "subcategory": "SNMP",
+  "certifications": ["OSCP"],
+  "primary_cert": "OSCP",
+  "source": "PEN-200 Chapter 06: Information Gathering",
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": ["T1049", "T1082", "T1087.001", "T1518"],
+  "variations": [
+    {
+      "label": "Windows local user accounts",
+      "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.4.1.77.1.2.25"
+    },
+    {
+      "label": "Running processes",
+      "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.2.1.25.4.2.1.2"
+    },
+    {
+      "label": "Installed software",
+      "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.2.1.25.6.3.1.2"
+    },
+    {
+      "label": "Open TCP ports (listening)",
+      "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.2.1.6.13.1.3"
+    },
+    {
+      "label": "Full walk first (then target specific OIDs)",
+      "command": "snmpwalk -c <community> -v1 -t 10 <ip>"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Enumerate Windows local users on DC (community: public)",
+      "command": "snmpwalk -c public -v1 192.168.50.151 1.3.6.1.4.1.77.1.2.25"
+    },
+    {
+      "label": "List running processes on Windows host",
+      "command": "snmpwalk -c public -v1 192.168.50.151 1.3.6.1.2.1.25.4.2.1.2"
+    },
+    {
+      "label": "List installed software (incl. version info)",
+      "command": "snmpwalk -c public -v1 192.168.50.151 1.3.6.1.2.1.25.6.3.1.2"
+    },
+    {
+      "label": "Open TCP port numbers (listening state)",
+      "command": "snmpwalk -c public -v1 192.168.50.151 1.3.6.1.2.1.6.13.1.3"
+    }
+  ],
+  "notes": "OID quick reference:\n  1.3.6.1.4.1.77.1.2.25         Windows local user accounts\n  1.3.6.1.2.1.25.4.2.1.2       Running process names (hrSWRunName)\n  1.3.6.1.2.1.25.4.2.1.4       Process path (hrSWRunPath) — shows full exe path\n  1.3.6.1.2.1.25.6.3.1.2       Installed software names\n  1.3.6.1.2.1.6.13.1.3         Open TCP local port numbers\n  1.3.6.1.2.1.6.13.1.5         TCP remote port (established connections)\n\nInstalled software enumeration is especially valuable — reveals AV product names, patch levels, and vulnerable software versions.\nIf the full walk (-v1 -t 10 <ip>) returns data, move to these targeted OIDs for structured extraction.\nRequires knowing the community string — use onesixtyone to brute first if unknown.",
+  "recommended": [
+    {
+      "id": "snmp-enum",
+      "rel": "prereq",
+      "note": "snmpwalk full walk + onesixtyone community-string brute — run first to confirm access."
+    },
+    {
+      "id": "nmap-udp-scan",
+      "rel": "prereq",
+      "note": "Confirm UDP 161 is open before attempting SNMP enumeration."
+    }
+  ],
+  "references": [
+    {
+      "title": "OffSec PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    },
+    {
+      "title": "MITRE ATT&CK - System Network Connections Discovery (T1049)",
+      "url": "https://attack.mitre.org/techniques/T1049/"
+    },
+    {
+      "title": "MITRE ATT&CK - Software Discovery (T1518)",
+      "url": "https://attack.mitre.org/techniques/T1518/"
+    },
+    {
+      "title": "IANA - SNMP MIB OID Registry",
+      "url": "https://www.iana.org/assignments/smi-numbers/smi-numbers.xhtml"
+    }
+  ],
+  "defense": {
+    "prerequisites": "UDP port 161 open on the target. SNMP agent running with a guessable community string (public, private, manager). SNMPv1 or v2c in use (no authentication). Network access from attacker to target.",
+    "why_it_works": "SNMPv1/v2c uses community strings as the only access control — essentially a plaintext password in the UDP packet. The OID tree for Windows (under 1.3.6.1.4.1.77 for Microsoft enterprise MIBs, and 1.3.6.1.2.1 for standard MIBs) exposes the Windows Management Instrumentation (WMI) data including local users, processes, software, and network state. An attacker querying these OIDs over UDP 161 with community string 'public' gets the same data a sysadmin would see in WMI.",
+    "misconfiguration": "SNMP running on Windows with default community string 'public' (enabled by default in Windows SNMP service). No SNMP ACL restricting which source IPs may query the agent. SNMPv1/v2c instead of SNMPv3 (which adds authentication and encryption). SNMP service enabled on servers/workstations that don't need monitoring.",
+    "vulnerable_config": "# Windows SNMP service: Community name = 'public', access = READ ONLY\n# No host-based firewall rule restricting UDP 161 to monitoring server only\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\SNMP\\Parameters\\ValidCommunities",
+    "secure_config": "# Migrate to SNMPv3 with AuthPriv mode\n# Or: restrict community string to a non-default name + restrict permitted managers\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\SNMP\\Parameters\\PermittedManagers\n# Block UDP 161 at firewall to all hosts except the SNMP monitoring server",
+    "impact": "User account enumeration feeds password spraying and Kerberos attacks. Running process list reveals AV products and security tooling to evade. Installed software list reveals unpatched software versions for exploit selection. Open port list cross-references nmap results and may reveal services filtered from direct connection.",
+    "detection": "Firewall logs: UDP packets from external/unusual sources to port 161. SNMP agent logs (if verbose logging enabled). IDS rule: SNMPv1/v2c GetNext requests traversing a broad OID range from a single source. Alert on OID requests for 1.3.6.1.4.1.77.1.2.25 (Windows user enumeration) from non-monitoring sources.",
+    "artifacts": "SNMP agent logs (rare on Windows by default). Network PCAP: UDP 161 GetRequest/GetNextRequest packets showing OIDs queried. Windows firewall log if auditing enabled.",
+    "prevention": "Disable SNMP if not needed (Services snap-in → SNMP Service → Disabled). If SNMP is needed: upgrade to SNMPv3 (authPriv), change community string from default, restrict PermittedManagers to monitoring server IP only, block UDP 161 at host-based firewall. MITRE M1031: Network Intrusion Prevention.",
+    "evasion": "Targeted OID queries generate far fewer packets than a full snmpwalk of the entire tree — reducing the scan-like footprint. Sending individual GetRequest packets (not bulk GetNext) looks more like monitoring-tool traffic. SNMPv1/v2c traffic is unencrypted — avoid sending community string over an untrusted path.",
+    "sources": ["PEN-200 Ch 6", "MITRE T1049", "MITRE T1082", "MITRE T1087.001", "MITRE T1518"]
+  }
+}

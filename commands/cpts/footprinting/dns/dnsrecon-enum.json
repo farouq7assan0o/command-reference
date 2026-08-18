@@ -1,0 +1,125 @@
+{
+  "id": "dnsrecon-enum",
+  "name": "DNS - dnsrecon Standard & Brute Force",
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "dnsrecon"
+  ],
+  "tags": [
+    "dns",
+    "dnsrecon",
+    "zone-transfer",
+    "brute-force",
+    "subdomain",
+    "recon"
+  ],
+  "category": "Enumeration",
+  "subcategory": "DNS",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "OSCP",
+  "exam": "exam-ok",
+  "source": "OSCP PEN-200 Ch 6: Information Gathering",
+  "command": "dnsrecon -d <domain> -t std",
+  "description": "Automated DNS enumeration. `-t std` runs SOA, NS, A, AAAA, MX, TXT, and SPF queries plus wildcard detection and zone transfer attempts against every NS. `-t brt` brute-forces subdomains from a wordlist.",
+  "examples": [
+    {
+      "label": "Standard DNS enum (SOA/NS/MX/A/TXT + AXFR attempt)",
+      "command": "dnsrecon -d megacorpone.com -t std"
+    },
+    {
+      "label": "Brute force subdomains from wordlist",
+      "command": "dnsrecon -d megacorpone.com -D ~/list.txt -t brt"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Standard enum",
+      "command": "dnsrecon -d <domain> -t std"
+    },
+    {
+      "label": "Subdomain brute force with wordlist",
+      "command": "dnsrecon -d <domain> -D <wordlist> -t brt"
+    },
+    {
+      "label": "Zone transfer only",
+      "command": "dnsrecon -d <domain> -t axfr"
+    },
+    {
+      "label": "Reverse PTR sweep on a CIDR",
+      "command": "dnsrecon -r <cidr> -t rvl"
+    },
+    {
+      "label": "Save output to XML",
+      "command": "dnsrecon -d <domain> -t std -x /tmp/dns-<domain>.xml"
+    }
+  ],
+  "notes": "Run `-t std` first — if AXFR succeeds you get every record in one shot. Follow with `-t brt` against the NS servers found. Wildcard DNS (*.domain resolves to a single IP) can produce false positives in brute force; dnsrecon flags this automatically. Check MX, TXT/SPF, and NS records manually for third-party services and internal naming patterns. Also covered in: OSCP PEN-200 Chapter 6 (Information Gathering).",
+  "opsec": "moderate",
+  "mitre": [
+    "T1590.002"
+  ],
+  "attack_chain": [
+    {
+      "step": 1,
+      "action": "Run standard enum to collect NS/MX/A/TXT records and attempt AXFR",
+      "command": "dnsrecon -d <domain> -t std"
+    },
+    {
+      "step": 2,
+      "action": "Brute force subdomains using discovered NS server",
+      "command": "dnsrecon -d <domain> -D /usr/share/wordlists/dnsmap.txt -t brt"
+    },
+    {
+      "step": 3,
+      "action": "Resolve discovered subdomains / pivot to new IPs",
+      "command": "for sub in $(cat found_subs.txt); do host $sub; done"
+    }
+  ],
+  "references": [
+    {
+      "title": "dnsrecon GitHub",
+      "url": "https://github.com/darkoperator/dnsrecon"
+    },
+    {
+      "title": "OSCP PEN-200 - Information Gathering",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "dns-subdomain-brute",
+      "rel": "alternative",
+      "note": "dnsenum for subdomain brute force — similar capability."
+    },
+    {
+      "id": "dns-dig-queries",
+      "rel": "next",
+      "note": "Manual dig AXFR against discovered NS servers."
+    },
+    {
+      "id": "subfinder-enum",
+      "rel": "alternative",
+      "note": "Passive subdomain discovery without DNS brute force."
+    }
+  ],
+  "defense": {
+    "why_it_works": "dnsrecon automates systematic DNS enumeration including zone transfer attempts against every name server, wildcard detection, and record-type sweeps that manual queries miss. Zone transfers (AXFR) from misconfigured servers expose every DNS record — providing a full map of the target's infrastructure in one query.",
+    "prerequisites": "A target domain name; network access to DNS (UDP/TCP 53).",
+    "impact": "All DNS records for the zone: subdomains, internal hostnames, mail infrastructure, third-party services, and network topology hints.",
+    "detection": "AXFR requests from unauthorized IPs are logged by most authoritative DNS servers and should alert. High-volume A record lookups from a single IP during brute force are visible in DNS query logs.",
+    "prevention": "Restrict zone transfers (AXFR) to authorized secondary DNS servers only. Remove internal-only records from public-facing DNS. Enable DNS query logging and alert on AXFR attempts from unapproved sources.",
+    "sources": [
+      "MITRE T1590.002"
+    ]
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "ssh"
+  ],
+  "tools": [
+    "ssh"
+  ],
+  "tags": [
+    "ssh",
+    "access"
+  ],
+  "category": "Fundamentals",
+  "subcategory": "Basic Tools",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Connect as a user",
+      "command": "ssh Bob@10.10.10.10"
+    },
+    {
+      "label": "Use a private key",
+      "command": "ssh root@10.10.10.10 -i id_rsa"
+    },
+    {
+      "label": "OSCP lab connection (suppress host-key prompt)",
+      "command": "ssh -o \"UserKnownHostsFile=/dev/null\" -o \"StrictHostKeyChecking=no\" learner@192.168.50.52"
+    }
+  ],
+  "notes": "Use -i for key-based auth (no password prompt). -L for local port forwarding, -R for remote, -D for dynamic SOCKS proxy. ProxyJump (-J) chains through a bastion host in one command. For lab/CTF environments with frequently-reissued host keys use -o \"UserKnownHostsFile=/dev/null\" -o \"StrictHostKeyChecking=no\" — never in production. Also covered in: OSCP PEN-200 Chapter 2.",
+  "references": [
+    {
+      "title": "OpenSSH",
+      "url": "https://www.openssh.com/"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-privesc-enum",
+      "rel": "next",
+      "note": "Enumerate for privesc once on the box."
+    }
+  ],
+  "id": "gs-ssh",
+  "name": "SSH - Connect to a Host",
+  "command": "ssh <user>@<ip>",
+  "description": "Connect to a remote host over SSH. The workhorse for interactive access to Linux targets and jump hosts.",
+  "opsec": "quiet",
+  "mitre": [
+    "T1021.004"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Adversaries use valid accounts to log into remote machines using SSH. SSH is a standard administrative protocol present by default on Linux and macOS, meaning its use blends with legitimate traffic. Both password-based and key-based authentication can be abused — with captured passwords or stolen private keys respectively.",
+    "prerequisites": "Valid credentials (password or private key) for an account on the target, and a reachable SSH service (usually TCP 22).",
+    "impact": "An interactive remote shell as the authenticated user — a foothold or a lateral-movement hop.",
+    "detection": "Monitor for SSH logins from remote systems followed by post-login execution of suspicious binaries or privilege escalation behavior. Logins outside normal user hours or from unusual source IPs are particularly significant.",
+    "artifacts": "sshd authentication log entries (/var/log/auth.log; Windows OpenSSH event log), a new session, and the source IP recorded by sshd.",
+    "prevention": "Disable the SSH daemon on systems that do not require it. Require multi-factor authentication for SSH connections wherever possible, such as password-protected SSH keys. Limit which user accounts are allowed to login via SSH.",
+    "evasion": "Authenticating with valid credentials makes the session blend with legitimate administrative traffic — SSH is expected on port 22, so a single successful login raises little suspicion compared with exploit traffic.",
+    "sources": [
+      "MITRE T1021.004"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  },
+  "variations": [
+    {
+      "description": "Suppress host-key warnings (lab/CTF use only — never production)",
+      "command": "ssh -o \"UserKnownHostsFile=/dev/null\" -o \"StrictHostKeyChecking=no\" <user>@<ip>",
+      "label": "ssh -o \"UserKnownHostsFile=/dev/nu…"
+    },
+    {
+      "description": "Connect on a non-standard port",
+      "command": "ssh <user>@<ip> -p <port>",
+      "label": "ssh -p"
+    }
+  ]
+}

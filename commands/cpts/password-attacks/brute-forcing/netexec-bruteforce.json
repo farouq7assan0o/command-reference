@@ -1,0 +1,106 @@
+{
+  "id": "netexec-bruteforce",
+  "name": "NetExec - Brute Force and Enumerate",
+  "command": "netexec <proto> <ip> -u <user.list> -p <password.list>",
+  "description": "NetExec (formerly CrackMapExec) sprays credentials across a protocol (smb, winrm, ssh, etc.). A [+] marks a valid pair; (Pwn3d!) means code execution is possible. Add --shares to list accessible SMB shares once authenticated.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "netexec"
+  ],
+  "tags": [
+    "netexec",
+    "brute-force",
+    "smb",
+    "winrm"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Brute Forcing",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Brute-force WinRM with lists",
+      "command": "netexec winrm 10.129.42.197 -u user.list -p password.list"
+    },
+    {
+      "label": "Test one cred and list SMB shares",
+      "command": "netexec smb 10.129.42.197 -u \"user\" -p \"password\" --shares"
+    }
+  ],
+  "notes": "NetExec (nxc, ex-CME) sprays/validates creds across many hosts at once over smb/winrm/ldap/mssql/ssh. A '+' = valid, '(Pwn3d!)' = local admin. The workhorse for validating creds domain-wide.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "NetExec",
+      "url": "https://github.com/Pennyw0rth/NetExec"
+    },
+    {
+      "title": "NetExec Wiki",
+      "url": "https://www.netexec.wiki/"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "netexec-spray",
+      "note": "Password spraying tries one password against many accounts to stay under lockout thresholds, optionally across a whole subnet.",
+      "rel": "alternative"
+    },
+    {
+      "id": "kerbrute-userenum",
+      "rel": "prereq",
+      "note": "Enumerate valid usernames before brute forcing."
+    }
+  ],
+  "variations": [
+    {
+      "label": "WinRM",
+      "command": "netexec winrm <ip> -u <user.list> -p <password.list>"
+    },
+    {
+      "label": "SMB",
+      "command": "netexec smb <ip> -u <user.list> -p <password.list>"
+    },
+    {
+      "label": "SMB + Shares",
+      "command": "netexec smb <ip> -u <user> -p <password> --shares"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1110.001"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "NetExec (nxc) brute-forces credentials across many hosts/protocols (SMB, WinRM, LDAP, MSSQL...) in one sweep.",
+    "prerequisites": "Network access to the target protocol and credential lists.",
+    "impact": "Validated credentials and the hosts they authenticate to.",
+    "detection": "Failed authentication bursts: Windows 4625 (failed logon) and 4771 (Kerberos pre-auth failed) at abnormal rate/volume; account lockouts (4740); many attempts from one source, or - for spraying - one password across many accounts. SIEM correlation on failed-logon spikes.",
+    "artifacts": "Rapid auth attempts across many hosts/protocols from one source; 4625 bursts.",
+    "prevention": "[MITRE T1110 M1032 Multi-factor Authentication] MFA defeats password guessing; [M1027 Password Policies] strong passwords + [M1036 Account Use Policies] lockout thresholds; alert on failed-logon spikes and impossible-travel.",
+    "evasion": "Spray low-and-slow (one password, spaced attempts) to stay under lockout thresholds and volume alerts; distribute across source IPs; target accounts unlikely to be monitored.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.001"
+    ],
+    "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
+    "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
+    "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+  }
+}

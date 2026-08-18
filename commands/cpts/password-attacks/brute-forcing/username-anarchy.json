@@ -1,0 +1,79 @@
+{
+  "id": "username-anarchy",
+  "name": "Username Anarchy - Generate Usernames",
+  "command": "./username-anarchy -i <names.txt>",
+  "description": "Turns a list of real first/last names into every common corporate username permutation (jdoe, john.doe, doe.john, etc.). Feed the output to Kerbrute or a spray to find which formats are actually in use.",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "username-anarchy"
+  ],
+  "tags": [
+    "username",
+    "active-directory",
+    "enumeration"
+  ],
+  "category": "Password Attacks",
+  "subcategory": "Brute Forcing",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 10: Password Attacks",
+  "examples": [
+    {
+      "label": "Generate username permutations from real names",
+      "command": "./username-anarchy -i /home/ltnbob/names.txt"
+    }
+  ],
+  "notes": "Turns real names (from OSINT) into username permutations (j.smith, jsmith, smithj...) matching the org's convention. Feed the output straight into kerbrute/spray.\nAlso covered in: OSCP PEN-200 Chapter 19 (Password Attacks)",
+  "references": [
+    {
+      "title": "HTB Academy - Password Attacks",
+      "url": "https://academy.hackthebox.com/module/details/147"
+    },
+    {
+      "title": "Username Anarchy",
+      "url": "https://github.com/urbanadventurer/username-anarchy"
+    },
+    {
+      "title": "OffSec PEN-200",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "hydra-bruteforce",
+      "note": "Online password brute force against a network service.",
+      "rel": "next"
+    },
+    {
+      "id": "netexec-spray",
+      "note": "Password spraying tries one password against many accounts to stay under lockout thresholds, optionally across a whole subnet.",
+      "rel": "next"
+    }
+  ],
+  "opsec": "loud",
+  "mitre": [
+    "T1589.002"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "username-anarchy generates likely username permutations (jsmith, john.smith, smithj...) from real names to feed enumeration/spraying.",
+    "prerequisites": "A list of names (from OSINT).",
+    "impact": "A username list for user-enumeration and password spraying - offline generation, no target contact.",
+    "sources": [
+      "HTB M10",
+      "MITRE T1110.002"
+    ],
+    "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
+    "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
+    "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+  }
+}

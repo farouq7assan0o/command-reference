@@ -1,0 +1,80 @@
+{
+  "id": "ad-group3r",
+  "name": "Group3r - GPO Misconfiguration Analysis",
+  "command": "group3r.exe -f <output_log>",
+  "description": "Analyzes Group Policy Objects (GPOs) to find misconfigurations and security weaknesses: writable GPO links, script paths with weak permissions, insecure scheduled tasks, credential exposure in GPP, and SYSVOL write access. Outputs a log of findings ranked by severity.",
+  "platform": "windows",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "Miscellaneous Misconfigurations",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "gpo",
+    "group-policy",
+    "misconfiguration",
+    "enumeration",
+    "audit"
+  ],
+  "mitre": [
+    "T1484.001"
+  ],
+  "exam": "exam-ok",
+  "notes": "=== WHAT GROUP3R CHECKS ===\nGroup3r audits every GPO visible to the current user and flags:\n  - GPO links the current user can write/modify\n  - Script paths in GPO startup/logon scripts with weak ACLs (hijackable)\n  - Scheduled tasks inside GPOs calling writable scripts or binaries\n  - Plaintext passwords in GPP (though mostly patched, older DCs may still have them)\n  - SYSVOL and NETLOGON share write permissions\n\n=== USAGE ===\n  -f <log>      Write output to file (recommended \u2014 output is verbose)\n  -s <server>   Target DC (default: auto-detect from domain)\n  -u <user>     User for auth (default: current session)\n  Run as a domain user \u2014 no special privileges needed for read access.\n\n=== WORKFLOW ===\n1. Run group3r.exe -f group3r.log\n2. Review log for 'HIGH' and 'CRITICAL' severity items\n3. GPO write access \u2192 use ad-gpo-enum / PowerView to confirm scope\n4. Writable script paths \u2192 plant a payload to catch next GPO refresh\n5. Credential findings \u2192 try with crackmapexec / evil-winrm\n\n=== COMPARED TO OTHER GPO TOOLS ===\n  PowerView Get-GPO/Get-GPOReport: raw enumeration, manual analysis needed\n  SharpGPOAbuse: exploitation (not just enumeration)\n  Group3r: automated misconfiguration hunting with severity ranking",
+  "examples": [
+    {
+      "label": "Run and write findings to log",
+      "command": "group3r.exe -f group3r.log"
+    },
+    {
+      "label": "Target specific DC",
+      "command": "group3r.exe -s ACADEMY-EA-DC01.INLANEFREIGHT.LOCAL -f group3r.log"
+    },
+    {
+      "label": "Review results (PowerShell)",
+      "command": "Select-String -Path group3r.log -Pattern 'HIGH|CRITICAL'"
+    }
+  ],
+  "references": [
+    {
+      "title": "Group3r GitHub",
+      "url": "https://github.com/Group3r/Group3r"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-gpo-enum",
+      "rel": "prereq",
+      "note": "Enumerate GPOs with PowerView first to understand scope, then use Group3r for automated misconfiguration analysis."
+    },
+    {
+      "id": "ad-snaffler",
+      "rel": "next",
+      "note": "After Group3r finds writable SYSVOL/NETLOGON paths, Snaffler can hunt credentials in accessible files."
+    }
+  ],
+  "defense": {
+    "why_it_works": "Group3r reads GPO definitions and evaluates file system ACLs on referenced paths. Any authenticated domain user can read GPOs via SYSVOL \u2014 the misconfiguration is the weak ACLs, not the read access itself.",
+    "prerequisites": "Domain-joined Windows host; authenticated domain user session.",
+    "impact": "Identifies exploitable GPO paths enabling code execution on every machine in the GPO scope, potential DA via scheduled task or startup script hijacking.",
+    "prevention": "[MITRE T1484.001 M1018] Restrict GPO write access to dedicated admin accounts; audit SYSVOL and NETLOGON share ACLs regularly; use Microsoft's Group Policy Modeling to review effective policy before deployment.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1484.001"
+    ],
+    "misconfiguration": "IT teams often grant broad write access to SYSVOL or to individual GPO objects for operational convenience. Script paths in GPO startup/logon tasks may point to shares with weak permissions, allowing any domain user to replace the script.",
+    "vulnerable_config": "# GPO Startup Script points to a world-writable share:\n# GPO: \\\\inlanefreight.local\\SYSVOL\\...\\scripts\\startup.bat\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts\\startup.bat\n# Output: Everyone:(F) \u2014 full control for all users",
+    "secure_config": "# Restrict script path ACLs \u2014 only SYSTEM and Domain Admins\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts /inheritance:r /grant 'Domain Admins:(OI)(CI)F' SYSTEM:F\n# Audit GPO delegations quarterly:\nGet-GPPermission -All -DomainName inlanefreight.local | Where-Object { $_.Permission -eq 'GpoEdit' }"
+  },
+  "tools": [
+    "Group3r"
+  ]
+}

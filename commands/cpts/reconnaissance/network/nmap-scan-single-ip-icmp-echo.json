@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-sn -PE --disable-arp-ping --packet-trace tests ICMP echo specifically against a single host. Disabling ARP forces ICMP so the ICMP-level firewall behavior is observable. --packet-trace shows every packet sent/received for verification.\n\n=== DIAGNOSTIC VALUE ===\n--packet-trace + --reason together: shows exactly what packet triggered 'host up' determination and why. Essential when host discovery results are unexpected or when documenting discovery method for a report.\n\n=== FILTERED ICMP ===\nNo response to ICMP echo does not mean host is down \u2014 firewall may be silently dropping pings. Hosts that appear 'inactive' in ICMP scans may respond to TCP probes.",
+  "references": []
+}

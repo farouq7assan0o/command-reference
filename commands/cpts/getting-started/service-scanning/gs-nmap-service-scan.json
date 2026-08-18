@@ -1,0 +1,132 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "nmap"
+  ],
+  "tags": [
+    "nmap",
+    "service-scan"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Service Scanning",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Find scripts by keyword",
+      "command": "locate scripts/citrix"
+    },
+    {
+      "label": "Banner-grab across a subnet",
+      "command": "nmap -sV --script=banner -p21 10.10.10.0/24"
+    },
+    {
+      "label": "SMB OS discovery",
+      "command": "nmap --script smb-os-discovery.nse -p445 10.10.10.40"
+    },
+    {
+      "label": "Initial open-ports scan (all formats)",
+      "command": "nmap -sV --open -oA nibbles_initial 10.129.42.190"
+    },
+    {
+      "label": "HTTP enum script",
+      "command": "nmap -sV --script=http-enum -oA http_enum 10.129.42.190"
+    },
+    {
+      "label": "OSCP Ch12 — find exploit-category NSE scripts (discover usable exploit scripts)",
+      "command": "grep Exploits /usr/share/nmap/scripts/*.nse"
+    },
+    {
+      "label": "OSCP Ch12 — read an NSE script's description before running it (OSCP Ch12 B17)",
+      "command": "nmap --script-help=<script>.nse"
+    }
+  ],
+  "notes": "Service/version detection (-sV) probes open ports with service-specific payloads. Combine with -sC for default scripts. Use --version-intensity 0-9 to trade speed for accuracy. Results feed directly into searchsploit and vulnerability lookups. OSCP Ch12 workflow: grep Exploits /usr/share/nmap/scripts/*.nse to list exploit-category scripts; nmap --script-help=<name>.nse to verify what a script actually does before running it (important: some NSE 'exploit' scripts are destructive). Also covered in: OSCP PEN-200 Chapter 12 (Locating Public Exploits).",
+  "references": [
+    {
+      "title": "Nmap Reference Guide",
+      "url": "https://nmap.org/book/man.html"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 - Locating Public Exploits",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-gobuster",
+      "rel": "next",
+      "note": "Web port open -> brute directories."
+    },
+    {
+      "id": "gs-smb-enum",
+      "rel": "next",
+      "note": "445 open -> enumerate SMB."
+    },
+    {
+      "id": "gs-searchsploit",
+      "rel": "next",
+      "note": "Look up exploits for the versions found."
+    }
+  ],
+  "id": "gs-nmap-service-scan",
+  "name": "Nmap - Service Scanning",
+  "command": "nmap -sV -sC -p- <ip>",
+  "description": "The standard enumeration scan: all ports, version detection, and default scripts. Narrow with per-port script scans once you see what's open.",
+  "variations": [
+    {
+      "label": "Quick default scan",
+      "command": "nmap <ip>"
+    },
+    {
+      "label": "Full version + scripts",
+      "command": "nmap -sV -sC -p- <ip>"
+    },
+    {
+      "label": "Named script on a port",
+      "command": "nmap --script <script> -p<port> <ip>"
+    },
+    {
+      "label": "Banner-grab script",
+      "command": "nmap -sV --script=banner <ip>"
+    },
+    {
+      "label": "Aggressive SMB",
+      "command": "nmap -A -p445 <ip>"
+    }
+  ],
+  "opsec": "moderate",
+  "mitre": [
+    "T1046"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Service/version scanning probes each open port and matches the responses against a signature database to identify the exact software and version running \u2014 the basis for CVE matching and targeted exploitation.",
+    "prerequisites": "Network access to the target and previously identified open ports.",
+    "impact": "A precise service-and-version inventory, enabling targeted exploit selection.",
+    "detection": "[MITRE T1046 AN1583] Monitor for execution of network enumeration utilities (nmap, netcat, net.exe, ping.exe, tracert.exe) in short succession, particularly when chained with lateral movement tools or system enumeration commands. [AN1584] Sequential ping, arp, or traceroute commands issued from bash scripts or interactive shells to map remote hosts are a strong behavioral indicator.",
+    "artifacts": "A burst of connections across many ports plus version-probe payloads in IDS/firewall logs; a scan pattern detectable by IDS.",
+    "prevention": "A firewall that restricts which source addresses can reach service ports will cause Nmap to report those ports as 'filtered' rather than 'open', preventing version enumeration on restricted services.\n\n[MITRE T1046 M1042] Disable or remove unnecessary services and functionality that expose attack surface. [M1030] Implement network segmentation to limit the set of hosts reachable from any given compromised system. Use firewalls to restrict which source addresses can reach each service port.",
+    "evasion": "Slow the scan (-T0/-T1), use decoys (-D) to bury the real source among spoofed ones, fragment packets (-f), or spoof the source port (--source-port 53) to evade rate-based IDS and simple firewall rules \u2014 these dedicated evasion techniques are covered in depth in the Nmap module.",
+    "sources": [
+      "HTB M02",
+      "MITRE T1046"
+    ],
+    "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces \u2014 should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+  }
+}

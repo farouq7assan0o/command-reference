@@ -1,0 +1,68 @@
+{
+  "id": "cdsa-windows-event-ids-siem",
+  "name": "Key Windows Event IDs for SIEM Monitoring",
+  "command": "# Query pattern: event.code:<ID> [AND additional_filters]",
+  "description": "High-value Windows Security event IDs used by SOC analysts in SIEM queries, dashboards, and detection rules. Covers authentication, account management, privilege use, and lateral movement.",
+  "platform": "windows",
+  "type": "cheatsheet",
+  "opsec": "silent",
+  "category": "SIEM",
+  "subcategory": "Windows Events",
+  "certifications": ["CDSA"],
+  "source": "CDSA Module 02: Security Monitoring & SIEM Fundamentals",
+  "tags": ["windows", "event-logs", "siem", "elastic", "kibana", "detection"],
+  "notes": "=== Authentication ===\n4624  Successful logon (check LogonType)\n4625  Failed logon (check SubStatus for reason)\n4634  Logoff\n4647  User-initiated logoff\n4648  Logon using explicit credentials (RunAs, PTH)\n4672  Special privileges assigned at logon (admin)\n\nLogon Types (field: winlog.logon.type):\n  2  = Interactive (local keyboard)\n  3  = Network (file share, net use)\n  4  = Batch (scheduled task)\n  5  = Service\n  7  = Unlock\n  8  = NetworkCleartext (IIS basic auth)\n  9  = NewCredentials (RunAs /netonly)\n  10 = RemoteInteractive (RDP)\n  11 = CachedInteractive (cached creds)\n\n4625 SubStatus values:\n  0xC0000072 = Account disabled\n  0xC000006A = Wrong password\n  0xC0000064 = Username doesn't exist\n  0xC0000234 = Account locked out\n  0xC0000193 = Account expired\n\n=== Account Management ===\n4720  New user account created\n4722  User account enabled\n4723  User changed own password\n4724  Admin reset password\n4725  User account disabled\n4726  User account deleted\n4728  Member added to global security group\n4729  Member removed from global security group\n4732  Member added to local security group\n4733  Member removed from local security group\n4740  User account locked out\n4756  Member added to universal security group\n\n=== Process/Execution ===\n4688  New process created (requires audit policy)\n4689  Process exited\n\n=== Object Access ===\n4663  Attempt to access object (file/folder)\n4698  Scheduled task created\n4702  Scheduled task updated\n5140  Network share object accessed\n5145  Network share object checked (SMB)\n\n=== Kerberos ===\n4768  TGT requested (Kerberos auth)\n4769  Service ticket requested (use to spot Kerberoasting: EncryptionType 0x17=RC4)\n4770  Service ticket renewed\n4771  Pre-auth failed (Kerberos)\n\n=== System ===\n4697  Service installed\n7045  New service installed (System log)\n4104  PowerShell script block logging",
+  "mitre": ["T1078", "T1021.001", "T1547", "T1558.003"],
+  "examples": [
+    {
+      "label": "All failed logon attempts",
+      "command": "event.code:4625"
+    },
+    {
+      "label": "RDP logons (Logon Type 10)",
+      "command": "event.code:4624 AND winlog.logon.type:RemoteInteractive"
+    },
+    {
+      "label": "New user accounts created",
+      "command": "event.code:4720"
+    },
+    {
+      "label": "Kerberoastable ticket requests (RC4)",
+      "command": "event.code:4769 AND winlog.event_data.TicketEncryptionType:0x17"
+    },
+    {
+      "label": "New scheduled tasks",
+      "command": "event.code:4698"
+    },
+    {
+      "label": "Local Admins group changes",
+      "command": "(event.code:4732 OR event.code:4733) AND group.name:administrators"
+    }
+  ],
+  "references": [
+    {
+      "title": "HTB Academy - Security Monitoring & SIEM Fundamentals",
+      "url": "https://academy.hackthebox.com/module/details/211"
+    },
+    {
+      "title": "Ultimate Windows Security - Event ID Encyclopedia",
+      "url": "https://www.ultimatewindowssecurity.com/securitylog/encyclopedia/"
+    },
+    {
+      "title": "Microsoft - Security Audit Events",
+      "url": "https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/security-auditing-overview"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "cdsa-kql-fundamentals",
+      "rel": "prereq",
+      "note": "KQL syntax to query these event IDs in Kibana."
+    },
+    {
+      "id": "cdsa-kibana-visualizations",
+      "rel": "next",
+      "note": "Build dashboards around these event IDs."
+    }
+  ]
+}

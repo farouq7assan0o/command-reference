@@ -1,0 +1,64 @@
+{
+  "type": "reference",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [],
+  "tools": [
+    "vim"
+  ],
+  "tags": [
+    "vim",
+    "editor"
+  ],
+  "category": "Fundamentals",
+  "subcategory": "Basic Tools",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 02: Getting Started",
+  "examples": [
+    {
+      "label": "Open a file to edit",
+      "command": "vim /etc/hosts"
+    },
+    {
+      "label": "Save and quit (from normal mode)",
+      "command": ":wq"
+    }
+  ],
+  "notes": "Normal mode: x cut char | dw cut word | dd cut line | yw copy word | yy copy line | p paste | i insert | Esc normal\nCommand mode: :1 go to line 1 | :w save | :q quit | :q! quit no save | :wq write+quit",
+  "references": [
+    {
+      "title": "Vim docs",
+      "url": "https://www.vim.org/docs.php"
+    },
+    {
+      "title": "HTB Academy - Getting Started",
+      "url": "https://academy.hackthebox.com/module/details/77"
+    },
+    {
+      "title": "OffSec PEN-200 (OSCP)",
+      "url": "https://www.offsec.com/courses/pen-200/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-ssh-key-abuse",
+      "rel": "next",
+      "note": "Use vim to create/edit id_rsa and authorized_keys during key abuse"
+    }
+  ],
+  "id": "gs-vim",
+  "name": "Vim - Editor Basics",
+  "command": "vim <file>",
+  "description": "The editor that is present on virtually every Linux host - knowing the core motions lets you edit files on any target.",
+  "opsec": "silent",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1059.004"
+  ]
+}

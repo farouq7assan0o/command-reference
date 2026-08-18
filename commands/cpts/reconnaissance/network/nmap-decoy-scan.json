@@ -1,0 +1,5 @@
+{
+  "_ignore": true,
+  "notes": "=== CONCEPT ===\n-D RND:5 inserts 5 randomly generated source IP addresses alongside the real source IP. Target sees scan appearing to originate from 6 hosts simultaneously \u2014 difficult to identify the real attacker.\n\n=== CRITICAL CONSTRAINT ===\nDecoy IPs must be live reachable hosts. If decoys are non-existent IPs, the target cannot complete handshakes with them \u2014 may trigger SYN-flood defenses. Use -D with known-live IPs or RND which generates random IPs (less reliable, may select dead IPs).\n\n=== MECHANISM ===\nReal IP is placed at a random position among decoys. Target logs show all decoy IPs equally, making attribution difficult. Does NOT encrypt traffic \u2014 only obscures source.\n\n=== CHAINING ===\nCombine with -sS for quiet scan from apparent multiple sources. Real IP still appears in logs \u2014 this is obfuscation, not anonymity.",
+  "references": []
+}

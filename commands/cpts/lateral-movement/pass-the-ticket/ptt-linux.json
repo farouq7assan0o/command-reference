@@ -97,7 +97,7 @@
     },
     {
       "label": "kinit from keytab",
-      "command": "kinit <user>@<REALM> -k -t <keytab>"
+      "command": "kinit <user>@<realm> -k -t <keytab>"
     },
     {
       "label": "SMB with Kerberos",

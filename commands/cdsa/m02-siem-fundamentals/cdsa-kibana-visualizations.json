@@ -1,18 +1,31 @@
 {
   "id": "cdsa-kibana-visualizations",
   "name": "Kibana - Building SOC Dashboards & Visualizations",
-  "command": "http://<TARGET_IP>:5601 → Dashboard → Create visualization",
+  "command": "http://<target_ip>:5601 → Dashboard → Create visualization",
   "description": "Step-by-step workflow for creating Kibana Lens visualizations and SOC dashboards from Windows event log data in Elastic SIEM.",
   "platform": "linux",
   "type": "reference",
   "opsec": "silent",
   "category": "SIEM",
   "subcategory": "Kibana",
-  "certifications": ["CDSA"],
+  "certifications": [
+    "CDSA"
+  ],
   "source": "CDSA Module 02: Security Monitoring & SIEM Fundamentals",
-  "tags": ["kibana", "elastic", "dashboard", "visualization", "siem", "blue-team"],
+  "tags": [
+    "kibana",
+    "elastic",
+    "dashboard",
+    "visualization",
+    "siem",
+    "blue-team"
+  ],
   "notes": "Visualization workflow (Kibana Lens):\n1. Dashboard → Create new dashboard → Create visualization\n2. Set time range: calendar icon → Last 15 years → Apply\n3. Set index pattern: windows* (or logs-*, etc.)\n4. Add filters (pre-aggregation): field:value (e.g. event.code is 4625)\n5. Select chart type: Table most useful for SOC monitoring\n6. Configure Rows: field.keyword (e.g. user.name.keyword) → top 1000 values\n7. Configure Metrics: Count\n8. Add more Rows for context: host.hostname.keyword, winlog.logon.type.keyword, event.action.keyword\n9. Enter KQL in search bar to further filter (e.g. NOT user.name: *$)\n10. Rename columns: click field → Display name → set readable name\n11. Sort results: click column header\n12. Save and return → add more visualizations → Save dashboard\n\nField types in Kibana:\n  field          → use in KQL queries\n  field.keyword  → use in aggregations (Rows/Metrics in Lens)\n\nPanel time override: gear icon → Customize time range → set absolute range\n→ Useful when a single panel needs a fixed date range independent of dashboard global time.\n\nExclude computer accounts from auth visualizations:\n  KQL: NOT user.name: *$ AND winlog.channel.keyword: Security\n  (Computer accounts end with $ in Windows)\n\nCommon SOC dashboard panels:\n• Failed logon attempts — all users (event 4625)\n• Failed logon attempts — disabled users (4625 + SubStatus 0xC0000072)\n• Failed logon attempts — admin accounts (4625 + user.name: admin*)\n• RDP logons by service accounts (4624 + RemoteInteractive + user.name: svc-*)\n• Local admin group membership changes (4732 / 4733 + group.name: administrators)\n• Admin logon not from PAW (4624 + logon type 10, filter by source IP)\n• SSH logins (Linux auth logs, user: root or unexpected accounts)",
-  "mitre": ["T1110", "T1078", "T1021.001"],
+  "mitre": [
+    "T1110",
+    "T1078",
+    "T1021.001"
+  ],
   "examples": [
     {
       "label": "Failed logon all users — KQL filter",

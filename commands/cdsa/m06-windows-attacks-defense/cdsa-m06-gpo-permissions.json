@@ -1,7 +1,7 @@
 {
   "id": "cdsa-m06-gpo-permissions",
   "name": "Abusing GPO Permissions — Attack, Detection & Honeypot",
-  "command": "Get-DomainGPO | Get-ObjectAcl -ResolveGUIDs | Where-Object { $_.SecurityIdentifier -ne '<DOMAIN_CONTROLLERS_SID>' }",
+  "command": "Get-DomainGPO | Get-ObjectAcl -ResolveGUIDs | Where-Object { $_.SecurityIdentifier -ne '<domain_controllers_sid>' }",
   "description": "Group Policy Objects can be weaponized if non-admin accounts have modification rights. An attacker with GPO write access can push malicious configurations (scheduled tasks, registry keys, immediate tasks) to all computers in the linked OU — including DCs. Detection: Event 5136 (DS Object Modified) for GPO container in AD. Honeypot: monitor 5136 on decoy GPO and immediately disable the modifying account.",
   "platform": "windows",
   "type": "attack-chain",

@@ -41,13 +41,13 @@ const GROUP_MAP = {
         'Web Applications': ['WordPress', 'Joomla', 'Drupal', 'Tomcat', 'GitLab', 'IIS Tilde Enumeration', 'ColdFusion', 'Application Discovery', 'Web Enumeration', 'Client-Side Attacks'],
         'Remote Management': ['Linux Remote Management', 'Windows Remote Management'],
         'Recon & OSINT': ['Cloud', 'Cloud - AWS', 'Domain Information', 'Staff'],
-        'General': ['Basic Tools', 'Methodology', 'Service Scanning', 'Vulnerability Scanning', 'Miscellaneous Misconfigurations'],
+        'General': ['Basic Tools', 'Methodology', 'Service Scanning', 'Vulnerability Scanning', 'Miscellaneous Misconfigurations', 'Living Off the Land', 'Security Controls', 'Windows Configuration', 'Network Discovery'],
     },
     'Exploitation': {
         'Metasploit Framework': ['Metasploit', 'Metasploit Framework', 'Meterpreter', 'MSFVenom Payloads'],
-        'Shells & Payloads': ['Shells', 'Shells & Payloads', 'Reverse Shells', 'Interactive Shells', 'Web Shells', 'AV Evasion', 'Public Exploits', 'Fixing Exploits', 'Buffer Overflow'],
+        'Shells & Payloads': ['Shells', 'Shells & Payloads', 'Reverse Shells', 'Interactive Shells', 'Web Shells', 'AV Evasion', 'AV Bypass', 'Public Exploits', 'Fixing Exploits', 'Buffer Overflow'],
         'Network Services': ['FTP', 'SMB', 'RDP', 'DNS', 'Email Services', 'SQL Databases', 'LDAP Injection'],
-        'Web Applications': ['WordPress', 'Joomla', 'Drupal', 'Tomcat', 'Jenkins', 'Splunk', 'GitLab', 'PRTG Network Monitor', 'CGI Applications', 'Web Mass Assignment', 'Apps Connecting to Services', 'Other Applications', 'Thick Client', 'Web Applications', 'API Attacks', 'Client-Side Attacks'],
+        'Web Applications': ['WordPress', 'Joomla', 'Drupal', 'Tomcat', 'Jenkins', 'Splunk', 'GitLab', 'PRTG Network Monitor', 'ColdFusion', 'DotNetNuke', 'osTicket', 'CGI Applications', 'Web Mass Assignment', 'Apps Connecting to Services', 'Other Applications', 'Thick Client', 'Web Applications', 'API Attacks', 'Client-Side Attacks'],
         'Cloud': ['Cloud - AWS'],
         'Bleeding Edge': ['Bleeding Edge Vulnerabilities'],
     },
@@ -58,11 +58,11 @@ const GROUP_MAP = {
     },
     'Web Exploitation': {
         'Injection': ['SQL Injection', 'SQLMap', 'Command Injection', 'XXE', 'SSTI', 'SSI', 'XSLT'],
-        'File Attacks': ['File Inclusion', 'File Upload'],
+        'File Attacks': ['File Inclusion', 'File Upload', 'WordPress'],
         'Client-Side': ['XSS'],
         'Access Control': ['IDOR', 'HTTP Verb Tampering', 'Broken Authentication'],
         'APIs & SSRF': ['GraphQL', 'API Attacks', 'SSRF'],
-        'Discovery & Brute Force': ['Fuzzing', 'Web Fuzzing', 'Login Brute Forcing', 'Web Proxies'],
+        'Discovery & Brute Force': ['Fuzzing', 'Web Fuzzing', 'Login Brute Forcing', 'Login Brute Force', 'Web Proxies'],
     },
     'Password Attacks': {
         'Cracking': ['Hash Cracking', 'Cracking Protected Files', 'Wordlist Generation', 'Wordlists'],
@@ -78,6 +78,7 @@ const GROUP_MAP = {
         'Privilege Escalation': ['Domain PrivEsc', 'Local PrivEsc'],
         'Lateral Movement': ['Lateral Movement', 'Cross-Trust'],
         'Persistence': ['Persistence'],
+        'Evasion': ['Evasion'],
     },
     'Lateral Movement': {
         'Pass-the-X': ['Pass the Hash', 'Pass the Ticket', 'Pass the Certificate'],
@@ -104,7 +105,7 @@ const GROUP_MAP = {
         'Covert Channels': ['DNS Tunneling', 'ICMP Tunneling', 'RDP Tunneling'],
     },
     'Vulnerability Assessment': {
-        'Scanners': ['Nessus', 'OpenVAS', 'SSL/TLS Scanning'],
+        'Scanners': ['Nessus', 'OpenVAS', 'SSL/TLS Scanning', 'Nmap NSE'],
         'Standards & Scoring': ['Standards', 'CVSS', 'OVAL & CVE'],
         'Process': ['Methodology', 'Reporting', 'Monitoring'],
         'Other': ['Bleeding Edge Vulnerabilities'],

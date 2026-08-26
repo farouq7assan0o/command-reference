@@ -1,17 +1,30 @@
 {
   "id": "cdsa-m07-tcpdump-filters",
   "name": "TCPDump — BPF Packet Filters & TCP Flag Hunting",
-  "command": "sudo tcpdump -i eth0 host <TARGET_IP>",
+  "command": "sudo tcpdump -i eth0 host <target_ip>",
   "description": "TCPDump uses Berkeley Packet Filter (BPF) syntax to filter captures by host, network, port, protocol, packet size, and logical operators. Filters can be applied pre-capture (drop non-matching traffic) or post-capture when reading a PCAP (non-destructive). TCP flag inspection requires byte-offset syntax: tcp[13] accesses the flags byte.",
   "platform": "linux",
   "type": "cheatsheet",
   "opsec": "silent",
   "category": "Network Traffic Analysis",
   "subcategory": "TCPDump",
-  "certifications": ["CDSA"],
+  "certifications": [
+    "CDSA"
+  ],
   "source": "CDSA Module 07: Intro to Network Traffic Analysis",
-  "tags": ["tcpdump", "bpf", "filters", "packet-capture", "network-analysis", "blue-team", "tcp-flags", "nta"],
-  "mitre": ["T1040"],
+  "tags": [
+    "tcpdump",
+    "bpf",
+    "filters",
+    "packet-capture",
+    "network-analysis",
+    "blue-team",
+    "tcp-flags",
+    "nta"
+  ],
+  "mitre": [
+    "T1040"
+  ],
   "notes": "=== BPF FILTER SYNTAX ===\nFilters can be applied:\n  → Pre-capture: packets NOT matching are dropped (can lose evidence)\n  → Post-capture: applied to PCAP file — view changes, file unchanged\n\n=== HOST & NETWORK FILTERS ===\n# Bidirectional host filter (src OR dst)\nsudo tcpdump -i eth0 host <IP>\n\n# Source host only\nsudo tcpdump -i eth0 src host <IP>\n\n# Destination host only\nsudo tcpdump -i eth0 dst host <IP>\n\n# Source with port\nsudo tcpdump -i eth0 tcp src port 80\n\n# Destination network (CIDR notation)\nsudo tcpdump -i eth0 dest net <NETWORK>/<CIDR>\n\n# Source network\nsudo tcpdump -i eth0 src net <NETWORK>/<CIDR>\n\n=== PORT FILTERS ===\n# Bidirectional port filter\nsudo tcpdump -i eth0 port 443\n\n# Protocol + port (more specific than port alone)\nsudo tcpdump -i eth0 tcp port 443\n\n# DNS (uses both TCP and UDP)\nsudo tcpdump -i eth0 port 53\n\n# Port range\nsudo tcpdump -i eth0 portrange 0-1024\n\n# NOT a port\nsudo tcpdump -i eth0 not port 22\n\n=== PROTOCOL FILTERS ===\n# By protocol name\nsudo tcpdump -i eth0 icmp\nsudo tcpdump -i eth0 udp\nsudo tcpdump -i eth0 tcp\n\n# By protocol number (IANA numbers)\nsudo tcpdump -i eth0 proto 6    # TCP = 6\nsudo tcpdump -i eth0 proto 17   # UDP = 17\nsudo tcpdump -i eth0 proto 1    # ICMP = 1\n\n=== SIZE FILTERS ===\n# Packets less than N bytes (shows SYN, FIN, KeepAlive, small ACKs)\nsudo tcpdump -i eth0 less 64\n\n# Packets greater than N bytes (shows data payloads, file transfers)\nsudo tcpdump -i eth0 greater 500\n\n=== LOGICAL OPERATORS ===\n# AND — both conditions must match\nsudo tcpdump -i eth0 host <IP> and port 23\nsudo tcpdump -i eth0 src host <IP> and tcp port 80\n\n# OR — either condition matches\nsudo tcpdump -r capture.pcap icmp or host <IP>\n\n# NOT — exclude condition\nsudo tcpdump -r capture.pcap not icmp\nsudo tcpdump -i eth0 not port 22\n\n# Combined: clear UDP+ARP, see only TCP\nsudo tcpdump -r capture.pcap '!udp && !arp'\n\n=== READING FROM FILE WITH FILTER ===\n# Isolate DNS traffic from PCAP\nsudo tcpdump -r capture.pcap udp and port 53\n\n# Show only HTTP GET requests (needs -A or -X to see content)\nsudo tcpdump -r capture.pcap -A tcp port 80\n\n=== TCP FLAG HUNTING (BYTE OFFSET SYNTAX) ===\n# TCP header byte 13 contains the flags\n# Bit positions: URG=32, ACK=16, PSH=8, RST=4, SYN=2, FIN=1\n\n# Capture packets with SYN flag set\ntcpdump -i eth0 'tcp[13] &2 != 0'\n\n# Capture ONLY SYN (not SYN-ACK)\ntcpdump -i eth0 'tcp[13] == 2'\n\n# Capture RST packets\ntcpdump -i eth0 'tcp[13] &4 != 0'\n\n# Capture FIN packets\ntcpdump -i eth0 'tcp[13] &1 != 0'\n\n# Capture packets with BOTH SYN and ACK (handshake response)\ntcpdump -i eth0 'tcp[13] == 18'\n\n=== FILTER REFERENCE TABLE ===\nFilter          | Effect\nhost x.x.x.x   | src OR dst matching host\nsrc x.x.x.x    | source only\ndst x.x.x.x    | destination only\nnet x.x.x.x/24 | src OR dst on this network\nport 80         | src OR dst port\ntcp port 443    | TCP only, port 443\nportrange 0-1024| any port in range\nless 64         | packets < 64 bytes\ngreater 500     | packets > 500 bytes\nicmp/tcp/udp    | protocol name\nproto 17        | protocol by IANA number\nand / &&        | both must match\nor / ||         | either matches\nnot / !         | negate condition",
   "examples": [
     {

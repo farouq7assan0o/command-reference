@@ -74,7 +74,7 @@
     },
     {
       "label": "3. Open the web interface",
-      "command": "# https://localhost:8834  (or https://<IP>:8834)"
+      "command": "# https://localhost:8834  (or https://<ip>:8834)"
     }
   ],
   "opsec": "moderate",

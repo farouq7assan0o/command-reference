@@ -1,7 +1,7 @@
 {
   "id": "cdsa-m06-dcsync",
   "name": "DCSync Attack — Attack, Detection & Defense",
-  "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator",
+  "command": "mimikatz # lsadump::dcsync /domain:<domain> /user:Administrator",
   "description": "DCSync impersonates a Domain Controller to request password hash replication from a real DC. Requires 'Replicating Directory Changes' and 'Replicating Directory Changes All' rights. Detection: Event 4662 with specific AD replication GUIDs originating from a non-DC account. Prevention: RPC Firewall to restrict replication to DC-only sources.",
   "platform": "windows",
   "type": "attack-chain",

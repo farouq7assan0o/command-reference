@@ -66,10 +66,6 @@
   "description": "Common secret stashes: Winlogon AutoLogon (DefaultPassword), PuTTY saved sessions (proxy creds), and saved wireless profiles (recoverable in cleartext).",
   "variations": [
     {
-      "label": "AutoLogon",
-      "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\""
-    },
-    {
       "label": "PuTTY sessions",
       "command": "reg query HKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions"
     },
@@ -97,6 +93,7 @@
       "HTB M26",
       "MITRE T1552.002",
       "MITRE T1078"
-    ]
+    ],
+    "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
   }
 }

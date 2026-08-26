@@ -31,11 +31,6 @@
   "command": "snmpwalk -c <community> -v2c <ip>",
   "variations": [
     {
-      "description": "SNMPv2c full walk (preferred where supported)",
-      "command": "snmpwalk -c <community> -v2c <ip>",
-      "label": "SNMP v2c"
-    },
-    {
       "description": "SNMPv1 walk with timeout (for slow/legacy targets)",
       "command": "snmpwalk -c <community> -v1 -t 10 <ip>",
       "label": "SNMP v1 (timeout)"

@@ -80,6 +80,7 @@
       "HTB M24",
       "MITRE T1595.002",
       "OWASP A05:2021"
-    ]
+    ],
+    "evasion": "Undeploy the malicious WAR after getting a shell; name it innocuously; manager access over a valid session looks like admin activity."
   }
 }

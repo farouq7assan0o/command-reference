@@ -86,5 +86,21 @@
   },
   "tools": [
     "Snaffler"
+  ],
+  "variations": [
+    {
+      "label": "Target a host list",
+      "command": "Snaffler.exe -s -n <hostlist> -o snaffler.log"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Hunt shares for secrets domain-wide",
+      "command": "Snaffler.exe -s -d <domain> -o snaffler.log -v data"
+    },
+    {
+      "label": "Review high-signal (red) findings",
+      "command": "# grep the log for creds/keys/config files"
+    }
   ]
 }

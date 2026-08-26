@@ -105,37 +105,32 @@
     {
       "description": "Full recon (all modules)",
       "command": "./finalrecon.py --full --url http://<domain>",
-      "label": "finalrecon.py"
-    },
-    {
-      "description": "Headers + WHOIS only",
-      "command": "./finalrecon.py --headers --whois --url http://<domain>",
-      "label": "finalrecon.py"
+      "label": "Full scan"
     },
     {
       "description": "DNS enumeration + subdomain brute-force",
       "command": "./finalrecon.py --dns --sub --url http://<domain>",
-      "label": "finalrecon.py"
+      "label": "DNS + subdomains"
     },
     {
       "description": "SSL certificate info",
       "command": "./finalrecon.py --sslinfo --url https://<domain>",
-      "label": "finalrecon.py"
+      "label": "SSL info"
     },
     {
       "description": "Crawl + Wayback URLs",
       "command": "./finalrecon.py --crawl --wayback --url http://<domain>",
-      "label": "finalrecon.py"
+      "label": "Crawl + wayback"
     },
     {
       "description": "Fast port scan + directory search",
       "command": "./finalrecon.py --ps --dir --url http://<domain>",
-      "label": "finalrecon.py"
+      "label": "Port scan + dirs"
     },
     {
       "description": "Export results in JSON format",
       "command": "./finalrecon.py --full --url http://<domain> -o json",
-      "label": "finalrecon.py"
+      "label": "Full scan -> JSON"
     }
   ]
 }

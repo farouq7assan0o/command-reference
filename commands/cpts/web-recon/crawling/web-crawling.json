@@ -100,11 +100,6 @@
       "label": "Get ReconSpider"
     },
     {
-      "description": "Run ReconSpider against target (outputs results.json)",
-      "command": "python3 ReconSpider.py http://<domain>",
-      "label": "python3 ReconSpider.py http://<dom…"
-    },
-    {
       "description": "Install Scrapy",
       "command": "pip3 install scrapy",
       "label": "pip3"

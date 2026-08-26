@@ -2,7 +2,7 @@
   "id": "ad-asrep-crack",
   "name": "Hashcat - Crack AS-REP Hash (Mode 18200)",
   "command": "hashcat -m 18200 <hashfile> /usr/share/wordlists/rockyou.txt",
-  "description": "Cracks AS-REP hashes (Hashcat mode 18200) offline to recover the plaintext password of accounts with Kerberos pre-authentication disabled. The hash was encrypted by the DC using the account's NT hash \u2014 crack it to recover the password with no lockout risk.",
+  "description": "Cracks AS-REP hashes (Hashcat mode 18200) offline to recover the plaintext password of accounts with Kerberos pre-authentication disabled. The hash was encrypted by the DC using the account's NT hash — crack it to recover the password with no lockout risk.",
   "platform": "linux",
   "type": "command",
   "opsec": "silent",
@@ -26,7 +26,7 @@
     "T1558.004"
   ],
   "exam": "exam-ok",
-  "notes": "=== WHY MODE 18200 ===\nThe AS-REP response body is encrypted with the account's NT hash using RC4 (etype 23)\nor AES256 (etype 18). Hashcat mode 18200 handles both \u2014 it identifies which type\nfrom the $krb5asrep$ prefix:\n  $krb5asrep$23$... \u2192 RC4, faster to crack\n  $krb5asrep$18$... \u2192 AES256, much slower to crack (consider wordlist + rules only)\n\n=== DIFFERENCE FROM KERBEROASTING ===\nKerberoasting (mode 13100) = TGS encrypted with SERVICE account's hash\nAS-REP Roasting (mode 18200) = AS-REP encrypted with USER account's hash\nBoth attack offline \u2014 the number differs only because of what was encrypted.\n\n=== CRACKING STRATEGY ===\n1. Start with rockyou.txt \u2014 if the password is common, fast crack\n   hashcat -m 18200 hash.txt /usr/share/wordlists/rockyou.txt\n2. Add best64 rules for pattern variations:\n   hashcat -m 18200 hash.txt rockyou.txt -r /usr/share/hashcat/rules/best64.rule\n3. Corporate pattern masks:\n   hashcat -m 18200 hash.txt -a 3 ?u?l?l?l?d?d?d?s\n4. Larger wordlists: /usr/share/seclists/Passwords/\n\n=== WHAT COMES AFTER CRACKING ===\nYou now have the PLAINTEXT PASSWORD of the account. This gives:\n  - Direct authentication to any service the account has access to\n  - Spray the password across other accounts (password reuse)\n  - BloodHound traversal paths from the account\n  - If service account: check SPNs, group memberships, ACL rights\n  - If admin-adjacent: Evil-WinRM / DCSync possibility\n\nNote: AS-REP roastable accounts are often service-adjacent \u2014 admins accidentally\ncheck that box in ADUC. Check BloodHound for shortest path from this account to DA. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "notes": "=== WHY MODE 18200 ===\nThe AS-REP response body is encrypted with the account's NT hash using RC4 (etype 23)\nor AES256 (etype 18). Hashcat mode 18200 handles both — it identifies which type\nfrom the $krb5asrep$ prefix:\n  $krb5asrep$23$... → RC4, faster to crack\n  $krb5asrep$18$... → AES256, much slower to crack (consider wordlist + rules only)\n\n=== DIFFERENCE FROM KERBEROASTING ===\nKerberoasting (mode 13100) = TGS encrypted with SERVICE account's hash\nAS-REP Roasting (mode 18200) = AS-REP encrypted with USER account's hash\nBoth attack offline — the number differs only because of what was encrypted.\n\n=== CRACKING STRATEGY ===\n1. Start with rockyou.txt — if the password is common, fast crack\n   hashcat -m 18200 hash.txt /usr/share/wordlists/rockyou.txt\n2. Add best64 rules for pattern variations:\n   hashcat -m 18200 hash.txt rockyou.txt -r /usr/share/hashcat/rules/best64.rule\n3. Corporate pattern masks:\n   hashcat -m 18200 hash.txt -a 3 ?u?l?l?l?d?d?d?s\n4. Larger wordlists: /usr/share/seclists/Passwords/\n\n=== WHAT COMES AFTER CRACKING ===\nYou now have the PLAINTEXT PASSWORD of the account. This gives:\n  - Direct authentication to any service the account has access to\n  - Spray the password across other accounts (password reuse)\n  - BloodHound traversal paths from the account\n  - If service account: check SPNs, group memberships, ACL rights\n  - If admin-adjacent: Evil-WinRM / DCSync possibility\n\nNote: AS-REP roastable accounts are often service-adjacent — admins accidentally\ncheck that box in ADUC. Check BloodHound for shortest path from this account to DA. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
   "examples": [
     {
       "label": "Crack with rockyou",
@@ -41,7 +41,7 @@
       "command": "hashcat -m 18200 mmorgan_asrep --show"
     },
     {
-      "label": "Ch22 \u2014 crack AS-REP hash with best64 rules (PEN-200 pattern, mode 18200)",
+      "label": "Ch22 — crack AS-REP hash with best64 rules (PEN-200 pattern, mode 18200)",
       "command": "sudo hashcat -m 18200 hashes.asreproast /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule --force"
     }
   ],
@@ -75,11 +75,22 @@
       "HTB M13",
       "MITRE T1110.002"
     ],
-    "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash \u2014 without demanding proof of identity first.",
+    "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash — without demanding proof of identity first.",
     "vulnerable_config": "# Active Directory user account attribute (via ADUC or ADSI Edit)\n# 'Do not require Kerberos preauthentication' = CHECKED\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $true\n\n# UAC flag value: 0x400000 (4194304)\n# Confirmed with:\nGet-ADUser svc_backup -Properties DoesNotRequirePreAuth",
-    "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix \u2014 find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
+    "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix — find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)",
+    "evasion": "Target specific pre-auth-disabled accounts rather than enumerating loudly; the AS-REP request is a single event per user, so keep the set small."
   },
   "tools": [
     "hashcat"
+  ],
+  "variations": [
+    {
+      "label": "John the Ripper",
+      "command": "john --format=krb5asrep --wordlist=<wordlist> <hashfile>"
+    },
+    {
+      "label": "Show cracked",
+      "command": "hashcat -m 18200 <hashfile> --show"
+    }
   ]
 }

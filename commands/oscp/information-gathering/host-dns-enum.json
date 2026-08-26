@@ -17,7 +17,7 @@
     "reverse-lookup",
     "brute-force"
   ],
-  "category": "Information Gathering",
+  "category": "Enumeration",
   "subcategory": "DNS",
   "certifications": [
     "OSCP"
@@ -29,11 +29,6 @@
   "description": "DNS lookups using the host command: forward lookups, specific record type queries (MX, TXT, NS), forward brute force, and reverse PTR sweeps.",
   "command": "host <domain>",
   "variations": [
-    {
-      "description": "Forward DNS lookup (A record)",
-      "command": "host <domain>",
-      "label": "host lookup"
-    },
     {
       "description": "MX record lookup",
       "command": "host -t mx <domain>",
@@ -52,17 +47,17 @@
     {
       "description": "Forward brute force — append prefix list to domain",
       "command": "for ip in $(cat <wordlist>); do host $ip.<domain>; done",
-      "label": "Batch loop"
+      "label": "Subdomain loop (wordlist)"
     },
     {
       "description": "Forward brute force — filter resolved hosts only",
       "command": "for ip in $(cat <wordlist>); do host $ip.<domain>; done | grep -v 'not found'",
-      "label": "Batch loop"
+      "label": "Subdomain loop (filter misses)"
     },
     {
       "description": "Reverse sweep — PTR lookups across address range",
       "command": "for ip in $(seq <start> <end>); do host <prefix>.$ip; done | grep -v 'not found'",
-      "label": "Batch loop"
+      "label": "Numeric range loop"
     },
     {
       "description": "Lookup specific IP via reverse DNS",

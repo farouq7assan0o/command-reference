@@ -98,11 +98,6 @@
   },
   "variations": [
     {
-      "description": "Start unauthenticated SMB share (attacker/Linux)",
-      "command": "sudo impacket-smbserver share -smb2support /tmp/smbshare",
-      "label": "SMB server"
-    },
-    {
       "description": "Start authenticated SMB share (bypasses guest-access policy)",
       "command": "sudo impacket-smbserver share -smb2support /tmp/smbshare -user <user> -password <pass>",
       "label": "SMB server"

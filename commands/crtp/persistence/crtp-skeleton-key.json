@@ -92,5 +92,11 @@
     "misconfiguration": "LSASS PPL disabled on DCs (common on older DCs — PPL requires Secure Boot or explicit configuration). EDR not deployed on DCs. MDI not deployed. DCs not rebooted regularly (patch persists longer).",
     "vulnerable_config": "# LSASS PPL disabled on DC:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RunAsPPL\n# Returns $null or 0 = PPL NOT enabled on DC = LSASS patchable\n\n# EDR absent on DC:\n# Get-Service CsFalconService,MDEClient  # Not found = no EDR on DC\n\n# Result: Skeleton Key injected via Mimikatz:\n# sekurlsa::skeleton\n# DC LSASS patched — password 'mimikatz' now works for all domain users",
     "secure_config": "# Enable LSASS PPL on DCs:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RunAsPPL -Value 1\n# With Secure Boot: Set RunAsPPLBoot = 1 in addition\n\n# Via GPO:\n# Computer Config → Admin Templates → MS Security Guide\n# → Configure LSASS to run as a protected process: Enabled\n\n# Deploy MDI on all DCs:\n# MDI 'Skeleton Key malware attack' detection is built-in\n\n# Deploy EDR (Defender for Endpoint) on DCs:\n# LSASS Memory → PsProtectedSignerWindows-Light verification\n\n# Sysmon Rule on DCs:\n# <ProcessAccess onmatch='include'>\n#   <TargetImage condition='is'>C:\\Windows\\System32\\lsass.exe</TargetImage>\n# </ProcessAccess>"
-  }
+  },
+  "variations": [
+    {
+      "label": "Then auth with the master password 'mimikatz'",
+      "command": "# any DA account now accepts password: mimikatz  (dir \\\\<dc>\\C$ /user:Administrator mimikatz)"
+    }
+  ]
 }

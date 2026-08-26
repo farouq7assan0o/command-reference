@@ -76,5 +76,11 @@
   },
   "tools": [
     "net"
+  ],
+  "variations": [
+    {
+      "label": "Then enumerate with rpcclient",
+      "command": "rpcclient -U \"\" -N <dc_ip> -c enumdomusers"
+    }
   ]
 }

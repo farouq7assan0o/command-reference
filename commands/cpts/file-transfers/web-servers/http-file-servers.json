@@ -60,10 +60,6 @@
   "description": "Serve the current directory over HTTP so a target can download from you. Use whichever interpreter is installed; uploadserver also accepts uploads.",
   "variations": [
     {
-      "label": "Python 3",
-      "command": "python3 -m http.server 8000"
-    },
-    {
       "label": "Python 2",
       "command": "python2.7 -m SimpleHTTPServer"
     },

@@ -53,7 +53,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "ldapsearch queries the DC directly over LDAP to enumerate users/attributes from Linux without domain-joined tooling.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. A simple LDAP bind can page every user object because the default ACL permits it.",
     "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
     "impact": "A user inventory gathered from Linux.",
     "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -70,5 +70,19 @@
   },
   "tools": [
     "ldapsearch"
+  ],
+  "variations": [
+    {
+      "label": "With authentication",
+      "command": "ldapsearch -x -H ldap://<dc_ip> -D '<user>@<domain>' -w '<password>' -b \"<base_dn>\" \"(objectClass=user)\" sAMAccountName"
+    },
+    {
+      "label": "Anonymous bind",
+      "command": "ldapsearch -x -H ldap://<dc_ip> -b \"<base_dn>\" \"(objectClass=user)\""
+    },
+    {
+      "label": "ldapsearch-ad.py - automated LDAP enum (all)",
+      "command": "ldapsearch-ad.py -l <dc_ip> -d <domain> -u <user> -p <password> -t all"
+    }
   ]
 }

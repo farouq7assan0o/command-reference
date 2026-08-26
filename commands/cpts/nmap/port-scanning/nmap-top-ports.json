@@ -61,10 +61,6 @@
   "description": "Scan the most common ports, or specify exactly which ports to scan. Port selection is the main lever on scan scope vs speed.",
   "variations": [
     {
-      "label": "Top 10 ports",
-      "command": "sudo nmap <ip> --top-ports=10"
-    },
-    {
       "label": "All 65535 ports",
       "command": "sudo nmap <ip> -p-"
     },

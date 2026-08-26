@@ -95,5 +95,15 @@
       "MITRE T1595.002",
       "OWASP A05:2021"
     ]
-  }
+  },
+  "variations": [
+    {
+      "label": "Version from meta/readme",
+      "command": "curl -s http://<url>/readme.html | grep -i version"
+    },
+    {
+      "label": "Enumerate via wpscan",
+      "command": "wpscan --url http://<url> --no-update"
+    }
+  ]
 }

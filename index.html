@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Command Reference - CPTS and more</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#0d1117">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/icons.css">
 </head>
@@ -110,6 +112,10 @@
                     <button class="mode-btn" data-mode="both">All</button>
                     <button class="mode-btn" data-mode="blue"><span class="mode-pip blue"></span> Blue</button>
                 </div>
+                <button id="exportBtn" class="ghost-btn" title="Export the current filtered list to a Markdown cheatsheet"><i class="fas fa-file-arrow-down"></i> Export</button>
+                <button id="studyBtn" class="ghost-btn" title="Study mode — flashcards & quizzes for exam prep"><i class="fas fa-graduation-cap"></i> Study</button>
+                <button id="graphBtn" class="ghost-btn" title="Attack-path map — see what leads to and from a command"><i class="fas fa-project-diagram"></i> Map</button>
+                <button id="coverageBtn" class="ghost-btn" title="Coverage — MITRE ATT&CK, per-cert & tool coverage"><i class="fas fa-table-cells"></i> Coverage</button>
                 <a id="examModeLink" href="exam.html"><i class="fas fa-crosshairs"></i> Exam Mode</a>
                 <button id="guideBtn" class="ghost-btn" title="Guide - what this is & how to use it"><i class="fas fa-circle-question"></i> Guide</button>
                 <button id="clearContext" class="ghost-btn"><i class="fas fa-eraser"></i> Clear context</button>
@@ -174,7 +180,7 @@
                 <button id="guideClose" class="guide-close" aria-label="Close">&times;</button>
             </div>
             <div class="guide-body">
-                <p class="guide-intro">A searchable, offline command reference for pentest certs (CPTS, OSCP, and more). Pick a command, fill your target details once, and copy ready-to-run commands. Everything you personalize is saved in this browser.</p>
+                <p class="guide-intro">A searchable, <b>fully offline</b> command reference for pentest certs (CPTS, OSCP, CWES, CDSA, CRTP). Pick a command, fill your target details once, and copy ready-to-run commands. On top of the builder there's an <b>Attack-Path Map</b>, a <b>Study</b> mode for exam prep, and <b>Coverage</b> dashboards. Everything you personalize is saved in this browser.</p>
 
                 <h3>Finding commands</h3>
                 <ul>
@@ -188,7 +194,7 @@
                 <ul>
                     <li><b>Target Context bar</b> - set your engagement variables once (IP, user, password, domain, DC, LHOST/LPORT…). They fill every command. "Show all variables" reveals the rest. It's <b>alias-aware</b>: a command written with <code>&lt;target&gt;</code> or <code>&lt;host&gt;</code> still fills from your single <b>IP</b> value.</li>
                     <li><b>Parameters &amp; Generated Command</b> - fill any command-specific fields; the finished command shows with your values. <b>Unfilled</b> lists variables you still need to set. <b>Copy</b> copies it.</li>
-                    <li><b>Attack Chain</b> - multi-step cards are substituted too, with <b>Copy all</b> for the whole sequence.</li>
+                    <li><b>Attack Chain</b> - multi-step cards are substituted too, with <b>Copy all</b> for the whole sequence, and <b>Script</b> to copy the steps as a runnable bash/PowerShell script (platform-aware) with your target filled in.</li>
                     <li><b>Examples / References</b> - concrete lab examples, and links to the tool's docs + the HTB module (where to review if stuck).</li>
                     <li><b>Recommended Next Commands</b> - the attack-chain flow (grouped: Next steps / Alternatives / Prerequisites / Escalation), plus <b>Reached From</b> (what leads here). Click to jump.</li>
                     <li><b>OpSec badge</b> (silent/quiet/moderate/loud = how detectable) and <b>MITRE</b> ATT&amp;CK chips (link out; searchable).</li>
@@ -197,10 +203,17 @@
                     <li><b>Bookmark</b> button - add the card to a Collection (create/delete collections here).</li>
                 </ul>
 
+                <h3>Map, Study &amp; Coverage (top bar)</h3>
+                <ul>
+                    <li><b>Map</b> - an interactive Attack-Path graph around the selected command: what leads here (left) → this → next / escalation (right), edges colored by relationship, an OpSec dot per node. Click a node to re-center, zoom with −/⤢/+, or use <b>Path to:</b> to trace the shortest chain from here to a goal (e.g. Golden Ticket). <b>Export path</b> saves the whole path as a Markdown cheatsheet.</li>
+                    <li><b>Study</b> - <b>flashcards</b> (see the name + description, recall the command, then reveal &amp; self-grade Got it / Again) and a <b>quiz</b> ("what's a recommended next step after X?" and "which command does X?"). Scope to All / Favorites / a specific cert. Cards you miss are remembered as <b>Weak areas</b> and resurfaced across sessions (spaced repetition) - drill exactly what you keep getting wrong.</li>
+                    <li><b>Coverage</b> - four tabs: <b>MITRE ATT&amp;CK</b> technique counts, <b>By Certification</b> (cards + defense/chain %), <b>Source coverage</b> (per-module tool-coverage %, green/amber/red), and <b>Tools</b>. Click any cell/tool to filter the library to it.</li>
+                </ul>
+
                 <h3>Your data</h3>
                 <ul>
                     <li><b>Named engagements</b> (the ≡ menu by the context bar) - save the current variable set under a name and switch between targets. Export/import to move a setup between machines.</li>
-                    <li><b>Back up ALL my data</b> (same ≡ menu) - exports favorites, notes, engagements, context, collections, and recent to one JSON file. <b>Restore</b> brings it back. Use this so nothing is ever lost.</li>
+                    <li><b>Back up ALL my data</b> (same ≡ menu) - exports favorites, notes, engagements, context, collections, recent, and your Study weak-areas to one JSON file. <b>Restore</b> brings it back. Use this so nothing is ever lost.</li>
                     <li>Everything personal lives in this browser's local storage - clearing browser data wipes it, so back up.</li>
                 </ul>
 
@@ -211,9 +224,87 @@
                 <ul>
                     <li><b>Keyboard</b>: Ctrl+K focus search · ↑/↓ move through results · Enter opens · Esc closes menus.</li>
                     <li><b>Offline</b>: fully self-contained - works on an exam VPN with no internet.</li>
+                    <li><b>Print</b>: Ctrl+P prints a clean black-on-white cheatsheet of the current cards - chrome stripped, code boxed, reference URLs spelled out.</li>
                     <li><b>Mobile</b>: the sidebar collapses to a ≡ drawer.</li>
                 </ul>
             </div>
+        </div>
+    </div>
+
+    <div id="graphOverlay" class="graph-overlay" hidden>
+        <div class="graph-modal" role="dialog" aria-modal="true" aria-label="Attack-Path Map">
+            <div class="graph-head">
+                <h2><i class="fas fa-project-diagram"></i> Attack-Path Map</h2>
+                <div class="graph-focus">
+                    <input type="text" id="graphSearch" list="graphCardList" placeholder="Focus on a command…" autocomplete="off">
+                    <datalist id="graphCardList"></datalist>
+                </div>
+                <button id="graphExport" class="ghost-btn" title="Export this attack path to a Markdown cheatsheet"><i class="fas fa-file-export"></i> Export path</button>
+                <button id="graphClose" class="guide-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="graph-toolbar">
+                <div class="graph-legend">
+                    <span class="gl gl-prereq">prereq</span>
+                    <span class="gl gl-next">next</span>
+                    <span class="gl gl-escalation">escalation</span>
+                    <span class="gl gl-alternative">alternative</span>
+                    <span class="gl gl-cleanup">cleanup</span>
+                </div>
+                <div class="graph-path">
+                    <label>Path to:</label>
+                    <input type="text" id="graphGoal" list="graphCardList" placeholder="goal command…" autocomplete="off">
+                    <span id="graphQuickGoals"></span>
+                </div>
+            </div>
+            <div id="graphPathResult" class="graph-path-result" hidden></div>
+            <div class="graph-canvas-wrap">
+                <div class="graph-zoom">
+                    <button data-z="out" type="button" title="Zoom out" aria-label="Zoom out">&minus;</button>
+                    <button data-z="fit" type="button" title="Fit to view" aria-label="Fit to view">⤢</button>
+                    <button data-z="in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+                </div>
+                <div id="graphCanvas" class="graph-canvas"></div>
+            </div>
+            <div class="graph-hint">Click any node to re-center. Arrows follow the attack flow: <b>prereq → this → next / escalation</b>. Left = what leads here, right = where it goes. Scroll or use zoom for large maps.</div>
+        </div>
+    </div>
+
+    <div id="studyOverlay" class="study-overlay" hidden>
+        <div class="study-modal" role="dialog" aria-modal="true" aria-label="Study mode">
+            <div class="study-head">
+                <h2><i class="fas fa-graduation-cap"></i> Study</h2>
+                <div class="study-modes">
+                    <button class="smode-btn active" data-smode="flash" type="button">Flashcards</button>
+                    <button class="smode-btn" data-smode="quiz" type="button">Quiz</button>
+                </div>
+                <select id="studyScope" class="study-scope" title="What to study"></select>
+                <button id="studyClose" class="guide-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="study-progress"><div id="studyBar" class="study-bar"></div></div>
+            <div id="studyBody" class="study-body"></div>
+            <div class="study-foot">
+                <span id="studyScore" class="study-score"></span>
+                <div class="study-foot-actions">
+                    <button id="studyShuffle" class="ghost-btn" type="button"><i class="fas fa-shuffle"></i> Shuffle</button>
+                    <button id="studyRestart" class="ghost-btn" type="button"><i class="fas fa-rotate-left"></i> Restart</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="coverageOverlay" class="cov-overlay" hidden>
+        <div class="cov-modal" role="dialog" aria-modal="true" aria-label="Coverage dashboards">
+            <div class="cov-head">
+                <h2><i class="fas fa-table-cells"></i> Coverage</h2>
+                <div class="cov-tabs">
+                    <button class="cov-tab active" data-cov="mitre" type="button">MITRE ATT&CK</button>
+                    <button class="cov-tab" data-cov="cert" type="button">By Certification</button>
+                    <button class="cov-tab" data-cov="source" type="button">Source coverage</button>
+                    <button class="cov-tab" data-cov="tool" type="button">Tools</button>
+                </div>
+                <button id="coverageClose" class="guide-close" aria-label="Close">&times;</button>
+            </div>
+            <div id="coverageBody" class="cov-body"></div>
         </div>
     </div>
 
@@ -222,6 +313,13 @@
     <script src="js/commands.js"></script>
     <script src="js/vars.js"></script>
     <script src="js/groups.js"></script>
+    <script src="js/coverage-data.js"></script>
     <script src="js/app.js"></script>
+    <script>
+        // PWA offline cache - only over http(s) (hosted, e.g. GitHub Pages). No-op on file://.
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+        }
+    </script>
 </body>
 </html>

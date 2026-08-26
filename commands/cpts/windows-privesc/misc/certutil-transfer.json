@@ -80,6 +80,7 @@
       "HTB M26",
       "MITRE T1105",
       "MITRE T1140"
-    ]
+    ],
+    "evasion": "Touch only what you need; remove any scheduled task/mounted disk/dropped file you create."
   }
 }

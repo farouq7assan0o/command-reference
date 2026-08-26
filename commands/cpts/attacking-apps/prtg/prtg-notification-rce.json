@@ -62,6 +62,11 @@
       "id": "other-apps-defaults",
       "note": "Try default prtgadmin creds to reach the console.",
       "rel": "prereq"
+    },
+    {
+      "id": "gs-reverse-shells",
+      "rel": "next",
+      "note": "Use the command injection to catch a reverse shell"
     }
   ],
   "id": "prtg-notification-rce",
@@ -90,6 +95,7 @@
       "MITRE T1190",
       "MITRE T1059",
       "OWASP A03:2021"
-    ]
+    ],
+    "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort."
   }
 }

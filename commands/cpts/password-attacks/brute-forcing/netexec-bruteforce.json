@@ -1,7 +1,7 @@
 {
   "id": "netexec-bruteforce",
   "name": "NetExec - Brute Force and Enumerate",
-  "command": "netexec <proto> <ip> -u <user.list> -p <password.list>",
+  "command": "netexec <proto> <ip> -u <userlist> -p <wordlist>",
   "description": "NetExec (formerly CrackMapExec) sprays credentials across a protocol (smb, winrm, ssh, etc.). A [+] marks a valid pair; (Pwn3d!) means code execution is possible. Add --shares to list accessible SMB shares once authenticated.",
   "platform": "linux",
   "requires": [
@@ -71,11 +71,11 @@
   "variations": [
     {
       "label": "WinRM",
-      "command": "netexec winrm <ip> -u <user.list> -p <password.list>"
+      "command": "netexec winrm <ip> -u <userlist> -p <wordlist>"
     },
     {
       "label": "SMB",
-      "command": "netexec smb <ip> -u <user.list> -p <password.list>"
+      "command": "netexec smb <ip> -u <userlist> -p <wordlist>"
     },
     {
       "label": "SMB + Shares",
@@ -88,7 +88,7 @@
   ],
   "exam": "exam-ok",
   "defense": {
-    "why_it_works": "NetExec (nxc) brute-forces credentials across many hosts/protocols (SMB, WinRM, LDAP, MSSQL...) in one sweep.",
+    "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. NetExec parallelises guesses across a host list over SMB/WinRM/etc.",
     "prerequisites": "Network access to the target protocol and credential lists.",
     "impact": "Validated credentials and the hosts they authenticate to.",
     "detection": "Failed authentication bursts: Windows 4625 (failed logon) and 4771 (Kerberos pre-auth failed) at abnormal rate/volume; account lockouts (4740); many attempts from one source, or - for spraying - one password across many accounts. SIEM correlation on failed-logon spikes.",
@@ -102,5 +102,6 @@
     "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
     "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
     "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
-  }
+  },
+  "type": "command"
 }

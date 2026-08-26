@@ -82,24 +82,19 @@
       "label": "pip3"
     },
     {
-      "description": "Export OpenVAS XML report to XLSX",
-      "command": "python3 -m openvasreporting -i <report>.xml -f xlsx",
-      "label": "python3 -m openvasreporting -i"
-    },
-    {
       "description": "Export to Word DOCX format",
       "command": "python3 -m openvasreporting -i <report>.xml -f docx",
-      "label": "python3 -m openvasreporting -i"
+      "label": "Export -> DOCX"
     },
     {
       "description": "Export multiple XML reports into one spreadsheet",
       "command": "python3 -m openvasreporting -i <report1>.xml <report2>.xml -f xlsx",
-      "label": "python3 -m openvasreporting -i"
+      "label": "Export -> XLSX (merge reports)"
     },
     {
       "description": "Filter by minimum severity (critical/high/medium/low)",
       "command": "python3 -m openvasreporting -i <report>.xml -f xlsx --min-lvl high",
-      "label": "python3 -m openvasreporting -i"
+      "label": "Export -> XLSX (high+ only)"
     },
     {
       "description": "Export from UI — XML format (for tool import)",

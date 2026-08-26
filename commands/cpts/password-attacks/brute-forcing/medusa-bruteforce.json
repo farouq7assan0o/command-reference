@@ -1,7 +1,7 @@
 {
   "id": "medusa-bruteforce",
   "name": "Medusa - Service Brute Force",
-  "command": "medusa -h <ip> -u <user> -P <passwords.txt> -M <module>",
+  "command": "medusa -h <ip> -u <user> -P <wordlist> -M <module>",
   "description": "Parallel login brute forcer supporting many protocols via -M (ssh, ftp, mysql, rdp, imap, pop3, vnc, telnet, svn). -h/-H set a host or host file, -u/-U and -p/-P set credentials, -n a custom port, -t threads, -f stop on first hit per host, -e ns tries blank/username-as-password.",
   "platform": "linux",
   "requires": [
@@ -93,18 +93,19 @@
   "variations": [
     {
       "label": "SSH",
-      "command": "medusa -h <ip> -n <port> -u <user> -P <passwords.txt> -M ssh -t 3",
+      "command": "medusa -h <ip> -n <port> -u <user> -P <wordlist> -M ssh -t 3",
       "description": "Brute force SSH with a known username. Keep threads low (-t 3) to avoid triggering fail2ban or lockouts."
     },
     {
       "label": "FTP",
-      "command": "medusa -h <ip> -n <port> -u <user> -P <passwords.txt> -M ftp -t 5",
+      "command": "medusa -h <ip> -n <port> -u <user> -P <wordlist> -M ftp -t 5",
       "description": "Brute force FTP. After success, login with: ftp ftp://<user>:<pass>@<ip>"
     },
     {
       "label": "SSH user+pass lists",
-      "command": "medusa -h <ip> -U <users.txt> -P <passwords.txt> -M ssh -f",
+      "command": "medusa -h <ip> -U <userlist> -P <wordlist> -M ssh -f",
       "description": "Brute force SSH with both username and password lists. -f stops on first success."
     }
-  ]
+  ],
+  "type": "command"
 }

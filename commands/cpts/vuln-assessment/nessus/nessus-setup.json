@@ -100,24 +100,19 @@
   },
   "variations": [
     {
-      "description": "Install Nessus .deb package",
-      "command": "sudo dpkg -i Nessus-<version>-ubuntu910_amd64.deb",
-      "label": "sudo dpkg -i Nessus-<version>-ubun…"
-    },
-    {
       "description": "Start Nessus service",
       "command": "sudo systemctl start nessusd.service",
-      "label": "systemctl"
+      "label": "Start nessusd"
     },
     {
       "description": "Enable Nessus at boot",
       "command": "sudo systemctl enable nessusd.service",
-      "label": "systemctl"
+      "label": "Enable at boot"
     },
     {
       "description": "Check Nessus service status",
       "command": "sudo systemctl status nessusd.service",
-      "label": "systemctl"
+      "label": "Check status"
     },
     {
       "description": "Access Nessus web UI (after start)",

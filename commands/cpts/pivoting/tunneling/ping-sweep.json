@@ -37,11 +37,11 @@
       "command": "run post/multi/gather/ping_sweep RHOSTS=172.16.5.0/23"
     },
     {
-      "label": "OSCP Ch18 \u2014 nc port-check loop to discover hosts with SMB open (seq variant)",
+      "label": "OSCP Ch18 — nc port-check loop to discover hosts with SMB open (seq variant)",
       "command": "for i in $(seq 1 254); do nc -zv -w 1 172.16.50.$i 445; done 2>&1 | grep succeeded"
     }
   ],
-  "notes": "Sweep the pivot host's internal subnet to find live hosts (`post/multi/gather/ping_sweep`, or a for-loop over the range) once autoroute is set - your first discovery step on the new network segment. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: nc -zv -w 1 does a port scan (zero-I/O, verbose, 1s timeout) rather than ICMP ping \u2014 useful when ICMP is blocked or you need to verify a specific service (e.g. SMB/445) is reachable across the subnet.",
+  "notes": "Sweep the pivot host's internal subnet to find live hosts (`post/multi/gather/ping_sweep`, or a for-loop over the range) once autoroute is set - your first discovery step on the new network segment. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: nc -zv -w 1 does a port scan (zero-I/O, verbose, 1s timeout) rather than ICMP ping — useful when ICMP is blocked or you need to verify a specific service (e.g. SMB/445) is reachable across the subnet.",
   "references": [
     {
       "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
@@ -53,10 +53,6 @@
     }
   ],
   "variations": [
-    {
-      "label": "Linux",
-      "command": "for i in {1..254}; do (ping -c 1 172.16.5.$i | grep \"bytes from\" &); done"
-    },
     {
       "label": "Windows CMD",
       "command": "for /L %i in (1 1 254) do ping 172.16.5.%i -n 1 -w 100 | find \"Reply\""
@@ -94,8 +90,9 @@
       "HTB M12",
       "MITRE T1018"
     ],
-    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
-    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
-    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
-  }
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  },
+  "type": "command"
 }

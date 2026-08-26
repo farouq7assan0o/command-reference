@@ -5,23 +5,36 @@
   "description": "Windows built-in command to list shared resources on a remote host. /all includes hidden administrative shares (ADMIN$, C$, IPC$). No extra tools required — runs from any authenticated Windows session.",
   "type": "command",
   "platform": "windows",
-  "requires": ["network-access"],
-  "protocols": ["smb"],
-  "tools": ["net"],
-  "tags": ["smb", "shares", "enumeration", "windows", "lolbas", "net"],
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "smb"
+  ],
+  "tools": [
+    "net"
+  ],
+  "tags": [
+    "smb",
+    "shares",
+    "enumeration",
+    "windows",
+    "lolbas",
+    "net"
+  ],
   "category": "Enumeration",
   "subcategory": "SMB",
-  "certifications": ["OSCP"],
+  "certifications": [
+    "OSCP"
+  ],
   "primary_cert": "OSCP",
   "source": "PEN-200 Chapter 06: Information Gathering",
   "opsec": "quiet",
   "exam": "exam-ok",
-  "mitre": ["T1135"],
+  "mitre": [
+    "T1135"
+  ],
   "variations": [
-    {
-      "label": "List shares on remote host (incl. hidden)",
-      "command": "net view \\\\<ip> /all"
-    },
     {
       "label": "List all hosts visible on local network",
       "command": "net view"
@@ -77,6 +90,10 @@
     "artifacts": "On target: Event 5140, Event 4624 type 3. On network: SMB NetrShareEnum RPC call visible in PCAP. SIEM: browsing activity from anomalous source.",
     "prevention": "Disable NetBIOS over TCP/IP where not required. Enable SMB signing. Restrict NTLM to domain accounts only. Disable the Server service on hosts that do not need to share files. Monitor Event 5140 for unusual share browsing.",
     "evasion": "net view is a Windows LOLBAS — indistinguishable from legitimate admin activity. Single queries to one host at a time avoid sequential-scan detection. Using during business hours blends with normal share browsing patterns.",
-    "sources": ["PEN-200 Ch 6", "MITRE T1135", "MS Docs"]
+    "sources": [
+      "PEN-200 Ch 6",
+      "MITRE T1135",
+      "MS Docs"
+    ]
   }
 }

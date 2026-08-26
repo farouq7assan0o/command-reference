@@ -86,5 +86,11 @@
       "MITRE T1110",
       "OWASP A07:2021"
     ]
-  }
+  },
+  "variations": [
+    {
+      "label": "Multiple users",
+      "command": "wpscan --url http://<url> -U users.txt -P rockyou.txt --password-attack wp-login"
+    }
+  ]
 }

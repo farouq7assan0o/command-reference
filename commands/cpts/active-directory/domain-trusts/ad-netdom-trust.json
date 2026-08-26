@@ -83,5 +83,25 @@
   },
   "tools": [
     "netdom"
+  ],
+  "variations": [
+    {
+      "label": "Verbose (direction + type)",
+      "command": "netdom query /domain:<domain> trust /verbose"
+    },
+    {
+      "label": "List DCs / workstations too",
+      "command": "netdom query /domain:<domain> dc"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Map trust relationships",
+      "command": "netdom query /domain:<domain> trust"
+    },
+    {
+      "label": "Cross-check with PowerView",
+      "command": "Get-DomainTrust | select SourceName,TargetName,TrustDirection,TrustType"
+    }
   ]
 }

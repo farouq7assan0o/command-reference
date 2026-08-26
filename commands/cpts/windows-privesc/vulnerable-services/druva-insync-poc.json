@@ -89,6 +89,7 @@
       "HTB M26",
       "MITRE T1068",
       "MITRE T1203"
-    ]
+    ],
+    "evasion": "Exploit once and restore the service; prefer in-memory execution of the payload."
   }
 }

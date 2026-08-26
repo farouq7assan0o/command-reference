@@ -99,7 +99,7 @@
     {
       "description": "Check WinRM port reachability (5985=HTTP, 5986=HTTPS)",
       "command": "Test-NetConnection -ComputerName <hostname> -Port 5985",
-      "label": "Test-NetConnection"
+      "label": "Test WinRM port (5985)"
     },
     {
       "description": "Create PSSession to remote host",
@@ -124,7 +124,7 @@
     {
       "description": "Full WinRM file transfer workflow (check → connect → copy)",
       "command": "Test-NetConnection -ComputerName DATABASE01 -Port 5985\n$Session = New-PSSession -ComputerName DATABASE01\nCopy-Item -Path C:\\samplefile.txt -ToSession $Session -Destination C:\\Users\\Administrator\\Desktop\\",
-      "label": "Test-NetConnection"
+      "label": "Test + open session + copy file"
     }
   ]
 }

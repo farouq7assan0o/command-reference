@@ -91,6 +91,7 @@
     "sources": [
       "HTB M24",
       "MITRE T1595.002"
-    ]
+    ],
+    "evasion": "Obfuscate the injected template webshell and remove it after; blend admin actions into normal usage; avoid leaving the malicious extension/template enabled."
   }
 }

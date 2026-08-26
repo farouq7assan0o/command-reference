@@ -65,10 +65,6 @@
   "description": "Tune RTT timeouts, retries, and packet rate to speed up big scans - at the cost of missing hosts on lossy links. Save outputs and diff open-port counts to see the trade-off.",
   "variations": [
     {
-      "label": "Optimized RTT timeouts",
-      "command": "sudo nmap <cidr> -F --initial-rtt-timeout 50ms --max-rtt-timeout 100ms"
-    },
-    {
       "label": "No retries (fastest, least reliable)",
       "command": "sudo nmap <cidr> -F --max-retries 0"
     },

@@ -37,9 +37,28 @@ count, not a figure from an old prompt or an old PROGRESS entry.
 
 ---
 
-CURRENT STATE (as of 2026-08-18 — verify, don't trust blindly):
+CURRENT STATE (as of 2026-08-26 — verify, don't trust blindly):
 
-  • ~890 cards, build PASS, 0 hard errors.
+  • 905 cards, build PASS, 0 hard errors, healthcheck PASS.
+  • THIS PROJECT HAS TWO SIDES:
+      (A) CARD AUTHORING — the bulk of this doc (sources, protocol, invariants below).
+      (B) THE WEB APP + TOOLING — index.html + js/app.js, and the maintenance scripts. If you're
+          working on the app/features (not cards), read README.md "What it does" + "Repository
+          layout" and AUTHORING.md's "Maintenance & health checks" and "Coverage & completeness"
+          sections. Features already built: Command Builder, Attack-Path Map, Study Mode, Coverage
+          dashboards, Export (script + path), Exam Mode. Don't rebuild these — extend them.
+  • MAINTENANCE LOOP (run after ANY change, cards or code):
+      npm run check                   # one command: build + validate + healthcheck --render + coverage
+                                      # snapshot -> prints "ALL GATES PASS". Or run individually:
+      node build-commands.js          # regenerate js/commands.js (auto-runs validate)
+      node validate.js --errors-only  # schema gate — must say RESULT: PASS
+      node healthcheck.js --render    # behaviour gate — 0 botched placeholders / dup labels / crashes
+  • COVERAGE / COMPLETENESS: `node coverage.js --module NN --tools` is the trustworthy signal (~90-100%
+    per module). Raw line-coverage over-reports (config/wordlists/output/lab-literals) — see
+    coverage-decisions.md for the full "why skipped / where it went" ledger. The 2026-08 audit found
+    the library already complete for real techniques; a few usable commands were added as
+    variations/notes rather than new cards (that's the standard: card = new technique; variation/
+    note = a usable command alongside a technique already carded).
   • All 28 CPTS modules audited: M01 is theory-only (SKIP, no commands); M02–M28 have
     full-protocol deep-audit entries in PROGRESS.md. M27 (Documentation & Reporting) is NOT
     pure theory — it has tmux-logging + engagement-folder cards. M28 is the capstone.
@@ -71,6 +90,13 @@ INVARIANTS — these must stay at ZERO. Measure live before claiming any are "op
      cards with no attack semantics (e.g. gs-vpn-connect = "sudo openvpn user.ovpn"). Those may
      also skip defense{}. Everything else needs both.
 
+  5. Every card has an explicit `id` and `type` (validate.js hard-errors on either missing).
+     Every variation has a `label` (hard-error otherwise). No card relies on build-derived id -
+     recommended[] links must point at an explicit id.
+
+  6. Coverage: after processing any source, the Step 8.5 sweep reports ~0 uncarded techniques.
+     No singleton top-level categories (fold 1-card categories into a sibling).
+
 ---
 
 SOURCE MATERIAL LOCATIONS:
@@ -99,6 +125,21 @@ SOURCE MATERIAL LOCATIONS:
   OSCP chapters (PEN-200 2024.11):
     Source:     D:\Downloads\O 2\OffSec - PEN-200 Book 2024.11 hide01.ir\
                   → "<NN>. <Chapter Name> hide01.ir.html"
+
+  CRTP (Altered Security - Attacking & Defending Active Directory):
+    Source:     the Lab Manual (.mhtml) + course slides (.pdf) + SlideNotes (.pdf) the user uploads.
+                  → Lab Manual = command-rich (dollarcorp/moneycorp lab); slides = same techniques + theory.
+    Cards:      commands/crtp/<phase>/*.json  (subcats: Foothold, Domain Enumeration, Local PrivEsc,
+                  Domain PrivEsc, Lateral Movement, Persistence, Cross-Trust, Evasion)
+    Course URL for references[]:  https://www.alteredsecurity.com/adlab
+    NOTE: CRTP AD techniques overlap CPTS Module 13 - multi-cert merge where identical; the CRTP
+    tradecraft layer (Loader.exe in-memory, InviShell/AMSI bypass, evasive-* Mimikatz verbs,
+    coercion, RACE backdoors) is CRTP-unique. The exam is OFFENSIVE-only - defensive course content
+    (Deploy-Deception, decoy users) is out of exam scope; skip unless asked.
+
+  Azure / Entra ID (cloud identity - growing gap, add as encountered):
+    Cards:      commands/azure/<phase>/*.json ; certifications ["AZ"] or the relevant cert.
+    Techniques: device-code phishing, PRT theft, AZAD Connect, managed identities, illicit consent.
 
   Card files:
     CPTS-primary:  commands/cpts/<phase>/<technique>/*.json
@@ -162,6 +203,20 @@ Step 1 — Extract every code block. No skimming.
         print(f"=== BLOCK {i+1} ==="); print(b[:400]); print()
 
   For CPTS Markdown: extract every fenced code block.
+
+  For MHTML (e.g. a CRTP Lab Manual saved as .mhtml) - decode MIME, take the HTML part, then run
+  the same code/pre extractor above:
+    import email, glob
+    msg = email.message_from_file(open("<file>.mhtml", encoding="utf-8", errors="ignore"))
+    html = max((p.get_payload(decode=True).decode("utf-8","ignore")
+                for p in msg.walk() if p.get_content_type()=="text/html"), key=len)
+    # feed `html` into the CodeExtractor above; strip prompts (PS C:\...>, C:\...>) to get commands.
+
+  For PDF (course slides / SlideNotes) - pull text per page and grep command-ish lines:
+    from pypdf import PdfReader
+    for p in PdfReader("<file>.pdf").pages:
+        for line in (p.extract_text() or "").split("\n"):
+            # keep lines matching ^(Get-|Set-|Invoke-|Rubeus|\.\\|C:\\|winrs|Certify|SafetyKatz|...)
 
 Step 2 — For EACH block, assign an explicit verdict. Every block. No silent skips.
 
@@ -275,9 +330,35 @@ Step 8 — Second verification pass (do this before declaring the module done):
   • If the user asked to sweep multiple modules, only call the whole job done after a final
     repo-wide build+validate PASS and confirming each module 02–28 has a PROGRESS entry.
 
+Step 8.5 — COVERAGE MEASUREMENT (mandatory before claiming "everything is covered").
+  Block-by-block can miss things. MEASURE it: extract every distinct offensive cmdlet, .exe tool,
+  and mimikatz/rubeus module::verb from the source, and diff against the whole card corpus. Report
+  the uncarded count - do not say "all covered" until it is ~0 (residual = non-techniques only:
+  target services, browsers, generic netcat, provider flags).
+    import re, glob, json
+    SRC = open("<extracted source text>").read()   # all blocks + PDF text concatenated
+    cmdlets = set(re.findall(r'\b([A-Z][a-zA-Z]+-[A-Z][a-zA-Z]+)\b', SRC))       # Verb-Noun
+    exes    = set(x.lower() for x in re.findall(r'\b([\w\-]+\.exe)\b', SRC))
+    verbs   = set(re.findall(r'\b([a-z]+::[a-z\-]+)\b', SRC.lower()))            # module::cmd
+    CARDS = '\n'.join(open(f,errors="ignore").read() for f in glob.glob('commands/**/*.json',recursive=True)).lower()
+    for name,S in [("cmdlets",cmdlets),("exes",exes),("verbs",verbs)]:
+        missing = sorted(x for x in S if x.lower() not in CARDS)
+        print(name, "NOT in any card:", missing)
+  Triage each miss: distinct technique -> card it; target/browser/generic/flag -> SKIP (note why).
+  This is the step that turns "I think it's covered" into a number. Run it for every source.
+
 ---
 
 CARD QUALITY STANDARD — a card is DONE only when ALL of this is present:
+
+DEPTH RULE (do NOT ship shallow single-command cards):
+• variations[] — capture EVERY alternate form the source shows: different tool for the same goal
+  (ffuf/gobuster/feroxbuster), different OS, different auth (rc4 vs aes256 vs cert), in-memory vs
+  on-disk. If the source shows 4 ways, the card has 4 variations. A command card with 0 variations
+  is a red flag - re-read the source.
+• steps[] — if the technique is a sequence (enumerate -> request -> convert -> use), capture the
+  whole chain in steps[], substituted and copy-ready. Every attack-chain type MUST have steps.
+
 
 ATTACK SIDE:
 • command         — template with <placeholders>
@@ -297,6 +378,9 @@ DEFENSE SIDE (defense{} — populated from source material only, never invented)
 • misconfiguration — the specific bad setting in concrete terms
 • vulnerable_config — short snippet showing the insecure state
 • secure_config   — the corrected version
+• code_review     — (web/injection cards) grep patterns + red-flag code signatures to FIND the
+                    vuln in source, plus the safe pattern. Answers "how would I spot this in a
+                    codebase / debugging web files". Renders in the Understand tab.
 • impact          — what success grants the attacker
 • detection       — Event IDs, log sources, SIEM queries, behavioral indicators
 • artifacts       — forensic evidence (files, registry keys, network IOCs, process artifacts)

@@ -83,5 +83,15 @@
   },
   "tools": [
     "impacket"
+  ],
+  "variations": [
+    {
+      "label": "SQL auth",
+      "command": "mssqlclient.py <user>:<password>@<target>"
+    },
+    {
+      "label": "Pass-the-ticket",
+      "command": "KRB5CCNAME=<ccache> mssqlclient.py -k <domain>/<user>@<target_fqdn>"
+    }
   ]
 }

@@ -75,6 +75,7 @@
     "sources": [
       "HTB M24",
       "MITRE T1595"
-    ]
+    ],
+    "evasion": "Throttle and randomize the screenshot/probe sweep; use a normal User-Agent; scope to in-scope hosts to avoid a fan-out pattern."
   }
 }

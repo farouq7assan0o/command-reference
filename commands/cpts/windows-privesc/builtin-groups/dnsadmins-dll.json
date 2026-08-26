@@ -48,7 +48,7 @@
   "references": [
     {
       "title": "Abusing DnsAdmins (labofapenetrationtester)",
-      "url": "http://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
+      "url": "https://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
     },
     {
       "title": "HTB Academy - Windows Privilege Escalation",

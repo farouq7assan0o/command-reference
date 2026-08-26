@@ -63,7 +63,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "enum4linux-ng is the modernised enumerator (users, groups, shares, policy, RID cycling) with cleaner output.",
+    "why_it_works": "SMB/RPC (SAMR, LSARPC) on a Windows/Samba host expose users, groups, shares, and the password policy — often to null/guest sessions on legacy configs — which enum4linux-ng aggregates.",
     "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
     "impact": "Structured SMB/RPC enumeration incl. password policy.",
     "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -81,5 +81,11 @@
   },
   "tools": [
     "enum4linux-ng"
+  ],
+  "variations": [
+    {
+      "label": "With creds",
+      "command": "enum4linux-ng -u <user> -p <password> -A <dc_ip> -oA out"
+    }
   ]
 }

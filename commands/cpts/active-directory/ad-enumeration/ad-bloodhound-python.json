@@ -89,5 +89,25 @@
   },
   "tools": [
     "bloodhound-python"
+  ],
+  "variations": [
+    {
+      "label": "Kerberos auth (ccache)",
+      "command": "bloodhound-python -k -no-pass -ns <dc_ip> -d <domain> -c All --zip"
+    },
+    {
+      "label": "Target a specific collection method",
+      "command": "bloodhound-python -u '<user>' -p '<password>' -ns <dc_ip> -d <domain> -c DCOnly"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Collect from Linux (no Windows agent)",
+      "command": "bloodhound-python -u '<user>' -p '<password>' -ns <dc_ip> -d <domain> -c All --zip"
+    },
+    {
+      "label": "Import the zip into BloodHound and run pathfinding",
+      "command": "# upload zip -> 'Shortest paths to Domain Admins'"
+    }
   ]
 }

@@ -57,7 +57,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "CrackMapExec/NetExec enumerates domain users over SMB (--users) using valid creds or a null session.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. CME pulls the user list via SAMR/LDAP to build a target list for spraying and roasting.",
     "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
     "impact": "A domain user list gathered over SMB.",
     "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -74,5 +74,25 @@
   },
   "tools": [
     "crackmapexec"
+  ],
+  "variations": [
+    {
+      "label": "NetExec",
+      "command": "nxc smb <dc_ip> -u <user> -p <password> --users"
+    },
+    {
+      "label": "RID brute (null/guest)",
+      "command": "crackmapexec smb <dc_ip> -u guest -p '' --rid-brute"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Enumerate domain users",
+      "command": "crackmapexec smb <dc_ip> -u <user> -p <password> --users"
+    },
+    {
+      "label": "Save to a userlist for spraying/roasting",
+      "command": "crackmapexec smb <dc_ip> -u <user> -p <password> --users | awk '{print $5}' > users.txt"
+    }
   ]
 }

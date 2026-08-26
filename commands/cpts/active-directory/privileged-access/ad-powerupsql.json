@@ -86,5 +86,25 @@
   },
   "tools": [
     "PowerUpSQL"
+  ],
+  "variations": [
+    {
+      "label": "Audit for privesc",
+      "command": "Invoke-SQLAudit -Verbose"
+    },
+    {
+      "label": "Crawl links + run OS command",
+      "command": "Get-SQLServerLinkCrawl -Instance <instance> -Query 'exec master..xp_cmdshell ''whoami'''"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Discover reachable instances",
+      "command": "Get-SQLInstanceDomain | Get-SQLConnectionTestThreaded"
+    },
+    {
+      "label": "Audit each for escalation paths",
+      "command": "Invoke-SQLAudit -Verbose"
+    }
   ]
 }

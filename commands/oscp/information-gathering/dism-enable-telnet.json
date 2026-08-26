@@ -5,12 +5,26 @@
   "description": "Installs the Windows optional TelnetClient feature on a live system using DISM (Deployment Image Servicing and Management). Enables use of telnet for banner grabbing and manual protocol interaction (e.g. SMTP VRFY) from a Windows foothold without installing third-party tools.",
   "type": "command",
   "platform": "windows",
-  "requires": ["local-admin"],
-  "tools": ["dism"],
-  "tags": ["dism", "telnet", "windows", "lolbas", "setup", "smtp", "banner-grab"],
-  "category": "Utilities",
+  "requires": [
+    "local-admin"
+  ],
+  "tools": [
+    "dism"
+  ],
+  "tags": [
+    "dism",
+    "telnet",
+    "windows",
+    "lolbas",
+    "setup",
+    "smtp",
+    "banner-grab"
+  ],
+  "category": "Enumeration",
   "subcategory": "Windows Configuration",
-  "certifications": ["OSCP"],
+  "certifications": [
+    "OSCP"
+  ],
   "primary_cert": "OSCP",
   "source": "PEN-200 Chapter 06: Information Gathering",
   "opsec": "quiet",
@@ -19,10 +33,6 @@
     "T1046"
   ],
   "variations": [
-    {
-      "label": "Enable TelnetClient (requires admin)",
-      "command": "dism /online /Enable-Feature /FeatureName:TelnetClient"
-    },
     {
       "label": "Check if TelnetClient is already installed",
       "command": "dism /online /Get-Features | findstr /i telnet"
@@ -74,6 +84,9 @@
     "artifacts": "telnet.exe appears in C:\\Windows\\System32\\. DISM logs written to C:\\Windows\\Logs\\DISM\\dism.log. Windows Application log: FeatureConfiguration event.",
     "prevention": "Restrict DISM execution via AppLocker (block dism.exe for non-admin users, or require admin confirmation). Monitor Event 4688 for dism.exe /Enable-Feature invocations. Use WSUS to control which optional features can be installed.",
     "evasion": "dism.exe is a signed Microsoft binary — AV/EDR usually allow it. Feature installation generates a log entry but no network connection unless fetching from Windows Update. Running in an elevated CMD session (rather than PowerShell) avoids PowerShell transcript logging.",
-    "sources": ["PEN-200 Ch 6", "MS Docs"]
+    "sources": [
+      "PEN-200 Ch 6",
+      "MS Docs"
+    ]
   }
 }

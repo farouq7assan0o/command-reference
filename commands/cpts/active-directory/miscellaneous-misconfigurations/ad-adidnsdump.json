@@ -79,5 +79,11 @@
   },
   "tools": [
     "adidnsdump"
+  ],
+  "variations": [
+    {
+      "label": "Resolve records too",
+      "command": "adidnsdump -u <domain>\\<user> -p <password> ldap://<dc_ip> -r"
+    }
   ]
 }

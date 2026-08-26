@@ -109,6 +109,7 @@
       "HTB M25",
       "MITRE T1574.006",
       "MITRE T1548.003"
-    ]
+    ],
+    "evasion": "Place the hijack file, trigger once, then remove it and restore the path so the change is transient."
   }
 }

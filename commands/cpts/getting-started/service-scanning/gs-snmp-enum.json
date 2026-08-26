@@ -48,7 +48,7 @@
     }
   ],
   "id": "gs-snmp-enum",
-  "name": "SNMP - Enumeration",
+  "name": "SNMP - Enumeration (Getting Started)",
   "command": "snmpwalk -v 2c -c public <ip>",
   "description": "Walk SNMP with a community string to dump device/system info. Try public/private, then brute-force community strings with onesixtyone.",
   "variations": [

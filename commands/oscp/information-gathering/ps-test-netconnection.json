@@ -5,22 +5,34 @@
   "description": "Windows PowerShell built-in for testing TCP connectivity to a specific port. Returns TcpTestSucceeded: True/False, the remote IP, and interface details. Available on all modern Windows hosts — no extra tools needed from a foothold.",
   "type": "command",
   "platform": "windows",
-  "requires": ["network-access"],
-  "tools": ["powershell"],
-  "tags": ["powershell", "port-scan", "enumeration", "windows", "lolbas", "tcp", "connectivity"],
+  "requires": [
+    "network-access"
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "powershell",
+    "port-scan",
+    "enumeration",
+    "windows",
+    "lolbas",
+    "tcp",
+    "connectivity"
+  ],
   "category": "Enumeration",
   "subcategory": "Network Discovery",
-  "certifications": ["OSCP"],
+  "certifications": [
+    "OSCP"
+  ],
   "primary_cert": "OSCP",
   "source": "PEN-200 Chapter 06: Information Gathering",
   "opsec": "quiet",
   "exam": "exam-ok",
-  "mitre": ["T1046"],
+  "mitre": [
+    "T1046"
+  ],
   "variations": [
-    {
-      "label": "Single port check",
-      "command": "Test-NetConnection -Port <port> <ip>"
-    },
     {
       "label": "Alias (shorter)",
       "command": "tnc <ip> -Port <port>"
@@ -76,6 +88,10 @@
     "artifacts": "Windows Security Event 4688 (powershell.exe with -Port argument if command-line auditing enabled). PowerShell operational log. Network: TCP SYN to target host/port.",
     "prevention": "Enable PowerShell Constrained Language Mode. Enable script block logging (GPO: PowerShell → Turn on Script Block Logging). Network egress filtering to restrict which ports internal hosts can reach.",
     "evasion": "tnc alias is shorter and may evade simple keyword-based detection. Single-port checks generate far less noise than a range scan. Test-NetConnection is a LOLBAS — same binary used for legitimate admin tasks.",
-    "sources": ["PEN-200 Ch 6", "MITRE T1046", "MS Docs"]
+    "sources": [
+      "PEN-200 Ch 6",
+      "MITRE T1046",
+      "MS Docs"
+    ]
   }
 }

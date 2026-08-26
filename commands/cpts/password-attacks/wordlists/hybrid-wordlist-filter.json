@@ -87,5 +87,6 @@
       "command": "grep -E '^.{8,}$' <wordlist> | grep -E '[A-Z]' | grep -E '[a-z]' | grep -E '[0-9]' | grep -E '([!@#$%^&*].*){2,}' > filtered.txt",
       "description": "Adds a symbols filter requiring 2+ special characters (!@#$%^&*) on top of the standard length/upper/lower/digit filters. Use when the target policy mandates special characters."
     }
-  ]
+  ],
+  "type": "command"
 }

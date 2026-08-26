@@ -80,5 +80,11 @@
   },
   "tools": [
     "ActiveDirectory"
+  ],
+  "variations": [
+    {
+      "label": "Import the DLL directly (no RSAT install)",
+      "command": "Import-Module .\\Microsoft.ActiveDirectory.Management.dll"
+    }
   ]
 }

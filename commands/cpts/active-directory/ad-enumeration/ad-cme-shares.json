@@ -58,7 +58,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "nxc --shares enumerates accessible SMB shares across hosts, revealing readable/writable data stores.",
+    "why_it_works": "Share and file ACLs are enumerable by authenticated users; CME lists which shares your account can read/write to find data and staging locations.",
     "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
     "impact": "A map of accessible shares to pillage.",
     "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -75,5 +75,11 @@
   },
   "tools": [
     "crackmapexec"
+  ],
+  "variations": [
+    {
+      "label": "NetExec + filter readable",
+      "command": "nxc smb <dc_ip> -u <user> -p <password> --shares"
+    }
   ]
 }

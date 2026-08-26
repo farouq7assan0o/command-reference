@@ -69,23 +69,23 @@
   "variations": [
     {
       "label": "A / AAAA",
-      "command": "dig domain.com A\ndig domain.com AAAA"
+      "command": "dig <domain> A\ndig <domain> AAAA"
     },
     {
       "label": "MX / NS / SOA",
-      "command": "dig domain.com MX\ndig domain.com NS\ndig domain.com SOA"
+      "command": "dig <domain> MX\ndig <domain> NS\ndig <domain> SOA"
     },
     {
       "label": "TXT / CNAME / ANY",
-      "command": "dig domain.com TXT\ndig domain.com CNAME\ndig domain.com ANY"
+      "command": "dig <domain> TXT\ndig <domain> CNAME\ndig <domain> ANY"
     },
     {
       "label": "Use a specific resolver",
-      "command": "dig @1.1.1.1 domain.com"
+      "command": "dig @<resolver> <domain>"
     },
     {
       "label": "Trace delegation",
-      "command": "dig +trace domain.com"
+      "command": "dig +trace <domain>"
     },
     {
       "label": "Reverse lookup",
@@ -93,7 +93,7 @@
     },
     {
       "label": "Concise output",
-      "command": "dig +short domain.com\ndig +noall +answer domain.com"
+      "command": "dig +short <domain>\ndig +noall +answer <domain>"
     }
   ],
   "opsec": "moderate",

@@ -93,11 +93,6 @@
       "label": "vnstat --top10"
     },
     {
-      "description": "Monitor specific interface in live mode",
-      "command": "vnstat -l -i eth0",
-      "label": "vnstat -l -i eth0"
-    },
-    {
       "description": "Show all interfaces",
       "command": "vnstat",
       "label": "vnstat"

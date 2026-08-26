@@ -85,22 +85,22 @@
     {
       "description": "Find exposed file types (PDF, XLS, DOCX) on target site",
       "command": "site:<domain> (filetype:pdf OR filetype:xls OR filetype:docx)",
-      "label": "Docs/files dork"
+      "label": "Dork - docs/files"
     },
     {
       "description": "Find config files on target site",
       "command": "site:<domain> (inurl:config.php OR ext:conf OR ext:cnf)",
-      "label": "Docs/files dork"
+      "label": "Dork - config files"
     },
     {
       "description": "Find backup files or SQL dumps",
       "command": "site:<domain> (inurl:backup OR filetype:sql)",
-      "label": "Docs/files dork"
+      "label": "Dork - backups/SQL"
     },
     {
       "description": "Exclude a subdomain from results",
       "command": "site:<domain> -site:www.<domain>",
-      "label": "Exclude filter"
+      "label": "Exclude - other subdomains"
     },
     {
       "description": "Find cache/index of a page",
@@ -120,7 +120,7 @@
     {
       "description": "Exclude irrelevant results with minus operator",
       "command": "site:news.com -inurl:sports",
-      "label": "Exclude filter"
+      "label": "Exclude - a path"
     }
   ]
 }

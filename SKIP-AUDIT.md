@@ -1,0 +1,172 @@
+# SKIP AUDIT — per source / per module
+
+Method: extracted every cmdlet / tool / mimikatz-verb token from each raw module, checked each against the full card corpus, and listed anything NOT found in a card with a reason. "covered %" = share of distinct offensive tokens that appear in some card.
+
+
+## CPTS  (28 modules)
+
+- **01 Penetration Testing Process** — 11 real technique-tokens, 100% carded — **all carded**
+    - skipped 5 false-positive tokens (justified): hyphenated prose / hostname (not a command) (5)
+- **02 Getting Started** — 21 real technique-tokens, 95% carded; 1 genuine residual(s): Tecmint_monitor.sh
+    - skipped 5 false-positive tokens (justified): hyphenated prose / hostname (not a command) (5)
+- **03 Network Enumeration with Nmap** — 8 real technique-tokens, 100% carded — **all carded**
+- **04 Footprinting** — 30 real technique-tokens, 87% carded; 4 genuine residual(s): Test-WsMan, build.sh, code-assessment.py, parrot.sh
+    - skipped 15 false-positive tokens (justified): hyphenated prose / hostname (not a command) (15)
+- **05 Information Gathering - Web Edition (CPTS + CWES)** — 21 real technique-tokens, 100% carded — **all carded**
+    - skipped 3 false-positive tokens (justified): hyphenated prose / hostname (not a command) (3)
+- **06 Vulnerability Assessment** — 1 real technique-tokens, 100% carded — **all carded**
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **07 File Transfers** — 44 real technique-tokens, 98% carded; 1 genuine residual(s): authorizers.py
+    - skipped 5 false-positive tokens (justified): hyphenated prose / hostname (not a command) (4); not-a-mimikatz-verb (Ruby/email/prose) (1)
+- **08 Shells & Payloads** — 17 real technique-tokens, 94% carded; 1 genuine residual(s): Write-Error
+    - skipped 9 false-positive tokens (justified): not-a-mimikatz-verb (Ruby/email/prose) (3); Metasploit internal module/plugin file (1); hyphenated prose / hostname (not a command) (5)
+- **09 Using the Metasploit Framework** — 12 real technique-tokens, 100% carded — **all carded**
+    - skipped 52 false-positive tokens (justified): hyphenated prose / hostname (not a command) (9); Metasploit internal module/plugin file (36); not-a-mimikatz-verb (Ruby/email/prose) (6); lab target binary (not a tool) (1)
+- **10 Password Attacks** — 73 real technique-tokens, 79% carded; 15 genuine residual(s): 91.sh, action_wpa.sh, api.py, apps-bin-path.sh, bash_completion.sh, cedilla-portuguese.sh, chisel.exe, dpapi.py, fontdrvhost.exe, gettext.sh, im-config_wayland.sh, kerberos_script_test.sh, syskey.exe, wininit.exe, xdg_dirs_desktop_session.sh
+    - skipped 16 false-positive tokens (justified): not-a-mimikatz-verb (Ruby/email/prose) (1); hyphenated prose / hostname (not a command) (5); John format-converter helper (pattern carded) (7); library/init source fragment (2); lab target binary (not a tool) (1)
+- **11 Attacking Common Services** — 25 real technique-tokens, 88% carded; 3 genuine residual(s): MultiRelay.py, findstr.exe, mysql.exe
+    - skipped 5 false-positive tokens (justified): hyphenated prose / hostname (not a command) (5)
+- **12 Pivoting, Tunneling, and Port Forwarding** — 23 real technique-tokens, 91% carded; 2 genuine residual(s): Autogen.sh, autogen.sh
+    - skipped 6 false-positive tokens (justified): not-a-mimikatz-verb (Ruby/email/prose) (3); hyphenated prose / hostname (not a command) (1); lab target binary (not a tool) (2)
+- **13 Active Directory Enumeration & Attacks** — 190 real technique-tokens, 86% carded; 26 genuine residual(s): Add-ADCentralAccessPolicyMember, Add-ADComputerServiceAcc, Clear-Variable, ConvertFrom-SddlString, ConvertTo-SID, Export-PowerViewCSV, Get-ADRootDSE, Get-GPPAutologon.ps1, Get-NetGmsa, Get-NetShare, Get-PSReadLineKeyHandler, Get-PrincipalContext, Invoke-PetitPotam, Invoke-PetitPotam.ps1, Invoke-Petitpotam, Invoke-Petitpotam.ps1, PingCastle.exe, Remove-PS, Set-DomainObjectOwner, ad-ldapdomaindump.py, disable-lbtbns.ps1, kerbrute_windows_386.exe, misc::efs, nkYjGWDZ.exe, pktmon.exe
+    - skipped 20 false-positive tokens (justified): hyphenated prose / hostname (not a command) (18); not-a-mimikatz-verb (Ruby/email/prose) (2)
+- **14 Using Web Proxies** — 15 real technique-tokens, 100% carded — **all carded**
+    - skipped 3 false-positive tokens (justified): hyphenated prose / hostname (not a command) (3)
+- **15 Attacking Web Applications with Ffuf** — 4 real technique-tokens, 100% carded — **all carded**
+- **16 Login Brute Forcing (CPTS + CWES)** — 11 real technique-tokens, 73% carded; 3 genuine residual(s): cupp.py, dictionary-solver.py, pin-solver.py
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **17 SQL Injection Fundamentals (CPTS + CWES)** — 2 real technique-tokens, 100% carded — **all carded**
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **18 SQLMap Essentials (CPTS + CWES)** — 8 real technique-tokens, 75% carded; 2 genuine residual(s): appendnullbyte.py, ifnull2ifisnull.py
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **19 Cross-Site Scripting (XSS) (CPTS + CWES)** — 6 real technique-tokens, 100% carded — **all carded**
+- **20 File Inclusion (CPTS + CWES)** — 9 real technique-tokens, 100% carded — **all carded**
+- **21 File Upload Attacks (CPTS + CWES)** — 9 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **22 Command Injections (CPTS + CWES)** — 8 real technique-tokens, 100% carded — **all carded**
+- **23 Web Attacks (CPTS + CWES)** — 10 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **24 Attacking Common Applications (CPTS + CWES)** — 51 real technique-tokens, 82% carded; 9 genuine residual(s): EyeWitness.py, app.py, dpn0.ps1, jdbc_drivers.jar, monta.ps1, outfile.ps1, restart-service.exe, start.sh, traverse.jar
+    - skipped 19 false-positive tokens (justified): lab target binary (not a tool) (5); hyphenated prose / hostname (not a command) (12); Metasploit internal module/plugin file (1); not-a-mimikatz-verb (Ruby/email/prose) (1)
+- **25 Linux Privilege Escalation** — 24 real technique-tokens, 79% carded; 5 genuine residual(s): Screen_Exploit_POC.sh, Set-Group, action_wpa.sh, automation.sh, mem_stats.py
+    - skipped 13 false-positive tokens (justified): library/init source fragment (11); hyphenated prose / hostname (not a command) (2)
+- **26 Windows Privilege Escalation** — 139 real technique-tokens, 86% carded; 20 genuine residual(s): 5CEnable-Privilege.ps1, Bypass-UAC.ps1, Connect-VC.ps1, Get-IISSite, Get-IISSite.ps1, Get-IISsite, Get-IISsite.ps1, Get-SeBackupPrivilege, backgroundTaskHost.exe, conhost.exe, db-backup.ps1, docker-credential-wincred.exe, hhupd.exe, mailbox-backup.ps1, main.exe, pwn.exe, revshell.exe, vm3dservice.exe, vmtoolsd.exe, windows-exploit-suggester.py
+    - skipped 14 false-positive tokens (justified): lab target binary (not a tool) (4); hyphenated prose / hostname (not a command) (7); not-a-mimikatz-verb (Ruby/email/prose) (2); library/init source fragment (1)
+- **27 Documentation & Reporting** — 10 real technique-tokens, 100% carded — **all carded**
+    - skipped 3 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2); not-a-mimikatz-verb (Ruby/email/prose) (1)
+- **28 Attacking Enterprise Networks** — 59 real technique-tokens, 92% carded; 5 genuine residual(s): Get-DomainSearcher, Get-PrincipalContext, dc_shell.exe, sysaxschedscp.exe, teams.exe
+    - skipped 9 false-positive tokens (justified): hyphenated prose / hostname (not a command) (6); not-a-mimikatz-verb (Ruby/email/prose) (3)
+
+## CWES  (21 modules)
+
+- **06 JavaScript Deobfuscation** — 2 real technique-tokens, 100% carded — **all carded**
+- **07 Cross-Site Scripting (XSS) (CPTS + CWES)** — 6 real technique-tokens, 100% carded — **all carded**
+- **08 SQL Injection Fundamentals (CPTS + CWES)** — 2 real technique-tokens, 100% carded — **all carded**
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **09 SQLMap Essentials (CPTS + CWES)** — 8 real technique-tokens, 75% carded; 2 genuine residual(s): appendnullbyte.py, ifnull2ifisnull.py
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **1 Web Requests** — 11 real technique-tokens, 100% carded — **all carded**
+    - skipped 4 false-positive tokens (justified): hyphenated prose / hostname (not a command) (4)
+- **10 Command Injections (CPTS + CWES)** — 8 real technique-tokens, 100% carded — **all carded**
+- **11 File Upload Attacks (CPTS + CWES)** — 9 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **12 Server-Side Attacks** — 6 real technique-tokens, 100% carded — **all carded**
+- **13 Login Brute Forcing (CPTS + CWES)** — 11 real technique-tokens, 73% carded; 3 genuine residual(s): cupp.py, dictionary-solver.py, pin-solver.py
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **14 Broken Authentication** — 7 real technique-tokens, 100% carded — **all carded**
+- **15 Web Attacks (CPTS + CWES)** — 10 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **16 File Inclusion (CPTS + CWES)** — 9 real technique-tokens, 100% carded — **all carded**
+- **17 Attacking GraphQL** — 4 real technique-tokens, 100% carded — **all carded**
+- **18 API Attacks** — 9 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **19 Attacking Common Applications (CPTS + CWES)** — 51 real technique-tokens, 82% carded; 9 genuine residual(s): EyeWitness.py, app.py, dpn0.ps1, jdbc_drivers.jar, monta.ps1, outfile.ps1, restart-service.exe, start.sh, traverse.jar
+    - skipped 19 false-positive tokens (justified): lab target binary (not a tool) (5); hyphenated prose / hostname (not a command) (12); Metasploit internal module/plugin file (1); not-a-mimikatz-verb (Ruby/email/prose) (1)
+- **2 Introduction to Web Applications** — 2 real technique-tokens, 100% carded — **all carded**
+    - skipped 4 false-positive tokens (justified): hyphenated prose / hostname (not a command) (4)
+- **20 Bug Bounty Hunting Process** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)
+- **3 Using Web Proxies (CPTS + CWES)** — 15 real technique-tokens, 100% carded — **all carded**
+    - skipped 3 false-positive tokens (justified): hyphenated prose / hostname (not a command) (3)
+- **4 Information Gathering - Web Edition (CPTS + CWES)** — 21 real technique-tokens, 100% carded — **all carded**
+    - skipped 3 false-positive tokens (justified): hyphenated prose / hostname (not a command) (3)
+- **5 Web Fuzzing** — 16 real technique-tokens, 94% carded; 1 genuine residual(s): api_fuzzer.py
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **Untitled** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)
+
+## OSCP  (27 modules)
+
+- **1. Copyright hide01.ir** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)
+- **10. SQL Injection Attacks hide01.ir** — 5 real technique-tokens, 100% carded — **all carded**
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **11. Client-side Attacks hide01.ir** — 4 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): not-a-mimikatz-verb (Ruby/email/prose) (1)
+- **12. Locating Public Exploits hide01.ir** — 12 real technique-tokens, 33% carded; 8 genuine residual(s): 40280.py, 41929.py, 41987.py, 42030.py, 42031.py, 44616.py, 48537.py, 50944.py
+    - skipped 5 false-positive tokens (justified): Metasploit internal module/plugin file (5)
+- **13. Fixing Exploits hide01.ir** — 9 real technique-tokens, 44% carded; 5 genuine residual(s): 42928.py, 43200.py, 44976_modified.py, connectionpool.py, syncbreeze_exploit.exe
+- **14. Antivirus Evasion hide01.ir** — 5 real technique-tokens, 100% carded — **all carded**
+    - skipped 5 false-positive tokens (justified): not-a-mimikatz-verb (Ruby/email/prose) (5)
+- **15. Password Attacks hide01.ir** — 11 real technique-tokens, 82% carded; 2 genuine residual(s): hashcat.exe, nvaXenHl.exe
+    - skipped 3 false-positive tokens (justified): hyphenated prose / hostname (not a command) (3)
+- **16. Windows Privilege Escalation hide01.ir** — 41 real technique-tokens, 73% carded; 11 genuine residual(s): CVE-2023-29360.exe, Enterprise.exe, GammaServ.exe, Get-ModifiablePath, Get-UnquotedService, Install-ServiceBinary, Set-Secret, Start-Transcript, Stop-Transcript, httpd.exe, mysqld.exe
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **17. Linux Privilege Escalation hide01.ir** — 3 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): Metasploit internal module/plugin file (1)
+- **18. Port Redirection and SSH Tunneling hide01.ir** — 10 real technique-tokens, 80% carded; 2 genuine residual(s): Provisioning.ps1, ssh.exe
+- **19. Tunneling Through Deep Packet Inspection hide01.ir** — 5 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **2. Penetration Testing with Kali Linux_ General Course Information hide01.ir** — 1 real technique-tokens, 100% carded — **all carded**
+- **20. The Metasploit Framework hide01.ir** — 16 real technique-tokens, 75% carded; 4 genuine residual(s): Get-NtTokenIntegrityLevel, KzjRPQbrhdj.exe, WSReset.exe, met.exe
+    - skipped 3 false-positive tokens (justified): not-a-mimikatz-verb (Ruby/email/prose) (2); hyphenated prose / hostname (not a command) (1)
+- **21. Active Directory Introduction and Enumeration hide01.ir** — 18 real technique-tokens, 83% carded; 3 genuine residual(s): Get-NetDomain, enumeration.ps1, function.ps1
+    - skipped 4 false-positive tokens (justified): hyphenated prose / hostname (not a command) (4)
+- **22. Attacking Active Directory Authentication hide01.ir** — 18 real technique-tokens, 100% carded — **all carded**
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **23. Lateral Movement in Active Directory hide01.ir** — 25 real technique-tokens, 92% carded; 2 genuine residual(s): encode.py, win32calc.exe
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **24. Enumerating AWS Cloud Infrastructure hide01.ir** — 3 real technique-tokens, 100% carded — **all carded**
+    - skipped 4 false-positive tokens (justified): hyphenated prose / hostname (not a command) (3); not-a-mimikatz-verb (Ruby/email/prose) (1)
+- **25. Attacking AWS Cloud Infrastructure hide01.ir** — 12 real technique-tokens, 67% carded; 4 genuine residual(s): get-pip.py, run.py, update-readme.sh, upload-to-s3.sh
+    - skipped 7 false-positive tokens (justified): not-a-mimikatz-verb (Ruby/email/prose) (5); hyphenated prose / hostname (not a command) (2)
+- **26. Assembling the Pieces hide01.ir** — 25 real technique-tokens, 72% carded; 7 genuine residual(s): 50420.py, CGOrpfCz.exe, CVE-2020-11738.py, chisel.exe, fetch_current.sh, met.exe, mimi.exe
+    - skipped 5 false-positive tokens (justified): not-a-mimikatz-verb (Ruby/email/prose) (2); hyphenated prose / hostname (not a command) (2); Metasploit internal module/plugin file (1)
+- **27. Trying Harder_ The Challenge Labs hide01.ir** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)
+- **3. Introduction To Cybersecurity hide01.ir** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)
+- **4. Effective Learning Strategies hide01.ir** — 1 real technique-tokens, 0% carded; 1 genuine residual(s): find_employee_names.py
+- **5. Report Writing for Penetration Testers hide01.ir** — 1 real technique-tokens, 100% carded — **all carded**
+- **6. Information Gathering hide01.ir** — 15 real technique-tokens, 87% carded; 2 genuine residual(s): vrfy.py, wininit.exe
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **7. Vulnerability Scanning hide01.ir** — 1 real technique-tokens, 100% carded — **all carded**
+- **8. Introduction to Web Application Attacks hide01.ir** — 4 real technique-tokens, 100% carded — **all carded**
+- **9. Common Web Application Attacks hide01.ir** — 3 real technique-tokens, 67% carded; 1 genuine residual(s): start.sh
+
+## CDSA  (19 modules)
+
+- **01-Incident Handling Process** — 5 real technique-tokens, 100% carded — **all carded**
+- **02-Security Monitoring & SIEM Fundamentals** — 0 real technique-tokens, 100% carded — **all carded**
+    - skipped 1 false-positive tokens (justified): hyphenated prose / hostname (not a command) (1)
+- **03-Windows Event Logs & Finding Evil** — 28 real technique-tokens, 96% carded; 1 genuine residual(s): AgentEXE.exe
+    - skipped 10 false-positive tokens (justified): hyphenated prose / hostname (not a command) (9); lab target binary (not a tool) (1)
+- **04-Introduction to Threat Hunting & Hunting With Elastic** — 4 real technique-tokens, 100% carded — **all carded**
+- **05-Understanding Log Sources & Investigating with Splunk** — 26 real technique-tokens, 69% carded; 8 genuine residual(s): _.exe, demon.exe, hostname.exe, msedge.exe, nbtstat.exe, netstat.exe, randomfile.exe, tasklist.exe
+- **06-Windows Attacks & Defense** — 40 real technique-tokens, 92% carded; 3 genuine residual(s): Get-GPPPasswords, Invoke-ShareFinder.ps1, connect.ps1
+    - skipped 6 false-positive tokens (justified): hyphenated prose / hostname (not a command) (6)
+- **07-Intro to Network Traffic Analysis** — 5 real technique-tokens, 100% carded — **all carded**
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **08-Intermediate Network Traffic Analysis** — 2 real technique-tokens, 100% carded — **all carded**
+    - skipped 4 false-positive tokens (justified): hyphenated prose / hostname (not a command) (4)
+- **09-Working with IDS-IPS** — 12 real technique-tokens, 100% carded — **all carded**
+    - skipped 2 false-positive tokens (justified): hyphenated prose / hostname (not a command) (2)
+- **10-Introduction to Malware Analysis** — 28 real technique-tokens, 86% carded; 4 genuine residual(s): Utilman.exe, apple.exe, kernel32.exe, lhdfrgui.exe
+    - skipped 5 false-positive tokens (justified): hyphenated prose / hostname (not a command) (5)
+- **11-JavaScript Deobfuscation** — 2 real technique-tokens, 100% carded — **all carded**
+- **12-YARA & Sigma for SOC Analysts** — 42 real technique-tokens, 76% carded; 10 genuine residual(s): KB5027505.exe, check_updates.exe, entropy_pe_section.py, htb_sample_shell.exe, legit.exe, mssecsvc.exe, pdf_reader.exe, powerpnt.exe, sham2.exe, tasksche.exe
+    - skipped 6 false-positive tokens (justified): hyphenated prose / hostname (not a command) (6)
+- **13-Introduction to Digital Forensics** — 30 real technique-tokens, 83% carded; 5 genuine residual(s): RuntimeBroker.exe, comp.exe, discord.exe, photo433.exe, photo443.exe
+    - skipped 3 false-positive tokens (justified): lab target binary (not a tool) (2); hyphenated prose / hostname (not a command) (1)
+- **14-Detecting Windows Attacks with Splunk** — 42 real technique-tokens, 98% carded; 1 genuine residual(s): _.exe
+    - skipped 3 false-positive tokens (justified): hyphenated prose / hostname (not a command) (3)
+- **15-Security Incident Reporting** — 8 real technique-tokens, 100% carded — **all carded**
+- **Untitled 1** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)
+- **Untitled 2** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)
+- **Untitled** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)
+- **new-session-prompt** — no command tokens (theory/prose module) → SKIP whole module (justified: no commands)

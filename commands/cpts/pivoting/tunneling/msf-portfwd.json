@@ -40,11 +40,11 @@
       "command": "portfwd add -R -l 8081 -p 1234 -L 10.10.14.18"
     },
     {
-      "label": "OSCP Ch20 \u2014 forward local 3389 to internal host RDP (use xfreerdp to 127.0.0.1)",
+      "label": "OSCP Ch20 — forward local 3389 to internal host RDP (use xfreerdp to 127.0.0.1)",
       "command": "portfwd add -l 3389 -p 3389 -r <internal_ip>\nxfreerdp /v:127.0.0.1 /u:<user> /p:<pass>"
     }
   ],
-  "notes": "`portfwd add -l <lport> -p <rport> -r <target>` on a Meterpreter session forwards a single remote port back to your local machine - use for one service (e.g. RDP/3389) when you don't need a full SOCKS proxy. `portfwd list` to review. Also covered in: OSCP PEN-200 Chapter 20 (The Metasploit Framework). OSCP Ch20: portfwd inside a meterpreter session maps one port \u2014 simpler than autoroute when you only need a single service. Run portfwd from the meterpreter prompt (not the MSF console). After adding, connect tools to 127.0.0.1:<local_port> on Kali.",
+  "notes": "`portfwd add -l <lport> -p <rport> -r <target>` on a Meterpreter session forwards a single remote port back to your local machine - use for one service (e.g. RDP/3389) when you don't need a full SOCKS proxy. `portfwd list` to review. Also covered in: OSCP PEN-200 Chapter 20 (The Metasploit Framework). OSCP Ch20: portfwd inside a meterpreter session maps one port — simpler than autoroute when you only need a single service. Run portfwd from the meterpreter prompt (not the MSF console). After adding, connect tools to 127.0.0.1:<local_port> on Kali.",
   "references": [
     {
       "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
@@ -56,10 +56,6 @@
     }
   ],
   "variations": [
-    {
-      "label": "Forward",
-      "command": "portfwd add -l <local_port> -p <remote_port> -r <target>"
-    },
     {
       "label": "Reverse",
       "command": "portfwd add -R -l <local_port> -p <remote_port> -L <attacker_ip>"
@@ -89,8 +85,9 @@
       "HTB M12",
       "MITRE T1090.001"
     ],
-    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
-    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
-    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
-  }
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  },
+  "type": "command"
 }

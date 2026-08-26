@@ -87,6 +87,14 @@
       "HTB M26",
       "MITRE T1552",
       "MITRE T1083"
-    ]
-  }
+    ],
+    "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input.",
+    "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+  },
+  "variations": [
+    {
+      "label": "Locate the DB first",
+      "command": "gci C:\\Users\\*\\AppData\\Local\\Packages\\Microsoft.MicrosoftStickyNotes_*\\LocalState\\plum.sqlite"
+    }
+  ]
 }

@@ -26,7 +26,7 @@
     "T1135"
   ],
   "exam": "exam-ok",
-  "notes": "=== WHAT TEST-ADMINACCESS DOES ===\nAttempts to open the Windows Service Control Manager (SCM) on the remote host\nwith SC_MANAGER_ALL_ACCESS rights. This is a standard WMI/RPC call that:\n  - Returns TRUE if current user is a local admin on the target\n  - Returns FALSE if access denied\n  - Does NOT execute code on the target \u2014 just a permission check\n\nEvent generated: 4624 (logon) + 4634 (logoff) on the TARGET \u2014 detectable but brief.\nCrackMapExec --local-auth --check-admin does the same thing at scale.\n\n=== USE CASE IN THE ATTACK CHAIN ===\nTypical scenario:\n  1. Crack an NTLMv2 hash \u2192 get a password for jsmith\n  2. You don't know which machines jsmith is a local admin on\n  3. Run Test-AdminAccess against all live hosts to find your pivot points\n  4. Move to those hosts via Evil-WinRM, PSExec, etc.\n\n=== SCAN ACROSS ALL DOMAIN COMPUTERS ===\nGet-DomainComputer | Select Name | ForEach-Object {\n    $result = Test-AdminAccess -ComputerName $_.Name\n    [PSCustomObject]@{Computer=$_.Name; AdminAccess=$result.IsAdmin}\n}\nThis finds every machine where your current creds have local admin.\n\n=== CAVEATS ===\n  - Works best in the context of the compromised credential (run as that user via runas or PSCredential)\n  - If you're running as a different user, results reflect your actual session\n  - WFW (Windows Firewall) can block the RPC call \u2014 machine looks like 'access denied' but really just firewalled\n  - CrackMapExec --check alternative: cme smb <subnet> -u user -p pass \u2192 shows Pwn3d! status Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
+  "notes": "=== WHAT TEST-ADMINACCESS DOES ===\nAttempts to open the Windows Service Control Manager (SCM) on the remote host\nwith SC_MANAGER_ALL_ACCESS rights. This is a standard WMI/RPC call that:\n  - Returns TRUE if current user is a local admin on the target\n  - Returns FALSE if access denied\n  - Does NOT execute code on the target — just a permission check\n\nEvent generated: 4624 (logon) + 4634 (logoff) on the TARGET — detectable but brief.\nCrackMapExec --local-auth --check-admin does the same thing at scale.\n\n=== USE CASE IN THE ATTACK CHAIN ===\nTypical scenario:\n  1. Crack an NTLMv2 hash → get a password for jsmith\n  2. You don't know which machines jsmith is a local admin on\n  3. Run Test-AdminAccess against all live hosts to find your pivot points\n  4. Move to those hosts via Evil-WinRM, PSExec, etc.\n\n=== SCAN ACROSS ALL DOMAIN COMPUTERS ===\nGet-DomainComputer | Select Name | ForEach-Object {\n    $result = Test-AdminAccess -ComputerName $_.Name\n    [PSCustomObject]@{Computer=$_.Name; AdminAccess=$result.IsAdmin}\n}\nThis finds every machine where your current creds have local admin.\n\n=== CAVEATS ===\n  - Works best in the context of the compromised credential (run as that user via runas or PSCredential)\n  - If you're running as a different user, results reflect your actual session\n  - WFW (Windows Firewall) can block the RPC call — machine looks like 'access denied' but really just firewalled\n  - CrackMapExec --check alternative: cme smb <subnet> -u user -p pass → shows Pwn3d! status Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
   "examples": [
     {
       "label": "Check single host",
@@ -41,7 +41,7 @@
       "command": "crackmapexec smb 172.16.5.0/24 -u forend -p Klmcargo2"
     },
     {
-      "label": "Ch21 \u2014 Find-LocalAdminAccess (returns hostnames where current user is local admin)",
+      "label": "Ch21 — Find-LocalAdminAccess (returns hostnames where current user is local admin)",
       "command": "Find-LocalAdminAccess"
     }
   ],
@@ -80,10 +80,26 @@
       "MITRE T1135"
     ],
     "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
-    "vulnerable_config": "# AD default permissions \u2014 authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
-    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 \u2014 access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) \u2014 any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "Across a host list",
+      "command": "Get-DomainComputer | %{ Test-AdminAccess -ComputerName $_.dnshostname }"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find where your user is local admin",
+      "command": "Get-DomainComputer -Properties dnshostname | %{ if(Test-AdminAccess -ComputerName $_.dnshostname){$_.dnshostname} }"
+    },
+    {
+      "label": "Move laterally to those hosts",
+      "command": "# PSRemoting / wmiexec, then dump creds"
+    }
   ]
 }

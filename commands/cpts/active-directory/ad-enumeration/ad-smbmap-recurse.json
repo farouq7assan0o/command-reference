@@ -63,7 +63,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "smbmap -R recursively lists share contents to locate sensitive files across the domain.",
+    "why_it_works": "Share ACLs readable by your account let smbmap recurse the tree and pattern-match filenames for secrets.",
     "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
     "impact": "Located sensitive files within shares.",
     "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -81,5 +81,11 @@
   },
   "tools": [
     "smbmap"
+  ],
+  "variations": [
+    {
+      "label": "Search filenames for secrets",
+      "command": "smbmap -u <user> -p <password> -H <target> -R --depth 5 -A '(password|cred|\\.kdbx)'"
+    }
   ]
 }

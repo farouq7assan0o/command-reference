@@ -65,29 +65,24 @@
   ],
   "variations": [
     {
-      "description": "Fetch robots.txt to find disallowed paths",
-      "command": "curl http://<domain>/robots.txt",
-      "label": "GET request"
-    },
-    {
       "description": "Fetch security.txt (contact/disclosure policy)",
       "command": "curl https://<domain>/.well-known/security.txt",
-      "label": "GET request"
+      "label": "GET security.txt"
     },
     {
       "description": "Fetch OpenID Connect discovery document (auth endpoints)",
       "command": "curl https://<domain>/.well-known/openid-configuration",
-      "label": "GET request"
+      "label": "GET openid-configuration"
     },
     {
       "description": "Fetch change-password well-known URI",
       "command": "curl https://<domain>/.well-known/change-password",
-      "label": "GET request"
+      "label": "GET change-password"
     },
     {
       "description": "Fetch sitemap.xml referenced in robots.txt",
       "command": "curl https://<domain>/sitemap.xml",
-      "label": "GET request"
+      "label": "GET sitemap.xml"
     }
   ]
 }

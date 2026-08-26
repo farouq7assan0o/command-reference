@@ -84,6 +84,7 @@
       "HTB M24",
       "MITRE T1083",
       "OWASP A05:2021"
-    ]
+    ],
+    "evasion": "The 8.3 short-name probe is inherently noisy (many 404s) — throttle requests and target a single path prefix to reduce log volume."
   }
 }

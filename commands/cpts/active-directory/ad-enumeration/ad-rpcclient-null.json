@@ -85,5 +85,25 @@
   },
   "tools": [
     "rpcclient"
+  ],
+  "variations": [
+    {
+      "label": "Enum domain users via RPC",
+      "command": "rpcclient -U \"\" -N <dc_ip> -c 'enumdomusers'"
+    },
+    {
+      "label": "Query a user by RID",
+      "command": "rpcclient -U \"\" -N <dc_ip> -c 'queryuser 0x1f4'"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Open a null session",
+      "command": "rpcclient -U \"\" -N <dc_ip>"
+    },
+    {
+      "label": "Enumerate users/groups",
+      "command": "rpcclient $> enumdomusers ; enumdomgroups"
+    }
   ]
 }

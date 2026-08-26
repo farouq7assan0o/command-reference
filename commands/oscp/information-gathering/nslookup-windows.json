@@ -5,23 +5,36 @@
   "description": "Windows built-in DNS resolver for forward and reverse lookups. Useful from a Windows foothold when nmap/dig are unavailable. Supports querying specific record types and directing queries at a chosen DNS server.",
   "type": "command",
   "platform": "windows",
-  "requires": ["network-access"],
-  "protocols": ["dns"],
-  "tools": ["nslookup"],
-  "tags": ["dns", "enumeration", "windows", "lolbas", "recon"],
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "dns"
+  ],
+  "tools": [
+    "nslookup"
+  ],
+  "tags": [
+    "dns",
+    "enumeration",
+    "windows",
+    "lolbas",
+    "recon"
+  ],
   "category": "Enumeration",
   "subcategory": "DNS",
-  "certifications": ["OSCP"],
+  "certifications": [
+    "OSCP"
+  ],
   "primary_cert": "OSCP",
   "source": "PEN-200 Chapter 06: Information Gathering",
   "opsec": "quiet",
   "exam": "exam-ok",
-  "mitre": ["T1018", "T1016"],
+  "mitre": [
+    "T1018",
+    "T1016"
+  ],
   "variations": [
-    {
-      "label": "A record (default)",
-      "command": "nslookup <domain>"
-    },
     {
       "label": "TXT record",
       "command": "nslookup -type=TXT <domain>"
@@ -85,6 +98,11 @@
     "artifacts": "nslookup.exe process creation logged by EDR and Windows Security Event 4688 (if command-line auditing enabled). Network: UDP/TCP 53 packets to DNS server visible in PCAP.",
     "prevention": "Enable DNS query logging on internal resolvers. Restrict which hosts can query internal DNS zones (DNS zone ACLs). Audit TXT and SRV records for sensitive notes.",
     "evasion": "nslookup is a LOLBAS — blends into normal Windows DNS activity. Single queries for specific records generate far less noise than a dnsrecon sweep. Using an authorised internal DNS server further normalises the traffic.",
-    "sources": ["PEN-200 Ch 6", "MITRE T1018", "MITRE T1016", "MS Docs"]
+    "sources": [
+      "PEN-200 Ch 6",
+      "MITRE T1018",
+      "MITRE T1016",
+      "MS Docs"
+    ]
   }
 }

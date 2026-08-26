@@ -89,6 +89,7 @@
       "HTB M26",
       "MITRE T1543.003",
       "MITRE T1068"
-    ]
+    ],
+    "evasion": "Load the driver for execution then remove it; SeLoadDriver abuse is a single event — do it once."
   }
 }

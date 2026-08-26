@@ -63,7 +63,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Get-DomainTrust / Get-ForestTrust maps trust relationships for cross-domain/forest attack paths.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. Trust objects are readable; Get-DomainTrustMapping walks them recursively to draw the full inter-domain/forest trust graph.",
     "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
     "impact": "A trust map for lateral movement across domains.",
     "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -80,5 +80,11 @@
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "External trusts only",
+      "command": "Get-DomainTrust | ?{$_.TrustAttributes -notmatch 'WITHIN_FOREST'}"
+    }
   ]
 }

@@ -92,6 +92,7 @@
     "sources": [
       "HTB M26",
       "MITRE T1053.005"
-    ]
+    ],
+    "evasion": "Touch only what you need; remove any scheduled task/mounted disk/dropped file you create."
   }
 }

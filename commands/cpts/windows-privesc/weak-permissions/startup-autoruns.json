@@ -71,6 +71,17 @@
       "HTB M26",
       "MITRE T1547.001",
       "MITRE T1543.003"
-    ]
-  }
+    ],
+    "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+  },
+  "variations": [
+    {
+      "label": "Check writable autoruns (PowerUp)",
+      "command": "Get-ModifiableScheduledTaskFile -Verbose"
+    },
+    {
+      "label": "Startup folder",
+      "command": "Get-ChildItem \"C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\""
+    }
+  ]
 }

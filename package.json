@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "description": "Multi-certification command reference for penetration testing (CPTS and more)",
   "scripts": {
-    "build": "node build-commands.js"
+    "build": "node build-commands.js",
+    "validate": "node validate.js --errors-only",
+    "health": "node healthcheck.js --render",
+    "coverage": "node coverage-report.js",
+    "coverage:tools": "node coverage.js --module",
+    "chains": "node chain-health.js",
+    "check": "node build-commands.js && node validate.js --errors-only && node healthcheck.js --render && node coverage-report.js && echo \"ALL GATES PASS\""
   },
   "license": "MIT"
 }

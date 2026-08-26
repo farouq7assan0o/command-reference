@@ -2,7 +2,7 @@
   "id": "ad-enter-pssession",
   "name": "Enter-PSSession - WinRM Shell (Windows)",
   "command": "$cred = New-Object System.Management.Automation.PSCredential('<domain>\\<user>', (ConvertTo-SecureString '<password>' -AsPlainText -Force))\nEnter-PSSession -ComputerName <target> -Credential $cred",
-  "description": "Opens an interactive PowerShell remoting session to a remote Windows host using built-in PowerShell remoting (WinRM). Windows-native equivalent of Evil-WinRM \u2014 use when you're operating from a Windows foothold and don't need Evil-WinRM's extras. Requires target has WinRM enabled and credentials have Remote Management access.",
+  "description": "Opens an interactive PowerShell remoting session to a remote Windows host using built-in PowerShell remoting (WinRM). Windows-native equivalent of Evil-WinRM — use when you're operating from a Windows foothold and don't need Evil-WinRM's extras. Requires target has WinRM enabled and credentials have Remote Management access.",
   "platform": "windows",
   "type": "command",
   "opsec": "moderate",
@@ -26,7 +26,7 @@
     "T1021.006"
   ],
   "exam": "exam-ok",
-  "notes": "=== WINDOWS-NATIVE vs EVIL-WINRM ===\nBoth use WinRM (port 5985/5986) under the hood:\n  Enter-PSSession  \u2192 Windows built-in, no additional tools needed\n  Evil-WinRM       \u2192 Linux tool with extras (upload/download, AMSI bypass, etc.)\n\nUse Enter-PSSession when:\n  - You're already on a Windows box and just want to hop to another\n  - You're operating within a double-hop scenario\n  - You want to avoid importing non-native tools\n\n=== DOUBLE-HOP PROBLEM ===\nThe most important limitation of Enter-PSSession: when you're INSIDE a PSSession,\nyou cannot pass your Kerberos credentials to a THIRD machine (the Kerberos double-hop).\nExample:\n  AttackHost \u2192 PSSession to WS01 (hop 1) \u2192 then try to connect WS01 to DC01 (hop 2)\n  Hop 2 fails \u2014 your TGT didn't get forwarded to WS01's session.\n\nSolutions:\n  1. PSCredential object explicitly: -Credential $cred on every command inside session\n  2. CredSSP (insecure, for labs)\n  3. Register-PSSessionConfiguration + Enter-PSSession with -ConfigurationName\n  4. Use Rubeus to request a TGT and inject on the remote host\n\n=== SYNTAX VARIANTS ===\n  # With credentials (most common)\n  Enter-PSSession -ComputerName WS01 -Credential $cred\n\n  # Current user (if already high-priv and WinRM trusts it)\n  Enter-PSSession -ComputerName WS01\n\n  # Non-default port\n  Enter-PSSession -ComputerName WS01 -Port 5986 -UseSSL\n\n=== EXIT THE SESSION ===\n  Exit-PSSession   or   exit\n\n=== CHAIN POSITION ===\nAfter: obtaining valid credentials (spray, kerberoast, crack)\nBefore: hunting creds on the accessed host, lateral movement deeper Also covered in: OSCP PEN-200 Chapter 23 (Lateral Movement in Active Directory).",
+  "notes": "=== WINDOWS-NATIVE vs EVIL-WINRM ===\nBoth use WinRM (port 5985/5986) under the hood:\n  Enter-PSSession  → Windows built-in, no additional tools needed\n  Evil-WinRM       → Linux tool with extras (upload/download, AMSI bypass, etc.)\n\nUse Enter-PSSession when:\n  - You're already on a Windows box and just want to hop to another\n  - You're operating within a double-hop scenario\n  - You want to avoid importing non-native tools\n\n=== DOUBLE-HOP PROBLEM ===\nThe most important limitation of Enter-PSSession: when you're INSIDE a PSSession,\nyou cannot pass your Kerberos credentials to a THIRD machine (the Kerberos double-hop).\nExample:\n  AttackHost → PSSession to WS01 (hop 1) → then try to connect WS01 to DC01 (hop 2)\n  Hop 2 fails — your TGT didn't get forwarded to WS01's session.\n\nSolutions:\n  1. PSCredential object explicitly: -Credential $cred on every command inside session\n  2. CredSSP (insecure, for labs)\n  3. Register-PSSessionConfiguration + Enter-PSSession with -ConfigurationName\n  4. Use Rubeus to request a TGT and inject on the remote host\n\n=== SYNTAX VARIANTS ===\n  # With credentials (most common)\n  Enter-PSSession -ComputerName WS01 -Credential $cred\n\n  # Current user (if already high-priv and WinRM trusts it)\n  Enter-PSSession -ComputerName WS01\n\n  # Non-default port\n  Enter-PSSession -ComputerName WS01 -Port 5986 -UseSSL\n\n=== EXIT THE SESSION ===\n  Exit-PSSession   or   exit\n\n=== CHAIN POSITION ===\nAfter: obtaining valid credentials (spray, kerberoast, crack)\nBefore: hunting creds on the accessed host, lateral movement deeper Also covered in: OSCP PEN-200 Chapter 23 (Lateral Movement in Active Directory).",
   "examples": [
     {
       "label": "Connect with explicit credentials",
@@ -41,11 +41,11 @@
       "command": "Invoke-Command -ComputerName ACADEMY-EA-MS01 -Credential $cred -ScriptBlock { whoami; hostname }"
     },
     {
-      "label": "Ch23 \u2014 create PSCredential object then New-PSSession (PEN-200 pattern)",
+      "label": "Ch23 — create PSCredential object then New-PSSession (PEN-200 pattern)",
       "command": "$secStr=ConvertTo-SecureString '<password>' -AsPlaintext -Force; $cred=New-Object System.Management.Automation.PSCredential '<user>',$secStr; New-PSSession -ComputerName <target_ip> -Credential $cred"
     },
     {
-      "label": "Ch23 \u2014 Enter-PSSession by session ID (after New-PSSession returns Id 1)",
+      "label": "Ch23 — Enter-PSSession by session ID (after New-PSSession returns Id 1)",
       "command": "Enter-PSSession 1"
     }
   ],
@@ -73,19 +73,39 @@
   "defense": {
     "why_it_works": "Enter-PSSession uses the WinRM protocol over HTTP (5985) or HTTPS (5986) to establish an authenticated PowerShell session. The presented credentials (Kerberos TGT or NTLM) are validated by the target, and if the account has local admin or Remote Management Users group membership, the session is granted. The session runs as the authenticated user with their domain group memberships and privileges.",
     "prerequisites": "WinRM service running on the target (enabled by default on servers, off on workstations). Network access on TCP 5985 or 5986. Credentials with local admin or Remote Management Users membership on the target. Windows host with PowerShell on the attacker side.",
-    "impact": "Interactive PowerShell session on the target \u2014 equivalent to RDP for command-line operations. Enables full post-exploitation: credential hunting, loading modules (PowerView, SharpHound), lateral movement commands, pivoting. Native Windows tool leaves less tool-specific artifact than Evil-WinRM.",
-    "detection": "Windows Security Event 4624 (type 3 network logon) on the target. Event 4648 if using explicit credentials. PowerShell operational log events (400 engine started, 403 engine stopped, 800 pipeline execution). Microsoft-Windows-WinRM/Operational log on both sides. EDR telemetry on WinRM connection establishment. Unusual source host IP accessing WinRM should alert \u2014 workstation-to-workstation WinRM is rare in normal environments.",
-    "prevention": "Disable WinRM where remote management is not needed (most workstations). Firewall WinRM ports \u2014 allow only from designated jump hosts / PAWs. Restrict Remote Management Users group membership to authorized admins only. Enable PowerShell Script Block Logging (HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging). HTTPS-only WinRM to prevent content inspection of HTTP sessions. JEA to limit commands available to remote sessions.",
-    "evasion": "Uses port 5985 which may pass through firewalls as web traffic. Operates as a built-in PowerShell feature \u2014 no external tool signature. Session events look identical to legitimate administrative PowerShell remoting. Use -UseSSL (5986) to encrypt session content. Use HTTPS listener to prevent IDS from inspecting command content.",
+    "impact": "Interactive PowerShell session on the target — equivalent to RDP for command-line operations. Enables full post-exploitation: credential hunting, loading modules (PowerView, SharpHound), lateral movement commands, pivoting. Native Windows tool leaves less tool-specific artifact than Evil-WinRM.",
+    "detection": "Windows Security Event 4624 (type 3 network logon) on the target. Event 4648 if using explicit credentials. PowerShell operational log events (400 engine started, 403 engine stopped, 800 pipeline execution). Microsoft-Windows-WinRM/Operational log on both sides. EDR telemetry on WinRM connection establishment. Unusual source host IP accessing WinRM should alert — workstation-to-workstation WinRM is rare in normal environments.",
+    "prevention": "Disable WinRM where remote management is not needed (most workstations). Firewall WinRM ports — allow only from designated jump hosts / PAWs. Restrict Remote Management Users group membership to authorized admins only. Enable PowerShell Script Block Logging (HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging). HTTPS-only WinRM to prevent content inspection of HTTP sessions. JEA to limit commands available to remote sessions.",
+    "evasion": "Uses port 5985 which may pass through firewalls as web traffic. Operates as a built-in PowerShell feature — no external tool signature. Session events look identical to legitimate administrative PowerShell remoting. Use -UseSSL (5986) to encrypt session content. Use HTTPS listener to prevent IDS from inspecting command content.",
     "sources": [
       "HTB M13",
       "MITRE T1021.006"
     ],
-    "misconfiguration": "WinRM (Windows Remote Management) is enabled on servers and workstations, and domain admin credentials are used directly on remote hosts \u2014 placing their NTLM hash/TGT in LSASS on those machines. Enter-PSSession and evil-winrm both use WinRM to open remote PowerShell sessions. Privileged credentials touching non-Tier-0 machines is the core 'double hop' and credential exposure problem.",
-    "vulnerable_config": "# WinRM enabled and listening on all interfaces:\nGet-WSManInstance -ResourceURI winrm/config/listener -SelectorSet @{Transport='HTTP'}\n# Address: *  (all interfaces \u2014 not restricted to management VLAN)\n\n# Domain admin used directly on workstations (credential exposure):\nEnter-PSSession -ComputerName workstation01 -Credential domain\\Administrator\n# Administrator hash/TGT now in LSASS on workstation01\n# If workstation01 is compromised, admin credentials are extracted",
+    "misconfiguration": "WinRM (Windows Remote Management) is enabled on servers and workstations, and domain admin credentials are used directly on remote hosts — placing their NTLM hash/TGT in LSASS on those machines. Enter-PSSession and evil-winrm both use WinRM to open remote PowerShell sessions. Privileged credentials touching non-Tier-0 machines is the core 'double hop' and credential exposure problem.",
+    "vulnerable_config": "# WinRM enabled and listening on all interfaces:\nGet-WSManInstance -ResourceURI winrm/config/listener -SelectorSet @{Transport='HTTP'}\n# Address: *  (all interfaces — not restricted to management VLAN)\n\n# Domain admin used directly on workstations (credential exposure):\nEnter-PSSession -ComputerName workstation01 -Credential domain\\Administrator\n# Administrator hash/TGT now in LSASS on workstation01\n# If workstation01 is compromised, admin credentials are extracted",
     "secure_config": "# Restrict WinRM listener to management subnet:\nNew-WSManInstance winrm/config/listener \\\n    -SelectorSet @{Transport='HTTP'; Address='10.10.1.0/24'}\n\n# Tier 0 admin accounts NEVER log into Tier 1/2 machines:\n# Privileged Access Workstations (PAW) model\n# Domain Admins only RDP/PSSession to DCs from dedicated PAW machines\n\n# Use JEA (Just Enough Administration) for delegated tasks:\n# Constrained runspaces that only allow specific commands\nNew-PSSessionConfigurationFile -Path admin.pssc -SessionType RestrictedRemoteServer\nRegister-PSSessionConfiguration -Path admin.pssc -Name 'HelpDesk'\n\n# Monitor: Event 4624 (logon type 3) for Domain Admins on non-DC machines\n# Alert on admin credentials used on workstations"
   },
   "tools": [
     "powershell"
+  ],
+  "variations": [
+    {
+      "label": "With PSCredential",
+      "command": "Enter-PSSession -ComputerName <target> -Credential (Get-Credential)"
+    },
+    {
+      "label": "Over an existing session var",
+      "command": "$s = New-PSSession -ComputerName <target> -Credential $cred; Enter-PSSession $s"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Build a credential object",
+      "command": "$cred = New-Object System.Management.Automation.PSCredential('<domain>\\<user>',(ConvertTo-SecureString '<password>' -AsPlainText -Force))"
+    },
+    {
+      "label": "Open the remote session",
+      "command": "Enter-PSSession -ComputerName <target> -Credential $cred"
+    }
   ]
 }

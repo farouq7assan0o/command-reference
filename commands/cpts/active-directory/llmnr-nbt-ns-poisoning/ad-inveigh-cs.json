@@ -69,7 +69,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Inveigh's C# build is a compiled LLMNR/NBT-NS/mDNS spoofer for hash capture where PowerShell is constrained/monitored.",
+    "why_it_works": "When a name doesn't resolve via DNS, Windows falls back to LLMNR/NBT-NS/mDNS broadcasts; Inveigh answers them, so the victim authenticates to the attacker and leaks a NetNTLM hash.",
     "prerequisites": "Execution of the Inveigh binary on a host in the victim segment.",
     "impact": "NetNTLM hashes captured via a compiled tool that avoids PowerShell logging.",
     "detection": "[MITRE T1557.001] LLMNR/NBT-NS/mDNS responses from an unexpected host; a spoofed name-resolution answer; NetNTLM auth to an unknown host. Honeypot name-lookups (queries for non-existent hosts) that get answered reveal poisoning; Defender for Identity flags it. A non-PowerShell process emitting spoofed name-resolution answers.",
@@ -86,5 +86,11 @@
   },
   "tools": [
     "Inveigh"
+  ],
+  "variations": [
+    {
+      "label": "Common options",
+      "command": ".\\Inveigh.exe -LLMNR Y -NBNS Y -FileOutput Y"
+    }
   ]
 }

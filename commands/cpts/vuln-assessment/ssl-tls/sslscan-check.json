@@ -82,11 +82,6 @@
   },
   "variations": [
     {
-      "description": "Basic SSL/TLS scan (show ciphers, protocol versions, cert info)",
-      "command": "sslscan <host>",
-      "label": "sslscan"
-    },
-    {
       "description": "Scan specific port",
       "command": "sslscan <host>:<port>",
       "label": "sslscan"

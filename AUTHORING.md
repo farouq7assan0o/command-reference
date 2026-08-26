@@ -151,6 +151,97 @@ Any `<token>` used 3+ times that is NOT in `js/vars.js` is flagged. For each:
 
 ---
 
+## Maintenance & health checks (whole-library, not per-module)
+
+`validate.js` gates one card's SCHEMA. These catch problems that span the library or only surface
+when a card is actually clicked in the builder. Run them after any bulk edit or content pass.
+
+### The two gates, in order
+```
+npm run check                   # ← one command: build + validate + healthcheck --render + coverage snapshot
+                                #   (prints "ALL GATES PASS" at the end). Or run them individually:
+node build-commands.js          # regenerates js/commands.js (auto-runs validate.js)
+node validate.js --errors-only  # schema gate: must print RESULT: PASS
+node healthcheck.js --render     # behaviour gate: must print RESULT: PASS
+```
+Other npm scripts: `npm run coverage` (regenerate the Source-coverage snapshot), `npm run chains`
+(chain-health dead-end report), `npm run coverage:tools -- NN` (tool-coverage % for module NN).
+
+### healthcheck.js — the "click-a-lot" sweep
+`validate.js` proves the JSON is well-formed; `healthcheck.js` proves the cards BEHAVE. It catches
+the class where a card is schema-valid but the builder shows a wrong or empty command bar:
+- **Botched placeholder** — a token that looks like a fillable parameter but carries a `.` `:` or
+  `$` the builder can't parse (`<passwords.txt>`, `<SafetyKatz.exe>`, `<gmsa$>`, `<LM:NT_hash>`).
+  These never fill and render literally → the "No parameters for this command" symptom. It does
+  NOT flag legitimate literals like `<?php … ?>`, `</script>`, `<%= 7*7 %>`, `<&5` — those are
+  meant to be literal and correctly show no parameter field.
+- **Empty command** anywhere (a blank command bar).
+- **Duplicate variation labels** in a card (also a `validate.js` hard error now).
+- **Variation byte-identical to the Default** command (redundant tab — warning only).
+- **`--render`**: headless-renders every card and every variation tab via jsdom and reports any JS
+  exception (~2,100 card/tab views, a few seconds). This is the automated form of manually clicking
+  through every card and every tab.
+
+Exit code is 1 on any hard issue, 0 on pass — so CI (or you) can block on it. The botched-placeholder
+regex is kept identical to `FILENAME_PH` in `validate.js`; if you change one, change both.
+
+### Why "No parameters for this command" happens (root cause reference)
+The builder only treats `<word_chars-and-hyphen>` as a fillable parameter. Two ways a card breaks:
+1. A placeholder with a dot/colon/dollar/slash/space isn't parsed (see botched placeholder above).
+2. A variation hardcodes a literal (e.g. `domain.com`) instead of `<domain>`, so there is nothing
+   to fill (the command-lint catches lab literals; a generic literal like a bare domain is caught by
+   review + the render sweep).
+Fix by renaming to a canonical token from `js/vars.js` and keeping the concrete value in `examples`.
+
+### Variation-tab rules (enforced by validate.js)
+Every variation needs a `label`, and no two labels in one card may be identical — `validate.js`
+hard-errors on both. Write labels that name what the command DOES (`smbclient — upload`), not the
+tool it runs (a tab labelled `smbclient` over an `smbclient` command is noise). If two variations
+are byte-identical, delete one (tombstone-style edit of the array) instead of relabelling; the
+`redundant tab` warning in `healthcheck.js` lists these.
+
+---
+
+## Coverage & completeness — verifying nothing is missing
+
+Goal: every real command/technique in a cert's source notes has a card. Use `coverage.js`, but
+understand what its numbers mean — the raw line count is deliberately noisy.
+
+### Run it
+```
+node coverage.js --module NN            # line-level review list
+node coverage.js --module NN --tools    # TOOL-level coverage % — the trustworthy signal
+```
+`--tools` answers "does every distinct tool this module uses appear in at least one card?" by
+substring-matching the whole card corpus (so a tool used inside a pipeline like `Get-ADUser | …`
+still counts). Aim for ~100%; review whatever short list it prints.
+
+### Why the raw line count over-reports (do NOT chase it to zero)
+`coverage.js` mines every line inside code fences. Source notes are full of lines that are NOT
+runnable capability commands, and counting them as "uncovered" inflated the gap ~10× (module 24
+once reported 350 "missing", ~95% of which was `/etc/hosts` vhost lines and WordPress page HTML).
+The tool now buckets these as `non-command noise` / `setup`, and skips markup/code/config fenced
+languages, but some always slip through. These categories are CORRECTLY left uncarded:
+- variable assignments (`IP=10.129.x.x`), bare IPs / hostnames / file paths / URLs
+- wordlist contents, username lists, hash values, hashcat rule-file lines (`c $1 $9 …`)
+- file-extension bypass lists (`.php`, `.jpg.php`, `.phar` — module 21), multipart form boundaries
+- config-file contents (Apache/nginx, `ServerName`, `DocumentRoot`), robots.txt, HTML/JS page source
+- SQL keywords, HTTP headers, source-code keywords (from sql/js/java fences)
+- tool help dumps (`tool -h`), editor steps (`nano file`), interactive-console verbs (msf `show`/`set`)
+- terminal emulators / site names / repo refs (alacritty, cvedetails, PayloadsAllTheThings)
+- lab-literal one-offs already covered by a templated card (`mysql -u tom -pXXXX` → the mysql card)
+- blue-team detection helpers (e.g. `ConvertFrom-SddlString`, which parses Event 5136 SDDL output)
+
+### What a REAL gap looks like
+A distinctive tool name (≥4 chars, not an English/code word) that appears in the source but in NO
+card and represents an attack capability the cert teaches. The 2026-08 full CPTS audit found NONE:
+every real tool — windapsearch, dislocker, office2john, smbserver, secretsdump, Get-ADUser… — is
+carded; the only 0-card tools were out-of-syllabus (`ligolo`, absent from CPTS notes) or non-attack
+helpers. Coverage is already effectively 100% for real techniques. Keep it there by running
+`--tools` after adding or redoing a module and carding only genuine tool gaps.
+
+---
+
 ## Pre-commit checklist (copy/paste)
 
 ```
@@ -184,6 +275,7 @@ MULTI-CERT — when patching an existing card to add a new cert's content:
 
 [ ] node build-commands.js  -> builds clean (auto-runs validate)
 [ ] node validate.js        -> 0 hard errors AND 0 command-lint literals (PASS)
+[ ] node healthcheck.js --render -> RESULT: PASS (0 botched placeholders, 0 dup labels, 0 render crashes)
 [ ] node coverage.js --module NN -> unmatched list reviewed (carded or conscious skip)
 [ ] completeness score reviewed; chains/notes filled where reasonable
 [ ] placeholder audit reviewed; no un-canonicalized high-frequency tokens

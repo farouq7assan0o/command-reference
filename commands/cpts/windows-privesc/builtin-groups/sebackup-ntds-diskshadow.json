@@ -99,6 +99,7 @@
       "HTB M26",
       "MITRE T1003.003",
       "MITRE T1078.002"
-    ]
+    ],
+    "evasion": "Copy the hives/ntds via the shadow copy, parse OFFLINE, and remove the shadow copy + copied files after."
   }
 }

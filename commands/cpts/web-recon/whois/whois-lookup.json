@@ -101,12 +101,12 @@
     {
       "description": "Query a specific WHOIS server",
       "command": "whois <domain> -h <whois_server>",
-      "label": "whois -h"
+      "label": "whois a domain (pick server)"
     },
     {
       "description": "IP WHOIS lookup (find netblock owner / ASN)",
       "command": "whois <ip> -h <whois_server>",
-      "label": "whois -h"
+      "label": "whois an IP (pick server)"
     }
   ]
 }

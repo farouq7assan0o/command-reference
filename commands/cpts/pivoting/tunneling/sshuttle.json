@@ -37,11 +37,11 @@
       "command": "sudo nmap -v -A -sT -p3389 172.16.5.19 -Pn"
     },
     {
-      "label": "OSCP Ch18 \u2014 sshuttle routing multiple subnets through non-standard SSH port on pivot",
+      "label": "OSCP Ch18 — sshuttle routing multiple subnets through non-standard SSH port on pivot",
       "command": "sshuttle -r <user>@<pivot_ip>:2222 <subnet1> <subnet2>"
     }
   ],
-  "notes": "After sshuttle is up, run nmap/xfreerdp against internal hosts directly without proxychains. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: pass multiple subnets to route them all through the tunnel (space-separated CIDRs). Use host:port syntax in -r to specify a non-standard SSH port (e.g. -r user@pivot:2222 when port 22 is blocked or pivot's SSH was moved). Unlike -D+proxychains, sshuttle requires NO proxychains and supports TCP and DNS \u2014 tools run natively against internal IPs.",
+  "notes": "After sshuttle is up, run nmap/xfreerdp against internal hosts directly without proxychains. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: pass multiple subnets to route them all through the tunnel (space-separated CIDRs). Use host:port syntax in -r to specify a non-standard SSH port (e.g. -r user@pivot:2222 when port 22 is blocked or pivot's SSH was moved). Unlike -D+proxychains, sshuttle requires NO proxychains and supports TCP and DNS — tools run natively against internal IPs.",
   "references": [
     {
       "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
@@ -80,8 +80,15 @@
       "HTB M12",
       "MITRE T1090.001"
     ],
-    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
-    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
-    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
-  }
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  },
+  "type": "command",
+  "variations": [
+    {
+      "label": "Exclude your own subnet",
+      "command": "sudo sshuttle -r <user>@<pivot> <target_subnet> -x <your_subnet>"
+    }
+  ]
 }

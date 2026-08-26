@@ -22,12 +22,12 @@
     {
       "command": "curl -s http://<target>/swagger/v1/swagger.json | jq '.paths | keys[]'",
       "caption": "Dump all API paths from Swagger spec to discover old/hidden endpoints",
-      "label": "Swagger/OpenAPI"
+      "label": "Swagger - /swagger/v1"
     },
     {
       "command": "curl -s http://<target>/api-docs | jq '.paths | keys[]'",
       "caption": "OpenAPI spec — alternative path for endpoint discovery",
-      "label": "Swagger/OpenAPI"
+      "label": "Swagger - /api-docs"
     },
     {
       "command": "ffuf -u http://<target>/api/FUZZ/<endpoint> -w /usr/share/seclists/Discovery/Web-Content/api/api-endpoints.txt -H \"Authorization: Bearer <jwt_token>\" -mc 200,201,301",

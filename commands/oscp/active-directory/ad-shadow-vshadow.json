@@ -62,7 +62,7 @@
       "command": "vssadmin delete shadows /shadow={<shadow_id>} /quiet"
     }
   ],
-  "notes": "vshadow.exe flags: -nw = no VSS writers involved (faster, avoids VSS writer timeout); -p = persistent (snapshot survives past the current process). The shadow copy device path is printed in the vshadow output \u2014 look for 'SNAPSHOT ID' and the corresponding \\Device\\HarddiskVolumeShadowCopy# number. NTDS.dit is always locked by the AD database engine while the DC is running \u2014 the VSS snapshot bypasses this lock by copying from the frozen volume image. The SYSTEM hive provides the boot key (also called the System Key or SYSKEY) without which NTDS.dit hashes cannot be decrypted. secretsdump extracts: NTLM hashes, Kerberos keys (AES128/256), cleartext passwords if reversible encryption was enabled. The resulting hashes can be used for PTH attacks or cracked offline. This is often the final step in a DC compromise.",
+  "notes": "vshadow.exe flags: -nw = no VSS writers involved (faster, avoids VSS writer timeout); -p = persistent (snapshot survives past the current process). The shadow copy device path is printed in the vshadow output — look for 'SNAPSHOT ID' and the corresponding \\Device\\HarddiskVolumeShadowCopy# number. NTDS.dit is always locked by the AD database engine while the DC is running — the VSS snapshot bypasses this lock by copying from the frozen volume image. The SYSTEM hive provides the boot key (also called the System Key or SYSKEY) without which NTDS.dit hashes cannot be decrypted. secretsdump extracts: NTLM hashes, Kerberos keys (AES128/256), cleartext passwords if reversible encryption was enabled. The resulting hashes can be used for PTH attacks or cracked offline. This is often the final step in a DC compromise.",
   "references": [
     {
       "title": "OffSec PEN-200 - Lateral Movement in Active Directory",
@@ -81,12 +81,12 @@
     {
       "id": "ntds-vss",
       "rel": "alternative",
-      "note": "ntds-vss uses vssadmin (built-in) instead of vshadow.exe \u2014 identical outcome, no extra binary needed."
+      "note": "ntds-vss uses vssadmin (built-in) instead of vshadow.exe — identical outcome, no extra binary needed."
     },
     {
       "id": "ad-mimikatz-dcsync",
       "rel": "alternative",
-      "note": "DCSync dumps all hashes over the network without touching NTDS.dit \u2014 stealthier if you have DA creds."
+      "note": "DCSync dumps all hashes over the network without touching NTDS.dit — stealthier if you have DA creds."
     },
     {
       "id": "secretsdump-ntds",
@@ -100,18 +100,42 @@
   ],
   "exam": "exam-ok",
   "defense": {
-    "why_it_works": "NTDS.dit is the Active Directory database file containing all domain credentials \u2014 locked by the NTDS service while the DC is running. Volume Shadow Copy Service (VSS) creates a point-in-time snapshot accessible while the original file is locked. vshadow.exe (from Windows SDK) or vssadmin creates a shadow copy, the attacker copies ntds.dit from the VSS path, copies SYSTEM hive for the boot key, then uses impacket-secretsdump or DSInternals to extract all hashes offline.",
+    "why_it_works": "NTDS.dit is the Active Directory database file containing all domain credentials — locked by the NTDS service while the DC is running. Volume Shadow Copy Service (VSS) creates a point-in-time snapshot accessible while the original file is locked. vshadow.exe (from Windows SDK) or vssadmin creates a shadow copy, the attacker copies ntds.dit from the VSS path, copies SYSTEM hive for the boot key, then uses impacket-secretsdump or DSInternals to extract all hashes offline.",
     "prerequisites": "Domain Admin rights on a DC. vshadow.exe (or vssadmin / esentutl). Ability to copy files from VSS path. SYSTEM hive from the DC (for boot key to decrypt NTDS.dit).",
-    "impact": "T1003.003 OS Credential Dumping: NTDS. Extracts ALL domain credentials: every user's NTLM hash, Kerberos keys, historical hashes. Equivalent to DCSync but offline \u2014 enables cracking all domain hashes, forging Golden Tickets, and full domain persistence.",
+    "impact": "T1003.003 OS Credential Dumping: NTDS. Extracts ALL domain credentials: every user's NTLM hash, Kerberos keys, historical hashes. Equivalent to DCSync but offline — enables cracking all domain hashes, forging Golden Tickets, and full domain persistence.",
     "detection": "Event 7036: VSS service started (unusual if not during backup window). Event 8193: VSS writer invoked. Sysmon Event 11: file copy from \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy* path. Event 4688: vshadow.exe or vssadmin process on DC. EDR: ntds.dit access from non-backup process.\nProcesses accessing LSASS memory or SAM registry hives outside of trusted security tools, often followed by file creation or lateral movement (DET0234/AN0648).\nProcesses opening /proc/*/mem or /proc/*/maps targeting credential-storing services like sshd or login; high privilege escalation and memory inspection tools such as gcore or gdb (AN0649).\nUnsigned processes accessing system memory or launching known credential scraping tools (e.g., osascript, dylib injections) to access the Keychain or sensitive memory regions (AN0650).",
     "artifacts": "Event 7036: Volume Shadow Copy service started outside backup schedule | Sysmon Event 11: file created from VSS path | Event 4688: vshadow.exe on DC | Copied ntds.dit file on disk | Event 4663: access to ntds.dit file",
     "prevention": "Restrict DA rights tightly (VSS access requires DA on DC). Monitor VSS creation events outside backup schedules. EDR on DCs with ntds.dit access alerting. Anomaly detection: VSS created but no backup application running. MDI deployment. Restrict who can interactively log on to DCs.\nActive Directory Configuration: Manage ACL for 'Replicating Directory Changes All'; add users to Protected Users security group to limit cached plaintext credentials.\nBehavior Prevention on Endpoint: Enable Windows 10 ASR rules to secure LSASS and prevent credential stealing.\nCredential Access Protection: Enable Credential Guard (Windows 10+) to protect LSA secrets; enable Protected Process Light for LSA on Server 2012 R2.\nEncrypt Sensitive Information: Ensure Domain Controller backups are properly secured.\nOperating System Configuration: Disable or restrict NTLM; disable WDigest authentication.\nPassword Policies: Ensure local administrator accounts have complex, unique passwords across all systems.\nPrivileged Account Management: Do not place domain accounts in local admin groups across systems; limit cross-tier admin use; on Linux restrict root access to prevent memory scraping.",
-    "evasion": "Use built-in vssadmin instead of vshadow.exe (less suspicious binary). Perform during backup window when VSS events are normal. Use ntdsutil IFM (Installable From Media) \u2014 legitimate AD feature that creates a copy of NTDS.dit \u2014 equally effective, more legitimate-looking.",
+    "evasion": "Use built-in vssadmin instead of vshadow.exe (less suspicious binary). Perform during backup window when VSS events are normal. Use ntdsutil IFM (Installable From Media) — legitimate AD feature that creates a copy of NTDS.dit — equally effective, more legitimate-looking.",
     "sources": [
       "https://attack.mitre.org/techniques/T1003/003/"
     ],
-    "misconfiguration": "Too many accounts with DA rights \u2014 VSS access feasible for many attackers. No EDR on DCs. No alert on ntds.dit file access. VSS creation events not monitored outside backup windows.",
-    "vulnerable_config": "# VSS created on DC without monitoring:\nvssadmin create shadow /for=C:\\\n# \u2192 shadow copy created \u2192 ntds.dit accessible at:\n# \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1\\Windows\\NTDS\\ntds.dit\n# copy 'C:\\Windows\\system32\\config\\SYSTEM' C:\\temp\\SYSTEM\n# Then offline: secretsdump -ntds ntds.dit -system SYSTEM LOCAL",
-    "secure_config": "# EDR rule: alert on ntds.dit access from non-NTDS service processes\n# Defender for Endpoint: 'NTDS.dit read by non-AD process' built-in alert\n\n# Monitor VSS events outside backup schedule:\n# SIEM: EventID=7036 AND ServiceName='Volume Shadow Copy' AND TimeOfDay NOT IN (backup_window) \u2192 ALERT\n\n# Restrict DC logon to DA accounts only:\n# Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Local Policies \u2192 User Rights Assignment\n# \u2192 Allow log on locally: Administrators (only explicit DA, not broad group)\n\n# MDI on all DCs: detects ntds.dit extraction patterns"
-  }
+    "misconfiguration": "Too many accounts with DA rights — VSS access feasible for many attackers. No EDR on DCs. No alert on ntds.dit file access. VSS creation events not monitored outside backup windows.",
+    "vulnerable_config": "# VSS created on DC without monitoring:\nvssadmin create shadow /for=C:\\\n# → shadow copy created → ntds.dit accessible at:\n# \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1\\Windows\\NTDS\\ntds.dit\n# copy 'C:\\Windows\\system32\\config\\SYSTEM' C:\\temp\\SYSTEM\n# Then offline: secretsdump -ntds ntds.dit -system SYSTEM LOCAL",
+    "secure_config": "# EDR rule: alert on ntds.dit access from non-NTDS service processes\n# Defender for Endpoint: 'NTDS.dit read by non-AD process' built-in alert\n\n# Monitor VSS events outside backup schedule:\n# SIEM: EventID=7036 AND ServiceName='Volume Shadow Copy' AND TimeOfDay NOT IN (backup_window) → ALERT\n\n# Restrict DC logon to DA accounts only:\n# Computer Config → Windows Settings → Security Settings → Local Policies → User Rights Assignment\n# → Allow log on locally: Administrators (only explicit DA, not broad group)\n\n# MDI on all DCs: detects ntds.dit extraction patterns"
+  },
+  "variations": [
+    {
+      "label": "diskshadow scripted",
+      "command": "diskshadow /s <script_file>   # create shadow, then copy ntds.dit"
+    },
+    {
+      "label": "Parse offline",
+      "command": "impacket-secretsdump -ntds ntds.dit -system SYSTEM LOCAL"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Create a shadow copy of C:",
+      "command": "vshadow.exe -nw -p C:"
+    },
+    {
+      "label": "Copy NTDS.dit + SYSTEM hive off it",
+      "command": "robocopy /b \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopyN\\Windows\\NTDS . ntds.dit ; reg save HKLM\\SYSTEM SYSTEM"
+    },
+    {
+      "label": "Extract all domain hashes offline",
+      "command": "impacket-secretsdump -ntds ntds.dit -system SYSTEM LOCAL"
+    }
+  ]
 }

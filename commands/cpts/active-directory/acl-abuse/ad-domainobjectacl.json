@@ -87,5 +87,25 @@
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "Filter to interesting rights",
+      "command": "Get-DomainObjectAcl -Identity <object> -ResolveGUIDs | ?{$_.ActiveDirectoryRights -match 'GenericAll|WriteDacl|WriteOwner|GenericWrite'}"
+    },
+    {
+      "label": "Who has rights over Domain Admins",
+      "command": "Get-DomainObjectAcl -Identity 'Domain Admins' -ResolveGUIDs -Verbose"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Resolve the principal you control to a SID",
+      "command": "$sid = Convert-NameToSid <user>"
+    },
+    {
+      "label": "Find what that SID can modify",
+      "command": "Get-DomainObjectAcl -ResolveGUIDs -Identity <object> | ?{$_.SecurityIdentifier -eq $sid}"
+    }
   ]
 }

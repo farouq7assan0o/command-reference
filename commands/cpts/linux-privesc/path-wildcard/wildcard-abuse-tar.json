@@ -31,7 +31,7 @@
   "references": [
     {
       "title": "tar man page",
-      "url": "http://man7.org/linux/man-pages/man1/tar.1.html"
+      "url": "https://man7.org/linux/man-pages/man1/tar.1.html"
     },
     {
       "title": "HTB Academy - Linux Privilege Escalation",

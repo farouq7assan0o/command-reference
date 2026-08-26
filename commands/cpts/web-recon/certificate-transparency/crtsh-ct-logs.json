@@ -90,17 +90,17 @@
     {
       "description": "Filter CT results for specific keyword subdomains (e.g. dev, staging, admin)",
       "command": "curl -s \"https://crt.sh/?q=<domain>&output=json\" | jq -r '.[] | select(.name_value | contains(\"<keyword>\")) | .name_value' | sort -u",
-      "label": "crt.sh JSON"
+      "label": "crt.sh - filter by keyword"
     },
     {
       "description": "List all subdomains from CT logs, deduplicated",
       "command": "curl -s \"https://crt.sh/?q=%.<domain>&output=json\" | jq -r '.[].name_value' | sort -u",
-      "label": "crt.sh JSON"
+      "label": "crt.sh - all subdomains"
     },
     {
       "description": "Show issuer + name_value fields (CA + domain)",
       "command": "curl -s \"https://crt.sh/?q=<domain>&output=json\" | jq -r '.[] | [.name_value,.issuer_name] | @csv' | sort -u",
-      "label": "crt.sh JSON"
+      "label": "crt.sh - name + issuer (CSV)"
     },
     {
       "description": "Query CT logs via certspotter API",

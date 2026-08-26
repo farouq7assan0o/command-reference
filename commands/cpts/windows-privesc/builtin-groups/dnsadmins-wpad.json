@@ -35,7 +35,7 @@
   "references": [
     {
       "title": "Abusing DnsAdmins (labofapenetrationtester)",
-      "url": "http://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
+      "url": "https://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
     },
     {
       "title": "HTB Academy - Windows Privilege Escalation",
@@ -81,6 +81,7 @@
       "HTB M26",
       "MITRE T1557.001",
       "MITRE T1040"
-    ]
+    ],
+    "evasion": "Use passive sources first (cert transparency, public records); rate-limit active zone-transfer/brute attempts; a single AXFR attempt is quiet, brute-forcing is not."
   }
 }

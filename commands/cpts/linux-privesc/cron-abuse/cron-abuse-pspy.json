@@ -61,7 +61,7 @@
     },
     {
       "title": "Reverse Shell Cheat Sheet",
-      "url": "http://pentestmonkey.net/cheat-sheet/shells/reverse-shell-cheat-sheet"
+      "url": "https://pentestmonkey.net/cheat-sheet/shells/reverse-shell-cheat-sheet"
     },
     {
       "title": "HTB Academy - Linux Privilege Escalation",
@@ -115,7 +115,7 @@
   "defense": {
     "why_it_works": "Cron jobs run as root on a schedule and often reference scripts or files writable by low-privileged users. pspy monitors /proc without root privileges to reveal the exact commands being executed by cron, exposing writable script paths. Modifying those scripts inserts attacker code executed as root when the cron job fires.",
     "prerequisites": "Shell access as a low-privileged user. A cron job running as root that references a file writable by the attacker's user. pspy binary transferred to the target.",
-    "impact": "Arbitrary command execution as root at the next cron cycle (often within 1\u20135 minutes). Attacker can add SUID shells, append to /etc/sudoers, install reverse shells, or exfiltrate /etc/shadow.",
+    "impact": "Arbitrary command execution as root at the next cron cycle (often within 1–5 minutes). Attacker can add SUID shells, append to /etc/sudoers, install reverse shells, or exfiltrate /etc/shadow.",
     "detection": "File integrity monitoring (Tripwire, AIDE, inotifywait) on cron-referenced scripts. Auditd: write to /dmz-backups/backup.sh by non-root user. SIEM: unexpected shell spawned from cron parent process (crond).",
     "artifacts": "File integrity alert (cron script modified) | Auditd write event on cron-referenced script | Bash reverse shell connection in network logs",
     "prevention": "Ensure all files referenced by root cron jobs are owned by root and not world/group writable. Use absolute paths in cron scripts. Run cron jobs as least-privilege service accounts rather than root where possible. Audit cron jobs with: for f in /etc/cron*; do ls -la $f; done.",

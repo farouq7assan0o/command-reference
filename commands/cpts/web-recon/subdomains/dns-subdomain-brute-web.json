@@ -99,7 +99,7 @@
     },
     {
       "description": "dnsenum with XML output (for later parsing)",
-      "command": "dnsenum --enum <domain> -f <wordlist> -o <output.xml> -r",
+      "command": "dnsenum --enum <domain> -f <wordlist> -o <outfile> -r",
       "label": "XML output"
     },
     {

@@ -2,7 +2,7 @@
   "id": "ad-sharphound",
   "name": "SharpHound - Windows-Based BloodHound Collection",
   "command": ".\\SharpHound.exe -c All --zipfilename <name>",
-  "description": "Native C# BloodHound data collector \u2014 runs directly on a Windows host. More feature-rich than BloodHound.py and can collect session data and local admin information more accurately since it runs natively. Output: a ZIP file containing JSON datasets ready for BloodHound import.",
+  "description": "Native C# BloodHound data collector — runs directly on a Windows host. More feature-rich than BloodHound.py and can collect session data and local admin information more accurately since it runs natively. Output: a ZIP file containing JSON datasets ready for BloodHound import.",
   "platform": "windows",
   "type": "command",
   "opsec": "moderate",
@@ -28,7 +28,7 @@
     "T1482"
   ],
   "exam": "exam-ok",
-  "notes": "=== SHARPHOUND vs BLOODHOUND.PY ===\n  SharpHound (C# Windows):\n    + More accurate session and local admin data (native Windows API calls)\n    + Better stealth options (looping, randomized delays)\n    + Supports stealth collection modes\n    - Requires running a binary on target Windows host\n    - May trigger EDR/AV on endpoint\n\n  BloodHound.py (Linux):\n    + No binary required on Windows target \u2014 runs from your Linux attack box\n    + Easier to use with just valid creds\n    - Session/LocalAdmin data less accurate (uses SMB queries only)\n    - Some data may be missing vs native SharpHound\n\n=== COLLECTION METHODS ===\n  -c All            \u2192 collect everything (recommended)\n  -c Default        \u2192 ACLs, users, groups, trusts (no session, no local admin)\n  -c Session        \u2192 who is logged where (admin on targets required)\n  -c LocalAdmin     \u2192 local group membership (admin on targets required)\n  -c DCOnly         \u2192 only query the DC (less noise, less complete)\n  -c LoggedOn       \u2192 session data without admin (uses netapi, less accurate)\n\n=== OUTPUT ===\n  --zipfilename <name>  \u2192 name the output zip (defaults to random GUID)\n  Output zip contains: _computers.json, _users.json, _groups.json, etc.\n  Transfer zip to Linux attack box \u2192 upload to BloodHound GUI\n  scp / impacket-smbserver / curl to exfiltrate\n\n=== OPSEC OPTIONS ===\n  --stealth         \u2192 reduced collection (avoids session enum)\n  --loop --loopduration 00:05:00 \u2192 collect repeatedly over time window\n  --randomfilenames \u2192 randomize output file names\n  --throttle 1000   \u2192 add 1 second delay between requests (quieter)\n  --jitter 23       \u2192 random jitter % applied to throttle delay\n\n=== TYPICAL WORKFLOW ===\n1. Transfer SharpHound.exe to foothold\n2. .\\SharpHound.exe -c All --zipfilename CORP_2024\n3. Exfiltrate the zip to attack box\n4. Load into BloodHound GUI\n5. Run 'Shortest Paths to Domain Admins from Owned Principals' Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
+  "notes": "=== SHARPHOUND vs BLOODHOUND.PY ===\n  SharpHound (C# Windows):\n    + More accurate session and local admin data (native Windows API calls)\n    + Better stealth options (looping, randomized delays)\n    + Supports stealth collection modes\n    - Requires running a binary on target Windows host\n    - May trigger EDR/AV on endpoint\n\n  BloodHound.py (Linux):\n    + No binary required on Windows target — runs from your Linux attack box\n    + Easier to use with just valid creds\n    - Session/LocalAdmin data less accurate (uses SMB queries only)\n    - Some data may be missing vs native SharpHound\n\n=== COLLECTION METHODS ===\n  -c All            → collect everything (recommended)\n  -c Default        → ACLs, users, groups, trusts (no session, no local admin)\n  -c Session        → who is logged where (admin on targets required)\n  -c LocalAdmin     → local group membership (admin on targets required)\n  -c DCOnly         → only query the DC (less noise, less complete)\n  -c LoggedOn       → session data without admin (uses netapi, less accurate)\n\n=== OUTPUT ===\n  --zipfilename <name>  → name the output zip (defaults to random GUID)\n  Output zip contains: _computers.json, _users.json, _groups.json, etc.\n  Transfer zip to Linux attack box → upload to BloodHound GUI\n  scp / impacket-smbserver / curl to exfiltrate\n\n=== OPSEC OPTIONS ===\n  --stealth         → reduced collection (avoids session enum)\n  --loop --loopduration 00:05:00 → collect repeatedly over time window\n  --randomfilenames → randomize output file names\n  --throttle 1000   → add 1 second delay between requests (quieter)\n  --jitter 23       → random jitter % applied to throttle delay\n\n=== TYPICAL WORKFLOW ===\n1. Transfer SharpHound.exe to foothold\n2. .\\SharpHound.exe -c All --zipfilename CORP_2024\n3. Exfiltrate the zip to attack box\n4. Load into BloodHound GUI\n5. Run 'Shortest Paths to Domain Admins from Owned Principals' Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
   "examples": [
     {
       "label": "Full collection with custom zip name",
@@ -47,7 +47,7 @@
       "command": ".\\SharpHound.exe -c Session --loop --loopduration 00:05:00"
     },
     {
-      "label": "Ch21 \u2014 full collection with custom prefix (PEN-200 lab pattern)",
+      "label": "Ch21 — full collection with custom prefix (PEN-200 lab pattern)",
       "command": "Invoke-BloodHound -CollectionMethod All -OutputDirectory C:\\Users\\<user>\\Desktop\\ -OutputPrefix \"corp audit\""
     }
   ],
@@ -91,10 +91,34 @@
       "MITRE T1482"
     ],
     "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
-    "vulnerable_config": "# AD default permissions \u2014 authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
-    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 \u2014 access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) \u2014 any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
   },
   "tools": [
     "SharpHound"
+  ],
+  "variations": [
+    {
+      "label": "Stealth (session loop, DC-only)",
+      "command": ".\\SharpHound.exe -c DCOnly --zipfilename bh"
+    },
+    {
+      "label": "Loop sessions over time",
+      "command": ".\\SharpHound.exe -c Session --loop --loopduration 02:00:00"
+    },
+    {
+      "label": "ADRecon (Excel report, alt to BloodHound)",
+      "command": ".\\ADRecon.ps1 -DomainController <dc> -Credential <domain>\\<user>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Collect all methods",
+      "command": ".\\SharpHound.exe -c All --zipfilename bh"
+    },
+    {
+      "label": "Import the zip into BloodHound",
+      "command": "# drag-drop zip -> run 'Shortest paths to Domain Admins'"
+    }
   ]
 }

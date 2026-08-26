@@ -73,12 +73,12 @@
     {
       "description": "Credentialed scan (Windows — provides domain access for deeper findings)",
       "command": "# UI: Advanced Scan → Credentials tab → Windows → set domain\\user + password → Launch",
-      "label": "UI: Advanced Scan → Credentials ta…"
+      "label": "UI: add Windows creds"
     },
     {
       "description": "Credentialed scan (Linux SSH)",
       "command": "# UI: Advanced Scan → Credentials tab → SSH → set username + password/key → Launch",
-      "label": "UI: Advanced Scan → Credentials ta…"
+      "label": "UI: add SSH creds"
     },
     {
       "description": "Web Application Tests scan template",

@@ -1,0 +1,111 @@
+{
+  "id": "crtp-invishell",
+  "name": "InviShell - AMSI & PowerShell Logging Bypass (COR_PROFILER)",
+  "command": "C:\\AD\\Tools\\InviShell\\RunWithRegistryNonAdmin.bat",
+  "description": "InviShell spawns a PowerShell session with AMSI, Script Block Logging, and Module Logging disabled by abusing the unmanaged CLR profiler (COR_PROFILER) COM hijack - no admin rights needed. It registers an InprocServer32 CLSID under HKCU and sets COR_ENABLE_PROFILING so a custom DLL loads into powershell.exe and neuters logging/AMSI. The go-to way to run PowerView/PowerUp/Mimikatz scripts quietly in CRTP.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Evasion",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1562.001",
+    "T1574.012",
+    "T1112"
+  ],
+  "tools": [
+    "InviShell",
+    "reg"
+  ],
+  "tags": [
+    "amsi-bypass",
+    "logging-bypass",
+    "cor-profiler",
+    "evasion",
+    "invishell",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "Admin variant (uses PATH env)",
+      "command": "C:\\AD\\Tools\\InviShell\\RunWithPathAsAdmin.bat"
+    },
+    {
+      "label": "Manual COR_PROFILER setup (what the .bat does)",
+      "command": "set COR_ENABLE_PROFILING=1 & set COR_PROFILER={cf0d821e-299b-5307-a3d8-b283c03916db}"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Register the profiler CLSID under HKCU",
+      "command": "REG ADD \"HKCU\\Software\\Classes\\CLSID\\{cf0d821e-299b-5307-a3d8-b283c03916db}\\InprocServer32\" /ve /t REG_SZ /d \"C:\\AD\\Tools\\InviShell\\InShellProf.dll\" /f"
+    },
+    {
+      "label": "Launch the cloaked shell",
+      "command": "C:\\AD\\Tools\\InviShell\\RunWithRegistryNonAdmin.bat"
+    },
+    {
+      "label": "Now load offensive modules quietly",
+      "command": ". C:\\AD\\Tools\\PowerView.ps1"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Cloaked shell then PowerView enumeration",
+      "command": "C:\\AD\\Tools\\InviShell\\RunWithRegistryNonAdmin.bat\nPS> . C:\\AD\\Tools\\PowerView.ps1; Get-DomainUser"
+    },
+    {
+      "label": "Cloaked shell then import the AD module",
+      "command": "C:\\AD\\Tools\\InviShell\\RunWithRegistryNonAdmin.bat\nPS> Import-Module C:\\AD\\Tools\\ADModule-master\\ActiveDirectory\\ActiveDirectory.psd1"
+    }
+  ],
+  "notes": "InviShell = unmanaged CLR profiler (COR_PROFILER) COM hijack; runs as a normal user because HKCU CLSID registration needs no admin. It cleans up its registry key on exit. Use it as the outer shell for any PowerShell-based tooling (PowerView, PowerUp, Invoke-Mimikatz). For .NET binaries use crtp-loader instead; for a quick one-liner AMSI/logging patch without a new shell see crtp-amsi-sbl-bypass.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "MITRE ATT&CK T1574.012 - COR_PROFILER",
+      "url": "https://attack.mitre.org/techniques/T1574/012/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-ad-module-enum",
+      "note": "Run AD-module enumeration inside the cloaked shell",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-amsi-sbl-bypass",
+      "note": "One-liner alternative when you don't want a new shell",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-powerview-users-groups",
+      "note": "PowerView enumeration, run quietly here",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Local execution as any user. InviShell files (InShellProf.dll + the .bat launchers) on the host. Write access to HKCU (default for the logged-on user).",
+    "why_it_works": "The .NET CLR loads any profiler DLL named by the COR_ENABLE_PROFILING / COR_PROFILER environment variables and resolves the CLSID from the registry - including HKCU, which a normal user can write. The profiler DLL loads into powershell.exe before AMSI/ETW logging initializes, letting it disable them. It is a per-user, no-admin logging/AMSI bypass.",
+    "misconfiguration": "AMSI/PowerShell logging treated as sufficient without tamper detection; HKCU CLSID writes and COR_PROFILER env vars not monitored; no EDR watching profiler DLL loads into powershell.exe.",
+    "impact": "PowerShell runs with AMSI, Script Block Logging, and Module Logging disabled - offensive scripts execute with no script content captured, blinding the primary Windows PowerShell telemetry.",
+    "detection": "Registry writes to HKCU\\Software\\Classes\\CLSID\\...\\InprocServer32 (Sysmon 13). Process env containing COR_ENABLE_PROFILING/COR_PROFILER for powershell.exe. Unexpected DLL (InShellProf.dll) image-loaded into powershell.exe (Sysmon 7). Sudden absence of 4103/4104 events for an interactive session.",
+    "artifacts": "HKCU CLSID key referencing InShellProf.dll; COR_PROFILER env var on the powershell process; the profiler DLL on disk; gaps in PowerShell operational logs.",
+    "vulnerable_config": "# PowerShell logging on, but no tamper/COR_PROFILER monitoring\n# HKCU CLSID writes unaudited; unsigned DLLs can load into powershell.exe",
+    "secure_config": "# Block/monitor COR_PROFILER: set env allowlist via WDAC or EDR\n# Sysmon: alert on HKCU CLSID InprocServer32 writes + DLL loads into powershell.exe\n# WDAC signed-only DLL policy (blocks InShellProf.dll)\n# Ship 4103/4104 to SIEM and alert on session-logging silence",
+    "prevention": "Enforce WDAC/AppLocker signed-only DLL loading (blocks the profiler DLL). Monitor and alert on COR_PROFILER env vars and HKCU CLSID InprocServer32 writes. Use EDR that flags profiler injection into powershell.exe. [MITRE M1038, M1040, M1042]",
+    "evasion": "Runs as a normal user (no admin event trail). Registry key is created and removed per session. Rename the DLL/CLSID to avoid static IOC lists.",
+    "sources": [
+      "CRTP",
+      "MITRE T1574.012",
+      "MITRE T1562.001"
+    ]
+  }
+}

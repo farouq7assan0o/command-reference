@@ -12,32 +12,32 @@
     {
       "command": "Get-LocalGroupMember Administrators",
       "caption": "List members of local Administrators group",
-      "label": "Get-LocalGroupMember"
+      "label": "Local Administrators members"
     },
     {
       "command": "Get-LocalGroupMember '<group>'",
       "caption": "List members of any local group",
-      "label": "Get-LocalGroupMember"
+      "label": "Members of a named group"
     },
     {
       "command": "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select-Object DisplayName, DisplayVersion, Publisher | Sort-Object DisplayName",
       "caption": "List installed 64-bit software from registry",
-      "label": "Get-ItemProperty"
+      "label": "Installed software (64-bit)"
     },
     {
       "command": "Get-ItemProperty 'HKLM:\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select-Object DisplayName, DisplayVersion, Publisher | Sort-Object DisplayName",
       "caption": "List installed 32-bit software (WOW6432Node)",
-      "label": "Get-ItemProperty"
+      "label": "Installed software (32-bit)"
     },
     {
       "command": "Get-CimInstance -ClassName win32_service | Select-Object Name, State, PathName | Where-Object {$_.State -like 'Running'}",
       "caption": "List all running Windows services with binary paths",
-      "label": "Get-CimInstance"
+      "label": "Running services"
     },
     {
       "command": "Get-CimInstance -Class win32_quickfixengineering | Where-Object { $_.Description -eq 'Security Update' } | Select-Object HotFixID, InstalledOn | Sort-Object InstalledOn",
       "caption": "List installed security patches (for missing patch research)",
-      "label": "Get-CimInstance"
+      "label": "Installed security hotfixes"
     },
     {
       "command": "Get-History",
@@ -57,7 +57,7 @@
     {
       "command": "Get-CimInstance win32_service | Where-Object {$_.StartName -notmatch 'LocalSystem|LocalService|NetworkService'} | Select-Object Name, StartName, PathName",
       "caption": "Find services running under non-standard service accounts (privesc targets)",
-      "label": "Get-CimInstance"
+      "label": "Services w/ non-default account"
     }
   ],
   "examples": [

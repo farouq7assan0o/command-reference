@@ -84,6 +84,7 @@
     "sources": [
       "HTB M26",
       "MITRE T1548.002"
-    ]
+    ],
+    "evasion": "Use a fileless UAC bypass (fodhelper/registry) that self-cleans; remove the added registry keys after elevation."
   }
 }

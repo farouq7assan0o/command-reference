@@ -67,7 +67,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Get-ADDomain returns domain-wide configuration (SID, functional level, policies) via LDAP.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. Get-ADDomain reads the domain naming context (SID, functional level, PDC) available to any user.",
     "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
     "impact": "Domain topology and identifiers used to plan further attacks.",
     "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -84,5 +84,15 @@
   },
   "tools": [
     "ActiveDirectory"
+  ],
+  "variations": [
+    {
+      "label": "Just the key fields",
+      "command": "Get-ADDomain | select DNSRoot,NetBIOSName,DomainSID,PDCEmulator"
+    },
+    {
+      "label": "Forest info",
+      "command": "Get-ADForest | select Name,RootDomain,Domains,GlobalCatalogs"
+    }
   ]
 }

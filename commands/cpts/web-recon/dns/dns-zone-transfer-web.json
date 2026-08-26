@@ -86,17 +86,17 @@
     {
       "description": "Zone transfer with specific nameserver (AXFR via dig)",
       "command": "dig axfr @<nameserver_ip> <domain>",
-      "label": "AXFR zone transfer"
+      "label": "AXFR - by NS IP"
     },
     {
       "description": "Find authoritative nameserver first, then attempt transfer",
       "command": "dig ns <domain>\ndig axfr @<ns_hostname> <domain>",
-      "label": "AXFR zone transfer"
+      "label": "Find NS then AXFR"
     },
     {
       "description": "Test well-known vulnerable demo zone (zonetransfer.me)",
       "command": "dig axfr @nsztm1.digi.ninja zonetransfer.me",
-      "label": "AXFR zone transfer"
+      "label": "AXFR - zonetransfer.me demo"
     },
     {
       "description": "Zone transfer using host command",

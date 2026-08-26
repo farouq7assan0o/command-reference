@@ -54,6 +54,11 @@
       "id": "gitlab-userenum",
       "note": "Supplies the valid account this exploit authenticates with.",
       "rel": "prereq"
+    },
+    {
+      "id": "gs-reverse-shells",
+      "rel": "next",
+      "note": "Turn the authenticated RCE into a reverse shell"
     }
   ],
   "id": "gitlab-rce",
@@ -79,6 +84,7 @@
       "HTB M24",
       "MITRE T1190",
       "OWASP A06:2021"
-    ]
+    ],
+    "evasion": "Use valid session/token auth; clean up any runner/CI job or dropped file used for execution; blend into normal CI traffic."
   }
 }

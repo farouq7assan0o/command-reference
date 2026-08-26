@@ -91,6 +91,23 @@
       "HTB M26",
       "MITRE T1057",
       "MITRE T1082"
-    ]
-  }
+    ],
+    "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+  },
+  "variations": [
+    {
+      "label": "Specific check",
+      "command": ".\\SharpUp.exe audit UnquotedServicePath"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Run all privesc checks",
+      "command": ".\\SharpUp.exe audit"
+    },
+    {
+      "label": "Follow the highest-signal finding",
+      "command": "# unquoted path / modifiable service / AlwaysInstallElevated -> exploit"
+    }
+  ]
 }

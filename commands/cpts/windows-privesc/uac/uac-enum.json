@@ -87,6 +87,7 @@
       "HTB M26",
       "MITRE T1548.002",
       "MITRE T1082"
-    ]
+    ],
+    "evasion": "Use a fileless UAC bypass (fodhelper/registry) that self-cleans; remove the added registry keys after elevation."
   }
 }

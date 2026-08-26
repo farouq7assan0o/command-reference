@@ -8,11 +8,23 @@
   "opsec": "moderate",
   "category": "Privilege Escalation",
   "subcategory": "Linux - sudo Abuse",
-  "requires": ["local-access"],
+  "requires": [
+    "local-access"
+  ],
   "protocols": [],
-  "tools": ["sudo", "nc"],
-  "tags": ["sudo", "privesc", "writable-script", "nopasswd"],
-  "mitre": ["T1548.003"],
+  "tools": [
+    "sudo",
+    "nc"
+  ],
+  "tags": [
+    "sudo",
+    "privesc",
+    "writable-script",
+    "nopasswd"
+  ],
+  "mitre": [
+    "T1548.003"
+  ],
   "steps": [
     {
       "label": "1. Check sudo permissions",
@@ -85,9 +97,12 @@
     "sources": [
       "MITRE T1548.003",
       "HTB Academy - Getting Started Module"
-    ]
+    ],
+    "evasion": "Use the GTFOBins one-shot that spawns a shell without writing files; remove any dropped .so/binary; the sudo call is logged, so do it once and pivot rather than repeating."
   },
-  "certifications": ["CPTS"],
+  "certifications": [
+    "CPTS"
+  ],
   "primary_cert": "CPTS",
   "source": "CPTS Module 02: Getting Started",
   "exam": "exam-ok"

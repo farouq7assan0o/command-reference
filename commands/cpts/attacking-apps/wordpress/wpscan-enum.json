@@ -86,5 +86,25 @@
       "MITRE T1595.002",
       "OWASP A05:2021"
     ]
-  }
+  },
+  "variations": [
+    {
+      "label": "Vulnerable plugins + users",
+      "command": "wpscan --url http://<url> --enumerate vp,u --api-token <token>"
+    },
+    {
+      "label": "All plugins (aggressive)",
+      "command": "wpscan --url http://<url> --enumerate ap --plugins-detection aggressive"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Enumerate users, themes, plugins",
+      "command": "wpscan --url http://<url> --enumerate u,vp,vt --api-token <token>"
+    },
+    {
+      "label": "Brute a discovered user",
+      "command": "wpscan --url http://<url> -U <user> -P /usr/share/wordlists/rockyou.txt --password-attack xmlrpc"
+    }
+  ]
 }

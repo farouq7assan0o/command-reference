@@ -81,6 +81,13 @@
     "sources": [
       "HTB M26",
       "MITRE T1555.003"
-    ]
-  }
+    ],
+    "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+  },
+  "variations": [
+    {
+      "label": "Cookies too",
+      "command": ".\\SharpChrome.exe cookies /unprotect"
+    }
+  ]
 }

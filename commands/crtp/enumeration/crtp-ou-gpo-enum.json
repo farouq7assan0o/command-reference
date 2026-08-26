@@ -1,0 +1,136 @@
+{
+  "id": "crtp-ou-gpo-enum",
+  "name": "OU & GPO Enumeration (PowerView)",
+  "command": "Get-DomainGPO | select displayname,gpcfilesyspath",
+  "description": "Map Organizational Units and the GPOs linked to them to find delegation and misconfigured policy that can be abused. PowerView resolves OU->gplink->GPO so you can see which computers a policy applies to and which GPO grants a foothold (e.g. a Restricted Group or a scheduled task).",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "quiet",
+  "mitre": [
+    "T1615",
+    "T1069.002"
+  ],
+  "tools": [
+    "PowerView"
+  ],
+  "tags": [
+    "gpo",
+    "ou",
+    "gplink",
+    "enumeration",
+    "powerview",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "List OUs",
+      "command": "Get-DomainOU | select -ExpandProperty name"
+    },
+    {
+      "label": "Computers inside a specific OU",
+      "command": "(Get-DomainOU -Identity <ou_name>).distinguishedname | %{Get-DomainComputer -SearchBase $_} | select name"
+    },
+    {
+      "label": "GPO linked to an OU (resolve gplink)",
+      "command": "Get-DomainGPO -Identity (Get-DomainOU -Identity <ou_name>).gplink.substring(11,(Get-DomainOU -Identity <ou_name>).gplink.length-72)"
+    },
+    {
+      "label": "GPO by friendly name",
+      "command": "Get-DomainGPO -Identity '<gpo_display_name>'"
+    },
+    {
+      "label": "GPO-granted local admin (Restricted Groups)",
+      "command": "Get-DomainGPOLocalGroup"
+    },
+    {
+      "label": "Where a user/group is local admin via GPO",
+      "command": "Get-DomainGPOUserLocalGroupMapping -Identity <user> -Verbose"
+    },
+    {
+      "label": "gpresult /r - applied GPOs on this host",
+      "command": "gpresult /r"
+    },
+    {
+      "label": "gpresult /z - verbose applied GPOs",
+      "command": "gpresult /z"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Enumerate OUs",
+      "command": "Get-DomainOU | select -ExpandProperty name"
+    },
+    {
+      "label": "See which GPO is linked to the OU",
+      "command": "(Get-DomainOU -Identity DevOps).gplink"
+    },
+    {
+      "label": "Resolve the GPO details",
+      "command": "Get-DomainGPO -Identity '{0BF8D01C-1F62-4BDC-958C-57140B67D147}'"
+    },
+    {
+      "label": "Find who can edit GPOs (abuse path)",
+      "command": "Get-DomainGPO | Get-DomainObjectAcl -ResolveGUIDs | ?{$_.ActiveDirectoryRights -match 'WriteProperty|WriteDacl'}"
+    }
+  ],
+  "examples": [
+    {
+      "label": "OU -> computers (DevOps)",
+      "command": "(Get-DomainOU -Identity DevOps).distinguishedname | %{Get-DomainComputer -SearchBase $_} | select name"
+    },
+    {
+      "label": "GPO by name (DevOps Policy)",
+      "command": "Get-DomainGPO -Identity 'DevOps Policy'"
+    }
+  ],
+  "notes": "OU/GPO mapping is the recon step before GPO abuse: find an OU you can influence, the GPO linked to it, and the computers in scope. gpcfilesyspath points to the SYSVOL folder holding the policy files. Follow with crtp-gpo-abuse to weaponize write access to a linked GPO.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "PowerSploit/PowerView",
+      "url": "https://powersploit.readthedocs.io/en/latest/Recon/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-powerview-acls",
+      "note": "Find who has write rights over the GPO/OU",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-gpo-abuse",
+      "note": "Weaponize write access to a linked GPO",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-powerview-domain",
+      "note": "Broader domain enumeration context",
+      "rel": "alternative"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Any authenticated domain user (OU/GPO objects and gplink attributes are world-readable in AD).",
+    "why_it_works": "OU structure, GPO objects, and gplink relationships are stored as readable directory attributes; combined with default DACL readability, any user can reconstruct which policies apply where and which principals can edit them.",
+    "misconfiguration": "Non-privileged principals granted Write/WriteDacl on GPO objects or link permissions on OUs; overly broad delegation; SYSVOL policy paths readable/writable beyond admins.",
+    "impact": "Reveals GPO-based privilege-escalation and lateral-movement paths (editable GPO linked to servers/DCs) - the map for a domain-wide compromise via GPO abuse.",
+    "detection": "LDAP queries enumerating groupPolicyContainer and organizationalUnit objects with gplink; unusual read volume against the Policies container; BloodHound-style collection patterns.",
+    "artifacts": "Directory service access logs (4662) for GPO/OU objects; SYSVOL access spikes.",
+    "vulnerable_config": "# Non-admins with WriteProperty/WriteDacl on GPO objects\n# OU delegation granting link/edit to helpdesk or app teams",
+    "secure_config": "# Restrict GPO edit rights to a small admin group; audit GPO DACLs\n# Remove unnecessary OU delegation; monitor gplink changes\n# Enable AD object-access auditing (4662) on Policies container",
+    "prevention": "Audit and minimize GPO/OU delegation; restrict WriteDacl/WriteProperty on GPOs to admins; monitor GPO/gplink changes and SYSVOL edits. [MITRE M1018, M1026]",
+    "evasion": "Read-only LDAP enumeration blends with normal management traffic; scope queries to a single OU to reduce volume.",
+    "sources": [
+      "CRTP",
+      "MITRE T1615"
+    ]
+  }
+}

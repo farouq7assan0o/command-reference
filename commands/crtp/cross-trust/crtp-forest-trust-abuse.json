@@ -95,8 +95,14 @@
       "https://attack.mitre.org/techniques/T1558/001/",
       "https://attack.mitre.org/techniques/T1482/"
     ],
-    "misconfiguration": "Forest trust with SID filtering disabled (must be explicitly disabled \u2014 default is filtering enabled for forest trusts). Bidirectional trust when unidirectional was intended. No MDI across both forests.",
-    "vulnerable_config": "# SID filtering disabled on forest trust (explicitly misconfigured):\nGet-ADTrust -Filter {Target -eq 'TRUSTED.COM'} | Select-Object SIDFilteringForestAware\n# SIDFilteringForestAware: False \u2192 SID History crosses forest boundary \u2192 CRITICAL\n\n# Trust key extractable via DCSync of trust account:\n# mimikatz lsadump::trust /patch \u2192 inter-realm trust key\n# \u2192 forge inter-realm TGT with TRUSTED.COM EA SID \u2192 access TRUSTED.COM as EA",
+    "misconfiguration": "Forest trust with SID filtering disabled (must be explicitly disabled — default is filtering enabled for forest trusts). Bidirectional trust when unidirectional was intended. No MDI across both forests.",
+    "vulnerable_config": "# SID filtering disabled on forest trust (explicitly misconfigured):\nGet-ADTrust -Filter {Target -eq 'TRUSTED.COM'} | Select-Object SIDFilteringForestAware\n# SIDFilteringForestAware: False → SID History crosses forest boundary → CRITICAL\n\n# Trust key extractable via DCSync of trust account:\n# mimikatz lsadump::trust /patch → inter-realm trust key\n# → forge inter-realm TGT with TRUSTED.COM EA SID → access TRUSTED.COM as EA",
     "secure_config": "# Enable SID filtering on forest trust:\nnetdom trust TRUSTED.COM /domain:CORP.LOCAL /enablesidhistory:no /filtersids:yes\n\n# Verify:\n(Get-ADTrust -Filter {Target -eq 'TRUSTED.COM'}).SIDFilteringForestAware  # Should be True\n\n# Use Selective Authentication (limit which resources cross-forest users can access):\nSet-ADTrust -Identity 'TRUSTED.COM' -SelectiveAuthentication $true\n# Then explicitly grant 'Allowed to authenticate' on specific resources\n\n# Deploy MDI on forest root DCs of both forests:\n# MDI cross-forest trust monitoring detects anomalous inter-realm tickets"
-  }
+  },
+  "variations": [
+    {
+      "label": "Request an inter-realm TGS",
+      "command": "Rubeus.exe asktgs /service:cifs/<target_dc>.<target_forest> /dc:<target_dc> /ptt /ticket:<inter_realm_tgt>"
+    }
+  ]
 }

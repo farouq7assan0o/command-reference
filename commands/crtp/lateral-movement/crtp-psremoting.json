@@ -78,9 +78,14 @@
       "id": "ad-enter-pssession",
       "note": "CPTS variant of PS Remoting",
       "rel": "alternative"
+    },
+    {
+      "id": "crtp-portproxy-pivot",
+      "note": "Relay through a jump host to reach isolated targets",
+      "rel": "next"
     }
   ],
-  "notes": "WinRM: port 5985 (HTTP), 5986 (HTTPS). Requires admin rights on remote host. Logged in PowerShell event logs and WinRM.",
+  "notes": "WinRM: port 5985 (HTTP), 5986 (HTTPS). Requires admin rights on remote host. Logged in PowerShell event logs and WinRM. Discovery: Find-PSRemotingLocalAdminAccess lists hosts where the current user has remoting admin. WSManWinRM.exe is a custom WinRM client used when winrs is unavailable.",
   "references": [
     {
       "title": "CRTP - PS Remoting Lateral Movement",
@@ -88,18 +93,32 @@
     }
   ],
   "defense": {
-    "why_it_works": "PowerShell Remoting (WinRM) provides a legitimate, encrypted management channel to remote hosts on TCP 5985 (HTTP) or 5986 (HTTPS). Enter-PSSession and Invoke-Command authenticate via Kerberos (domain accounts) or NTLM, then establish an interactive or scriptable session. Being a Windows feature, it's often whitelisted \u2014 attackers use it to move laterally with valid credentials while appearing as legitimate admin traffic.",
+    "why_it_works": "PowerShell Remoting (WinRM) provides a legitimate, encrypted management channel to remote hosts on TCP 5985 (HTTP) or 5986 (HTTPS). Enter-PSSession and Invoke-Command authenticate via Kerberos (domain accounts) or NTLM, then establish an interactive or scriptable session. Being a Windows feature, it's often whitelisted — attackers use it to move laterally with valid credentials while appearing as legitimate admin traffic.",
     "prerequisites": "Local Administrator or WinRM access on the target host. Valid credentials (password, NTLM hash via PtH, or Kerberos ticket via OPtH). WinRM service running on target (default on Server 2012+; enabled via GPO on workstations). Port 5985 accessible.",
-    "impact": "T1021.006 Remote Services: Windows Remote Management. Lateral movement to any host the compromised account has admin rights on. Provides an interactive PowerShell session or remote command execution \u2014 equivalent to RDP for scripted attacks, no GUI overhead.",
+    "impact": "T1021.006 Remote Services: Windows Remote Management. Lateral movement to any host the compromised account has admin rights on. Provides an interactive PowerShell session or remote command execution — equivalent to RDP for scripted attacks, no GUI overhead.",
     "detection": "Event 4624 (logon type 3) on target host for the authenticated account. Event 4688: wsmprovhost.exe process creation on target (WinRM host process). Windows Remote Management event log on target: Event 91 (session created). Sysmon Event 3: network connection from source to target on TCP 5985. SIEM: lateral movement detection via logon-type-3 correlation with subsequent process creation.\nLogon via RDP or WMI by user account followed by uncommon command execution, file manipulation, or lateral network connections (DET0269/AN0750).\nSSH session from new source IP followed by interactive shell, privilege escalation (sudo, su), and outbound lateral connection (AN0751).\nRemote login via ARD or SSH followed by screensharingd activity or modification of TCC-protected files (AN0752).\nCloud bastion or VM console session followed by commands initiating outbound SSH/RDP to other environments (AN0753).\nvSphere API logins or SSH to ESXi followed by unauthorized shell commands or lateral remote logins from the ESXi host (AN0754).",
-    "artifacts": "Event 4624 Type 3 on target from source IP | Event 4688: wsmprovhost.exe (WinRM worker process) | Windows-Remote-Management/Operational Event 91 | Sysmon Event 3: source \u2192 target TCP 5985 | PowerShell SBL Event 4104: commands run in remote session",
-    "prevention": "Restrict WinRM access via host firewall GPO (allow only from admin hosts/PAW subnet). Enable Just Enough Administration (JEA) \u2014 limits what commands can be run in remote sessions. Require MFA for privileged remote management. Monitor Event 4624 type 3 from unexpected sources. Apply tiering model \u2014 DAs use WinRM only from PAWs to DCs/Tier-0 servers. Credential Guard prevents credential reuse for NTLM-based WinRM.\nAudit: Scan systems, permissions, insecure configurations to identify weaknesses.\nDisable or Remove Feature or Program: Disable unnecessary remote service connection types; enable ESXi lockdown mode requiring vCenter management.\nLimit Access to Resource Over Network: Prevent unnecessary remote access to file shares, hypervisors, and sensitive systems; use network concentrators and RDP gateways.\nMulti-factor Authentication: Use MFA on remote service logons where possible.\nPassword Policies: Do not reuse local administrator passwords across systems; ensure complexity and uniqueness.\nUser Account Management: Limit accounts that may use remote services; limit high-risk account permissions; configure SSH to restrict programs users can run.",
-    "evasion": "WinRM traffic is encrypted \u2014 content not inspectable by network DLP. Use HTTPS (5986) to avoid plaintext-aware IDS. Tunnel through existing sessions (double-hop via CredSSP, constrained delegation, or Rubeus createnetonly). Blend with legitimate admin WinRM traffic patterns.",
+    "artifacts": "Event 4624 Type 3 on target from source IP | Event 4688: wsmprovhost.exe (WinRM worker process) | Windows-Remote-Management/Operational Event 91 | Sysmon Event 3: source → target TCP 5985 | PowerShell SBL Event 4104: commands run in remote session",
+    "prevention": "Restrict WinRM access via host firewall GPO (allow only from admin hosts/PAW subnet). Enable Just Enough Administration (JEA) — limits what commands can be run in remote sessions. Require MFA for privileged remote management. Monitor Event 4624 type 3 from unexpected sources. Apply tiering model — DAs use WinRM only from PAWs to DCs/Tier-0 servers. Credential Guard prevents credential reuse for NTLM-based WinRM.\nAudit: Scan systems, permissions, insecure configurations to identify weaknesses.\nDisable or Remove Feature or Program: Disable unnecessary remote service connection types; enable ESXi lockdown mode requiring vCenter management.\nLimit Access to Resource Over Network: Prevent unnecessary remote access to file shares, hypervisors, and sensitive systems; use network concentrators and RDP gateways.\nMulti-factor Authentication: Use MFA on remote service logons where possible.\nPassword Policies: Do not reuse local administrator passwords across systems; ensure complexity and uniqueness.\nUser Account Management: Limit accounts that may use remote services; limit high-risk account permissions; configure SSH to restrict programs users can run.",
+    "evasion": "WinRM traffic is encrypted — content not inspectable by network DLP. Use HTTPS (5986) to avoid plaintext-aware IDS. Tunnel through existing sessions (double-hop via CredSSP, constrained delegation, or Rubeus createnetonly). Blend with legitimate admin WinRM traffic patterns.",
     "sources": [
       "https://attack.mitre.org/techniques/T1021/006/"
     ],
     "misconfiguration": "WinRM enabled on workstations via GPO without access restriction. No host firewall rule limiting WinRM source IPs. JEA not implemented. No monitoring of wsmprovhost.exe process creation from unexpected sessions.",
-    "vulnerable_config": "# WinRM enabled on all hosts including workstations:\n# GPO: Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Windows Remote Management\n# \u2192 WinRM Service: Allow remote server management\n# No source restriction \u2014 any authenticated user with admin rights can WinRM from anywhere\n\n# Workstation firewall allows 5985 inbound from entire corporate network:\nGet-NetFirewallRule -DisplayName '*Windows Remote Management*' | Get-NetFirewallAddressFilter",
-    "secure_config": "# Restrict WinRM source IPs via GPO firewall rule:\nNew-NetFirewallRule -DisplayName 'WinRM from PAW only' -Direction Inbound -Protocol TCP -LocalPort 5985,5986 -RemoteAddress 10.0.100.0/24 -Action Allow\nNew-NetFirewallRule -DisplayName 'Block WinRM from workstations' -Direction Inbound -Protocol TCP -LocalPort 5985,5986 -RemoteAddress 10.0.0.0/8 -Action Block\n\n# JEA endpoint \u2014 restrict what DA accounts can run remotely:\nNew-PSSessionConfigurationFile -Path 'C:\\JEA\\DomainAdminJEA.pssc' -SessionType RestrictedRemoteServer -RoleDefinitions @{'CORP\\Domain Admins' = @{RoleCapabilities = 'DomainAdminCaps'}}\nRegister-PSSessionConfiguration -Path 'C:\\JEA\\DomainAdminJEA.pssc' -Name 'DomainAdminJEA' -Force\n\n# SIEM alert:\n# EventID=4688 AND NewProcessName contains 'wsmprovhost.exe' AND\n# SubjectUserName in (DA accounts) AND Computer NOT IN (known servers) \u2192 ALERT"
-  }
+    "vulnerable_config": "# WinRM enabled on all hosts including workstations:\n# GPO: Computer Config → Windows Settings → Security Settings → Windows Remote Management\n# → WinRM Service: Allow remote server management\n# No source restriction — any authenticated user with admin rights can WinRM from anywhere\n\n# Workstation firewall allows 5985 inbound from entire corporate network:\nGet-NetFirewallRule -DisplayName '*Windows Remote Management*' | Get-NetFirewallAddressFilter",
+    "secure_config": "# Restrict WinRM source IPs via GPO firewall rule:\nNew-NetFirewallRule -DisplayName 'WinRM from PAW only' -Direction Inbound -Protocol TCP -LocalPort 5985,5986 -RemoteAddress 10.0.100.0/24 -Action Allow\nNew-NetFirewallRule -DisplayName 'Block WinRM from workstations' -Direction Inbound -Protocol TCP -LocalPort 5985,5986 -RemoteAddress 10.0.0.0/8 -Action Block\n\n# JEA endpoint — restrict what DA accounts can run remotely:\nNew-PSSessionConfigurationFile -Path 'C:\\JEA\\DomainAdminJEA.pssc' -SessionType RestrictedRemoteServer -RoleDefinitions @{'CORP\\Domain Admins' = @{RoleCapabilities = 'DomainAdminCaps'}}\nRegister-PSSessionConfiguration -Path 'C:\\JEA\\DomainAdminJEA.pssc' -Name 'DomainAdminJEA' -Force\n\n# SIEM alert:\n# EventID=4688 AND NewProcessName contains 'wsmprovhost.exe' AND\n# SubjectUserName in (DA accounts) AND Computer NOT IN (known servers) → ALERT"
+  },
+  "variations": [
+    {
+      "label": "Discover where you have PSRemoting admin",
+      "command": "Find-PSRemotingLocalAdminAccess -Domain <domain> -Verbose"
+    },
+    {
+      "label": "winrs one-liner (cmd on remote host)",
+      "command": "winrs -r:<host> cmd /c \"set computername && set username\""
+    },
+    {
+      "label": "WSManWinRM.exe (when winrs is blocked)",
+      "command": "WSManWinRM.exe <host_fqdn> \"cmd /c <command>\""
+    }
+  ]
 }

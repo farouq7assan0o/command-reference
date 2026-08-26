@@ -12,17 +12,12 @@
     {
       "command": "Get-ChildItem -Path C:\\xampp -Include *.txt,*.ini -File -Recurse -ErrorAction SilentlyContinue",
       "caption": "Search XAMPP directory for config files with credentials",
-      "label": "Find *.txt"
+      "label": "Find configs in xampp"
     },
     {
       "command": "Get-ChildItem -Path C:\\Users\\ -Include *.txt,*.pdf,*.xls,*.xlsx,*.doc,*.docx -File -Recurse -ErrorAction SilentlyContinue",
       "caption": "Search all user profiles for document files",
-      "label": "Find *.txt"
-    },
-    {
-      "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue",
-      "caption": "Hunt for KeePass database files (*.kdbx)",
-      "label": "Find *.kdbx"
+      "label": "Find office docs in Users"
     },
     {
       "command": "Get-ChildItem -Path C:\\ -Include web.config,*.config,appsettings.json,*.env -File -Recurse -ErrorAction SilentlyContinue",

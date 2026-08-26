@@ -97,6 +97,7 @@
       "MITRE T1552",
       "MITRE T1552.001",
       "OWASP A02:2021"
-    ]
+    ],
+    "evasion": "Capture and analyze the connection offline; replay only the crafted request needed, not a broad probe."
   }
 }

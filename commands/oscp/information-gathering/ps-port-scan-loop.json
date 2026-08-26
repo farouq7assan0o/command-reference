@@ -34,10 +34,6 @@
   ],
   "variations": [
     {
-      "label": "Ports 1-1024",
-      "command": "1..1024 | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"<ip>\", $_)) \"TCP port $_ is open\"} 2>$null"
-    },
-    {
       "label": "Custom range",
       "command": "<port_start>..<port_end> | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"<ip>\", $_)) \"TCP port $_ is open\"} 2>$null"
     },

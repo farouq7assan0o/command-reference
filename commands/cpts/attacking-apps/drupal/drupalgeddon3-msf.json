@@ -67,6 +67,11 @@
       "id": "drupal-detect",
       "note": "Scopes the target version.",
       "rel": "prereq"
+    },
+    {
+      "id": "gs-privesc-enum",
+      "rel": "next",
+      "note": "Foothold on the Linux host — start privesc enumeration"
     }
   ],
   "id": "drupalgeddon3-msf",
@@ -92,6 +97,7 @@
       "HTB M24",
       "MITRE T1190",
       "OWASP A06:2021"
-    ]
+    ],
+    "evasion": "Rename/obfuscate the uploaded webshell and delete it after use; prefer the app's built-in functionality (PHP filter / module) over dropping files; pace requests to blend with normal traffic."
   }
 }

@@ -54,7 +54,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "nxc --groups enumerates domain groups (including privileged ones) over SMB.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. CrackMapExec queries group membership over SMB/SAMR, which authenticated users may read.",
     "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
     "impact": "Group inventory revealing privileged targets.",
     "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -71,5 +71,11 @@
   },
   "tools": [
     "crackmapexec"
+  ],
+  "variations": [
+    {
+      "label": "NetExec (successor)",
+      "command": "nxc smb <dc_ip> -u <user> -p <password> --groups"
+    }
   ]
 }

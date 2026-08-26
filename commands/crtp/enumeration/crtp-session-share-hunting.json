@@ -1,0 +1,140 @@
+{
+  "id": "crtp-session-share-hunting",
+  "name": "Session & Share Hunting (SessionHunter / PowerHuntShares)",
+  "command": "Invoke-SessionHunter -NoPortScan -RawResults | select Hostname,UserSession,Access",
+  "description": "Find where privileged users are logged on and which shares expose sensitive data, to plan lateral movement. Invoke-SessionHunter queries remote registry (no admin) to map user->host sessions; PowerHuntShares/Invoke-HuntSMBShares inventories readable/writable SMB shares across a host list.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1049",
+    "T1135",
+    "T1033"
+  ],
+  "tools": [
+    "Invoke-SessionHunter",
+    "PowerHuntShares",
+    "PowerView"
+  ],
+  "tags": [
+    "session-hunting",
+    "share-hunting",
+    "user-hunting",
+    "lateral-movement-prep",
+    "enumeration",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "SessionHunter against a target list",
+      "command": "Invoke-SessionHunter -NoPortScan -RawResults -Targets <hostlist> | select Hostname,UserSession,Access"
+    },
+    {
+      "label": "PowerHuntShares - hunt SMB shares",
+      "command": "Invoke-HuntSMBShares -NoPing -OutputDirectory <out_dir> -HostList <hostlist>"
+    },
+    {
+      "label": "PowerView user-location fallback",
+      "command": "Find-DomainUserLocation -CheckAccess"
+    },
+    {
+      "label": "Check local admin on a host (multi-threaded)",
+      "command": "Invoke-CheckLocalAdminAccess"
+    },
+    {
+      "label": "Find WMI local admin access",
+      "command": "Find-WMILocalAdminAccess.ps1"
+    },
+    {
+      "label": "Enumerate a host's local Administrators group",
+      "command": "Get-NetLocalGroupMember -ComputerName <host> -GroupName Administrators"
+    },
+    {
+      "label": "PowerView file servers",
+      "command": "Get-DomainFileServer"
+    },
+    {
+      "label": "PowerView DFS shares",
+      "command": "Get-DomainDFSShare"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Import SessionHunter",
+      "command": ". C:\\AD\\Tools\\Invoke-SessionHunter.ps1"
+    },
+    {
+      "label": "Map sessions (where are admins logged in?)",
+      "command": "Invoke-SessionHunter -NoPortScan -RawResults | select Hostname,UserSession,Access"
+    },
+    {
+      "label": "Hunt shares across the server list",
+      "command": "Import-Module C:\\AD\\Tools\\PowerHuntShares.psm1; Invoke-HuntSMBShares -NoPing -OutputDirectory C:\\AD\\Tools\\ -HostList C:\\AD\\Tools\\servers.txt"
+    }
+  ],
+  "examples": [
+    {
+      "label": "SessionHunter with access column",
+      "command": "Invoke-SessionHunter -NoPortScan -RawResults -Targets C:\\AD\\Tools\\servers.txt | select Hostname,UserSession,Access"
+    },
+    {
+      "label": "PowerHuntShares report",
+      "command": "Invoke-HuntSMBShares -NoPing -OutputDirectory C:\\AD\\Tools\\ -HostList C:\\AD\\Tools\\servers.txt"
+    }
+  ],
+  "notes": "SessionHunter reads HKU via remote registry to find logged-on users without local admin - quieter than Get-NetSession loops and complements BloodHound Session data. PowerHuntShares scores shares by exposure (read/write, sensitive names) and flags excessive privileges. Use the results to pick a host where a Domain Admin is logged on (then steal their token/TGT) or a writable share for payload staging.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "Invoke-SessionHunter (GitHub)",
+      "url": "https://github.com/Leo4j/Invoke-SessionHunter"
+    },
+    {
+      "title": "PowerHuntShares (NetSPI)",
+      "url": "https://github.com/NetSPI/PowerHuntShares"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-bloodhound",
+      "note": "Cross-reference sessions/ACLs with BloodHound paths",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Once you find a host with a DA session, dump their creds",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-powerview-userhunting",
+      "note": "PowerView Find-DomainUserLocation is the built-in alternative",
+      "rel": "alternative"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Domain user context. Network reachability to targets (SMB 445 for shares, remote registry for sessions).",
+    "why_it_works": "Logged-on users are discoverable via the Remote Registry service (HKU hives) and NetSessionEnum, and share ACLs are readable by any authenticated user - so an attacker can enumerate where privileged users sit and which data is exposed without touching the accounts themselves.",
+    "misconfiguration": "Remote Registry service enabled broadly; open/over-permissioned SMB shares (Everyone/Authenticated Users read-write); privileged users interactively logged into member servers (session sprawl).",
+    "impact": "A map of where Domain Admins are logged on (token/TGT theft targets) and which shares leak credentials/config - the shortlist for the next lateral-movement hop.",
+    "detection": "Bursts of remote-registry connections (Event 4624 type 3 to the RemoteRegistry pipe) from one host to many; mass SMB tree-connects to IPC$/shares (Event 5140) across the estate; scanner-like fan-out patterns.",
+    "artifacts": "Security 5140/5145 share-access events across many hosts; RemoteRegistry access events; PowerHuntShares output directory on the attacker host.",
+    "vulnerable_config": "# Remote Registry service = Automatic on member servers\n# Shares granting Everyone/Authenticated Users read (or write)\n# DAs logging into tier-1/2 servers interactively",
+    "secure_config": "# Disable Remote Registry where not required (GPO)\n# Least-privilege share ACLs; remove Everyone/Authenticated Users\n# Tiered admin: DAs only log on to DCs/PAWs\n# Alert on one host enumerating sessions/shares across many targets",
+    "prevention": "Disable Remote Registry broadly; tighten share ACLs; enforce admin tiering so privileged users never log into lower-tier hosts; alert on fan-out session/share enumeration. [MITRE M1028, M1022, M1026]",
+    "evasion": "-NoPortScan / -NoPing reduce noise; target a small server list instead of the whole domain; run from a host that legitimately talks to file servers.",
+    "sources": [
+      "CRTP",
+      "MITRE T1049",
+      "MITRE T1135"
+    ]
+  }
+}

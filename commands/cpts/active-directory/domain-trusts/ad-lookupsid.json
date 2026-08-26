@@ -84,5 +84,25 @@
   },
   "tools": [
     "impacket"
+  ],
+  "variations": [
+    {
+      "label": "Null session",
+      "command": "lookupsid.py <domain>/@<dc_ip> -no-pass"
+    },
+    {
+      "label": "Brute RID range",
+      "command": "lookupsid.py <domain>/<user>:<password>@<dc_ip> 10000"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Enumerate SIDs/RIDs",
+      "command": "lookupsid.py <domain>/<user>:<password>@<dc_ip>"
+    },
+    {
+      "label": "Note the domain SID + Enterprise/Domain Admins RIDs",
+      "command": "# domain SID = base for forging tickets with /sids"
+    }
   ]
 }

@@ -67,7 +67,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Built-in setspn.exe -Q */* queries registered SPNs using a native Windows binary - no tools dropped.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. setspn -Q lists registered SPNs (readable), revealing which accounts are Kerberoastable.",
     "prerequisites": "A domain-joined Windows session.",
     "impact": "The SPN inventory (roasting targets) gathered with a trusted built-in.",
     "detection": "[MITRE T1558.003] LDAP queries filtering on servicePrincipalName / userAccountControl (Event 4662; Defender for Identity recon); one host reading roastable-account attributes. setspn.exe execution in process logs (4688).",
@@ -84,5 +84,15 @@
   },
   "tools": [
     "setspn"
+  ],
+  "variations": [
+    {
+      "label": "SPNs for a specific account",
+      "command": "setspn.exe -L <domain>\\<user>"
+    },
+    {
+      "label": "Forest-wide",
+      "command": "setspn.exe -T <forest> -Q */*"
+    }
   ]
 }

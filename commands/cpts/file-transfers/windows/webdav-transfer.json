@@ -74,17 +74,17 @@
     {
       "command": "smbclient //<ip>/<share> -c 'put <local_file>'",
       "caption": "Upload file via smbclient (when SMB is available)",
-      "label": "smbclient"
+      "label": "smbclient - upload"
     },
     {
       "command": "smbclient //<ip>/<share> -c 'get <remote_file>'",
       "caption": "Download file via smbclient",
-      "label": "smbclient"
+      "label": "smbclient - download"
     },
     {
       "command": "smbclient //<ip>/<share> -U <user>%<pass> -c 'put <file>'",
       "caption": "Authenticated smbclient upload",
-      "label": "smbclient"
+      "label": "smbclient - upload (with creds)"
     }
   ],
   "defense": {

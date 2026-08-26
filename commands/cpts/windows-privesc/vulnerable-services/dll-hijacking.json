@@ -96,6 +96,7 @@
       "HTB M26",
       "MITRE T1574.001",
       "MITRE T1574.002"
-    ]
+    ],
+    "evasion": "Place the hijack DLL, trigger the load, then remove it and restore the directory to reduce the on-disk window."
   }
 }

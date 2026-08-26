@@ -64,6 +64,11 @@
       "id": "drupalgeddon3-msf",
       "note": "Authenticated Metasploit variant.",
       "rel": "alternative"
+    },
+    {
+      "id": "gs-reverse-shells",
+      "rel": "next",
+      "note": "Turn the unauth RCE into an interactive reverse shell"
     }
   ],
   "id": "drupalgeddon2",

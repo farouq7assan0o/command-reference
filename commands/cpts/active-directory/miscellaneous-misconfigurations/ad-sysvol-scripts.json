@@ -74,5 +74,11 @@
   },
   "tools": [
     "powershell"
+  ],
+  "variations": [
+    {
+      "label": "Grep logon scripts for creds",
+      "command": "findstr /S /I /C:\"password\" \\\\<dc_host>\\SYSVOL\\<domain>\\scripts\\*"
+    }
   ]
 }

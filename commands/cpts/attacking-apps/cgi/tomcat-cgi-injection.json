@@ -96,6 +96,8 @@
       "MITRE T1190",
       "MITRE T1059",
       "OWASP A03:2021"
-    ]
+    ],
+    "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+    "evasion": "Keep the injected command short and single-shot; URL-encode to slip past naive WAF signatures; pull a full shell over a separate channel."
   }
 }

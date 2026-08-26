@@ -88,6 +88,7 @@
       "HTB M24",
       "MITRE T1595.002",
       "OWASP A05:2021"
-    ]
+    ],
+    "evasion": "Rename/obfuscate the uploaded webshell and delete it after use; prefer the app's built-in functionality (PHP filter / module) over dropping files; pace requests to blend with normal traffic."
   }
 }

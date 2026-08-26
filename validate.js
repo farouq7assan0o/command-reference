@@ -34,7 +34,8 @@ const MITRE_RE = /^T\d{4}(\.\d{3})?$/;   // T1003 or T1003.001
 // defense object (SCHEMA.md). All optional strings except `sources` (array). Any other key = typo.
 const VALID_DEFENSE_KEYS = ['why_it_works', 'prerequisites', 'detection', 'prevention',
                             'evasion', 'impact', 'artifacts', 'sources',
-                            'misconfiguration', 'vulnerable_config', 'secure_config'];
+                            'misconfiguration', 'vulnerable_config', 'secure_config',
+                            'code_review'];
 // card types that SHOULD carry defense content (completeness warning, not a hard error)
 const DEFENSE_TYPES = ['command', 'payload', 'attack-chain'];
 
@@ -105,8 +106,12 @@ for (const { file, data } of cards) {
     // enum validity
     if (data.platform && !VALID_PLATFORMS.includes(data.platform))
         err(file, id, `invalid platform "${data.platform}" (expected linux|windows|multi)`);
-    if (data.type && !VALID_TYPES.includes(data.type))
+    if (!data.type)
+        err(file, id, `missing type (required - one of ${VALID_TYPES.join('|')})`);
+    else if (!VALID_TYPES.includes(data.type))
         err(file, id, `invalid type "${data.type}"`);
+    if (!data.id || !String(data.id).trim())
+        err(file, id, `missing id (required - must be unique and used as the recommended-link target)`);
     if (data.opsec != null && !VALID_OPSEC.includes(data.opsec))
         err(file, id, `invalid opsec "${data.opsec}" (expected silent|quiet|moderate|loud)`);
     if (data.exam != null && !VALID_EXAM.includes(data.exam))
@@ -163,15 +168,37 @@ for (const { file, data } of cards) {
         }
     }
 
+    // The builder only recognises placeholders matching <[A-Za-z0-9_-]+>. A "filename-style"
+    // placeholder like <passwords.txt> or <cert.pem> is NEVER parsed as a parameter and never
+    // substituted (it shows as a literal and the field is missing -> "No parameters"). Flag them.
+    const FILENAME_PH = /<[a-zA-Z][a-zA-Z0-9_-]*[.:$][a-zA-Z0-9_.:$-]*>/g;
+    const checkPh = (cmd, where) => {
+        const m = String(cmd || '').match(FILENAME_PH);
+        if (m) err(file, id, `${where} has a filename-style placeholder ${m[0]} that the builder can't parse — use a clean token like <wordlist>/<hashfile>/<pfx_file>`);
+    };
+    checkPh(data.command, 'command');
+
     // variations / steps / examples shape
     (data.variations || []).forEach((v, i) => {
         if (!v || !v.command || !String(v.command).trim()) err(file, id, `variations[${i}] empty command`);
         // every variation must carry a human label (it becomes the builder's tab name).
         // Without one the UI can only fall back to showing the raw command.
-        else if (!v.label || !String(v.label).trim()) err(file, id, `variations[${i}] missing label (add a short "label" - it becomes the tab name)`);
+        else { if (!v.label || !String(v.label).trim()) err(file, id, `variations[${i}] missing label (add a short "label" - it becomes the tab name)`); checkPh(v.command, `variations[${i}]`); }
     });
+    // no two variation tabs may share a label - the builder renders one tab per label, so
+    // duplicates produce indistinguishable tabs. Each label must describe what its command does.
+    {
+        const seenLabels = new Map();
+        (data.variations || []).forEach((v, i) => {
+            const lbl = v && v.label ? String(v.label).trim() : '';
+            if (!lbl) return;
+            if (seenLabels.has(lbl)) err(file, id, `variations[${i}] duplicate label ${JSON.stringify(lbl)} (also variations[${seenLabels.get(lbl)}]) - give each tab a distinct label describing what it does`);
+            else seenLabels.set(lbl, i);
+        });
+    }
     (data.steps || []).forEach((s, i) => {
         if (!s || !s.command || !String(s.command).trim()) err(file, id, `steps[${i}] empty command`);
+        else checkPh(s.command, `steps[${i}]`);
     });
 }
 for (const pe of parseErrors) err(pe.file, null, `INVALID JSON: ${pe.msg}`);

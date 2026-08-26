@@ -93,10 +93,6 @@
   },
   "variations": [
     {
-      "label": "Base vhost scan",
-      "command": "gobuster vhost -u http://<ip> -w <wordlist> --append-domain"
-    },
-    {
       "label": "Faster — increase threads",
       "command": "gobuster vhost -u http://<ip> -w <wordlist> --append-domain -t 50"
     },

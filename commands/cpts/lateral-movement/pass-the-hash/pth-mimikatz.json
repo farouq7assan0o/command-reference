@@ -67,12 +67,12 @@
     {
       "command": "sekurlsa::pth /user:<user> /domain:<domain> /ntlm:<nt_hash> /run:powershell",
       "caption": "PTH: spawn PowerShell instead of cmd.exe",
-      "label": "sekurlsa::pth /user:<user> /domain…"
+      "label": "PtH -> PowerShell"
     },
     {
       "command": "sekurlsa::pth /user:<user> /domain:<domain> /ntlm:<nt_hash> /run:\"mmc.exe -s\"",
       "caption": "PTH: spawn MMC for GUI lateral movement",
-      "label": "sekurlsa::pth /user:<user> /domain…"
+      "label": "PtH -> MMC console"
     }
   ],
   "defense": {
@@ -90,5 +90,6 @@
     "misconfiguration": "NTLM authentication is enabled on the network and the same local administrator password (or domain credential NTLM hash) is valid across multiple machines. When LSASS holds an NTLM hash in memory (from an interactive logon), any process running as SYSTEM can extract it and authenticate to remote services without knowing the plaintext password.",
     "vulnerable_config": "# Machines with identical local admin passwords (the classic PtH enabler)\n# No credential guard, no Protected Users group\n# NTLM enabled (default on all Windows versions)\n\n# Confirm NTLM is negotiated (SMB example):\n# Network capture shows NTLMSSP_AUTH frames on port 445\n\n# Accounts NOT in Protected Users group (PtH works against these):\nGet-ADGroupMember 'Protected Users'  # should list all privileged accounts\n\n# Local admin SID S-1-5-21-...-500 (RID 500) allows remote PtH by default\n# Even with UAC RemoteRestrictions, RID-500 bypasses the filter",
     "secure_config": "# 1. Enable Credential Guard (blocks NTLM hash extraction from LSASS)\n# GPO: Computer Configuration > Admin Templates > System > Device Guard\n#   'Turn on Virtualization Based Security' = Enabled\n#   'Credential Guard Configuration' = Enabled with UEFI lock\n\n# 2. Add privileged accounts to Protected Users group (no NTLM, no RC4)\nAdd-ADGroupMember -Identity 'Protected Users' -Members 'Domain Admins'\n\n# 3. LAPS — unique random local admin passwords per machine\n# Eliminates lateral movement via shared local admin hash\nEnable-LapsADSchema\nSet-LAPSConfig -PolicyMode Automatic -PasswordLength 20 -PasswordAgeDays 30\n\n# 4. Block NTLM (requires AES Kerberos everywhere first)\n# GPO: Security Settings > Local Policies > Security Options\n#   'Network Security: Restrict NTLM: Incoming NTLM traffic' = Deny all\n\n# 5. Disable RID-500 remote admin:\n# HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\n#   LocalAccountTokenFilterPolicy = 0 (default)"
-  }
+  },
+  "type": "command"
 }

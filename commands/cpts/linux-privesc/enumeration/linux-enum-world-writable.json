@@ -30,7 +30,7 @@
       "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null"
     },
     {
-      "label": "OSCP Ch17 \u2014 find writable directories as current user",
+      "label": "OSCP Ch17 — find writable directories as current user",
       "command": "find / -writable -type d 2>/dev/null"
     }
   ],
@@ -67,10 +67,6 @@
   "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null",
   "description": "World-writable files (especially root-run scripts/cron targets) and directories are prime escalation vectors. Prunes /proc to reduce noise.",
   "variations": [
-    {
-      "label": "Files",
-      "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null"
-    },
     {
       "label": "Directories",
       "command": "find / -path /proc -prune -o -type d -perm -o+w 2>/dev/null"

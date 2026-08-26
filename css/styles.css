@@ -751,6 +751,7 @@ body[data-mode="both"] .team-dot { opacity: 1; }
 .def-code-block { font-family: var(--mono); font-size: 0.8rem; border-radius: 6px; padding: 0.75rem 1rem; white-space: pre-wrap; word-break: break-all; line-height: 1.6; border: 1px solid var(--border); }
 .def-code-block.vuln  { background: rgba(255,123,114,0.08); border-color: rgba(255,123,114,0.3); color: var(--text); }
 .def-code-block.secure { background: rgba(76,175,125,0.08); border-color: rgba(76,175,125,0.3); color: var(--text); }
+.def-code-block.coderev { background: rgba(86,182,194,0.08); border-color: rgba(86,182,194,0.35); color: var(--text); }
 /* Notes tab */
 .notes-tab-content { font-size: 0.84rem; color: var(--text); line-height: 1.7; }
 .notes-section-head { font-size: 0.72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--yellow); margin: 1.2rem 0 0.35rem 0; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border); }
@@ -846,6 +847,27 @@ body[data-mode="both"] .team-dot { opacity: 1; }
 .command-card.selected .req-badges, .command-card.selected .tags,
 .command-card.focused .req-badges, .command-card.focused .tags { opacity: 1; }
 
+/* --- Attack-path chain strip (builder) --- */
+.chain-strip {
+    display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+    margin: 0.1rem 0 1rem; padding: 0.5rem 0.6rem;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+}
+.chain-chip {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+    font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 12px; cursor: pointer;
+    max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chain-chip:hover { color: var(--text); border-color: var(--accent); }
+.chain-prev { border-style: dashed; }
+.chain-here {
+    font-weight: 600; color: var(--accent); font-size: 0.74rem;
+    padding: 0.2rem 0.55rem; border: 1px solid var(--accent); border-radius: 12px;
+    max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chain-arrow { color: var(--muted); font-size: 1rem; line-height: 1; }
+#genCopyRaw { font-family: 'Consolas', monospace; font-weight: 700; }
+
 /* --- Mobile: builder becomes a bottom sheet when a command is selected --- */
 @media (max-width: 760px) {
     .b-close { display: inline-flex; align-items: center; justify-content: center; }
@@ -855,4 +877,131 @@ body[data-mode="both"] .team-dot { opacity: 1; }
         box-shadow: 0 -10px 34px rgba(0,0,0,0.55);
     }
     .b-title { position: sticky; top: 0; background: var(--panel); padding-bottom: 0.4rem; z-index: 1; }
+}
+
+/* ===================== Attack-Path Map (graph overlay) ===================== */
+.graph-overlay { position: fixed; inset: 0; background: rgba(1,4,9,.72); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.graph-overlay[hidden] { display: none; }
+.graph-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: min(1120px, 96vw); height: min(88vh, 900px); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.graph-head { display: flex; align-items: center; gap: 14px; padding: 13px 18px; border-bottom: 1px solid var(--border); }
+.graph-head h2 { font-size: 1.05rem; margin: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.graph-head h2 i { color: var(--accent); }
+.graph-focus { flex: 1; }
+.graph-focus input, .graph-path input { background: var(--code-bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: .85rem; width: 100%; max-width: 340px; }
+.graph-focus input:focus, .graph-path input:focus { outline: none; border-color: var(--accent); }
+.graph-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.graph-legend { display: flex; gap: 8px; flex-wrap: wrap; }
+.gl { font-size: .72rem; padding: 2px 9px; border-radius: 10px; border: 1px solid; text-transform: capitalize; }
+.gl-prereq { color: #d29922; border-color: #d2992288; background: #d2992218; }
+.gl-next { color: #3fb950; border-color: #3fb95088; background: #3fb95018; }
+.gl-escalation { color: #ff7b72; border-color: #ff7b7288; background: #ff7b7218; }
+.gl-alternative { color: #bc8cff; border-color: #bc8cff88; background: #bc8cff18; }
+.gl-cleanup { color: #8b949e; border-color: #8b949e88; background: #8b949e18; }
+.graph-path { display: flex; align-items: center; gap: 8px; }
+.graph-path label { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+.graph-quick-goal { font-size: .72rem; padding: 3px 9px; margin-left: 4px; border-radius: 10px; border: 1px solid var(--border); background: var(--code-bg); color: var(--accent); cursor: pointer; }
+.graph-quick-goal:hover { border-color: var(--accent); }
+.graph-path-result { padding: 10px 18px; border-bottom: 1px solid var(--border); font-size: .82rem; background: rgba(88,166,255,.05); }
+.graph-path-result[hidden] { display: none; }
+.gpr-chain { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.gpr-node { background: var(--code-bg); border: 1px solid var(--accent); color: var(--text); border-radius: 6px; padding: 4px 9px; font-size: .8rem; cursor: pointer; }
+.gpr-node:hover { background: rgba(88,166,255,.15); }
+.gpr-arrow { color: var(--muted); }
+.graph-canvas-wrap { flex: 1; position: relative; display: flex; overflow: hidden; }
+.graph-canvas { flex: 1; overflow: auto; background: var(--code-bg); position: relative; }
+.graph-canvas svg { display: block; margin: auto; }
+.graph-zoom { position: absolute; top: 10px; right: 14px; z-index: 3; display: flex; gap: 4px; }
+.graph-zoom button { width: 30px; height: 30px; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 1rem; line-height: 1; display: flex; align-items: center; justify-content: center; }
+.graph-zoom button:hover { border-color: var(--accent); color: var(--accent); }
+.gnode { cursor: pointer; }
+.gnode rect { transition: filter .1s; }
+.gnode:hover rect { filter: brightness(1.4); }
+.gnode text { fill: var(--text); font-size: 11px; pointer-events: none; }
+.gnode .gsub { fill: var(--muted); font-size: 9.5px; }
+.gnode.center rect { stroke-width: 2.5px; }
+.gedge { fill: none; stroke-opacity: .6; stroke-width: 1.7px; }
+.graph-hint { padding: 8px 18px; font-size: .74rem; color: var(--muted); border-top: 1px solid var(--border); }
+@media (max-width: 760px) { .graph-toolbar { flex-direction: column; align-items: flex-start; } .graph-focus input { max-width: 100%; } }
+
+/* ===================== Study Mode ===================== */
+.study-overlay, .cov-overlay { position: fixed; inset: 0; background: rgba(1,4,9,.72); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.study-overlay[hidden], .cov-overlay[hidden] { display: none; }
+.study-modal, .cov-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; width: min(940px, 96vw); height: min(86vh, 840px); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.study-head, .cov-head { display: flex; align-items: center; gap: 14px; padding: 13px 18px; border-bottom: 1px solid var(--border); }
+.study-head h2, .cov-head h2 { font-size: 1.05rem; margin: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.study-head h2 i, .cov-head h2 i { color: var(--accent); }
+.study-modes, .cov-tabs { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.smode-btn, .cov-tab { background: var(--code-bg); color: var(--muted); border: none; padding: 6px 14px; cursor: pointer; font-size: .82rem; }
+.smode-btn.active, .cov-tab.active { background: var(--accent); color: #0d1117; font-weight: 600; }
+.study-scope { margin-left: auto; background: var(--code-bg); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: .82rem; }
+.study-progress { height: 4px; background: var(--code-bg); }
+.study-bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.study-body { flex: 1; overflow: auto; padding: 28px; display: flex; flex-direction: column; align-items: center; }
+.study-foot { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; border-top: 1px solid var(--border); }
+.study-foot-actions { display: flex; gap: 8px; }
+.study-score { font-size: .85rem; color: var(--muted); }
+.flash-card, .quiz-card { width: 100%; max-width: 640px; }
+.flash-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: .72rem; }
+.flash-chip { padding: 2px 9px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); }
+.flash-q { font-size: 1.2rem; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.flash-desc { font-size: .9rem; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
+.flash-prompt { font-size: .82rem; color: var(--muted); font-style: italic; margin-bottom: 14px; }
+.flash-answer { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 18px; }
+.flash-answer pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #7ee787; font-family: monospace; font-size: .88rem; }
+.flash-var { color: var(--muted); font-size: .8rem; margin-top: 10px; }
+.study-btns { display: flex; gap: 10px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
+.study-btn { padding: 9px 22px; border-radius: 8px; border: 1px solid var(--border); background: var(--code-bg); color: var(--text); cursor: pointer; font-size: .9rem; }
+.study-btn.primary { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 600; }
+.study-btn.good { border-color: #3fb950; color: #3fb950; }
+.study-btn.again { border-color: #d29922; color: #d29922; }
+.study-btn:hover { filter: brightness(1.15); }
+.quiz-q { font-size: 1.05rem; font-weight: 600; margin-bottom: 18px; line-height: 1.5; }
+.quiz-q .qmark { color: var(--accent); }
+.quiz-opts { display: flex; flex-direction: column; gap: 10px; }
+.quiz-opt { text-align: left; padding: 12px 14px; border: 1px solid var(--border); background: var(--code-bg); color: var(--text); border-radius: 8px; cursor: pointer; font-size: .9rem; font-family: inherit; }
+.quiz-opt:hover { border-color: var(--accent); }
+.quiz-opt.correct { border-color: #3fb950; background: rgba(63,185,80,.12); }
+.quiz-opt.wrong { border-color: #e5484d; background: rgba(229,72,77,.12); }
+.quiz-opt.disabled { pointer-events: none; opacity: .9; }
+.quiz-feedback { margin-top: 18px; font-size: .9rem; color: var(--muted); text-align: center; }
+.study-empty { color: var(--muted); text-align: center; margin-top: 50px; }
+/* ===================== Coverage ===================== */
+.cov-body { flex: 1; overflow: auto; padding: 20px 24px; }
+.cov-note { font-size: .82rem; color: var(--muted); margin: 0 0 16px; }
+.cov-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.cov-cell { border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; min-width: 140px; background: var(--code-bg); cursor: pointer; }
+.cov-cell:hover { border-color: var(--accent); }
+.cov-cell h4 { margin: 0 0 5px; font-size: .8rem; color: var(--text); font-weight: 600; }
+.cov-count { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+.cov-sub { font-size: .72rem; color: var(--muted); margin-left: 4px; }
+.cov-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+.cov-bar-label { width: 160px; font-size: .82rem; color: var(--text); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cov-bar-track { flex: 1; height: 20px; background: var(--code-bg); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.cov-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #7ee787); }
+.cov-bar-val { width: 66px; font-size: .78rem; color: var(--muted); }
+@media (max-width: 760px) { .study-head, .cov-head { flex-wrap: wrap; } .study-scope { margin-left: 0; } .cov-bar-label { width: 100px; } }
+
+/* ===================== Print stylesheet (paper / PDF study) ===================== */
+@media print {
+    /* hide all interactive chrome + overlays */
+    #sidebar, #sidebarBackdrop, .topbar, #targetContext, #activeChips, .view-toggles,
+    #modeToggle, .graph-overlay, .study-overlay, .cov-overlay, #guideOverlay, .toast,
+    .copy-btn, .copy-all-btn, .copy-script-btn, .fav-star, .builder-tabs, .auth-tabs,
+    #tcToggle, .mynotes-box, .search-wrap, .github-link { display: none !important; }
+    html, body, #app, main, .workspace { display: block !important; height: auto !important;
+        overflow: visible !important; background: #fff !important; color: #000 !important; }
+    main { padding: 0 !important; }
+    #commandList, #builder { width: 100% !important; max-width: 100% !important; border: none !important;
+        box-shadow: none !important; background: #fff !important; overflow: visible !important; }
+    .command-card, .builder-head, .steps-box, .rec-box, .ref-box, .ex-box, .def-section,
+    .notes, .param-field { break-inside: avoid; page-break-inside: avoid; }
+    .command-card { border: 1px solid #bbb !important; background: #fff !important; color: #000 !important;
+        margin-bottom: 8px; }
+    h1, h2, h3, h4, .box-title, .flash-q, .step-label { color: #000 !important; }
+    pre, code, .step-cmd, .ex-cmd, .cmd-output, #genCmd { background: #f3f3f3 !important; color: #111 !important;
+        border: 1px solid #ddd !important; white-space: pre-wrap !important; word-break: break-word; }
+    a { color: #000 !important; text-decoration: underline; }
+    .opsec-pill, .exam-pill, .mitre-row a, .rel-badge { border: 1px solid #999 !important; color: #000 !important; }
+    /* show link URLs after reference links so a printout is self-contained */
+    .ref-link[href]::after { content: " (" attr(href) ")"; font-size: .75em; color: #555; }
 }

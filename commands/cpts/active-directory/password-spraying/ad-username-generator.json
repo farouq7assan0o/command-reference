@@ -75,9 +75,26 @@
     ],
     "misconfiguration": "Active Directory usernames follow predictable naming conventions (firstname.lastname, f.lastname, firstnamelastname) that can be generated from publicly available employee data (LinkedIn, company website, email format leaks via OSINT). Without account lockout, generated username lists enable password spraying or AS-REP roasting enumeration.",
     "vulnerable_config": "# Predictable username format discoverable via:\n# Email signatures: john.smith@corp.com -> username = john.smith\n# LinkedIn employee list + known naming convention = full user list\n# OSINT: Hunter.io, phonebook.cz for email format detection\n\n# No account lockout or username enumeration prevention:\n# Kerbrute userenum runs 1000 names/second against DC Kerberos port\n# Valid usernames confirmed without triggering any authentication failure log",
-    "secure_config": "# 1. Adopt non-predictable username formats for privileged accounts:\n# Use employee ID or random string for admin accounts\n# Keep display names separate from login names\n\n# 2. Lockout policy (applies to Kerberos username enumeration too):\nSet-ADDefaultDomainPasswordPolicy -LockoutThreshold 5 -LockoutDuration 00:30:00\n\n# 3. Monitor Kerberos pre-auth failures (Event 4771):\n# High volume of 4771 events from one source IP = username enumeration\n# Microsoft Defender for Identity: 'Account enumeration reconnaissance' alert\n\n# 4. Deploy honeypot accounts (valid username, never used legitimately):\n# Any auth attempt for these accounts = attacker\n# Immediate alert on Event 4625/4771 for honeypot usernames"
+    "secure_config": "# 1. Adopt non-predictable username formats for privileged accounts:\n# Use employee ID or random string for admin accounts\n# Keep display names separate from login names\n\n# 2. Lockout policy (applies to Kerberos username enumeration too):\nSet-ADDefaultDomainPasswordPolicy -LockoutThreshold 5 -LockoutDuration 00:30:00\n\n# 3. Monitor Kerberos pre-auth failures (Event 4771):\n# High volume of 4771 events from one source IP = username enumeration\n# Microsoft Defender for Identity: 'Account enumeration reconnaissance' alert\n\n# 4. Deploy honeypot accounts (valid username, never used legitimately):\n# Any auth attempt for these accounts = attacker\n# Immediate alert on Event 4625/4771 for honeypot usernames",
+    "evasion": "One password across many users, low-and-slow, staying under the lockout threshold and observed hours; validate a single hit before spraying wider."
   },
   "tools": [
     "username-anarchy"
+  ],
+  "variations": [
+    {
+      "label": "Common formats from first/last names",
+      "command": "python3 username-anarchy -i <names_file> > usernames.txt"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Generate candidate usernames",
+      "command": "python3 /opt/Username-Anarchy/username-anarchy -i <names_file> | tee usernames.txt"
+    },
+    {
+      "label": "Validate against the DC (no lockout)",
+      "command": "kerbrute userenum -d <domain> --dc <dc_ip> usernames.txt -o valid_users.txt"
+    }
   ]
 }

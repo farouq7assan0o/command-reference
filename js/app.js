@@ -237,7 +237,8 @@ class CommandManager {
             _type: 'command-reference-backup', exported: new Date().toISOString(),
             favorites: [...this.favorites], notes: this.userNotes,
             engagements: this.engagements, context: this.paramValues,
-            collections: this.collections, recent: this.recent
+            collections: this.collections, recent: this.recent,
+            studyWeak: [...(this.studyWeak || this.loadStudyWeak())]
         };
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
@@ -258,6 +259,7 @@ class CommandManager {
                 if (d.context && typeof d.context === 'object') { this.paramValues = d.context; this.saveContext(); }
                 if (d.collections && typeof d.collections === 'object') { this.collections = Object.assign(this.collections, d.collections); this.saveCollections(); }
                 if (Array.isArray(d.recent)) { this.recent = d.recent; this.saveRecent(); }
+                if (Array.isArray(d.studyWeak)) { this.studyWeak = new Set(d.studyWeak); this.saveStudyWeak(); }
                 this.renderEngSelect(); this.renderCollectionFilter(); this.buildContextBar(); this.renderCommands();
                 if (this.selectedCommand) this.renderBuilder();
                 this.toast('Backup restored');
@@ -928,7 +930,8 @@ class CommandManager {
         const steps = (cmd.steps || []);
         const allSteps = steps.map(s => this.substitute(s.command)).join('\n');
         const stepsHtml = steps.length ? '<div class="steps-box"><div class="box-title"><i class="fas fa-list-ol"></i> Attack Chain' +
-            '<button class="copy-all-btn" data-copyall="' + this.esc(allSteps) + '"><i class="fas fa-copy"></i> Copy all</button></div>' +
+            '<button class="copy-all-btn" data-copyall="' + this.esc(allSteps) + '"><i class="fas fa-copy"></i> Copy all</button>' +
+            '<button class="copy-script-btn" title="Copy these steps as a runnable script with your target filled in"><i class="fas fa-file-export"></i> Script</button></div>' +
             steps.map((s, i) => {
                 const sc = this.substitute(s.command);
                 return '<div class="step-item">' +
@@ -1000,6 +1003,7 @@ class CommandManager {
                 ? defSection('🔑 Prerequisites — What Must Be True First', 'dt-prereq', def.prerequisites) +
                   defSection(understandTitle, 'dt-why', def.why_it_works) +
                   defSection('⚠️ The Misconfiguration / Vulnerable Pattern', 'dt-misconfig', def.misconfiguration) +
+                  defCode('🔎 Spot It in Code Review (grep / red flags)', 'dt-misconfig', 'coderev', def.code_review) +
                   defSection('🎯 Impact — What Success Grants', 'dt-impact', def.impact)
                 : '<div class="def-empty">' + understandEmpty + '</div>') +
             myNotesHtml;
@@ -1040,6 +1044,7 @@ class CommandManager {
             tabs +
             '<div class="gen-box"><div class="gen-box-head"><span>Generated Command</span>' +
                 '<div class="gen-actions"><button class="copy-btn ghost" id="sendFinding" title="Add to Exam Mode findings"><i class="fas fa-flag"></i> Findings</button>' +
+                '<button class="copy-btn ghost" id="genCopyRaw" title="Copy raw template (with &lt;placeholders&gt;)">&lt;/&gt;</button>' +
                 '<button class="copy-btn" id="genCopy"><i class="fas fa-copy"></i> Copy</button></div></div>' +
                 '<div id="genCmd"></div><div id="unfilledHint" class="unfilled-hint"></div></div>' +
             '<div class="b-section-label"><i class="fas fa-sliders-h"></i> Parameters</div>' +
@@ -1060,6 +1065,19 @@ class CommandManager {
                          : this.builderTab === 'notes'      ? notesTabHtml
                          :                                    investigateHtml;
 
+        // Attack-path strip: what leads HERE -> THIS -> what's next. Offline, clickable, no deps.
+        const chChip = (id, cls) => { const t = this.byId[id]; return t ? '<button class="chain-chip ' + cls + '" data-recid="' + this.esc(id) + '" title="' + this.esc(t.name) + '">' + this.esc(t.name) + '</button>' : ''; };
+        const leftIds = [...new Set(back.map(r => r.id))].filter(i => this.byId[i]).slice(0, 3);
+        const nextIds = [...new Set(rec.filter(r => r.rel === 'next' || r.rel === 'escalation').map(r => r.id))].filter(i => this.byId[i]).slice(0, 4);
+        let chainStrip = '';
+        if (leftIds.length || nextIds.length) {
+            chainStrip = '<div class="chain-strip">' +
+                (leftIds.length ? leftIds.map(i => chChip(i, 'chain-prev')).join('') + '<span class="chain-arrow">&rsaquo;</span>' : '') +
+                '<span class="chain-here" title="You are here">' + this.esc(cmd.name) + '</span>' +
+                (nextIds.length ? '<span class="chain-arrow">&rsaquo;</span>' + nextIds.map(i => chChip(i, 'chain-next')).join('') : '') +
+                '</div>';
+        }
+
         body.innerHTML =
             '<div class="b-title"><h3>' + this.esc(cmd.name) + '</h3>' +
                 '<span class="platform-pill"><i class="' + platIcon + '"></i> ' + this.esc(cmd.platform) + '</span>' + opsecPill + examPill +
@@ -1068,6 +1086,7 @@ class CommandManager {
                 '<button id="bClose" class="b-close" title="Close" aria-label="Close">&times;</button></div>' +
             '<p class="b-desc">' + this.esc(cmd.description) + '</p>' +
             mitreHtml +
+            chainStrip +
             btabsHtml +
             tabContent;
 
@@ -1088,8 +1107,8 @@ class CommandManager {
                 this.updateGenerated();
             });
         });
-        // wire recommended
-        body.querySelectorAll('.rec-item').forEach(item => {
+        // wire recommended + attack-path chain chips
+        body.querySelectorAll('.rec-item, .chain-chip').forEach(item => {
             const id = item.dataset.recid;
             if (!id) return;
             item.addEventListener('click', () => {
@@ -1104,6 +1123,10 @@ class CommandManager {
         const genCopyBtn = document.getElementById('genCopy');
         if (genCopyBtn) genCopyBtn.addEventListener('click', () => {
             this.copyText(document.getElementById('genCmd').textContent);
+        });
+        const genCopyRawBtn = document.getElementById('genCopyRaw');
+        if (genCopyRawBtn) genCopyRawBtn.addEventListener('click', () => {
+            this.copyText(this.activeCommandString());   // raw template with <placeholders>
         });
         const sf = document.getElementById('sendFinding');
         if (sf) sf.addEventListener('click', () => this.sendToFindings(cmd));
@@ -1142,6 +1165,8 @@ class CommandManager {
         // copy-all (whole attack chain)
         const copyAll = body.querySelector('.copy-all-btn');
         if (copyAll) copyAll.addEventListener('click', e => { e.stopPropagation(); this.copyText(copyAll.dataset.copyall); });
+        const copyScript = body.querySelector('.copy-script-btn');
+        if (copyScript) copyScript.addEventListener('click', e => { e.stopPropagation(); this.copyAsScript(); });
         // personal note: debounced save + live card indicator
         const noteEl = document.getElementById('myNoteInput');
         if (noteEl) noteEl.addEventListener('input', e => {
@@ -1215,6 +1240,50 @@ class CommandManager {
         clearTimeout(this._tt); this._tt = setTimeout(() => t.classList.remove('show'), 1400);
     }
 
+    /* ---------- markdown export (current filtered view -> printable cheatsheet) ---------- */
+    exportMarkdown() {
+        const cards = this.getFilteredCommands();
+        if (!cards.length) { this.toast('Nothing to export in this view'); return; }
+        const sub = s => this.substitute(String(s || ''));
+        const title = document.getElementById('viewTitle').textContent || 'Command Reference';
+        const out = [];
+        out.push('# ' + title + ' — Command Reference');
+        out.push('', `_${cards.length} commands · exported ${new Date().toISOString().slice(0, 10)}_`, '');
+        // group by category -> subcategory
+        const groups = {};
+        cards.forEach(c => {
+            const cat = c.category || 'Other', s = c.subcategory || '';
+            ((groups[cat] = groups[cat] || {})[s] = (groups[cat][s] || [])).push(c);
+        });
+        for (const cat of Object.keys(groups).sort()) {
+            out.push('', '## ' + cat, '');
+            for (const s of Object.keys(groups[cat]).sort()) {
+                if (s) out.push('### ' + s, '');
+                for (const c of groups[cat][s]) {
+                    out.push('#### ' + c.name + (c.opsec ? `  \`${c.opsec}\`` : ''));
+                    if (c.description) out.push('', c.description);
+                    out.push('', '```', sub(c.command), '```');
+                    (c.variations || []).forEach(v => out.push('', `- **${v.label || 'Variant'}**`, '  ```', '  ' + sub(v.command).replace(/\n/g, '\n  '), '  ```'));
+                    if ((c.steps || []).length) {
+                        out.push('', '**Steps:**');
+                        c.steps.forEach((st, i) => out.push(`${i + 1}. ${st.label || ''}`, '   ```', '   ' + sub(st.command).replace(/\n/g, '\n   '), '   ```'));
+                    }
+                    (c.examples || []).forEach(x => { const cmd = typeof x === 'object' ? x.command : x; const lb = typeof x === 'object' ? x.label : ''; out.push('', `_${lb || 'Example'}_`, '```', cmd, '```'); });
+                    if (c.notes) out.push('', '> ' + String(c.notes).replace(/\n/g, '\n> '));
+                    if ((c.references || []).length) out.push('', 'Refs: ' + c.references.map(r => `[${r.title}](${r.url})`).join(' · '));
+                    out.push('', '---', '');
+                }
+            }
+        }
+        const blob = new Blob([out.join('\n')], { type: 'text/markdown' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'cmdref-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + new Date().toISOString().slice(0, 10) + '.md';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        this.toast('Exported ' + cards.length + ' commands to Markdown');
+    }
+
     /* ---------- events ---------- */
     bindEvents() {
         // Delegated click handling for the command list - bound ONCE, so windowed/appended
@@ -1286,13 +1355,19 @@ class CommandManager {
         const guideOverlay = document.getElementById('guideOverlay');
         const guideClose = document.getElementById('guideClose');
         if (guideBtn && guideOverlay) {
-            const openGuide = () => { guideOverlay.hidden = false; };
-            const closeGuide = () => { guideOverlay.hidden = true; };
+            const openGuide = () => { guideOverlay.hidden = false; this._focusManage('guideOverlay'); };
+            const closeGuide = () => { guideOverlay.hidden = true; this._focusRelease(); };
             guideBtn.addEventListener('click', openGuide);
             if (guideClose) guideClose.addEventListener('click', closeGuide);
             guideOverlay.addEventListener('click', e => { if (e.target === guideOverlay) closeGuide(); });
             document.addEventListener('keydown', e => { if (e.key === 'Escape') closeGuide(); });
         }
+
+        // attack-path map overlay
+        this.bindGraph();
+        // study mode + coverage dashboards
+        this.bindStudy();
+        this.bindCoverage();
 
         // top-bar Filters popover (overlays, doesn't push layout)
         const filterBtn = document.getElementById('filterBtn');
@@ -1318,6 +1393,8 @@ class CommandManager {
             });
         });
         document.getElementById('resetFilters').addEventListener('click', () => this.resetFilters());
+        const exportBtn = document.getElementById('exportBtn');
+        if (exportBtn) exportBtn.addEventListener('click', () => this.exportMarkdown());
         const treeToggle = document.getElementById('treeToggleAll');
         if (treeToggle) treeToggle.addEventListener('click', () => {
             const cats = [...document.querySelectorAll('#categoryTree .tree-cat')];
@@ -1409,6 +1486,515 @@ class CommandManager {
 
     updateCommandCount() {
         document.getElementById('commandCount').textContent = this.total + ' commands';
+    }
+
+    /* ===================== Attack-Path Map ===================== */
+    openGraph(centerId) {
+        const overlay = document.getElementById('graphOverlay');
+        if (!overlay) return;
+        let id = centerId || (this.selectedCommand && this.selectedCommand.id);
+        if (!id || !this.byId[id]) {
+            const rich = this.commands.find(c => (c.recommended || []).length) || this.commands[0];
+            id = rich && rich.id;
+        }
+        if (!id) return;
+        this.graphCenter = id;
+        const dl = document.getElementById('graphCardList');
+        if (dl && !dl.dataset.filled) {
+            dl.innerHTML = this.commands.map(c => '<option value="' + this.esc(c.name) + '">').join('');
+            dl.dataset.filled = '1';
+        }
+        const qg = document.getElementById('graphQuickGoals');
+        if (qg && !qg.dataset.filled) {
+            const GOALS = ['crtp-golden-ticket', 'crtp-dcsync', 'golden-ticket', 'dcsync', 'crtp-domain-admin', 'ntds-dump', 'secretsdump', 'crtp-krbtgt', 'crtp-silver-ticket'];
+            const seen = new Set(), found = [];
+            GOALS.forEach(g => { if (this.byId[g] && !seen.has(g)) { seen.add(g); found.push(this.byId[g]); } });
+            qg.innerHTML = found.slice(0, 4).map(c => '<button class="graph-quick-goal" data-goal="' + this.esc(c.id) + '">→ ' + this.esc(c.name.split(/[\(—-]/)[0].trim().slice(0, 20)) + '</button>').join('');
+            qg.dataset.filled = '1';
+        }
+        overlay.hidden = false;
+        const search = document.getElementById('graphSearch');
+        if (search) search.value = this.byId[id] ? this.byId[id].name : '';
+        const pr = document.getElementById('graphPathResult');
+        if (pr) { pr.hidden = true; pr.innerHTML = ''; }
+        this.graphZoom = null;   // null = auto-fit
+        this.renderGraph();
+        this._focusManage('graphOverlay');
+    }
+    closeGraph() { const o = document.getElementById('graphOverlay'); if (o) o.hidden = true; this._focusRelease(); }
+    // Accessibility: on modal open, focus the first control and remember what had focus; trap Tab
+    // inside the modal; on close, return focus to the trigger. Used by all overlays.
+    _focusManage(overlayId) {
+        const ov = document.getElementById(overlayId); if (!ov) return;
+        const modal = ov.firstElementChild || ov;
+        this._modalPrevFocus = document.activeElement;
+        const focusables = () => [...modal.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+        const f = focusables(); if (f.length) { try { f[0].focus(); } catch (e) {} }
+        if (this._modalTrapEl && this._modalTrap) this._modalTrapEl.removeEventListener('keydown', this._modalTrap);
+        this._modalTrap = e => {
+            if (e.key !== 'Tab') return;
+            const els = focusables(); if (!els.length) return;
+            const first = els[0], last = els[els.length - 1], a = document.activeElement;
+            if (e.shiftKey && (a === first || !modal.contains(a))) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && (a === last || !modal.contains(a))) { e.preventDefault(); first.focus(); }
+        };
+        modal.addEventListener('keydown', this._modalTrap);
+        this._modalTrapEl = modal;
+    }
+    _focusRelease() {
+        if (this._modalTrapEl && this._modalTrap) this._modalTrapEl.removeEventListener('keydown', this._modalTrap);
+        this._modalTrap = null; this._modalTrapEl = null;
+        if (this._modalPrevFocus && this._modalPrevFocus.focus) { try { this._modalPrevFocus.focus(); } catch (e) {} }
+        this._modalPrevFocus = null;
+    }
+    zoomGraph(mode) {
+        if (mode === 'fit') this.graphZoom = null;
+        else this.graphZoom = Math.max(0.2, Math.min(3, (this._effZoom || 1) * (mode === 'in' ? 1.25 : 0.8)));
+        this.renderGraph();
+    }
+
+    buildGraphModel(centerId) {
+        const OUT = 2, IN = 1;
+        const byId = this.byId, rev = this.reverseRec;
+        const center = byId[centerId];
+        if (!center) return null;
+        const mk = (c, depth, rel) => ({ id: c.id, name: c.name, depth, rel, opsec: c.opsec });
+        const FWD = new Set(['next', 'escalation']);   // relationships that move the attack forward
+        // successors = comes AFTER this card (drawn to the RIGHT): its own next/escalation/alternative,
+        // plus any card that lists THIS as a prereq (that card can only run after this one).
+        const succ = id => {
+            const out = [];
+            (byId[id].recommended || []).forEach(r => { if (r && r.id && byId[r.id] && r.rel !== 'prereq') out.push({ id: r.id, rel: r.rel || 'next' }); });
+            (rev[id] || []).forEach(s => { if (s && s.id && byId[s.id] && s.rel === 'prereq') out.push({ id: s.id, rel: 'next' }); });
+            return out;
+        };
+        // predecessors = comes BEFORE this card (drawn to the LEFT): its own prereq links, plus any
+        // card that recommends THIS as a next/escalation step (that card leads here).
+        const pred = id => {
+            const out = [];
+            (byId[id].recommended || []).forEach(r => { if (r && r.id && byId[r.id] && r.rel === 'prereq') out.push({ id: r.id, rel: 'prereq' }); });
+            (rev[id] || []).forEach(s => { if (s && s.id && byId[s.id] && FWD.has(s.rel || 'next')) out.push({ id: s.id, rel: s.rel || 'next' }); });
+            return out;
+        };
+        const nodes = new Map();
+        const edges = [];
+        nodes.set(centerId, mk(center, 0, 'center'));
+        let frontier = [centerId];
+        for (let d = 1; d <= OUT; d++) {
+            const next = [];
+            frontier.forEach(pid => succ(pid).forEach(r => {
+                edges.push({ from: pid, to: r.id, rel: r.rel });
+                if (!nodes.has(r.id)) { nodes.set(r.id, mk(byId[r.id], d, r.rel)); next.push(r.id); }
+            }));
+            frontier = next;
+        }
+        frontier = [centerId];
+        for (let d = 1; d <= IN; d++) {
+            const prev = [];
+            frontier.forEach(cid => pred(cid).forEach(r => {
+                edges.push({ from: r.id, to: cid, rel: r.rel });
+                if (!nodes.has(r.id)) { nodes.set(r.id, mk(byId[r.id], -d, r.rel)); prev.push(r.id); }
+            }));
+            frontier = prev;
+        }
+        const cols = {};
+        [...nodes.values()].forEach(n => (cols[n.depth] = cols[n.depth] || []).push(n));
+        return { cols, edges, centerId };   // no cap - every node is shown; zoom/scroll handles size
+    }
+
+    // wrap a card name onto up to 2 short lines so labels fit inside a node without hard truncation
+    graphWrap(s) {
+        const words = String(s).split(/\s+/), L = ['', ''];
+        let li = 0;
+        for (const w of words) {
+            if (!L[li]) L[li] = w;
+            else if ((L[li] + ' ' + w).length <= 24) L[li] += ' ' + w;
+            else if (li === 0) { li = 1; L[1] = w; }
+            else { L[1] += '…'; break; }
+        }
+        L[0] = L[0].slice(0, 26); L[1] = L[1].slice(0, 26);
+        return L[1] ? [L[0], L[1]] : [L[0]];
+    }
+
+    renderGraph() {
+        const canvas = document.getElementById('graphCanvas');
+        const model = this.buildGraphModel(this.graphCenter);
+        if (!canvas) return;
+        if (!model) { canvas.innerHTML = '<p style="padding:24px;color:var(--muted)">No chain data for this command.</p>'; return; }
+        const REL_COLOR = { center: '#58a6ff', prereq: '#d29922', next: '#3fb950', escalation: '#ff7b72', alternative: '#bc8cff', cleanup: '#8b949e' };
+        const OPSEC = { silent: '#4ea1ff', quiet: '#35c46a', moderate: '#e2b53d', loud: '#e5484d' };
+        const NW = 176, NH = 50, VGAP = 18, HGAP = 96;
+        const depths = Object.keys(model.cols).map(Number).sort((a, b) => a - b);
+        const colX = {}; depths.forEach((d, i) => colX[d] = 24 + i * (NW + HGAP));
+        const maxRows = Math.max(1, ...depths.map(d => model.cols[d].length));
+        const H = Math.max(280, 36 + maxRows * (NH + VGAP));
+        const W = 24 + depths.length * (NW + HGAP) - HGAP + 24;
+        const pos = {}, depthOf = {};
+        depths.forEach(d => {
+            const col = model.cols[d];
+            const colH = col.length * (NH + VGAP) - VGAP;
+            let y = Math.max(18, (H - colH) / 2);
+            col.forEach(n => { pos[n.id] = { x: colX[d], y }; depthOf[n.id] = d; y += NH + VGAP; });
+        });
+        // one colored arrowhead marker per relationship, tip touching the target box
+        const markerDefs = Object.keys(REL_COLOR).map(k =>
+            '<marker id="garrow-' + k + '" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">' +
+            '<path d="M0,0 L10,5 L0,10 z" fill="' + REL_COLOR[k] + '"/></marker>').join('');
+        // draw only forward-adjacent edges (column d -> d+1); this drops the backward/cross
+        // links that otherwise arrow into the LEFT side of boxes and clutter the map.
+        const seenEdge = new Set();
+        let edgeSvg = '';
+        model.edges.forEach(e => {
+            const a = pos[e.from], b = pos[e.to];
+            if (!a || !b) return;
+            if (depthOf[e.to] !== depthOf[e.from] + 1) return;
+            const key = e.from + '>' + e.to;
+            if (seenEdge.has(key)) return;
+            seenEdge.add(key);
+            const rel = REL_COLOR[e.rel] ? e.rel : 'next';
+            const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x - 1, y2 = b.y + NH / 2, mx = (x1 + x2) / 2;
+            edgeSvg += '<path class="gedge" d="M' + x1 + ',' + y1 + ' C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + x2 + ',' + y2 + '" stroke="' + REL_COLOR[rel] + '" marker-end="url(#garrow-' + rel + ')"/>';
+        });
+        let nodeSvg = '';
+        depths.forEach(d => {
+            model.cols[d].forEach(n => {
+                const p = pos[n.id];
+                const col = REL_COLOR[n.rel] || '#8b949e';
+                const isC = n.id === model.centerId;
+                const lines = this.graphWrap(n.name);
+                const ty = lines.length === 2 ? [NH / 2 - 3, NH / 2 + 12] : [NH / 2 + 4];
+                const txt = lines.map((ln, i) => '<text x="14" y="' + ty[i] + '">' + this.esc(ln) + '</text>').join('');
+                const pip = OPSEC[n.opsec] ? '<circle cx="' + (NW - 11) + '" cy="12" r="4" fill="' + OPSEC[n.opsec] + '"><title>opsec: ' + n.opsec + '</title></circle>' : '';
+                nodeSvg += '<g class="gnode' + (isC ? ' center' : '') + '" data-gid="' + this.esc(n.id) + '" transform="translate(' + p.x + ',' + p.y + ')">' +
+                    '<rect width="' + NW + '" height="' + NH + '" rx="9" fill="' + (isC ? 'rgba(88,166,255,.18)' : '#161b22') + '" stroke="' + col + '"/>' +
+                    pip + txt + '</g>';
+            });
+        });
+        // zoom: null = fit-to-view (capped at natural size); otherwise a manual factor
+        const cw = canvas.clientWidth || 960, ch = canvas.clientHeight || 520;
+        let z = this.graphZoom;
+        if (!z) { z = Math.min(cw / W, ch / H, 1); if (!isFinite(z) || z <= 0) z = 1; }
+        this._effZoom = z;
+        canvas.innerHTML = '<svg width="' + Math.round(W * z) + '" height="' + Math.round(H * z) + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+            '<defs>' + markerDefs + '</defs>' + edgeSvg + nodeSvg + '</svg>';
+    }
+
+    graphPathTo(goalId) {
+        const byId = this.byId, start = this.graphCenter;
+        if (!byId[goalId] || !byId[start]) return null;
+        if (goalId === start) return [start];
+        const q = [[start]], seen = new Set([start]);
+        while (q.length) {
+            const path = q.shift(), last = path[path.length - 1];
+            for (const r of (byId[last].recommended || [])) {
+                if (!r || !r.id || !byId[r.id] || seen.has(r.id)) continue;
+                const np = path.concat(r.id);
+                if (r.id === goalId) return np;
+                seen.add(r.id); q.push(np);
+            }
+        }
+        return null;
+    }
+
+    showGraphPath(goalId) {
+        const pr = document.getElementById('graphPathResult');
+        if (!pr || !this.byId[goalId]) return;
+        const path = this.graphPathTo(goalId);
+        pr.hidden = false;
+        if (!path) {
+            pr.innerHTML = '<b>No forward path</b> from “' + this.esc(this.byId[this.graphCenter].name) + '” to “' + this.esc(this.byId[goalId].name) + '” via recommended links. Try re-centering on an earlier step.';
+            return;
+        }
+        const chain = path.map((id, i) =>
+            (i ? '<span class="gpr-arrow">→</span>' : '') +
+            '<span class="gpr-node" data-gid="' + this.esc(id) + '">' + this.esc(this.byId[id].name.split(/[\(—]/)[0].trim().slice(0, 30)) + '</span>'
+        ).join(' ');
+        pr.innerHTML = '<b>' + (path.length - 1) + '-step path:</b><div class="gpr-chain">' + chain + '</div>';
+    }
+
+    bindGraph() {
+        const btn = document.getElementById('graphBtn');
+        if (btn) btn.addEventListener('click', () => this.openGraph());
+        const close = document.getElementById('graphClose');
+        if (close) close.addEventListener('click', () => this.closeGraph());
+        const overlay = document.getElementById('graphOverlay');
+        if (overlay) {
+            overlay.addEventListener('click', e => { if (e.target === overlay) this.closeGraph(); });
+            document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) this.closeGraph(); });
+        }
+        const canvas = document.getElementById('graphCanvas');
+        if (canvas) canvas.addEventListener('click', e => {
+            const g = e.target.closest('.gnode'); if (!g) return;
+            const id = g.dataset.gid; if (!id || !this.byId[id]) return;
+            this.graphCenter = id;
+            const s = document.getElementById('graphSearch'); if (s) s.value = this.byId[id].name;
+            this.selectCommand(this.byId[id]);
+            this.renderGraph();
+        });
+        const byName = name => this.commands.find(c => c.name === name);
+        const search = document.getElementById('graphSearch');
+        if (search) search.addEventListener('change', () => { const c = byName(search.value); if (c) { this.graphCenter = c.id; this.selectCommand(c); this.renderGraph(); } });
+        const goal = document.getElementById('graphGoal');
+        if (goal) goal.addEventListener('change', () => { const c = byName(goal.value); if (c) this.showGraphPath(c.id); });
+        const qg = document.getElementById('graphQuickGoals');
+        if (qg) qg.addEventListener('click', e => { const b = e.target.closest('[data-goal]'); if (b) this.showGraphPath(b.dataset.goal); });
+        const pr = document.getElementById('graphPathResult');
+        if (pr) pr.addEventListener('click', e => { const n = e.target.closest('[data-gid]'); if (n && this.byId[n.dataset.gid]) { this.graphCenter = n.dataset.gid; const s = document.getElementById('graphSearch'); if (s) s.value = this.byId[n.dataset.gid].name; this.selectCommand(this.byId[n.dataset.gid]); this.renderGraph(); } });
+        const zoom = document.querySelector('.graph-zoom');
+        if (zoom) zoom.addEventListener('click', e => { const b = e.target.closest('[data-z]'); if (b) this.zoomGraph(b.dataset.z); });
+        const gexp = document.getElementById('graphExport');
+        if (gexp) gexp.addEventListener('click', () => this.exportPathMarkdown());
+    }
+
+    /* ===================== Study Mode ===================== */
+    shuffleArr(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+    openStudy() {
+        const ov = document.getElementById('studyOverlay'); if (!ov) return;
+        if (!this.study) this.study = { mode: 'flash', scope: 'all' };
+        if (!this.studyWeak) this.studyWeak = this.loadStudyWeak();
+        const scopeSel = document.getElementById('studyScope');
+        if (scopeSel) {   // rebuilt each open so the Weak-areas count stays current
+            const certs = [...new Set(this.commands.flatMap(c => c.certifications || []))].sort();
+            const weakN = this.studyWeak.size;
+            scopeSel.innerHTML = '<option value="all">All commands</option>' +
+                (weakN ? '<option value="weak">⚠ Weak areas (' + weakN + ')</option>' : '') +
+                '<option value="fav">★ Favorites</option>' +
+                certs.map(c => '<option value="cert:' + this.esc(c) + '">' + this.esc(c) + '</option>').join('');
+            scopeSel.value = this.study.scope || 'all';
+        }
+        ov.hidden = false;
+        this.startStudy();
+        this._focusManage('studyOverlay');
+    }
+    closeStudy() { const o = document.getElementById('studyOverlay'); if (o) o.hidden = true; this._focusRelease(); }
+    loadStudyWeak() { try { return new Set(JSON.parse(localStorage.getItem('cr_study_weak') || '[]')); } catch (e) { return new Set(); } }
+    saveStudyWeak() { try { localStorage.setItem('cr_study_weak', JSON.stringify([...this.studyWeak])); } catch (e) {} }
+    // spaced-repetition memory: a card you miss ("Review again" / wrong quiz answer) is remembered
+    // across sessions and resurfaced under the "Weak areas" scope; recalling it clears it.
+    markWeak(id, isWeak) {
+        if (!id) return;
+        if (!this.studyWeak) this.studyWeak = this.loadStudyWeak();
+        if (isWeak) this.studyWeak.add(id); else this.studyWeak.delete(id);
+        this.saveStudyWeak();
+    }
+    studyPool() {
+        const s = this.study.scope || 'all';
+        let pool = this.commands.filter(c => c.command && String(c.command).trim());
+        if (s === 'weak') pool = pool.filter(c => this.studyWeak && this.studyWeak.has(c.id));
+        else if (s === 'fav') pool = pool.filter(c => this.favorites && this.favorites.has(c.id));
+        else if (s.indexOf('cert:') === 0) { const cert = s.slice(5); pool = pool.filter(c => (c.certifications || []).includes(cert)); }
+        return pool;
+    }
+    startStudy() {
+        this.study.pool = this.shuffleArr(this.studyPool().map(c => c.id));
+        this.study.idx = 0; this.study.seen = 0; this.study.got = 0; this.study.revealed = false; this.study.answered = false; this.study.current = null;
+        this.renderStudy();
+    }
+    renderStudy() {
+        const body = document.getElementById('studyBody'); if (!body) return;
+        const total = this.study.pool.length;
+        const bar = document.getElementById('studyBar'); if (bar) bar.style.width = total ? Math.round(this.study.idx / total * 100) + '%' : '0%';
+        const scoreEl = document.getElementById('studyScore');
+        if (!total) { body.innerHTML = '<p class="study-empty">No commands in this scope — pick another above.</p>'; if (scoreEl) scoreEl.textContent = ''; return; }
+        if (this.study.idx >= total) return this.renderStudyDone();
+        if (scoreEl) scoreEl.textContent = (this.study.mode === 'flash' ? 'Recalled ' : 'Correct ') + this.study.got + ' / ' + this.study.seen + '   ·   ' + (this.study.idx + 1) + ' of ' + total;
+        if (this.study.mode === 'flash') this.renderFlashcard(); else this.renderQuiz();
+    }
+    renderFlashcard() {
+        const body = document.getElementById('studyBody');
+        const c = this.byId[this.study.pool[this.study.idx]];
+        if (!c) { this.study.idx++; return this.renderStudy(); }
+        const meta = [c.category, c.subcategory, c.platform, c.opsec].filter(Boolean).map(x => '<span class="flash-chip">' + this.esc(x) + '</span>').join('');
+        let html = '<div class="flash-card"><div class="flash-meta">' + meta + '</div><div class="flash-q">' + this.esc(c.name) + '</div>' +
+            (c.description ? '<div class="flash-desc">' + this.esc(c.description) + '</div>' : '');
+        if (!this.study.revealed) {
+            html += '<div class="flash-prompt">Recall the command from memory, then reveal.</div><div class="study-btns"><button class="study-btn primary" data-act="reveal">Reveal command</button></div>';
+        } else {
+            const vars = (c.variations || []).slice(0, 5).map(v => v.label).filter(Boolean).join('  ·  ');
+            html += '<div class="flash-answer"><pre>' + this.esc(c.command) + '</pre>' + (vars ? '<div class="flash-var">Variations: ' + this.esc(vars) + '</div>' : '') + '</div>' +
+                '<div class="study-btns"><button class="study-btn again" data-act="again">Review again</button><button class="study-btn good" data-act="got">Got it ✓</button></div>';
+        }
+        body.innerHTML = html + '</div>';
+    }
+    renderQuiz() {
+        const body = document.getElementById('studyBody');
+        const c = this.byId[this.study.pool[this.study.idx]];
+        if (!c) { this.study.idx++; return this.renderStudy(); }
+        const q = this.buildQuizQuestion(c);
+        this.study.current = q;
+        body.innerHTML = '<div class="quiz-card"><div class="quiz-q"><span class="qmark">Q.</span> ' + q.q + '</div><div class="quiz-opts">' +
+            q.options.map((o, i) => '<button class="quiz-opt" data-opt="' + i + '">' + o.html + '</button>').join('') +
+            '</div><div class="quiz-feedback" id="quizFeedback"></div></div>';
+    }
+    buildQuizQuestion(c) {
+        const rand = arr => arr[Math.floor(Math.random() * arr.length)];
+        const pick = (arr, n, exclude) => { const p = arr.filter(x => !exclude.has(x.id)); this.shuffleArr(p); return p.slice(0, n); };
+        const nexts = (c.recommended || []).filter(r => (r.rel === 'next' || r.rel === 'escalation') && this.byId[r.id]);
+        if (nexts.length) {
+            const correct = this.byId[rand(nexts).id];
+            const distract = pick(this.commands, 3, new Set([c.id, correct.id]));
+            const opts = this.shuffleArr([{ ok: true, html: this.esc(correct.name) }].concat(distract.map(d => ({ ok: false, html: this.esc(d.name) }))));
+            return { q: 'After <b>' + this.esc(c.name) + '</b>, which is a recommended next step?', options: opts };
+        }
+        const firstLine = s => this.esc(String(s || '').split('\n')[0].slice(0, 82));
+        const distract = pick(this.commands.filter(x => x.command), 3, new Set([c.id]));
+        const opts = this.shuffleArr([{ ok: true, html: '<code>' + firstLine(c.command) + '</code>' }].concat(distract.map(d => ({ ok: false, html: '<code>' + firstLine(d.command) + '</code>' }))));
+        return { q: 'Which command performs: <b>' + this.esc(c.name) + '</b>?', options: opts };
+    }
+    studyReveal() { this.study.revealed = true; this.renderStudy(); }
+    studyGrade(got) { this.markWeak(this.study.pool[this.study.idx], !got); this.study.seen++; if (got) this.study.got++; this.study.idx++; this.study.revealed = false; this.renderStudy(); }
+    studyAnswer(i) {
+        if (this.study.answered) return;
+        const q = this.study.current; if (!q) return;
+        this.study.answered = true; this.study.seen++;
+        this.markWeak(this.study.pool[this.study.idx], !q.options[i].ok);
+        if (q.options[i].ok) this.study.got++;
+        document.querySelectorAll('#studyBody .quiz-opt').forEach((el, k) => {
+            el.classList.add('disabled');
+            if (q.options[k].ok) el.classList.add('correct');
+            else if (k === i) el.classList.add('wrong');
+        });
+        const fb = document.getElementById('quizFeedback');
+        if (fb) fb.innerHTML = (q.options[i].ok ? '<span style="color:#3fb950">Correct.</span>' : '<span style="color:#e5484d">Not quite — the right answer is highlighted.</span>') +
+            ' <button class="study-btn primary" data-act="next" style="margin-left:10px;padding:6px 16px">Next →</button>';
+        const sc = document.getElementById('studyScore'); if (sc) sc.textContent = 'Correct ' + this.study.got + ' / ' + this.study.seen + '   ·   ' + (this.study.idx + 1) + ' of ' + this.study.pool.length;
+    }
+    studyNext() { this.study.idx++; this.study.answered = false; this.study.current = null; this.renderStudy(); }
+    renderStudyDone() {
+        const body = document.getElementById('studyBody');
+        const pct = this.study.seen ? Math.round(this.study.got / this.study.seen * 100) : 0;
+        body.innerHTML = '<div class="study-empty"><div style="font-size:2.4rem;font-weight:700;color:var(--accent)">' + pct + '%</div>' +
+            '<p>' + (this.study.mode === 'flash' ? 'Recalled ' : 'Correct on ') + this.study.got + ' of ' + this.study.seen + '.</p>' +
+            '<div class="study-btns"><button class="study-btn primary" data-act="restart">Study again</button></div></div>';
+        const bar = document.getElementById('studyBar'); if (bar) bar.style.width = '100%';
+    }
+    bindStudy() {
+        const btn = document.getElementById('studyBtn'); if (btn) btn.addEventListener('click', () => this.openStudy());
+        const close = document.getElementById('studyClose'); if (close) close.addEventListener('click', () => this.closeStudy());
+        const ov = document.getElementById('studyOverlay');
+        if (ov) { ov.addEventListener('click', e => { if (e.target === ov) this.closeStudy(); }); document.addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.hidden) this.closeStudy(); }); }
+        document.querySelectorAll('.smode-btn').forEach(b => b.addEventListener('click', () => {
+            document.querySelectorAll('.smode-btn').forEach(x => x.classList.remove('active')); b.classList.add('active');
+            this.study.mode = b.dataset.smode; this.startStudy();
+        }));
+        const scope = document.getElementById('studyScope'); if (scope) scope.addEventListener('change', () => { this.study.scope = scope.value; this.startStudy(); });
+        const shuffle = document.getElementById('studyShuffle'); if (shuffle) shuffle.addEventListener('click', () => this.startStudy());
+        const restart = document.getElementById('studyRestart'); if (restart) restart.addEventListener('click', () => this.startStudy());
+        const body = document.getElementById('studyBody');
+        if (body) body.addEventListener('click', e => {
+            const b = e.target.closest('[data-act], [data-opt]'); if (!b) return;
+            if (b.dataset.opt !== undefined) return this.studyAnswer(parseInt(b.dataset.opt, 10));
+            const act = b.dataset.act;
+            if (act === 'reveal') this.studyReveal();
+            else if (act === 'got') this.studyGrade(true);
+            else if (act === 'again') this.studyGrade(false);
+            else if (act === 'next') this.studyNext();
+            else if (act === 'restart') this.startStudy();
+        });
+    }
+
+    /* ===================== Coverage dashboards ===================== */
+    openCoverage() { const ov = document.getElementById('coverageOverlay'); if (!ov) return; ov.hidden = false; this.covTab = this.covTab || 'mitre'; this.renderCoverage(); this._focusManage('coverageOverlay'); }
+    closeCoverage() { const o = document.getElementById('coverageOverlay'); if (o) o.hidden = true; this._focusRelease(); }
+    renderCoverage() {
+        const body = document.getElementById('coverageBody'); if (!body) return;
+        if (this.covTab === 'cert') return this.renderCoverageCert(body);
+        if (this.covTab === 'tool') return this.renderCoverageTool(body);
+        if (this.covTab === 'source') return this.renderCoverageSource(body);
+        return this.renderCoverageMitre(body);
+    }
+    renderCoverageSource(body) {
+        const data = (typeof COVERAGE_DATA !== 'undefined') ? COVERAGE_DATA : null;
+        if (!data) { body.innerHTML = '<p class="cov-note">No coverage snapshot found. Run <code>node coverage-report.js</code> to generate <code>js/coverage-data.js</code>.</p>'; return; }
+        const col = p => p >= 95 ? '#3fb950' : (p >= 80 ? '#d29922' : '#e5484d');
+        const rows = data.modules.filter(m => m.total > 0);
+        body.innerHTML = '<p class="cov-note"><b>' + this.esc(data.cert) + ' source tool-coverage: ' + data.overallPct + '%</b> — of the distinct tools each module\'s course notes use, how many appear in at least one card. Snapshot ' + this.esc(data.generated) + ' (regenerate with <code>node coverage-report.js</code>). Modules with 0 tools (pure theory) omitted.</p>' +
+            rows.map(m => {
+                const tip = m.uncarded.length ? ' title="not carded: ' + this.esc(m.uncarded.join(', ')) + '"' : '';
+                return '<div class="cov-bar-row"' + tip + '><div class="cov-bar-label">' + this.esc(m.mod + ' ' + m.name) + '</div>' +
+                    '<div class="cov-bar-track"><div class="cov-bar-fill" style="width:' + m.pct + '%;background:' + col(m.pct) + '"></div></div>' +
+                    '<div class="cov-bar-val">' + m.pct + '% (' + m.carded + '/' + m.total + ')</div></div>';
+            }).join('');
+    }
+    renderCoverageMitre(body) {
+        const tally = {};
+        this.commands.forEach(c => (c.mitre || []).forEach(t => { const base = String(t).split('.')[0]; (tally[base] = tally[base] || { ids: new Set(), sub: new Set() }); tally[base].ids.add(c.id); if (String(t).indexOf('.') >= 0) tally[base].sub.add(t); }));
+        const rows = Object.entries(tally).sort((a, b) => b[1].ids.size - a[1].ids.size);
+        const withMitre = this.commands.filter(c => (c.mitre || []).length).length;
+        body.innerHTML = '<p class="cov-note">' + rows.length + ' ATT&CK techniques referenced across ' + withMitre + ' of ' + this.commands.length + ' cards. Click a technique to search it.</p><div class="cov-grid">' +
+            rows.map(([t, v]) => '<div class="cov-cell" data-covsearch="mitre:' + this.esc(t) + '"><h4>' + this.esc(t) + '</h4><span class="cov-count">' + v.ids.size + '</span><span class="cov-sub">cards' + (v.sub.size ? ' · ' + v.sub.size + ' sub' : '') + '</span></div>').join('') + '</div>';
+    }
+    renderCoverageCert(body) {
+        const byCert = {};
+        this.commands.forEach(c => (c.certifications && c.certifications.length ? c.certifications : ['(none)']).forEach(cert => { (byCert[cert] = byCert[cert] || { total: 0, def: 0, chain: 0 }); byCert[cert].total++; if (c.defense && Object.keys(c.defense).length) byCert[cert].def++; if ((c.recommended || []).length) byCert[cert].chain++; }));
+        const rows = Object.entries(byCert).sort((a, b) => b[1].total - a[1].total);
+        const max = Math.max(1, ...rows.map(r => r[1].total));
+        body.innerHTML = '<p class="cov-note">Cards per certification — bar = card count; below each, how many carry defense content and chain links.</p>' +
+            rows.map(([cert, v]) => '<div class="cov-bar-row"><div class="cov-bar-label">' + this.esc(cert) + '</div><div class="cov-bar-track"><div class="cov-bar-fill" style="width:' + Math.round(v.total / max * 100) + '%"></div></div><div class="cov-bar-val">' + v.total + '</div></div>' +
+                '<div class="cov-bar-row"><div class="cov-bar-label" style="font-size:.7rem;color:var(--muted)">defense ' + Math.round(v.def / v.total * 100) + '%  ·  chains ' + Math.round(v.chain / v.total * 100) + '%</div><div class="cov-bar-track" style="background:none;border:none"></div><div class="cov-bar-val"></div></div>').join('');
+    }
+    renderCoverageTool(body) {
+        const byTool = {};
+        this.commands.forEach(c => (c.tools || []).forEach(t => { (byTool[t] = byTool[t] || new Set()).add(c.id); }));
+        const rows = Object.entries(byTool).map(([t, s]) => [t, s.size]).sort((a, b) => b[1] - a[1]).slice(0, 48);
+        body.innerHTML = '<p class="cov-note">Top tools by card count (click to filter the library). ' + Object.keys(byTool).length + ' tools total.</p><div class="cov-grid">' +
+            rows.map(([t, n]) => '<div class="cov-cell" data-covsearch="tool:' + this.esc(t) + '"><h4>' + this.esc(t) + '</h4><span class="cov-count">' + n + '</span><span class="cov-sub">cards</span></div>').join('') + '</div>';
+    }
+    bindCoverage() {
+        const btn = document.getElementById('coverageBtn'); if (btn) btn.addEventListener('click', () => this.openCoverage());
+        const close = document.getElementById('coverageClose'); if (close) close.addEventListener('click', () => this.closeCoverage());
+        const ov = document.getElementById('coverageOverlay');
+        if (ov) { ov.addEventListener('click', e => { if (e.target === ov) this.closeCoverage(); }); document.addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.hidden) this.closeCoverage(); }); }
+        document.querySelectorAll('.cov-tab').forEach(b => b.addEventListener('click', () => {
+            document.querySelectorAll('.cov-tab').forEach(x => x.classList.remove('active')); b.classList.add('active');
+            this.covTab = b.dataset.cov; this.renderCoverage();
+        }));
+        const body = document.getElementById('coverageBody');
+        if (body) body.addEventListener('click', e => {
+            const cell = e.target.closest('[data-covsearch]'); if (!cell) return;
+            this.closeCoverage();
+            const sb = document.getElementById('searchBox'); if (sb) sb.value = cell.dataset.covsearch;
+            this.filters.search = cell.dataset.covsearch; this.renderCommands();
+        });
+    }
+
+    /* ===================== Export helpers (Feature 3) ===================== */
+    // Copy the selected card's steps (or its command) as a runnable script, target filled in.
+    copyAsScript() {
+        const c = this.selectedCommand; if (!c) return;
+        const win = c.platform === 'windows';
+        const cmds = (c.steps && c.steps.length) ? c.steps.map(s => this.substitute(s.command)) : [this.substitute(this.activeCommandString())];
+        const head = win
+            ? '# ' + c.name + '  -  Command Reference\n# PowerShell (run elevated where needed)'
+            : '#!/usr/bin/env bash\n# ' + c.name + '  -  Command Reference\nset -e';
+        this.copyText(head + '\n\n' + cmds.join('\n') + '\n');
+        this.toast('Copied as ' + (win ? 'PowerShell' : 'bash') + ' script');
+    }
+    // Export the current attack-path map (prereqs -> this -> next) as a focused Markdown cheatsheet.
+    exportPathMarkdown() {
+        const model = this.buildGraphModel(this.graphCenter);
+        if (!model) { this.toast('Open a command in the map first'); return; }
+        const sub = s => this.substitute(String(s || ''));
+        const center = this.byId[model.centerId];
+        const depths = Object.keys(model.cols).map(Number).sort((a, b) => a - b);
+        const relName = { prereq: 'Prerequisite', next: 'Next step', escalation: 'Escalation', alternative: 'Alternative', cleanup: 'Cleanup' };
+        const out = ['# Attack path - ' + center.name, '', '_Generated ' + new Date().toISOString().slice(0, 10) + ' - left->right = prerequisites -> this -> next steps_', ''];
+        depths.forEach(d => model.cols[d].forEach(n => {
+            const c = this.byId[n.id]; if (!c) return;
+            const tag = d < 0 ? 'Leads here' : (d === 0 ? 'YOU ARE HERE' : (relName[n.rel] || 'Next step'));
+            out.push('## ' + c.name + '  `' + tag + '`');
+            if (c.description) out.push('', c.description);
+            out.push('', '```', sub(c.command), '```');
+            (c.steps || []).forEach((s, i) => out.push((i + 1) + '. ' + (s.label || ''), '   ```', '   ' + sub(s.command).replace(/\n/g, '\n   '), '   ```'));
+            out.push('');
+        }));
+        const blob = new Blob([out.join('\n')], { type: 'text/markdown' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'attack-path-' + center.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '.md';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        this.toast('Exported attack path (' + Object.values(model.cols).flat().length + ' cards)');
     }
 }
 

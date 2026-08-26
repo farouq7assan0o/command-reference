@@ -24,7 +24,7 @@
     "T1484.001"
   ],
   "exam": "exam-ok",
-  "notes": "=== WHAT GROUP3R CHECKS ===\nGroup3r audits every GPO visible to the current user and flags:\n  - GPO links the current user can write/modify\n  - Script paths in GPO startup/logon scripts with weak ACLs (hijackable)\n  - Scheduled tasks inside GPOs calling writable scripts or binaries\n  - Plaintext passwords in GPP (though mostly patched, older DCs may still have them)\n  - SYSVOL and NETLOGON share write permissions\n\n=== USAGE ===\n  -f <log>      Write output to file (recommended \u2014 output is verbose)\n  -s <server>   Target DC (default: auto-detect from domain)\n  -u <user>     User for auth (default: current session)\n  Run as a domain user \u2014 no special privileges needed for read access.\n\n=== WORKFLOW ===\n1. Run group3r.exe -f group3r.log\n2. Review log for 'HIGH' and 'CRITICAL' severity items\n3. GPO write access \u2192 use ad-gpo-enum / PowerView to confirm scope\n4. Writable script paths \u2192 plant a payload to catch next GPO refresh\n5. Credential findings \u2192 try with crackmapexec / evil-winrm\n\n=== COMPARED TO OTHER GPO TOOLS ===\n  PowerView Get-GPO/Get-GPOReport: raw enumeration, manual analysis needed\n  SharpGPOAbuse: exploitation (not just enumeration)\n  Group3r: automated misconfiguration hunting with severity ranking",
+  "notes": "=== WHAT GROUP3R CHECKS ===\nGroup3r audits every GPO visible to the current user and flags:\n  - GPO links the current user can write/modify\n  - Script paths in GPO startup/logon scripts with weak ACLs (hijackable)\n  - Scheduled tasks inside GPOs calling writable scripts or binaries\n  - Plaintext passwords in GPP (though mostly patched, older DCs may still have them)\n  - SYSVOL and NETLOGON share write permissions\n\n=== USAGE ===\n  -f <log>      Write output to file (recommended — output is verbose)\n  -s <server>   Target DC (default: auto-detect from domain)\n  -u <user>     User for auth (default: current session)\n  Run as a domain user — no special privileges needed for read access.\n\n=== WORKFLOW ===\n1. Run group3r.exe -f group3r.log\n2. Review log for 'HIGH' and 'CRITICAL' severity items\n3. GPO write access → use ad-gpo-enum / PowerView to confirm scope\n4. Writable script paths → plant a payload to catch next GPO refresh\n5. Credential findings → try with crackmapexec / evil-winrm\n\n=== COMPARED TO OTHER GPO TOOLS ===\n  PowerView Get-GPO/Get-GPOReport: raw enumeration, manual analysis needed\n  SharpGPOAbuse: exploitation (not just enumeration)\n  Group3r: automated misconfiguration hunting with severity ranking",
   "examples": [
     {
       "label": "Run and write findings to log",
@@ -62,7 +62,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Group3r reads GPO definitions and evaluates file system ACLs on referenced paths. Any authenticated domain user can read GPOs via SYSVOL \u2014 the misconfiguration is the weak ACLs, not the read access itself.",
+    "why_it_works": "Group3r reads GPO definitions and evaluates file system ACLs on referenced paths. Any authenticated domain user can read GPOs via SYSVOL — the misconfiguration is the weak ACLs, not the read access itself.",
     "prerequisites": "Domain-joined Windows host; authenticated domain user session.",
     "impact": "Identifies exploitable GPO paths enabling code execution on every machine in the GPO scope, potential DA via scheduled task or startup script hijacking.",
     "prevention": "[MITRE T1484.001 M1018] Restrict GPO write access to dedicated admin accounts; audit SYSVOL and NETLOGON share ACLs regularly; use Microsoft's Group Policy Modeling to review effective policy before deployment.",
@@ -71,8 +71,9 @@
       "MITRE T1484.001"
     ],
     "misconfiguration": "IT teams often grant broad write access to SYSVOL or to individual GPO objects for operational convenience. Script paths in GPO startup/logon tasks may point to shares with weak permissions, allowing any domain user to replace the script.",
-    "vulnerable_config": "# GPO Startup Script points to a world-writable share:\n# GPO: \\\\inlanefreight.local\\SYSVOL\\...\\scripts\\startup.bat\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts\\startup.bat\n# Output: Everyone:(F) \u2014 full control for all users",
-    "secure_config": "# Restrict script path ACLs \u2014 only SYSTEM and Domain Admins\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts /inheritance:r /grant 'Domain Admins:(OI)(CI)F' SYSTEM:F\n# Audit GPO delegations quarterly:\nGet-GPPermission -All -DomainName inlanefreight.local | Where-Object { $_.Permission -eq 'GpoEdit' }"
+    "vulnerable_config": "# GPO Startup Script points to a world-writable share:\n# GPO: \\\\inlanefreight.local\\SYSVOL\\...\\scripts\\startup.bat\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts\\startup.bat\n# Output: Everyone:(F) — full control for all users",
+    "secure_config": "# Restrict script path ACLs — only SYSTEM and Domain Admins\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts /inheritance:r /grant 'Domain Admins:(OI)(CI)F' SYSTEM:F\n# Audit GPO delegations quarterly:\nGet-GPPermission -All -DomainName inlanefreight.local | Where-Object { $_.Permission -eq 'GpoEdit' }",
+    "evasion": "Read the exposed data with least interaction; revert any change you make; scope queries narrowly to avoid bulk-read alerts."
   },
   "tools": [
     "Group3r"

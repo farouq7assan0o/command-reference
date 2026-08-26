@@ -85,6 +85,7 @@
     "sources": [
       "HTB M26",
       "MITRE T1115"
-    ]
+    ],
+    "evasion": "Blend the lure (SCF/LNK/clipboard) into a share users already browse; keep the capture window short; remove the planted file after a hash lands."
   }
 }

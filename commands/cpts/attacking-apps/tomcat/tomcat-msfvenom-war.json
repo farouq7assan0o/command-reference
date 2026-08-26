@@ -59,6 +59,11 @@
       "id": "tomcat-war-webshell",
       "note": "Interactive command-webshell alternative.",
       "rel": "alternative"
+    },
+    {
+      "id": "gs-tty-upgrade",
+      "rel": "next",
+      "note": "Stabilize the WAR-deployed shell"
     }
   ],
   "id": "tomcat-msfvenom-war",
@@ -85,6 +90,7 @@
       "HTB M24",
       "MITRE T1505.003",
       "MITRE T1190"
-    ]
+    ],
+    "evasion": "Undeploy the malicious WAR after getting a shell; name it innocuously; manager access over a valid session looks like admin activity."
   }
 }

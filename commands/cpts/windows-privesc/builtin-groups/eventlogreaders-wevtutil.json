@@ -85,6 +85,7 @@
       "HTB M26",
       "MITRE T1552",
       "MITRE T1552.006"
-    ]
+    ],
+    "evasion": "Read only the events you need (targeted query) rather than exporting whole logs."
   }
 }

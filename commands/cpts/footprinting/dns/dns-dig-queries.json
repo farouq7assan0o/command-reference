@@ -116,10 +116,6 @@
       "command": "dig any <domain> @<ip>"
     },
     {
-      "label": "AXFR zone transfer",
-      "command": "dig axfr <domain> @<ip>"
-    },
-    {
       "label": "AXFR internal zone",
       "command": "dig axfr internal.<domain> @<ip>"
     }

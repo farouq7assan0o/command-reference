@@ -81,6 +81,17 @@
       "HTB M26",
       "MITRE T1555.003",
       "MITRE T1555"
-    ]
-  }
+    ],
+    "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+  },
+  "variations": [
+    {
+      "label": "Only browsers",
+      "command": ".\\lazagne.exe browsers"
+    },
+    {
+      "label": "Write to file",
+      "command": ".\\lazagne.exe all -oN -output C:\\Users\\Public"
+    }
+  ]
 }

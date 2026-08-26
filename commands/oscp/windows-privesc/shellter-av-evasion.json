@@ -3,7 +3,7 @@
   "name": "Shellter AV Evasion (PE Injection)",
   "command": "shellter",
   "platform": "windows",
-  "category": "Defense Evasion",
+  "category": "Exploitation",
   "subcategory": "AV Bypass",
   "type": "command",
   "description": "Shellter is a dynamic PE infector that injects shellcode into a legitimate Windows 32-bit executable, making it appear as a normal program while executing a payload. Used in OSCP to bypass AV when delivering msfvenom payloads.",

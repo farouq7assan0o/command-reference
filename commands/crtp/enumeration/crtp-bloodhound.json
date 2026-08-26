@@ -82,7 +82,7 @@
       "rel": "alternative"
     }
   ],
-  "notes": "Key BH queries: 'Shortest Paths to Domain Admins', 'Computers with Unconstrained Delegation', 'Find Principals with DCSync Rights'.",
+  "notes": "Key BH queries: 'Shortest Paths to Domain Admins', 'Computers with Unconstrained Delegation', 'Find Principals with DCSync Rights'. SOAPHound collects BloodHound-compatible data over AD Web Services (ADWS, TCP 9389) instead of raw LDAP - much stealthier than SharpHound. Build a cache first, then --bhdump.",
   "references": [
     {
       "title": "CRTP - BloodHound/SharpHound",
@@ -90,7 +90,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "SharpHound queries LDAP (users, groups, GPOs, OUs, ACLs, trusts), SMB (sessions, local admin), and RPC (logged-on users) from any domain-joined host. The collected JSON feeds BloodHound's graph engine which uses Cypher queries on Neo4j to find shortest attack paths to Domain Admin \u2014 paths humans would never manually discover from raw LDAP data.",
+    "why_it_works": "SharpHound queries LDAP (users, groups, GPOs, OUs, ACLs, trusts), SMB (sessions, local admin), and RPC (logged-on users) from any domain-joined host. The collected JSON feeds BloodHound's graph engine which uses Cypher queries on Neo4j to find shortest attack paths to Domain Admin — paths humans would never manually discover from raw LDAP data.",
     "prerequisites": "Any domain user. SharpHound.exe or SharpHound.ps1 on the target. LDAP access to DC. SMB access to enumerate session and local admin data.",
     "impact": "T1087.002 Account Discovery: Domain Account + T1069.002 Permission Groups Discovery. Maps every ACL, group membership, session, and trust. Identifies shortest paths to DA via Kerberoastable accounts, GenericAll ACEs, unconstrained delegation, and more.",
     "detection": "SharpHound generates massive LDAP enumeration bursts (hundreds of queries in seconds). MDI 'BloodHound reconnaissance' alert (built-in). Event 4662 volume spike. SMB NetSessionEnum RPC calls to many hosts. SIEM: LDAP query rate from workstation > baseline.\nProcesses performing local or domain account enumeration by invoking account directory queries or security APIs followed by structured output of account lists (DET0587/AN1612).\nSuspicious shell commands or unauthorized access to /etc/passwd or /etc/shadow (AN1613).\nDirectory service queries or system utilities accessing account metadata stores, producing enumeration output (AN1614).\nCloud provider API calls where principals retrieve IAM users or roles in rapid succession (AN1615).\nESXi host account configuration or management APIs queried to retrieve user account listings (AN1617).",
@@ -101,8 +101,18 @@
       "https://attack.mitre.org/techniques/T1087/002/",
       "https://attack.mitre.org/techniques/T1069/002/"
     ],
-    "misconfiguration": "NetSessionEnum not restricted \u2014 any user can enumerate sessions. RestrictRemoteSam not configured. Excessive ACLs (GenericAll/GenericWrite on DA accounts by non-admin groups). MDI not deployed.",
+    "misconfiguration": "NetSessionEnum not restricted — any user can enumerate sessions. RestrictRemoteSam not configured. Excessive ACLs (GenericAll/GenericWrite on DA accounts by non-admin groups). MDI not deployed.",
     "vulnerable_config": "# RestrictRemoteSam not set (any auth user can enumerate local accounts):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -EA SilentlyContinue).RestrictRemoteSam\n# Returns $null = NOT restricted = VULNERABLE\n\n# Dangerous ACE example:\nGet-ObjectAcl 'Domain Admins' | Where-Object {$_.ActiveDirectoryRights -match 'GenericAll'}",
-    "secure_config": "# Restrict SAMR enumeration:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RestrictRemoteSam -Value 'O:BAG:BAD:(A;;RC;;;BA)'\n\n# Via GPO:\n# Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Local Policies \u2192 Security Options\n# \u2192 Network access: Restrict clients allowed to make remote calls to SAM\n\n# Remediate dangerous ACEs:\nRemove-ADPermission -Identity 'DomainAdmin1' -User 'HelpDesk' -AccessRights GenericAll\n\n# WDAC: deny SharpHound.exe by hash"
-  }
+    "secure_config": "# Restrict SAMR enumeration:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RestrictRemoteSam -Value 'O:BAG:BAD:(A;;RC;;;BA)'\n\n# Via GPO:\n# Computer Config → Windows Settings → Security Settings → Local Policies → Security Options\n# → Network access: Restrict clients allowed to make remote calls to SAM\n\n# Remediate dangerous ACEs:\nRemove-ADPermission -Identity 'DomainAdmin1' -User 'HelpDesk' -AccessRights GenericAll\n\n# WDAC: deny SharpHound.exe by hash"
+  },
+  "variations": [
+    {
+      "label": "SOAPHound - build cache (ADWS, stealthy)",
+      "command": "SOAPHound.exe --buildcache -c <cache_file>"
+    },
+    {
+      "label": "SOAPHound - dump BloodHound data",
+      "command": "SOAPHound.exe -c <cache_file> --bhdump -o <output_dir> --nolaps"
+    }
+  ]
 }

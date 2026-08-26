@@ -71,7 +71,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "SharpView is a .NET port of PowerView for LDAP AD enumeration where PowerShell is constrained/monitored.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. SharpView is PowerView compiled to C#, so it performs the same authenticated LDAP reads without loading PowerShell (evades PS logging).",
     "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
     "impact": "PowerView-style enumeration via a compiled binary.",
     "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -88,5 +88,11 @@
   },
   "tools": [
     "SharpView"
+  ],
+  "variations": [
+    {
+      "label": "Any PowerView function, compiled",
+      "command": ".\\SharpView.exe Get-DomainGroupMember -Identity 'Domain Admins'"
+    }
   ]
 }

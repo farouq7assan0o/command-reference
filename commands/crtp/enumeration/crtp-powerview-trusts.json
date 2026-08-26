@@ -77,18 +77,32 @@
     }
   ],
   "defense": {
-    "why_it_works": "Domain trusts create Kerberos referral paths between domains/forests. Get-DomainTrust/Get-ForestTrust enumerate trust direction, type, and SID filtering status. Bidirectional trusts with SID filtering disabled allow SID History injection \u2014 enabling cross-domain/forest DA escalation.",
+    "why_it_works": "Domain trusts create Kerberos referral paths between domains/forests. Get-DomainTrust/Get-ForestTrust enumerate trust direction, type, and SID filtering status. Bidirectional trusts with SID filtering disabled allow SID History injection — enabling cross-domain/forest DA escalation.",
     "prerequisites": "Any domain user. PowerView or AD module. LDAP access (trustedDomain objects readable by all authenticated users).",
     "impact": "T1482 Domain Trust Discovery. Maps cross-domain attack paths. Bidirectional forest trust without SID filtering = cross-forest DA escalation via forged PAC with parent SID.",
-    "detection": "LDAP query for trustedDomain objects \u2014 low signal, hard to distinguish from admin queries. Event 4104 SBL: Get-DomainTrust/Get-ForestTrust. MDI reconnaissance detection.\nAdversary uses nltest, PowerShell, or Win32/.NET API to enumerate domain trust relationships (via DSEnumerateDomainTrusts, GetAllTrustRelationships, or LDAP queries), followed by discovery or authentication staging (DET0007/AN0016).",
+    "detection": "LDAP query for trustedDomain objects — low signal, hard to distinguish from admin queries. Event 4104 SBL: Get-DomainTrust/Get-ForestTrust. MDI reconnaissance detection.\nAdversary uses nltest, PowerShell, or Win32/.NET API to enumerate domain trust relationships (via DSEnumerateDomainTrusts, GetAllTrustRelationships, or LDAP queries), followed by discovery or authentication staging (DET0007/AN0016).",
     "artifacts": "Event 4104: Get-DomainTrust / Get-ForestTrust | LDAP query for trustedDomain container | MDI recon alert",
     "prevention": "Enable SID filtering on all external/forest trusts. Audit trust relationships quarterly. Remove unnecessary trusts. MDI deployment.\nAudit: Map the trusts within existing domains/forests and keep trust relationships to a minimum.\nNetwork Segmentation: Employ network segmentation for sensitive domains.",
-    "evasion": "Extremely low signal \u2014 single LDAP lookup for trustedDomain objects. No evasion needed.",
+    "evasion": "Extremely low signal — single LDAP lookup for trustedDomain objects. No evasion needed.",
     "sources": [
       "https://attack.mitre.org/techniques/T1482/"
     ],
-    "misconfiguration": "Forest trust with SID filtering disabled \u2014 allows SID History injection across forest boundary. Bidirectional trust where unidirectional was intended. External trust without quarantine.",
-    "vulnerable_config": "# Check SID filtering on forest trust:\nGet-ADTrust -Filter * | Select Name,TrustType,TrustDirection,SIDFilteringForestAware\n# SIDFilteringForestAware = False \u2192 SID filtering DISABLED \u2192 VULNERABLE\n\n# With SID filtering off, attacker can forge ticket with parent DA SID:\n# krbtgt hash + SID history injection = cross-forest DA",
+    "misconfiguration": "Forest trust with SID filtering disabled — allows SID History injection across forest boundary. Bidirectional trust where unidirectional was intended. External trust without quarantine.",
+    "vulnerable_config": "# Check SID filtering on forest trust:\nGet-ADTrust -Filter * | Select Name,TrustType,TrustDirection,SIDFilteringForestAware\n# SIDFilteringForestAware = False → SID filtering DISABLED → VULNERABLE\n\n# With SID filtering off, attacker can forge ticket with parent DA SID:\n# krbtgt hash + SID history injection = cross-forest DA",
     "secure_config": "# Enable SID filtering on forest trust:\nnetdom trust ChildDomain.corp.local /domain:corp.local /enablesidhistory:no /filtersids:yes\n\n# Verify:\n(Get-ADTrust -Filter {Target -eq 'ChildDomain.corp.local'}).SIDFilteringForestAware  # Should be True\n\n# Quarantine external trusts:\nnetdom trust ExternalDomain /domain:corp.local /quarantine:yes\n\n# Audit quarterly:\nGet-ADTrust -Filter * | Format-Table Name,TrustType,TrustDirection,SIDFilteringForestAware -AutoSize"
-  }
+  },
+  "variations": [
+    {
+      "label": "Forest object",
+      "command": "Get-Forest -Forest <forest>"
+    },
+    {
+      "label": "Forest global catalogs",
+      "command": "Get-ForestGlobalCatalog -Forest <forest>"
+    },
+    {
+      "label": "Forest trusts (external/forest)",
+      "command": "Get-ForestTrust -Forest <forest>"
+    }
+  ]
 }

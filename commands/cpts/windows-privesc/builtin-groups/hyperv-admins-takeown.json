@@ -85,6 +85,7 @@
       "HTB M26",
       "MITRE T1078.002",
       "MITRE T1611"
-    ]
+    ],
+    "evasion": "Use the symlink/takeown path once to grab the target file, then restore ownership/permissions."
   }
 }

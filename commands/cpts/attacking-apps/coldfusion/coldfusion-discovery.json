@@ -81,6 +81,7 @@
       "HTB M24",
       "MITRE T1595.002",
       "OWASP A05:2021"
-    ]
+    ],
+    "evasion": "Randomize the uploaded payload name and delete it after the shell connects; restrict activity to a single upload+trigger to limit web-log evidence."
   }
 }

@@ -80,5 +80,15 @@
   },
   "tools": [
     "dsquery"
+  ],
+  "variations": [
+    {
+      "label": "Kerberoastable (SPN set)",
+      "command": "dsquery * -filter \"(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*))\" -attr samAccountName"
+    },
+    {
+      "label": "AS-REP roastable (no preauth)",
+      "command": "dsquery * -filter \"(&(objectCategory=person)(userAccountControl:1.2.840.113556.1.4.803:=4194304))\" -attr samAccountName"
+    }
   ]
 }

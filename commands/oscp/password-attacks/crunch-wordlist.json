@@ -12,37 +12,37 @@
     {
       "command": "crunch 6 6 -t Lab%%% -o lab-wordlist.txt",
       "caption": "PEN-200 style: 'Lab' + 3 digits (Lab000-Lab999)",
-      "label": "TXT output"
+      "label": "Pattern: Lab%%%"
     },
     {
       "command": "crunch 8 8 0123456789 -o digits8.txt",
       "caption": "All 8-digit numeric passwords",
-      "label": "TXT output"
+      "label": "8-digit numeric"
     },
     {
       "command": "crunch 6 6 abcdefghijklmnopqrstuvwxyz0123456789 -o alphanum6.txt",
       "caption": "6-char alphanumeric (lowercase + digits)",
-      "label": "TXT output"
+      "label": "6-char alphanumeric"
     },
     {
       "command": "crunch 10 10 -t Company%%%^ -o company-pass.txt",
       "caption": "Pattern: 'Company' + 3 digits + 1 symbol",
-      "label": "TXT output"
+      "label": "Pattern: Company%%%^"
     },
     {
       "command": "crunch 4 8 -f /usr/share/crunch/charset.lst mixalpha-numeric -o mixed.txt",
       "caption": "Use built-in charset file for mixed alphanumeric 4-8 chars",
-      "label": "TXT output"
+      "label": "charset.lst (mixalpha-num)"
     },
     {
       "command": "crunch 6 6 -t Lab%%% | hashcat -m 0 <hash_file> --stdin",
       "caption": "Pipe directly to hashcat (no disk write)",
-      "label": "crunch 6 6 -t"
+      "label": "Pipe -> hashcat"
     },
     {
       "command": "crunch 6 6 -t Lab%%% | hydra -l admin -P - ssh://<target>",
       "caption": "Pipe directly to hydra for online brute-force",
-      "label": "crunch 6 6 -t"
+      "label": "Pipe -> hydra (SSH)"
     }
   ],
   "examples": [

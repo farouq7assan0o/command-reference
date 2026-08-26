@@ -43,10 +43,6 @@
   ],
   "variations": [
     {
-      "label": "Standard enum",
-      "command": "dnsrecon -d <domain> -t std"
-    },
-    {
       "label": "Subdomain brute force with wordlist",
       "command": "dnsrecon -d <domain> -D <wordlist> -t brt"
     },
@@ -120,6 +116,7 @@
     "prevention": "Restrict zone transfers (AXFR) to authorized secondary DNS servers only. Remove internal-only records from public-facing DNS. Enable DNS query logging and alert on AXFR attempts from unapproved sources.",
     "sources": [
       "MITRE T1590.002"
-    ]
+    ],
+    "evasion": "Use passive sources first (cert transparency, public records); rate-limit active zone-transfer/brute attempts; a single AXFR attempt is quiet, brute-forcing is not."
   }
 }

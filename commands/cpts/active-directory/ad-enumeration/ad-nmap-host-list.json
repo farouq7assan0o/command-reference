@@ -61,7 +61,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Nmap scans the AD subnet to identify hosts and services (DCs, SQL, web) for targeting.",
+    "why_it_works": "Hosts and services reveal themselves by responding to TCP/UDP probes; scanning the DC's AD ports (88/389/445/…) confirms roles and reachable services.",
     "prerequisites": "Network access to the internal subnet.",
     "impact": "A host/service map of the AD environment.",
     "detection": "[MITRE T1046] scan probes across hosts/ports in firewall/IDS logs; internal scanning pattern.",
@@ -78,5 +78,11 @@
   },
   "tools": [
     "nmap"
+  ],
+  "variations": [
+    {
+      "label": "DC-focused ports only",
+      "command": "nmap -p 53,88,135,139,389,445,464,636,3268,3269 -sV <dc_ip>"
+    }
   ]
 }

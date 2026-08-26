@@ -100,6 +100,13 @@
       "HTB M25",
       "MITRE T1610",
       "MITRE T1611"
-    ]
-  }
+    ],
+    "evasion": "Use a single container/mount escape that reads what you need and exits; remove images/containers you created (docker rmi / lxc delete); avoid leaving a privileged container running."
+  },
+  "variations": [
+    {
+      "label": "Import a prebuilt alpine image",
+      "command": "lxc image import alpine.tar.gz alpine.tar.gz.root --alias r00t"
+    }
+  ]
 }

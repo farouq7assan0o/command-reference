@@ -106,11 +106,6 @@
       "label": "apt-get"
     },
     {
-      "description": "Run GVM setup (downloads NVT feed — takes 15-30 min first time)",
-      "command": "sudo gvm-setup",
-      "label": "sudo gvm-setup"
-    },
-    {
       "description": "Start GVM services",
       "command": "sudo gvm-start",
       "label": "gvm-start"

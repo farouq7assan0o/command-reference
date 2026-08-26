@@ -84,5 +84,15 @@
   },
   "tools": [
     "evil-winrm"
+  ],
+  "variations": [
+    {
+      "label": "Pass-the-hash",
+      "command": "evil-winrm -i <target> -u <user> -H <nt_hash>"
+    },
+    {
+      "label": "With scripts/executables dir",
+      "command": "evil-winrm -i <target> -u <user> -p <password> -s /opt/scripts -e /opt/bins"
+    }
   ]
 }

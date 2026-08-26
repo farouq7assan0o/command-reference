@@ -83,7 +83,7 @@
       "rel": "next"
     }
   ],
-  "notes": "Any SPN value works \u2014 it just needs to exist to enable Kerberoasting. Always clean up to avoid detection.",
+  "notes": "Any SPN value works — it just needs to exist to enable Kerberoasting. Always clean up to avoid detection.",
   "references": [
     {
       "title": "CRTP - Targeted Kerberoasting",
@@ -91,18 +91,24 @@
     }
   ],
   "defense": {
-    "why_it_works": "If an attacker has GenericWrite or GenericAll over a user account, they can set an arbitrary SPN on that account (which doesn't already have one). This makes the account Kerberoastable \u2014 the attacker then requests a TGS for that SPN, gets the ticket encrypted with the account's NTLM hash, and cracks it offline. Useful for targeting high-privilege accounts with known weak passwords.",
+    "why_it_works": "If an attacker has GenericWrite or GenericAll over a user account, they can set an arbitrary SPN on that account (which doesn't already have one). This makes the account Kerberoastable — the attacker then requests a TGS for that SPN, gets the ticket encrypted with the account's NTLM hash, and cracks it offline. Useful for targeting high-privilege accounts with known weak passwords.",
     "prerequisites": "GenericWrite or GenericAll ACE over the target user account (identified via BloodHound/PowerView ACL enum). Rubeus or impacket-GetUserSPNs. Target account must not already have a SPN (or must not use AES-only encryption). PowerView to set the SPN.",
     "impact": "T1558.003 Kerberoasting. Converts a write ACE over a user into an offline hash crack opportunity. Particularly dangerous for accounts like help desk staff who have GenericWrite over admin accounts, or any account with a weak password and exploitable ACL path.",
-    "detection": "Event 4738 (user account changed) with SPN attribute modification \u2014 an SPN suddenly appearing on a user account that didn't have one is anomalous. Event 4769 for the newly added SPN shortly after Event 4738. MDI: SPN manipulation detection. SIEM correlation: 4738 SPN change + 4769 TGS for same account in short window.\nAnomalous Kerberos activity: forged or stolen tickets by correlating malformed fields in logon events, RC4-encrypted TGTs, or TGS requests without corresponding TGT requests; suspicious processes accessing LSASS memory for ticket extraction (DET0522/AN1443).\nSuspicious access to SSSD secrets database and Kerberos key material indicating ticket theft or replay; correlate anomalous file access with unusual Kerberos service ticket requests (AN1444).\nForging or replaying Kerberos tickets: monitor Unified Logs for anomalous kinit/klist activity and unusual authentication sequences (AN1445).",
-    "artifacts": "Event 4738: ServicePrincipalName added to user account | Event 4769: TGS request for newly added SPN | MDI: 'Suspicious SPN was added to an account' | SIEM: 4738\u21924769 correlation within seconds for same account",
+    "detection": "Event 4738 (user account changed) with SPN attribute modification — an SPN suddenly appearing on a user account that didn't have one is anomalous. Event 4769 for the newly added SPN shortly after Event 4738. MDI: SPN manipulation detection. SIEM correlation: 4738 SPN change + 4769 TGS for same account in short window.\nAnomalous Kerberos activity: forged or stolen tickets by correlating malformed fields in logon events, RC4-encrypted TGTs, or TGS requests without corresponding TGT requests; suspicious processes accessing LSASS memory for ticket extraction (DET0522/AN1443).\nSuspicious access to SSSD secrets database and Kerberos key material indicating ticket theft or replay; correlate anomalous file access with unusual Kerberos service ticket requests (AN1444).\nForging or replaying Kerberos tickets: monitor Unified Logs for anomalous kinit/klist activity and unusual authentication sequences (AN1445).",
+    "artifacts": "Event 4738: ServicePrincipalName added to user account | Event 4769: TGS request for newly added SPN | MDI: 'Suspicious SPN was added to an account' | SIEM: 4738→4769 correlation within seconds for same account",
     "prevention": "Regular ACL audits to remove GenericWrite/GenericAll from non-admins over user objects. Monitor Event 4738 for unexpected SPN additions. Use long random passwords on all user accounts that could be targeted (especially DA-path accounts). Enable AES-only Kerberos on sensitive accounts.\nActive Directory Configuration: Reset KRBTGT account password twice (invalidates all golden tickets); rotate every 180 days.\nAudit: Scan for insecure Kerberos configurations.\nCredential Access Protection: On Linux, use SELinux to protect Kerberos key material.\nEncrypt Sensitive Information: Enable AES Kerberos encryption instead of RC4.\nPassword Policies: Service accounts should have 25+ character passwords; use Group Managed Service Accounts (gMSA).\nPrivileged Account Management: Limit domain admin to DCs only; restrict service account privileges.",
     "evasion": "Remove the SPN after cracking the ticket (Event 4738 shows removal but attribution is harder). Use /rc4opsec flag for the TGS request. Target accounts during low-monitoring hours.",
     "sources": [
       "https://attack.mitre.org/techniques/T1558/003/"
     ],
     "misconfiguration": "Non-admin groups have GenericWrite ACEs on user objects (from legacy delegation, help desk roles). No monitoring of SPN changes on user accounts. Sensitive accounts have weak passwords.",
-    "vulnerable_config": "# GenericWrite on DA account by HelpDesk:\nGet-ObjectAcl 'DAUser1' -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite' -and $_.IdentityReference -match 'HelpDesk'}\n# HelpDesk has GenericWrite \u2192 can set SPN \u2192 targeted Kerberoast\n\n# Set fake SPN on target (requires GenericWrite):\nSet-DomainObject -Identity DAUser1 -Set @{serviceprincipalname='fake/dc01'}\n# Then: Rubeus.exe kerberoast /user:DAUser1 /outfile:hash.txt",
-    "secure_config": "# Remove GenericWrite ACEs via AD ACL cleanup:\nRemove-ADPermission -Identity 'DAUser1' -User 'HelpDesk' -AccessRights WriteProperty -Properties 'servicePrincipalName'\n\n# Monitor SPN changes via Event 4738:\n# SIEM: EventID=4738 AND ChangedAttributes contains 'ServicePrincipalName' AND\n# TargetUserName NOT IN (known service accounts) \u2192 ALERT: possible targeted Kerberoasting\n\n# Force AES-only on sensitive accounts:\nSet-ADUser DAUser1 -KerberosEncryptionType AES256\n# msDS-SupportedEncryptionTypes = 16 (AES256 only) \u2192 RC4 TGS not issuable"
-  }
+    "vulnerable_config": "# GenericWrite on DA account by HelpDesk:\nGet-ObjectAcl 'DAUser1' -ResolveGUIDs | Where-Object {$_.ActiveDirectoryRights -match 'GenericWrite' -and $_.IdentityReference -match 'HelpDesk'}\n# HelpDesk has GenericWrite → can set SPN → targeted Kerberoast\n\n# Set fake SPN on target (requires GenericWrite):\nSet-DomainObject -Identity DAUser1 -Set @{serviceprincipalname='fake/dc01'}\n# Then: Rubeus.exe kerberoast /user:DAUser1 /outfile:hash.txt",
+    "secure_config": "# Remove GenericWrite ACEs via AD ACL cleanup:\nRemove-ADPermission -Identity 'DAUser1' -User 'HelpDesk' -AccessRights WriteProperty -Properties 'servicePrincipalName'\n\n# Monitor SPN changes via Event 4738:\n# SIEM: EventID=4738 AND ChangedAttributes contains 'ServicePrincipalName' AND\n# TargetUserName NOT IN (known service accounts) → ALERT: possible targeted Kerberoasting\n\n# Force AES-only on sensitive accounts:\nSet-ADUser DAUser1 -KerberosEncryptionType AES256\n# msDS-SupportedEncryptionTypes = 16 (AES256 only) → RC4 TGS not issuable"
+  },
+  "variations": [
+    {
+      "label": "Crack the targeted hash (John)",
+      "command": "john.exe --wordlist=<wordlist> <hashfile>"
+    }
+  ]
 }

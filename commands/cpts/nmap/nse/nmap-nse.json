@@ -29,7 +29,7 @@
       "command": "sudo nmap 10.129.2.28 -p 25 --script banner,smtp-commands"
     }
   ],
-  "notes": "NSE scripts live in /usr/share/nmap/scripts/. Categories: auth, broadcast, brute, default, discovery, dos, exploit, external, fuzzer, intrusive, malware, safe, version, vuln. --script=vuln runs all vuln-category scripts \u2014 noisy but thorough. Use --script-args to pass credentials: --script-args='user=admin,pass=password'. Also covered in: OSCP PEN-200 Chapter 12 (Locating Public Exploits) \u2014 grep /usr/share/nmap/scripts/*.nse for 'Exploits' to identify exploit-category scripts; use --script-help=<script.nse> to read a script's purpose before running it.",
+  "notes": "NSE scripts live in /usr/share/nmap/scripts/. Categories: auth, broadcast, brute, default, discovery, dos, exploit, external, fuzzer, intrusive, malware, safe, version, vuln. --script=vuln runs all vuln-category scripts — noisy but thorough. Use --script-args to pass credentials: --script-args='user=admin,pass=password'. Also covered in: OSCP PEN-200 Chapter 12 (Locating Public Exploits) — grep /usr/share/nmap/scripts/*.nse for 'Exploits' to identify exploit-category scripts; use --script-help=<script.nse> to read a script's purpose before running it.",
   "references": [
     {
       "title": "Nmap NSE Documentation",
@@ -62,10 +62,6 @@
   "description": "NSE runs Lua scripts for deeper enumeration and vuln checks. -sC runs the default set; choose categories or named scripts for targeted checks; -A bundles -sC -sV -O --traceroute.",
   "variations": [
     {
-      "label": "Default scripts (-sC)",
-      "command": "sudo nmap <target> -sC"
-    },
-    {
       "label": "A whole category",
       "command": "sudo nmap <target> --script <category>"
     },
@@ -91,8 +87,8 @@
     "why_it_works": "[MITRE T1595.002] Vulnerability scans check if the configuration of a target host/application (software and version) aligns with a specific exploit. They harvest running software and version numbers via server banners, listening ports, and other network artifacts.",
     "prerequisites": "Network access to the target and the relevant NSE scripts (default set or category).",
     "impact": "Automated vulnerability/enumeration checks and their structured results (versions, misconfigs, known CVEs).",
-    "detection": "IDS and IPS analyze network traffic using pattern matching and signatures. Service detection scans and NSE scripts generate distinctive traffic patterns (specific probes, payloads, and sequences). If these patterns match IDS/IPS signatures, the IPS can automatically prevent the pending connection attempts.\n\n[MITRE T1595.002] Monitor and analyze traffic patterns for protocol anomalies that do not follow expected standards (extraneous packets, anomalous syntax). Monitor network data for uncommon data flows \u2014 processes utilizing the network that do not normally have network communication or have never been seen before are suspicious.",
-    "artifacts": "Script-specific probes \u2014 often many requests per host \u2014 and IDS signatures that recognise well-known NSE scripts.",
+    "detection": "IDS and IPS analyze network traffic using pattern matching and signatures. Service detection scans and NSE scripts generate distinctive traffic patterns (specific probes, payloads, and sequences). If these patterns match IDS/IPS signatures, the IPS can automatically prevent the pending connection attempts.\n\n[MITRE T1595.002] Monitor and analyze traffic patterns for protocol anomalies that do not follow expected standards (extraneous packets, anomalous syntax). Monitor network data for uncommon data flows — processes utilizing the network that do not normally have network communication or have never been seen before are suspicious.",
+    "artifacts": "Script-specific probes — often many requests per host — and IDS signatures that recognise well-known NSE scripts.",
     "prevention": "[MITRE T1595.002 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviors performed outside of enterprise defenses. Efforts should focus on minimizing the amount and sensitivity of data available to external parties.",
     "evasion": "Prefer the 'safe' or 'default' script categories over intrusive/vuln/brute scripts to avoid disruptive, easily-signatured probes; slow the timing and target specific scripts rather than broad categories.",
     "sources": [
@@ -101,6 +97,6 @@
     ],
     "misconfiguration": "Network perimeters that do not filter ICMP, do not use egress filtering, or expose unnecessary services (all ports open) allow comprehensive port scanning. Systems without host-based firewalls or IDS/IPS allow scan traffic to enumerate every open service, revealing attack surface. No rate-limiting on inbound probes means stealth scans complete quickly.",
     "vulnerable_config": "# No firewall between attacker and target (or overly permissive rules):\n# iptables -L  ->  Chain INPUT (policy ACCEPT)  [no rules]\n# Or: Windows Firewall disabled\n# Every service's port is reachable from any source\n\n# No IDS/IPS:\n# Snort/Suricata not deployed; no AWS GuardDuty / Azure Defender\n# Nmap SYN scan completes in seconds with no alert generated",
-    "secure_config": "# Linux host-based firewall \u2014 default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
+    "secure_config": "# Linux host-based firewall — default-deny inbound:\niptables -P INPUT DROP\niptables -P FORWARD DROP\niptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A INPUT -i lo -j ACCEPT\n# Only open required services:\niptables -A INPUT -p tcp --dport 443 -j ACCEPT  # HTTPS only\niptables -A INPUT -p tcp --dport 22 -s 10.10.1.0/24 -j ACCEPT  # SSH from mgmt network\n\n# Rate-limit scan detection (drops SYN floods):\niptables -A INPUT -p tcp --syn -m limit --limit 1/s --limit-burst 3 -j ACCEPT\niptables -A INPUT -p tcp --syn -j DROP\n\n# Deploy IDS/IPS:\n# Snort/Suricata rules detect nmap OS detection probes\n# AWS: GuardDuty (detects port scans from EC2)\n# Cloud: Security Groups default-deny with explicit allow rules"
   }
 }

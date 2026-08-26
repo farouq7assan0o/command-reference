@@ -58,7 +58,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "fping sweeps the internal subnet for live hosts to map the AD environment's machines.",
+    "why_it_works": "Live hosts answer ICMP/ARP; fping sends probes across a CIDR in parallel and reports responders, mapping the reachable attack surface fast.",
     "prerequisites": "Network access to the internal subnet.",
     "impact": "A live-host list for further enumeration and targeting.",
     "detection": "[MITRE T1018] a burst of ICMP across the subnet from one source; internal host-discovery pattern.",
@@ -75,5 +75,21 @@
   },
   "tools": [
     "fping"
+  ],
+  "variations": [
+    {
+      "label": "Just alive hosts",
+      "command": "fping -asgq <cidr> 2>/dev/null"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Sweep the subnet for live hosts",
+      "command": "fping -asgq <cidr>"
+    },
+    {
+      "label": "Feed live IPs into nmap",
+      "command": "nmap -sV -iL live.txt -oA services"
+    }
   ]
 }

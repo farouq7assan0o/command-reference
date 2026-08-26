@@ -51,14 +51,10 @@
     }
   ],
   "id": "gs-smb-enum",
-  "name": "SMB - Share Enumeration",
+  "name": "SMB - Share Enumeration (Getting Started)",
   "command": "smbclient -N -L \\\\\\\\<ip>",
   "description": "List SMB shares (-N null session, -L list) then connect to interesting ones as guest or with credentials to pull files.",
   "variations": [
-    {
-      "label": "List shares (null session)",
-      "command": "smbclient -N -L \\\\\\\\<ip>"
-    },
     {
       "label": "Connect as guest",
       "command": "smbclient \\\\\\\\<ip>\\\\users"

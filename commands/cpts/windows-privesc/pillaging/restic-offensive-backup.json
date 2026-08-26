@@ -85,6 +85,7 @@
       "HTB M26",
       "MITRE T1003.003",
       "MITRE T1048"
-    ]
+    ],
+    "evasion": "Collect only the files you need and pull them over an existing channel; avoid staging large toolsets on the host; delete anything you drop."
   }
 }

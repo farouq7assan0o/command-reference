@@ -30,14 +30,9 @@
   "command": "onesixtyone -c <community_wordlist> <ip>",
   "variations": [
     {
-      "description": "Brute community strings against single host",
-      "command": "onesixtyone -c <community_wordlist> <ip>",
-      "label": "onesixtyone (brute)"
-    },
-    {
       "description": "Sweep entire subnet with community wordlist",
       "command": "onesixtyone -c <community_wordlist> <cidr>",
-      "label": "onesixtyone (brute)"
+      "label": "Brute a CIDR range"
     },
     {
       "description": "Build minimal community list from defaults then sweep",
@@ -47,12 +42,12 @@
     {
       "description": "Use SecLists SNMP community string wordlist",
       "command": "onesixtyone -c /opt/useful/seclists/Discovery/SNMP/snmp.txt <ip>",
-      "label": "onesixtyone (brute)"
+      "label": "Brute one host (seclists)"
     },
     {
       "description": "Feed targets from file (hosts with UDP 161 open)",
       "command": "onesixtyone -c <community_wordlist> -i <targets_file>",
-      "label": "onesixtyone (brute)"
+      "label": "Brute a targets file"
     }
   ],
   "examples": [

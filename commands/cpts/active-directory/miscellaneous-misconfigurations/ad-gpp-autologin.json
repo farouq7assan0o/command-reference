@@ -75,5 +75,15 @@
   },
   "tools": [
     "crackmapexec"
+  ],
+  "variations": [
+    {
+      "label": "Search SYSVOL for cpassword",
+      "command": "crackmapexec smb <dc_ip> -u <user> -p <password> -M gpp_password"
+    },
+    {
+      "label": "PowerView Get-GPPAutologon",
+      "command": "Get-GPPAutologon"
+    }
   ]
 }

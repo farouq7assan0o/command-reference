@@ -94,6 +94,7 @@
       "HTB M26",
       "MITRE T1543.003",
       "MITRE T1078.002"
-    ]
+    ],
+    "evasion": "Modify the service binPath, trigger once, then restore the original service configuration."
   }
 }

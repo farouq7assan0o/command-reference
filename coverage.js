@@ -51,9 +51,17 @@ if (!cmdFile && !notesFile) {
 function extractCmds(srcText, allowFallback) {
     const out = [];
     const KNOWN = new Set(['sh', 'bash', 'shell', 'console', 'powershell', 'ps', 'ps1', 'pwsh',
-        'cmd', 'bat', 'batch', 'python', 'python3', 'py', 'ruby', 'perl', 'php', 'sql', 'text',
-        'txt', 'json', 'xml', 'yaml', 'yml', 'http', 'ini', 'diff', 'go', 'c', 'javascript', 'js']);
-    const SKIP = new Set(['text', 'txt', 'json', 'xml', 'yaml', 'yml', 'http', 'ini', 'diff']);
+        'cmd', 'bat', 'batch', 'python', 'python3', 'py', 'ruby', 'rb', 'perl', 'php', 'sql', 'text',
+        'txt', 'json', 'xml', 'yaml', 'yml', 'http', 'https', 'ini', 'diff', 'go', 'c', 'cs', 'javascript',
+        'js', 'java', 'jsp', 'asp', 'html', 'css', 'groovy', 'rust', 'req', 'apacheconf', 'conf', 'config',
+        'nginx', 'apache', 'properties', 'toml', 'dockerfile', 'csv', 'log', 'yara', 'kql', 'spl',
+        'shell-session', 'powershell-session', 'cmd-session', 'console-session']);
+    // languages whose fenced CONTENT is not a shell/capability command to card - markup, source
+    // code, config files, structured output. Shell/PS/SQL/PHP/Python stay mined. The *-session
+    // labels are prompt-transcript fences whose label itself was being mined as a bogus tool.
+    const SKIP = new Set(['text', 'txt', 'json', 'xml', 'yaml', 'yml', 'http', 'https', 'ini', 'diff',
+        'html', 'css', 'javascript', 'js', 'java', 'jsp', 'asp', 'c', 'cs', 'groovy', 'rust', 'req',
+        'apacheconf', 'conf', 'config', 'nginx', 'apache', 'properties', 'toml', 'dockerfile', 'csv', 'log']);
     const lines = srcText.split(/\r?\n/);
     let inFence = false, lang = '';
     for (const ln of lines) {
@@ -118,10 +126,12 @@ function sig(cmd) { return { tool: toolOf(cmd), flags: flagsOf(cmd) }; }
 
 // ---- load carded commands for this module ----
 require('vm').runInThisContext(fs.readFileSync(path.join(__dirname, 'js', 'commands.js'), 'utf8') + ';globalThis.__D=COMMAND_DATA;');
+// Match against EVERY card in the library, not just this module's cards: a technique carded in
+// another module (or _shared) still means "it's in the library," which is what completeness asks.
+const MODULE_ONLY = process.argv.includes('--module-only');
 const cardStrs = [];
 for (const c of globalThis.__D.commands) {
-    const m = String(c.source || '').match(/Module\s+(\d+)/);
-    if (!m || m[1].padStart(2, '0') !== MOD) continue;
+    if (MODULE_ONLY) { const m = String(c.source || '').match(/Module\s+(\d+)/); if (!m || m[1].padStart(2, '0') !== MOD) continue; }
     cardStrs.push(c.command);
     (c.variations || []).forEach(v => cardStrs.push(v.command));
     (c.steps || []).forEach(v => cardStrs.push(v.command));
@@ -157,11 +167,37 @@ const isSetup = c => {
     return false;
 };
 
-const missing = [], matched = [], setup = [];
+// NON-COMMAND noise: fenced blocks contain lots of lines that are not runnable capability
+// commands - variable assignments, bare IPs/hosts/paths/URLs, page-source HTML, robots.txt and
+// config directives, tool help dumps, editor steps, line-numbered blocks, and interactive-console
+// sub-verbs (metasploit show/set/...). Counting these as "uncovered" wildly inflated the gap
+// (e.g. module 24 reported 350, ~95% of which were /etc/hosts vhost lines and WordPress HTML).
+// Bucketing them separately makes "unmatched" reflect REAL missing techniques.
+function isNoise(raw) {
+    const t = String(raw).trim();
+    if (!t) return true;
+    if (/^[A-Za-z_]\w*=\S*$/.test(t) || /^[A-Za-z_]\w*=(["']).*\1$/.test(t)) return true;   // VAR=val
+    if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(t)) return true;                                // bare IP[:port]
+    if (/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/.test(t)) return true;                           // bare host/domain/file.ext
+    if (/^\/[\w./@-]+$/.test(t) || /^[A-Za-z]:\\[\w\\.@ -]+$/.test(t)) return true;           // bare filesystem path
+    if (/^<[!/a-zA-Z]/.test(t)) return true;                                                  // HTML / XML markup line
+    if (/^https?:\/\/\S+$/.test(t)) return true;                                              // bare URL
+    if (/^(User-agent|Disallow|Allow|Sitemap|Host|Crawl-delay)\s*:/i.test(t)) return true;   // robots.txt
+    if (/^\S+\s+(-h|--help|-\?)\s*$/.test(t)) return true;                                    // help dump
+    if (/^\d+\s/.test(t) && !/^\d+\.\d/.test(t)) return true;                                 // line-numbered block
+    if (/^[|>]/.test(t)) return true;                                                         // md table / quote
+    if (/^(nano|vim|vi|gedit|notepad|code)\s/.test(t)) return true;                           // editor "open file" step
+    if (/^(show|set|setg|unset|back|sessions|jobs|getuid|getsystem|hashdump|migrate|info|banner|exit|quit)\b/i.test(t)) return true; // msf/interactive console verbs
+    if (/^[A-Z]{2,}$/.test(t)) return true;                                                   // ALL-CAPS output label (RUST, HTTP...)
+    return false;
+}
+
+const missing = [], matched = [], setup = [], noise = [];
 const seen = new Set();
 for (const e of srcEntries) {
     const key = e.cmd.replace(/\s+/g, ' ');
     if (seen.has(key)) continue; seen.add(key);   // first occurrence wins (Commands before Notes)
+    if (isNoise(e.cmd)) { noise.push(e); continue; }
     if (isSetup(e.cmd)) { setup.push(e); continue; }
     (covered(sig(e.cmd)) ? matched : missing).push(e);
 }
@@ -172,7 +208,7 @@ const scanned = srcFiles.map(s => s.label).join(' + ') || '(none)';
 const missNotes = missing.filter(m => m.from === 'Notes').length;
 console.log(`\n  Coverage - Module ${MOD}  (${srcFolder})`);
 console.log(`  scanned: ${scanned}`);
-console.log(`  source commands: ${seen.size}   matched: ${matched.length}   unmatched: ${missing.length}   setup/nav skipped: ${setup.length}\n`);
+console.log(`  source lines: ${seen.size}   matched: ${matched.length}   unmatched: ${missing.length}   setup/nav: ${setup.length}   non-command noise: ${noise.length}\n`);
 if (missing.length === 0) console.log(c(32, '  ✓ every source command maps to a card.\n'));
 else {
     console.log(c(33, `  ⚠ ${missing.length} source command(s) with no matching card` +
@@ -184,4 +220,26 @@ else {
     console.log('');
 }
 if (SHOW_ALL) { console.log(c(2, '  matched:')); matched.forEach(m => console.log(c(2, '    · [' + m.from + '] ' + m.cmd.slice(0, 90)))); }
-console.log(c(2, '  Note: fuzzy match; treat as a review list, not proof. Intentional skips are fine - just conscious.\n'));
+
+// ---- tool-level coverage (--tools): the trustworthy completeness metric ----
+// Line-matching over-reports (config blocks, wordlists, hashes, lab literals, fuzzy misses), so the
+// honest question is "does every distinct TOOL the module uses appear in at least one card?" - matched
+// as a substring of the whole card corpus, so a tool used inside a pipeline (e.g. Get-ADUser | ...) counts.
+if (process.argv.includes('--tools')) {
+    const corpus = cardStrs.join('\n').toLowerCase();
+    const cardToolSet = new Set();
+    globalThis.__D.commands.forEach(cc => (cc.tools || []).forEach(t => cardToolSet.add(String(t).toLowerCase())));
+    const srcTools = new Set();
+    for (const e of matched.concat(missing)) {
+        const t = toolOf(e.cmd);
+        if (t && t.length >= 3 && /^[a-z][a-z0-9][a-z0-9._-]*$/.test(t) && !SETUP_TOOLS.has(t)) srcTools.add(t);
+    }
+    const uncarded = [...srcTools].filter(t => !corpus.includes(t) && !cardToolSet.has(t)).sort();
+    const covd = srcTools.size - uncarded.length;
+    const pct = srcTools.size ? Math.round(covd / srcTools.size * 100) : 100;
+    console.log(c(1, `  Tool coverage: ${covd}/${srcTools.size} distinct source tools carded = ${pct}%`));
+    if (uncarded.length) { console.log(c(33, '  tools in source with NO card (review - may be a real gap or a noise token):')); uncarded.forEach(t => console.log('    • ' + t)); }
+    else console.log(c(32, '  ✓ every tool the module uses appears in at least one card.'));
+    console.log('');
+}
+console.log(c(2, '  Note: line-match is fuzzy and over-reports (config/wordlists/output/lab-literals); use --tools for the honest completeness signal. Intentional skips are fine - just conscious.\n'));

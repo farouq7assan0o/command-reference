@@ -74,5 +74,11 @@
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "Try blank password on those accounts",
+      "command": "crackmapexec smb <dc_ip> -u <user> -p ''"
+    }
   ]
 }

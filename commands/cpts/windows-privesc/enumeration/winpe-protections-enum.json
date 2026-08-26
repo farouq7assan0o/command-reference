@@ -80,6 +80,7 @@
       "HTB M26",
       "MITRE T1518.001",
       "MITRE T1083"
-    ]
+    ],
+    "evasion": "Run one consolidated enumeration pass (winPEAS/Seatbelt) in-memory and save output off-host rather than repeated noisy queries."
   }
 }

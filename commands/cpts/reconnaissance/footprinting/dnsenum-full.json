@@ -28,22 +28,17 @@
   "id": "dnsenum-full",
   "name": "DNSenum - Full DNS Enumeration",
   "description": "Automated DNS enumeration: NS/MX/SOA discovery, AXFR zone-transfer attempts against all nameservers, and subdomain brute force — all in a single command.",
-  "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o <output.xml> -f <wordlist> <domain>",
+  "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o <outfile> -f <wordlist> <domain>",
   "variations": [
-    {
-      "description": "Full enumeration with subdomain brute force via specific DNS server",
-      "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -o <output.xml> -f <wordlist> <domain>",
-      "label": "XML output"
-    },
     {
       "description": "Quick enumeration with no brute force (NS/MX/AXFR only)",
       "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 <domain>",
-      "label": "dnsenum --dnsserver --enum -p"
+      "label": "dnsenum - full enum"
     },
     {
       "description": "Use SecLists subdomains wordlist for brute force",
       "command": "dnsenum --dnsserver <nameserver> --enum -p 0 -s 0 -f /opt/useful/seclists/Discovery/DNS/subdomains-top1million-110000.txt <domain>",
-      "label": "dnsenum --dnsserver --enum -p"
+      "label": "dnsenum - with subdomain wordlist"
     },
     {
       "description": "Save results to XML for review",

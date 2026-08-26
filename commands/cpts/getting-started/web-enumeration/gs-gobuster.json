@@ -66,10 +66,6 @@
   "description": "Brute-force web content paths and DNS subdomains from a wordlist - the standard way to find hidden directories and virtual hosts.",
   "variations": [
     {
-      "label": "Directory brute force",
-      "command": "gobuster dir -u http://<ip>/ -w /usr/share/seclists/Discovery/Web-Content/common.txt"
-    },
-    {
       "label": "DNS subdomain brute force",
       "command": "gobuster dns -d <domain>.com -w /usr/share/SecLists/Discovery/DNS/namelist.txt"
     }
@@ -82,7 +78,7 @@
   "defense": {
     "why_it_works": "Adversaries use tools like GoBuster, DirBuster, and Dirb with wordlists to iteratively probe web infrastructure for hidden directories, old vulnerable pages, and administrative portals. Because the probing uses standard HTTP requests, it can blend with legitimate web traffic. Custom wordlists built from organization-specific terms increase effectiveness.",
     "prerequisites": "A reachable target web server (or DNS resolver) and a wordlist.",
-    "impact": "Discovery of hidden directories, files, admin portals, or subdomains not linked publicly \u2014 fresh attack surface.",
+    "impact": "Discovery of hidden directories, files, admin portals, or subdomains not linked publicly — fresh attack surface.",
     "detection": "Monitor for suspicious network traffic indicative of scanning: large quantities of 404 responses originating from a single source in a short time window, or sequential probing of directory paths. Web application firewalls can be configured to detect and rate-limit this pattern.",
     "artifacts": "A high volume of sequential HTTP 404s (or DNS queries) from one source in access logs; a non-browser user-agent; WAF/bot-detection alerts.",
     "prevention": "Remove or disable access to systems, resources, and infrastructure not explicitly required to be externally available. Minimize the amount and sensitivity of data and paths exposed to external parties. Ensure old and unused web paths are removed rather than just unlinked.",
@@ -91,7 +87,7 @@
       "MITRE T1595.003"
     ],
     "misconfiguration": "Common introductory misconfigurations: services running as root/SYSTEM unnecessarily, default credentials unchanged, unnecessary services listening on all interfaces, lack of firewall rules exposing services externally, no monitoring or alerting on authentication failures.",
-    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces \u2014 should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
+    "vulnerable_config": "# Service listening on all interfaces with default creds (common in labs/staging):\nss -tlnp | grep LISTEN\n# 0.0.0.0:21  (FTP on all interfaces)\n# 0.0.0.0:3306 (MySQL on all interfaces — should be 127.0.0.1 only)\n# 0.0.0.0:8080 (Tomcat with manager app accessible)\n\n# Running services as root:\nps aux | grep -E '(mysql|apache|nginx|ftp)'\n# root  1234  /usr/sbin/mysqld  <-- should run as 'mysql' user",
     "secure_config": "# Bind services to localhost or specific IPs (not 0.0.0.0):\n# MySQL: my.cnf -> bind-address = 127.0.0.1\n# Apache: Listen 127.0.0.1:80 (if behind a proxy)\n\n# Run services as dedicated low-priv users:\n# systemd unit: User=mysql Group=mysql\n\n# Host-based firewall (ufw):\nufw default deny incoming\nufw allow from 10.10.1.0/24 to any port 22  # SSH from mgmt only\nufw allow 443  # HTTPS\nufw enable\n\n# Change all default credentials immediately after installation\n# Enable fail2ban for SSH and web services"
   }
 }

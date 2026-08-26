@@ -71,6 +71,11 @@
       "id": "wp-theme-webshell",
       "note": "Manual equivalent via the theme editor.",
       "rel": "alternative"
+    },
+    {
+      "id": "gs-privesc-enum",
+      "rel": "next",
+      "note": "Foothold on the Linux web host — start privesc enumeration"
     }
   ],
   "id": "wp-admin-shell-msf",
@@ -98,6 +103,8 @@
       "MITRE T1190",
       "MITRE T1505.003",
       "OWASP A04:2021"
-    ]
+    ],
+    "code_review": "RED FLAGS (source): file saved using client-supplied name/extension; MIME trusted from the request.\n  move_uploaded_file(..., $_FILES['f']['name'])  |  extension blacklist  |  type check on $_FILES['f']['type'] (client-controlled)\nGREP:  grep -rniE \"move_uploaded_file|\\$_FILES|multer|formidable|MultipartFile|SaveAs\\(\" .\nSAFE:  extension ALLOWLIST + magic-byte MIME (finfo/mime_content_type), server-generated random filename, store outside webroot in a no-execute dir.",
+    "evasion": "Rename/obfuscate the theme/plugin webshell and remove it after; use built-in editors over uploads where possible; pace brute-force via xmlrpc to avoid lockouts/alerts."
   }
 }

@@ -58,7 +58,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "ldapsearch reads the domain password policy (lockout threshold, min length) to tune spraying safely.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. The password-policy attributes on the domain object are readable, so a plain LDAP bind retrieves lockout/length before you spray.",
     "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
     "impact": "Lockout/complexity settings that make spraying safe.",
     "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -75,5 +75,11 @@
   },
   "tools": [
     "ldapsearch"
+  ],
+  "variations": [
+    {
+      "label": "Just the lockout/length fields",
+      "command": "ldapsearch -h <dc_ip> -x -b \"<base_dn>\" -s sub \"*\" | grep -iE 'minPwdLength|lockoutThreshold|maxPwdAge'"
+    }
   ]
 }

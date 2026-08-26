@@ -2,7 +2,7 @@
   "id": "ad-powerview-groupmember",
   "name": "PowerView - Get-DomainGroupMember (Group Membership)",
   "command": "Get-DomainGroupMember -Identity \"<group>\" -Recurse",
-  "description": "Enumerates all members of a given AD group, with -Recurse to expand nested group membership. Critical for understanding who actually has privileges in an environment \u2014 group membership is often nested 3+ levels deep and the real privileged accounts won't be obvious without recursion.",
+  "description": "Enumerates all members of a given AD group, with -Recurse to expand nested group membership. Critical for understanding who actually has privileges in an environment — group membership is often nested 3+ levels deep and the real privileged accounts won't be obvious without recursion.",
   "platform": "windows",
   "type": "command",
   "opsec": "silent",
@@ -25,7 +25,7 @@
     "T1069.002"
   ],
   "exam": "exam-ok",
-  "notes": "=== HIGH-VALUE GROUPS TO ENUMERATE ===\nAlways enumerate these groups in every engagement:\n  Domain Admins              \u2192 most obvious DA path\n  Enterprise Admins          \u2192 forest-wide admin (even higher than DA)\n  Schema Admins              \u2192 can modify AD schema (dangerous)\n  Administrators             \u2192 local admin on all DCs\n  Account Operators          \u2192 can add users to groups (except protected groups)\n  Backup Operators           \u2192 can log on to DCs, read all files via SeBackup\n  Print Operators            \u2192 can load drivers as kernel-level code (privesc)\n  DnsAdmins                  \u2192 can load arbitrary DLL as SYSTEM via DNS service\n  Group Policy Creator Owners \u2192 can create/edit GPOs\n  Remote Management Users    \u2192 WinRM access (lateral movement)\n  Protected Users            \u2192 these accounts can't be Kerberoasted or PTH'd\n\n=== WHY RECURSION MATTERS ===\nEnterprises nest groups for delegation. 'HelpDesk' \u2192 'IT Admins' \u2192 'Domain Admins'\nWithout -Recurse:\n  Get-DomainGroupMember 'Domain Admins' \u2192 shows HelpDesk group (not individual users)\nWith -Recurse:\n  Shows every actual user account that ultimately has DA access through any path\n\n=== IDENTIFY DA-ADJACENT GROUPS ===\nGet-DomainGroup | Where-Object {$_.admincount -eq 1}\n  admincount=1 means the group was historically protected by SDProp\n  These are the privileged groups. Enumerate their members.\n\n=== CHECK NESTED MEMBERSHIP FOR A USER ===\n  Get-DomainGroupMember -Identity 'Domain Admins' -Recurse |\n    Where-Object {$_.MemberName -eq 'targetuser'} Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
+  "notes": "=== HIGH-VALUE GROUPS TO ENUMERATE ===\nAlways enumerate these groups in every engagement:\n  Domain Admins              → most obvious DA path\n  Enterprise Admins          → forest-wide admin (even higher than DA)\n  Schema Admins              → can modify AD schema (dangerous)\n  Administrators             → local admin on all DCs\n  Account Operators          → can add users to groups (except protected groups)\n  Backup Operators           → can log on to DCs, read all files via SeBackup\n  Print Operators            → can load drivers as kernel-level code (privesc)\n  DnsAdmins                  → can load arbitrary DLL as SYSTEM via DNS service\n  Group Policy Creator Owners → can create/edit GPOs\n  Remote Management Users    → WinRM access (lateral movement)\n  Protected Users            → these accounts can't be Kerberoasted or PTH'd\n\n=== WHY RECURSION MATTERS ===\nEnterprises nest groups for delegation. 'HelpDesk' → 'IT Admins' → 'Domain Admins'\nWithout -Recurse:\n  Get-DomainGroupMember 'Domain Admins' → shows HelpDesk group (not individual users)\nWith -Recurse:\n  Shows every actual user account that ultimately has DA access through any path\n\n=== IDENTIFY DA-ADJACENT GROUPS ===\nGet-DomainGroup | Where-Object {$_.admincount -eq 1}\n  admincount=1 means the group was historically protected by SDProp\n  These are the privileged groups. Enumerate their members.\n\n=== CHECK NESTED MEMBERSHIP FOR A USER ===\n  Get-DomainGroupMember -Identity 'Domain Admins' -Recurse |\n    Where-Object {$_.MemberName -eq 'targetuser'} Also covered in: OSCP PEN-200 Chapter 21 (Active Directory Introduction and Enumeration).",
   "examples": [
     {
       "label": "Get Domain Admins (recursive)",
@@ -44,7 +44,7 @@
       "command": "Get-ADGroupMember -Identity 'Domain Admins' -Recursive | Select SamAccountName"
     },
     {
-      "label": "Ch21 \u2014 list members of a specific group",
+      "label": "Ch21 — list members of a specific group",
       "command": "Get-NetGroup \"Sales Department\" | select member"
     }
   ],
@@ -70,7 +70,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Get-DomainGroupMember enumerates group membership (e.g. Domain Admins) to find privileged accounts.",
+    "why_it_works": "In Active Directory the default security descriptor grants the built-in 'Authenticated Users' group read access to nearly every directory object (users, groups, computers, GPOs, trusts) and their attributes. So any valid domain account — however low-privileged — can enumerate the whole directory over LDAP/SAMR without hitting access-denied, which is why this returns data without needing admin. Group membership is readable, and -Recurse resolves nested groups to find the true effective members of privileged groups.",
     "prerequisites": "Valid domain credentials (any authenticated user) and network access to a DC (LDAP 389/636).",
     "impact": "The membership of privileged groups - the high-value targets.",
     "detection": "[MITRE T1087.002] Broad/bulk LDAP queries to the DC (Event 4662 directory-service access; Microsoft Defender for Identity reconnaissance alerts); one host reading large swaths of the directory in a short window.",
@@ -82,10 +82,16 @@
       "MITRE T1069.002"
     ],
     "misconfiguration": "Active Directory's default read ACL allows any authenticated domain user to enumerate nearly the entire directory: all user accounts, groups, SPNs, computer objects, trust relationships, and many sensitive attributes. There is no built-in 'need to know' principle on LDAP reads. BloodHound, PowerView, and ldapsearch all exploit these open default ACLs to map attack paths.",
-    "vulnerable_config": "# AD default permissions \u2014 authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
-    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 \u2014 access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) \u2014 any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
+    "vulnerable_config": "# AD default permissions — authenticated users can read:\n# All user objects: sAMAccountName, userPrincipalName, memberOf, servicePrincipalName\n# All computer objects: DNS names, OS versions, operating system attributes\n# All group memberships, GPOs, OU structure, domain trusts\n\n# Verify with any low-priv account:\nGet-ADUser -Filter * -Properties *  # returns all users + attributes\nGet-ADGroup -Filter * | Get-ADGroupMember  # all group memberships",
+    "secure_config": "# 1. Enable AD Recycle Bin + Protected Users group\n# 2. Audit and tighten ACLs on sensitive attributes:\n#    msDS-AllowedToDelegateTo, adminCount, memberOf for privileged groups\n\n# 3. Disable SMB null sessions + restrict LDAP anonymous binds (see smb/ldap cards)\n\n# 4. Detect enumeration via volume:\n# Sysmon Event 3 (network connection) from non-DC to DC on port 389/636\n# Event 4661 — access to SAM objects (high-volume; baseline first)\n# Microsoft Defender for Identity: 'Account Enumeration Reconnaissance' alert\n\n# 5. Deploy Honey accounts/objects:\n# Fake high-priv account (no real access) — any LDAP query for it = attacker\n# BloodHound run from non-DC = detectable via DC LDAP traffic volume\n\n# 6. Tiered administration: Tier 0 DCs, Tier 1 servers, Tier 2 workstations\n#    Each tier can only query its own tier's objects"
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "Domain Admins recursively",
+      "command": "Get-DomainGroupMember -Identity 'Domain Admins' -Recurse | select MemberName"
+    }
   ]
 }

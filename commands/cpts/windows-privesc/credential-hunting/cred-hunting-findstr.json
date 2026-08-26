@@ -94,6 +94,17 @@
       "HTB M26",
       "MITRE T1552.001",
       "MITRE T1083"
-    ]
-  }
+    ],
+    "evasion": "Copy the credential store (browser Login Data, .kdbx, PSReadline history) and decrypt/crack it OFFLINE rather than running signatured binaries (LaZagne/SharpChrome) on the host; scope searches to likely paths to limit disk I/O; use built-in cmdlets over dropped tools."
+  },
+  "variations": [
+    {
+      "label": "Recursive across the drive",
+      "command": "findstr /S /I /M /C:\"password\" C:\\*.txt C:\\*.ini C:\\*.config C:\\*.xml"
+    },
+    {
+      "label": "Registry passwords",
+      "command": "reg query HKLM /f password /t REG_SZ /s"
+    }
+  ]
 }

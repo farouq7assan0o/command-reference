@@ -98,10 +98,6 @@
     {
       "label": "Packet-trace on a single port (diagnose closed/filtered state)",
       "command": "sudo nmap <ip> -p 21 --packet-trace -Pn -n --disable-arp-ping"
-    },
-    {
-      "label": "Connect scan (-sT) — no raw socket needed",
-      "command": "sudo nmap <ip> -p 443 --packet-trace --disable-arp-ping -Pn -n --reason -sT"
     }
   ]
 }

@@ -67,7 +67,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Rubeus kerberoast /user:<name> targets a single high-value SPN account, minimising ticket requests.",
+    "why_it_works": "A TGS for the target's SPN is encrypted under its password hash and any user can request it, so a weak service-account password cracks offline.",
     "prerequisites": "A domain context on Windows and a chosen target SPN account.",
     "impact": "A crackable TGS hash for one specific service account.",
     "detection": "[MITRE T1558.003] Event 4769 (TGS requested) with RC4 encryption type (0x17) when AES is standard, or a burst of TGS requests for many SPNs from one source in a short window; a request for a honeypot SPN account is malicious by definition. A single targeted 4769 is quieter than a bulk roast but still RC4-flaggable.",
@@ -84,5 +84,15 @@
   },
   "tools": [
     "Rubeus"
+  ],
+  "variations": [
+    {
+      "label": "Simple output",
+      "command": ".\\Rubeus.exe kerberoast /user:<user> /simple /nowrap"
+    },
+    {
+      "label": "OPSEC single user",
+      "command": ".\\Rubeus.exe kerberoast /user:<user> /rc4opsec /nowrap /outfile:hash.txt"
+    }
   ]
 }

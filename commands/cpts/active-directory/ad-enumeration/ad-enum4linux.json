@@ -59,7 +59,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "enum4linux enumerates users, groups, shares, and policy over SMB/RPC, often via null sessions.",
+    "why_it_works": "SMB null sessions and SAMR/LSARPC expose users, groups, shares, and policy on misconfigured or legacy hosts; enum4linux automates those RPC queries.",
     "prerequisites": "Domain credentials or null/guest access and SMB (445) reachable.",
     "impact": "A broad SMB/RPC enumeration of the domain.",
     "detection": "SMB tree-connects and share/RID enumeration (Event 5140/5145 with share auditing); anonymous/null binds and RID cycling against the DC.",
@@ -77,5 +77,21 @@
   },
   "tools": [
     "enum4linux"
+  ],
+  "variations": [
+    {
+      "label": "Verbose all",
+      "command": "enum4linux -a -v <dc_ip>"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Full SMB/RPC enumeration (users, shares, policy)",
+      "command": "enum4linux -A <dc_ip>"
+    },
+    {
+      "label": "Follow up on interesting shares/users",
+      "command": "# feed usernames into kerbrute / spraying"
+    }
   ]
 }

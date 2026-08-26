@@ -1,0 +1,95 @@
+{
+  "id": "crtp-tool-obfuscation",
+  "name": "Tool Obfuscation Tradecraft (Codecepticon / Mimikatz rebuild)",
+  "command": "Codecepticon.exe --action obfuscate --module csharp --path <solution> --map-file <map_file>",
+  "description": "Rebuild offensive tooling so signature-based AV/EDR no longer recognizes it. Codecepticon obfuscates C# (Loader/Rubeus/SafetyKatz) and PowerShell (Invoke-Mimikatz) source; Invoke-UpdateMimikatzScript refreshes the embedded Mimikatz DLL in Invoke-Mimikatz.ps1; a custom AES generator re-encrypts strings. Reference for the CRTP 'defeat AV' workflow.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Evasion",
+  "type": "reference",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "silent",
+  "mitre": [
+    "T1027",
+    "T1140",
+    "T1587.001"
+  ],
+  "tools": [
+    "Codecepticon",
+    "Invoke-UpdateMimikatzScript",
+    "PowerShell"
+  ],
+  "tags": [
+    "obfuscation",
+    "av-evasion",
+    "tool-development",
+    "codecepticon",
+    "mimikatz",
+    "crtp"
+  ],
+  "variations": [
+    {
+      "label": "Obfuscate a C# project (Loader/Rubeus)",
+      "command": "Codecepticon.exe --action obfuscate --module csharp --verbose --path <solution> --map-file <map_file>"
+    },
+    {
+      "label": "Obfuscate a PowerShell script (Invoke-Mimikatz)",
+      "command": "Codecepticon.exe --action obfuscate --module powershell --verbose --path <script_ps1> --map-file <map_file>"
+    },
+    {
+      "label": "Refresh the embedded Mimikatz DLL in the PS wrapper",
+      "command": "Invoke-UpdateMimikatzScript -DllPath <dll_file> -ScriptPath .\\Invoke-Mimikatz.ps1"
+    },
+    {
+      "label": "Locate a flagged byte offset in a script",
+      "command": ".\\ByteToLineNumber.ps1 <script_ps1> <0xNNN>"
+    },
+    {
+      "label": "Regenerate AES-encrypted strings",
+      "command": ".\\CustomAES-Generator-Encryption.ps1 > enc.txt"
+    },
+    {
+      "label": "Find the flagged bytes with DefenderCheck",
+      "command": "DefenderCheck.exe <binary_or_script>"
+    },
+    {
+      "label": "Compile/execute via LOLBAS (csc.exe / MSBuild.exe)",
+      "command": "MSBuild.exe <inline_task>   # or: csc.exe /out:<out_exe> <source_cs>"
+    }
+  ],
+  "notes": "Workflow when a signatured tool gets caught: (1) find what's flagged - AMSI/Defender byte offset -> ByteToLineNumber.ps1 maps it to a source line; (2) obfuscate the source with Codecepticon (renames symbols, encrypts strings) and rebuild; (3) for Invoke-Mimikatz, swap in a fresh/obfuscated powerkatz.dll via Invoke-UpdateMimikatzScript. Use the resulting binaries with crtp-loader (in-memory) and the PS scripts inside crtp-invishell. Reference card - no single command; see the linked tools. DefenderCheck locates the exact bytes Windows Defender flags; map the offset to a source line with ByteToLineNumber.ps1, then obfuscate that part. csc.exe/MSBuild.exe (LOLBAS) compile/run code inline to bypass application control (UMCI/AppLocker).",
+  "references": [
+    {
+      "title": "CRTP - Attacking and Defending AD (lab)",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "Codecepticon (GitHub)",
+      "url": "https://github.com/Accenture/Codecepticon"
+    },
+    {
+      "title": "MITRE ATT&CK T1027 - Obfuscated Files or Information",
+      "url": "https://attack.mitre.org/techniques/T1027/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-loader",
+      "note": "Run the rebuilt C# assemblies in-memory",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-invishell",
+      "note": "Run obfuscated PowerShell inside the cloaked shell",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-amsi-sbl-bypass",
+      "note": "Pair obfuscation with runtime AMSI/logging bypass",
+      "rel": "alternative"
+    }
+  ]
+}

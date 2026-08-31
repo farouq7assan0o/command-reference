@@ -10330,3 +10330,10 @@ Reviewed the validate warnings (none were failures - all gates already PASS). Fi
 2. UPPERCASE PLACEHOLDER AUTOFILL: canonVar is case-sensitive, so <DOMAIN>/<TARGET_IP>/<LHOST> etc. in commands were separate one-off fields that did NOT autofill from the TARGET bar. Lowercased all-uppercase engagement-var placeholders in command/variations/steps ONLY (17 cards, 20 tokens) - carefully skipping payload/HTML literals (<PHPSESSID>, <SCRIPT>, <ID>, <SSID>). Substituted fields now have ~0 problematic uppercase; the 404 remaining uppercase are in examples/notes/defense (literals & prose - correctly left as-is).
 NOTE: the "123 missing HTB link" warning is per the documented invariant mostly non-CPTS cards referencing their own platform - left as-is. Remaining placeholder-audit tokens are legit lowercase one-offs / payload literals.
 RESULT: 905 cards, build/validate/healthcheck --render all PASS; group audit clean.
+
+## Public README + GitHub link in top bar (2026-08-26)
+Prepping for public release.
+1. DOCS SPLIT: moved the old developer-oriented README.md -> DEVELOPING.md (446 lines, with a header pointing back to README/AUTHORING). Wrote a NEW public-facing README.md: what it is, features, how to use (open index.html), how to add commands (Option A: self-serve via NEW-SESSION-PROMPT.md + npm run check; Option B: send-me-materials with the exact list of what to provide), contact (GitHub issues + email 12farouq12@gmail.com), and hosting/custom-domain guidance (GitHub Pages + CNAME).
+2. GITHUB LINK: added a working top-bar GitHub button (https://github.com/farouq7assan0o/command-reference/, opens in new tab) next to Guide; removed the old broken bottom sidebar 'View on GitHub' (href="#"). fa-github glyph already in icons.css. healthcheck --render PASS.
+FLAGGED for the user before going public: (a) their email is now in the public README; (b) DEVELOPING.md / NEW-SESSION-PROMPT.md / AUTHORING.md contain local Windows paths (D:\moving\Archive\Security\...) that could be genericized.
+RESULT: 905 cards, all gates PASS.

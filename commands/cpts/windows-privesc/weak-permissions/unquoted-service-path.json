@@ -95,6 +95,10 @@
     {
       "label": "PowerUp",
       "command": "Get-ServiceUnquoted -Verbose"
+    },
+    {
+      "label": "PowerUp alias (OSCP PEN-200 Ch16)",
+      "command": "Get-UnquotedService   # renamed alias of Get-ServiceUnquoted in newer PowerUp"
     }
   ],
   "steps": [

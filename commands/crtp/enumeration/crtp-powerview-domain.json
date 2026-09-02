@@ -119,6 +119,10 @@
     {
       "label": "Domain SID",
       "command": "Get-DomainSID"
+    },
+    {
+      "label": "Deprecated PowerView alias (OSCP PEN-200 Ch21)",
+      "command": "Get-NetDomain   # older PowerView name for Get-Domain — identical output"
     }
   ]
 }

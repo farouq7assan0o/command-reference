@@ -98,5 +98,16 @@
     "T1047",
     "T1021.006"
   ],
-  "exam": "exam-ok"
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "WMI (wmic /node, or PowerShell CIM over DCOM) and WinRS (over WinRM 5985/5986) are built-in remote-management channels. With admin credentials, Win32_Process.Create spawns arbitrary processes on the remote host and WinRS opens a remote shell. Both are signed, legitimate admin tooling (living-off-the-land), so the activity blends with normal management traffic.",
+    "prerequisites": "Valid credentials with local admin on target; WMI/DCOM (135 + dynamic) or WinRM (5985/5986) reachable; for CIM-over-WinRM the WinRM service enabled.",
+    "impact": "T1047 Windows Management Instrumentation + T1021.006 Remote Services: Windows Remote Management \u2014 remote code execution / lateral movement as the supplied account.",
+    "detection": "Event 4688 / Sysmon 1: WmiPrvSE.exe spawning cmd/powershell (WMI process-create) or wsmprovhost.exe children (WinRM). Event 4624 Type 3 logon preceding. Microsoft-Windows-WMI-Activity/Operational. WinRM: Event 4103/4104 and HTTP to 5985/5986. Network: RPC 135 + ephemeral, or 5985/5986 between endpoints.",
+    "prevention": "Restrict local admin; limit remote WMI/WinRM use (WinRM TrustedHosts, GPO, JEA for constrained endpoints). Host firewall for 135/5985. Segment management traffic.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1047/",
+      "https://attack.mitre.org/techniques/T1021/006/"
+    ]
+  }
 }

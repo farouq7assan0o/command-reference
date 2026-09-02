@@ -37,7 +37,7 @@
   "references": [
     {
       "title": "PortSwigger - LDAP Injection",
-      "url": "https://portswigger.net/web-security/ldap-injection"
+      "url": "https://owasp.org/www-community/attacks/LDAP_Injection"
     },
     {
       "title": "HTB Academy - Attacking Common Applications",

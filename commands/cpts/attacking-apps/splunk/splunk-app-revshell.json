@@ -74,5 +74,16 @@
     "T1190",
     "T1059.001"
   ],
-  "exam": "exam-ok"
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Splunk executes scripted inputs (scripts/ + inputs.conf) from installed apps under the Splunk service account. A user who can install apps can package one whose inputs.conf runs an attacker script on an interval, giving RCE. Splunk trusts app-supplied scripts by design.",
+    "prerequisites": "Splunk web/admin access with capability to install apps (or forwarder-bundle push); scripted inputs enabled (default); network egress for the reverse shell.",
+    "impact": "T1190 Exploit Public-Facing Application + T1059.001 Command and Scripting Interpreter: PowerShell (or Python) \u2014 RCE as the Splunk user, often SYSTEM/root on the indexer or forwarder.",
+    "detection": "splunkd spawning cmd/powershell/python (Sysmon 1 / Event 4688). New app directory under etc/apps with scripts/ and inputs.conf. Splunk _internal logs: app install + scripted-input registration. Outbound from splunkd to an unusual host.",
+    "prevention": "Restrict the install_apps / admin_all_objects capabilities; disable scripted inputs where unused; run Splunk as a low-privilege service account; app allowlist/vetting; segment and monitor Splunk egress.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1190/",
+      "https://attack.mitre.org/techniques/T1059/001/"
+    ]
+  }
 }

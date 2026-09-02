@@ -1,0 +1,129 @@
+{
+  "id": "crtp-powerview-sites-subnets",
+  "name": "PowerView Sites, Subnets & AD Topology Enumeration",
+  "command": "Get-DomainSite | select name,siteobjectbl",
+  "description": "Map the physical/logical layout of the forest: AD Sites, their Subnets, Global Catalog servers, and which site a given host lives in. Reveals network segmentation and where high-value infrastructure (DCs, GCs, file servers) sits - used to plan lateral movement and locate targets by network location.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1016",
+    "T1018",
+    "T1087.002"
+  ],
+  "tools": [
+    "PowerView"
+  ],
+  "tags": [
+    "sites",
+    "subnets",
+    "topology",
+    "powerview",
+    "recon",
+    "globalcatalog"
+  ],
+  "variations": [
+    {
+      "label": "All subnets (mapped to sites)",
+      "command": "Get-DomainSubnet | select name,site"
+    },
+    {
+      "label": "Site of a specific host",
+      "command": "Get-NetComputerSiteName -ComputerName <host>"
+    },
+    {
+      "label": "Global Catalog servers in the forest",
+      "command": "Get-ForestGlobalCatalog"
+    },
+    {
+      "label": "Domain controllers",
+      "command": "Get-DomainController | select Name,IPAddress,OSVersion"
+    },
+    {
+      "label": "Forest + child domains",
+      "command": "Get-ForestDomain"
+    }
+  ],
+  "examples": [
+    {
+      "label": "List sites with linked subnets",
+      "command": "Get-DomainSite -Properties name,siteobjectbl | fl"
+    },
+    {
+      "label": "Find which site a server is in",
+      "command": "Get-NetComputerSiteName -ComputerName dcorp-mssql.dollarcorp.moneycorp.local"
+    },
+    {
+      "label": "Enumerate subnets to map network ranges",
+      "command": "Get-DomainSubnet | select name,siteobject | sort name"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Enumerate all AD sites",
+      "command": "Get-DomainSite | select name,siteobjectbl"
+    },
+    {
+      "label": "Enumerate subnets and their site mapping",
+      "command": "Get-DomainSubnet | select name,site"
+    },
+    {
+      "label": "Resolve a target host to its site",
+      "command": "Get-NetComputerSiteName -ComputerName <host>"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-powerview-domain",
+      "note": "Broader domain/forest object enumeration",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-session-share-hunting",
+      "note": "Hunt sessions/shares on hosts found by site",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-powerview-userhunting",
+      "note": "Locate privileged users on the mapped hosts",
+      "rel": "next"
+    }
+  ],
+  "notes": "AD Sites/Subnets are readable by any authenticated user via LDAP. Useful to (a) understand segmentation before pivoting, (b) find the closest DC/GC, and (c) locate file servers by subnet. PowerView helper functions live alongside these: ConvertFrom-UACValue (decode userAccountControl flags), ConvertTo-SID / Convert-ADName (name<->SID<->format), Resolve-IPAddress (host->IP), Export-PowerViewCSV (thread-safe CSV output). These are utilities used with the enumeration cmdlets, not attacks in themselves.",
+  "references": [
+    {
+      "title": "CRTP - Domain Enumeration",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "PowerSploit/PowerView - Recon",
+      "url": "https://powersploit.readthedocs.io/en/latest/Recon/"
+    },
+    {
+      "title": "MITRE T1016 - System Network Configuration Discovery",
+      "url": "https://attack.mitre.org/techniques/T1016/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "AD Sites, Subnets, and Global Catalog objects live in the Configuration naming context and are world-readable to any authenticated principal by design (clients need them to find their nearest DC). PowerView queries them over LDAP - no special rights required.",
+    "prerequisites": "Any valid domain account. LDAP (389/636) reachability to a DC. PowerView loaded in the session.",
+    "impact": "T1016 / T1018 network + system discovery. Gives the attacker a map of the physical network layout, DC/GC placement, and subnet ranges - turning blind lateral movement into targeted movement toward high-value segments.",
+    "misconfiguration": "None required - this is default AD behaviour. The exposure is inherent to the Configuration partition being readable by authenticated users.",
+    "detection": "High LDAP query volume against the Configuration NC (CN=Sites, CN=Subnets) from a non-DC host. Event 1644 (LDAP query logging, if enabled) showing searches for site/subnet/nTDSDSA objects. MDE/MDI reconnaissance analytics: bursts of Configuration-partition reads from a workstation.",
+    "artifacts": "DC LDAP logs (Event 1644) with searchBase = CN=Configuration | Sysmon Event 3 to 389/636 | Directory Service query bursts",
+    "prevention": "Cannot be prevented without breaking AD - these objects must be readable for clients to function. Focus on detection (LDAP query auditing, MDI) and on limiting what an attacker gains: strong segmentation, tiered admin, and monitoring the follow-on lateral movement.",
+    "evasion": "Query a single object at a time; use the AD PowerShell module (ActiveDirectory\\Get-ADReplicationSite) which blends in with admin tooling better than PowerView; throttle queries.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1016/",
+      "https://attack.mitre.org/techniques/T1018/",
+      "CRTP Domain Enumeration"
+    ]
+  }
+}

@@ -80,5 +80,39 @@
     "misconfiguration": "NetSessionEnum accessible to all authenticated users (default). DAs log on to regular workstations for daily tasks. No Credential Guard. No PAW model.",
     "vulnerable_config": "# RestrictRemoteSam not configured (default):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RestrictRemoteSam\n# Returns $null = not restricted = any auth user can enumerate sessions\n\n# DA logged onto workstation WS01:\n# NetSessionEnum returns: CORP\\DomainAdmin1 \u2192 WS01 \u2192 target for token theft",
     "secure_config": "# Restrict NetSessionEnum:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RestrictRemoteSam -Value 'O:BAG:BAD:(A;;RC;;;BA)'\n\n# PAW model + Authentication Policy Silos:\nNew-ADAuthenticationPolicySilo -Name 'DomainAdmin-Silo'\n# Restrict DA logon to PAW computers only\n\n# Protected Users group:\nAdd-ADGroupMember -Identity 'Protected Users' -Members 'DomainAdmin1'\n# No NTLM, no delegatable credentials, no cached creds on logon"
-  }
+  },
+  "variations": [
+    {
+      "label": "Get-NetLoggedon (logged-on users on a host)",
+      "command": "Get-NetLoggedon -ComputerName <host>"
+    },
+    {
+      "label": "Get-NetSession (active sessions on a host)",
+      "command": "Get-NetSession -ComputerName <host>"
+    },
+    {
+      "label": "Get-NetRDPSession (RDP sessions on a host)",
+      "command": "Get-NetRDPSession -ComputerName <host>"
+    },
+    {
+      "label": "Get-RegLoggedOn (logged-on via remote registry)",
+      "command": "Get-RegLoggedOn -ComputerName <host>"
+    },
+    {
+      "label": "Find-DomainProcess (hunt a process domain-wide)",
+      "command": "Find-DomainProcess -ProcessName <proc>"
+    },
+    {
+      "label": "Find-DomainUserEvent (logon events for a user)",
+      "command": "Find-DomainUserEvent -UserIdentity <user>"
+    },
+    {
+      "label": "Get-DomainUserEvent (4624 logon events on a host)",
+      "command": "Get-DomainUserEvent -ComputerName <host>"
+    },
+    {
+      "label": "Find-DomainLocalGroupMember (local group members domain-wide)",
+      "command": "Find-DomainLocalGroupMember -GroupName Administrators"
+    }
+  ]
 }

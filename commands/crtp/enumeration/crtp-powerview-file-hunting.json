@@ -1,0 +1,124 @@
+{
+  "id": "crtp-powerview-file-hunting",
+  "name": "PowerView Interesting File & Share ACL Hunting",
+  "command": "Find-InterestingDomainShareFile -Include *pass*,*.config,*.xml,*.vbs,*.ps1",
+  "description": "Search readable domain shares for files whose names match sensitive patterns (passwords, configs, scripts, keys) and inspect the ACLs on file paths. The PowerView-native equivalent of Snaffler - finds credentials and secrets sitting on shares without dropping a tool on disk.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Enumeration",
+  "type": "command",
+  "certifications": [
+    "CRTP",
+    "CPTS"
+  ],
+  "source": "CRTP",
+  "opsec": "loud",
+  "mitre": [
+    "T1083",
+    "T1135",
+    "T1039",
+    "T1552.001"
+  ],
+  "tools": [
+    "PowerView"
+  ],
+  "tags": [
+    "file-hunting",
+    "shares",
+    "credentials",
+    "powerview",
+    "snaffler",
+    "looting"
+  ],
+  "variations": [
+    {
+      "label": "Search a specific path for interesting files",
+      "command": "Find-InterestingFile -Path \\\\<host>\\<share>\\ -Include *.txt,*.xml,*.config,*.kdbx"
+    },
+    {
+      "label": "ACLs on a filesystem path (SYSVOL / share perms)",
+      "command": "Get-PathAcl -Path \\\\<dc>\\sysvol"
+    },
+    {
+      "label": "Find reachable domain shares first",
+      "command": "Find-DomainShare -CheckShareAccess"
+    },
+    {
+      "label": "Interesting files, last-accessed filter",
+      "command": "Find-InterestingDomainShareFile -Include *cred*,*.ps1 -LastAccessTime (Get-Date).AddDays(-30)"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Hunt password/config files across all readable shares",
+      "command": "Find-InterestingDomainShareFile -Include *pass*,*.config,unattend.xml,web.config | select Path,Name"
+    },
+    {
+      "label": "Check who can read a sensitive share path",
+      "command": "Get-PathAcl -Path \\\\dcorp-dc\\sysvol | select IdentityReference,FileSystemRights"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Enumerate reachable shares",
+      "command": "Find-DomainShare -CheckShareAccess"
+    },
+    {
+      "label": "Hunt interesting files on those shares",
+      "command": "Find-InterestingDomainShareFile -Include *pass*,*.config,*.xml,*.ps1"
+    },
+    {
+      "label": "Inspect ACLs on a promising path",
+      "command": "Get-PathAcl -Path \\\\<host>\\<share>"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-session-share-hunting",
+      "note": "Enumerate shares/sessions before file hunting",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-powerview-users-groups",
+      "note": "Pivot on credentials found in files",
+      "rel": "next"
+    },
+    {
+      "id": "ad-snaffler",
+      "note": "Snaffler - faster automated equivalent",
+      "rel": "alternative"
+    }
+  ],
+  "notes": "Find-InterestingFile / Find-InterestingDomainShareFile need read access to the target path; full coverage of admin-only shares (C$, ADMIN$) requires local admin. Get-PathAcl needs local admin only when reading ACLs on a remote machine's filesystem. Common finds: unattend.xml, web.config, sysprep.inf, .kdbx, .ps1 scripts with hardcoded creds, Groups.xml (GPP cpassword).",
+  "references": [
+    {
+      "title": "CRTP - Domain Enumeration",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "PowerSploit/PowerView - Recon",
+      "url": "https://powersploit.readthedocs.io/en/latest/Recon/"
+    },
+    {
+      "title": "MITRE T1135 - Network Share Discovery",
+      "url": "https://attack.mitre.org/techniques/T1135/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Any authenticated user can enumerate shares and read files their ACLs permit. Organisations routinely leave credentials, config files, and scripts on shares readable by 'Authenticated Users' or 'Domain Users', so a domain account is enough to loot secrets.",
+    "prerequisites": "Any valid domain account. SMB (445) to file servers. Read access on the target shares (local admin only for admin$ shares).",
+    "impact": "T1083/T1135/T1039 discovery + T1552.001 credentials in files. Plaintext or reversible credentials recovered from shares frequently yield privileged accounts and immediate escalation.",
+    "misconfiguration": "Over-permissive share/NTFS ACLs (Authenticated Users: Read). Credentials stored in cleartext in scripts/configs on shares. GPP cpassword left in SYSVOL. No file-access auditing.",
+    "vulnerable_config": "# Share readable by all domain users, contains creds:\n# \\\\fileserver\\IT\\scripts\\deploy.ps1  ->  $pass = 'P@ssw0rd123'\n# ACL: BUILTIN\\Users Allow Read",
+    "secure_config": "# Restrict share ACLs to least privilege:\nGet-SmbShareAccess -Name 'IT'\nRevoke-SmbShareAccess -Name 'IT' -AccountName 'Authenticated Users' -Force\nGrant-SmbShareAccess -Name 'IT' -AccountName 'CORP\\IT-Staff' -AccessRight Read -Force\n# Remove secrets from shares; use a vault (LAPS/gMSA/CyberArk). Purge GPP cpassword (KB2962486).",
+    "detection": "Mass SMB reads / directory enumeration across many shares from one host (Sysmon 3 + Windows 5140/5145 share-access auditing). MDI 'Data exfiltration/enumeration' analytics. Honeyfiles with named-pipe/canary alerts on access.",
+    "artifacts": "Event 5140/5145 (network share access) bursts | Sysmon 3 to 445 many hosts | Access to canary/honeyfiles",
+    "prevention": "Least-privilege share ACLs; remove cleartext secrets from shares; deploy LAPS/gMSA; enable object-access auditing (5145); deploy honeyfiles; purge GPP cpassword.",
+    "evasion": "Target a curated host/share list instead of the whole domain; filter by extension to reduce reads; run during business hours to blend with normal file activity.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1135/",
+      "https://attack.mitre.org/techniques/T1552/001/",
+      "CRTP Domain Enumeration"
+    ]
+  }
+}

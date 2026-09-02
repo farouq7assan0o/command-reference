@@ -84,7 +84,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "Active Directory ACLs on the domain object control who can perform privileged operations like DCSync. If an attacker adds 'Replicating Directory Changes' and 'Replicating Directory Changes All' rights to a low-privilege account, that account can DCSync indefinitely — even after DA password resets. The ACL change is a subtle, persistence-focused technique that survives most incident response activities.",
+    "why_it_works": "Active Directory ACLs on the domain object control who can perform privileged operations like DCSync. If an attacker adds 'Replicating Directory Changes' and 'Replicating Directory Changes All' rights to a low-privilege account, that account can DCSync indefinitely \u2014 even after DA password resets. The ACL change is a subtle, persistence-focused technique that survives most incident response activities.",
     "prerequisites": "Domain Admin or WriteDACL rights on the domain object (NC). PowerView or AD DACL manipulation. The target account to receive DCSync rights.",
     "impact": "T1098 Account Manipulation + T1222.001 File and Directory Permissions Modification: Windows. Grants long-term DCSync capability to a normal-looking account. Survives DA password rotations. Hard to detect unless AD object auditing is enabled and SIEM alerts on DCSync right grants.",
     "detection": "Event 5136 (AD object modified) on the domain NC object: attribute nTSecurityDescriptor changed to add replication ACE. Event 4662 on domain NC with ObjectAceType containing DCSync GUIDs when the right is used. MDI: 'Sensitive attribute added to user' or 'DCSync attack' when used. SIEM: Event 5136 on domain NC with replication-right ACE added from a non-DC source.\nAccount attribute changes (password set, group membership, servicePrincipalName, logon hours) correlated with unusual process lineage or timing (DET0096/AN0265).\nUse of usermod, passwd, groupmod on Linux to escalate permissions or persist access on existing users (AN0266).\nModifications to user accounts via dscl, pwpolicy, or sysadminctl on macOS that alter groups, enable root, or bypass MDM (AN0267).\nModifications to SSO/SAML user attributes (isAdmin, role, MFA bypass) through CLI, API, or rogue IdP apps (AN0268).\nAddition of new users or role permission changes via API or vSphere Client from non-jumpbox IPs (AN0269).",
@@ -96,13 +96,17 @@
       "https://attack.mitre.org/techniques/T1222/001/"
     ],
     "misconfiguration": "No AD object auditing (Event 5136 not enabled). No SIEM alert on domain NC ACL changes. No quarterly ACL audit for DCSync rights.",
-    "vulnerable_config": "# No audit on AD object changes:\n# Advanced Audit Policy: DS Access → Audit Directory Service Changes: NOT CONFIGURED\n# → Event 5136 not generated → ACL changes invisible\n\n# DCSync right added silently:\nAdd-ObjectAcl -PrincipalIdentity backdoor_account -Rights DCSync\n# No event generated if DS auditing disabled",
-    "secure_config": "# Enable DS Access auditing via GPO:\n# Computer Config → Windows Settings → Security Settings → Advanced Audit Policy\n# → DS Access → Audit Directory Service Changes: Success,Failure\n\n# SIEM rule:\n# EventID=5136 AND ObjectDN='DC=corp,DC=local' AND AttributeLDAPDisplayName='nTSecurityDescriptor'\n# → CRITICAL ALERT: domain ACL changed\n\n# Quarterly DCSync right audit:\nGet-ObjectAcl 'DC=corp,DC=local' -ResolveGUIDs | Where-Object {\n  $_.ObjectAceType -match 'DS-Replication-Get-Changes' -and\n  $_.IdentityReference -notmatch 'Enterprise Domain Controllers|ENTERPRISE DOMAIN CONTROLLERS'\n} | Format-List IdentityReference,ObjectAceType"
+    "vulnerable_config": "# No audit on AD object changes:\n# Advanced Audit Policy: DS Access \u2192 Audit Directory Service Changes: NOT CONFIGURED\n# \u2192 Event 5136 not generated \u2192 ACL changes invisible\n\n# DCSync right added silently:\nAdd-ObjectAcl -PrincipalIdentity backdoor_account -Rights DCSync\n# No event generated if DS auditing disabled",
+    "secure_config": "# Enable DS Access auditing via GPO:\n# Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Advanced Audit Policy\n# \u2192 DS Access \u2192 Audit Directory Service Changes: Success,Failure\n\n# SIEM rule:\n# EventID=5136 AND ObjectDN='DC=corp,DC=local' AND AttributeLDAPDisplayName='nTSecurityDescriptor'\n# \u2192 CRITICAL ALERT: domain ACL changed\n\n# Quarterly DCSync right audit:\nGet-ObjectAcl 'DC=corp,DC=local' -ResolveGUIDs | Where-Object {\n  $_.ObjectAceType -match 'DS-Replication-Get-Changes' -and\n  $_.IdentityReference -notmatch 'Enterprise Domain Controllers|ENTERPRISE DOMAIN CONTROLLERS'\n} | Format-List IdentityReference,ObjectAceType"
   },
   "variations": [
     {
       "label": "Grant via RACE Set-ADACL",
       "command": "Set-ADACL -SamAccountName <user> -DistinguishedName '<object_dn>' -Right DCSync -Verbose"
+    },
+    {
+      "label": "Set-DCPermissions (grant replication/DCSync rights)",
+      "command": "Set-DCPermissions -Method acl -DistinguishedName 'dc=<domain>,dc=local' -User '<user>' -Verbose"
     }
   ]
 }

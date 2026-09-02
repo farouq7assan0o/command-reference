@@ -108,5 +108,27 @@
     "misconfiguration": "Service accounts with SPNs have stale passwords (Kerberoastable). Accounts have DoesNotRequirePreAuth set. Nested group memberships not audited \u2014 hidden DA pathways.",
     "vulnerable_config": "# Service accounts with old SPN passwords:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n# PasswordLastSet: 2015-01-01 \u2014 crackable Kerberos ticket\n\n# AS-REP roastable accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true}",
     "secure_config": "# Use gMSA for service accounts (auto-rotate passwords):\nNew-ADServiceAccount -Name 'svc_web' -DNSHostName 'dc01.corp.local' -ManagedPasswordIntervalInDays 30\n\n# Ensure pre-auth required:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} | Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# Alert on SPN enumeration:\n# SIEM: Event 4769 volume spike from unexpected source"
-  }
+  },
+  "variations": [
+    {
+      "label": "Get-DomainManagedSecurityGroup (managed-by set)",
+      "command": "Get-DomainManagedSecurityGroup"
+    },
+    {
+      "label": "Get-DomainForeignUser (users in foreign-domain groups)",
+      "command": "Get-DomainForeignUser"
+    },
+    {
+      "label": "New-DomainUser (create user - needs delegated rights)",
+      "command": "New-DomainUser -SamAccountName <user> -AccountPassword (ConvertTo-SecureString '<pass>' -AsPlainText -Force)"
+    },
+    {
+      "label": "New-DomainGroup (create group - needs delegated rights)",
+      "command": "New-DomainGroup -SamAccountName <group>"
+    },
+    {
+      "label": "Set-DomainUserPassword (reset - needs Reset-Password right)",
+      "command": "Set-DomainUserPassword -Identity <user> -AccountPassword (ConvertTo-SecureString '<pass>' -AsPlainText -Force)"
+    }
+  ]
 }

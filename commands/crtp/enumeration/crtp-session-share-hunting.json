@@ -62,6 +62,10 @@
     {
       "label": "PowerView DFS shares",
       "command": "Get-DomainDFSShare"
+    },
+    {
+      "label": "Get-NetShare (shares on a specific host)",
+      "command": "Get-NetShare -ComputerName <host>"
     }
   ],
   "steps": [

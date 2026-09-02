@@ -79,15 +79,15 @@
   "description": "Query WHOIS for a domain's registration data - registrar, registrant, name servers, and creation/expiry dates. A passive first look that can reveal org names, emails, and infrastructure.",
   "opsec": "silent",
   "mitre": [
-    "T1590.002"
+    "T1596.002"
   ],
   "exam": "exam-ok",
   "defense": {
-    "why_it_works": "WHOIS is a query/response protocol for the databases that record registered internet resources — domains, IP blocks, and ASNs. A lookup returns the registrant name, contact details, name servers, registrar, and creation/expiry dates; HTB frames it as \"a giant phonebook for the internet.\"",
+    "why_it_works": "WHOIS is a query/response protocol for the databases that record registered internet resources \u2014 domains, IP blocks, and ASNs. A lookup returns the registrant name, contact details, name servers, registrar, and creation/expiry dates; HTB frames it as \"a giant phonebook for the internet.\"",
     "prerequisites": "A target domain name (or IP block / ASN) and access to a WHOIS server via the whois CLI or an online lookup service.",
-    "impact": "Registration intelligence — registrant contacts (phishing/social-engineering targets), name servers (a pivot into DNS recon), registrar, and domain age — all feeding later OSINT and targeting.",
+    "impact": "Registration intelligence \u2014 registrant contacts (phishing/social-engineering targets), name servers (a pivot into DNS recon), registrar, and domain age \u2014 all feeding later OSINT and targeting.",
     "detection": "Very Low: WHOIS queries are legitimate and do not raise suspicion. The query hits a third-party registry/registrar server, not the target's infrastructure.",
-    "artifacts": "None on the target side — the lookup queries a WHOIS server, not the victim, so nothing is logged victim-side.",
+    "artifacts": "None on the target side \u2014 the lookup queries a WHOIS server, not the victim, so nothing is logged victim-side.",
     "prevention": "Use domain-privacy / WHOIS redaction (GDPR redaction or a privacy-proxy registrar) so registrant name, email, and phone are masked in public WHOIS. Avoid using real personal contacts in registration records.\n\n[MITRE T1590.002 M1056] This technique cannot be easily mitigated with preventive controls since it is based on behaviours performed outside enterprise defences. Efforts should focus on minimising the amount and sensitivity of data available to external parties.",
     "sources": [
       "HTB M05",
@@ -95,7 +95,7 @@
     ],
     "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
     "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
-    "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
+    "secure_config": "# Apache \u2014 remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
   },
   "variations": [
     {

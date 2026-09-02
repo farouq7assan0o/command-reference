@@ -83520,7 +83520,7 @@ const COMMAND_DATA = {
       "description": "Query WHOIS for a domain's registration data - registrar, registrant, name servers, and creation/expiry dates. A passive first look that can reveal org names, emails, and infrastructure.",
       "opsec": "silent",
       "mitre": [
-        "T1590.002"
+        "T1596.002"
       ],
       "exam": "exam-ok",
       "defense": {
@@ -90558,7 +90558,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-02T11:16:44.725Z",
+  "buildDate": "2026-09-02T12:20:19.207Z",
   "certifications": [
     "CDSA",
     "CPTS",

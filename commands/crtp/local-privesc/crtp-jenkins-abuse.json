@@ -14,7 +14,7 @@
   "source": "CRTP",
   "opsec": "moderate",
   "mitre": [
-    "T1059.007",
+    "T1059",
     "T1505.003"
   ],
   "tools": [

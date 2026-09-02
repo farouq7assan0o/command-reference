@@ -2007,7 +2007,7 @@ const COMMAND_DATA = {
           "HTB M13",
           "MITRE T1018"
         ],
-        "misconfiguration": "DNS zone transfers (AXFR queries) are permitted to any requesting host — not restricted to authorized secondary DNS servers. This exposes the entire DNS zone (all hostnames, IPs, mail servers, internal naming conventions) to any attacker who can reach the DNS port. Even without AXFR, DNS servers that respond to ANY queries or provide detailed error messages leak zone structure.",
+        "misconfiguration": "Active-Directory-Integrated DNS stores every DNS record as an object in AD. The default ACL lets any authenticated domain user read the whole zone over LDAP (adidnsdump), exposing all internal hostnames, IPs, and naming conventions - including records hidden from normal DNS queries. The exposure is the default read access on the DNS partition, not a zone-transfer (AXFR) misconfiguration; adidnsdump never issues AXFR.",
         "vulnerable_config": "# BIND (named) — zone transfer unrestricted (vulnerable):\n# /etc/bind/named.conf or named.conf.local:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { any; };  // <-- allows AXFR from ANY host = zone exposure\n};\n\n# Windows DNS — no transfer restriction:\n# DNS Manager -> Zone -> Properties -> Zone Transfers tab:\n# 'Allow zone transfers' checked, 'To any server' selected",
         "secure_config": "# BIND — restrict zone transfers to secondary DNS IPs only:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { 10.10.1.5; 10.10.1.6; };  // only secondary DNS servers\n    // Or disable entirely if using AD-integrated zones:\n    // allow-transfer { none; };\n};\n\n# Windows DNS (integrated zones) — disable zone transfers:\n# DNS Manager -> Zone -> Properties -> Zone Transfers:\n# Uncheck 'Allow zone transfers' entirely (AD-integrated zones replicate via AD replication)\n\n# Additional hardening:\n# Disable DNS recursion for external clients\n# Response Rate Limiting (RRL) to prevent DNS amplification\n# Split-horizon DNS — internal and external zones serve different records"
       },
@@ -5520,7 +5520,7 @@ const COMMAND_DATA = {
       ],
       "opsec": "quiet",
       "mitre": [
-        "T1552.005",
+        "T1552.001",
         "T1213.003"
       ],
       "exam": "exam-ok",
@@ -5645,7 +5645,7 @@ const COMMAND_DATA = {
       ],
       "opsec": "quiet",
       "mitre": [
-        "T1552.005",
+        "T1552.001",
         "T1213.003"
       ],
       "exam": "exam-ok",
@@ -11013,7 +11013,7 @@ const COMMAND_DATA = {
         }
       ],
       "defense": {
-        "why_it_works": "Group Policy Preferences can configure Windows AutoLogon by writing credentials (username/password) to SYSVOL in Registry.pol files. SYSVOL is replicated to all DCs and readable by all authenticated domain users via SMB (\\\\domain\\SYSVOL). Unlike cpassword (which is AES-encrypted with a published key), AutoLogon credentials in some GPP configurations are stored with minimal or no protection in the Registry.pol binary format or related XML files.",
+        "why_it_works": "Group Policy Preferences can configure Windows AutoLogon by writing credentials (username/password) to SYSVOL in Registry.xml files. SYSVOL is replicated to all DCs and readable by all authenticated domain users via SMB (\\\\domain\\SYSVOL). Unlike cpassword (which is AES-encrypted with a published key), AutoLogon credentials in some GPP configurations are stored with minimal or no protection in the Registry.pol binary format or related XML files.",
         "prerequisites": "Domain membership, network access to DC on port 445. CrackMapExec (--gpp-autologin flag) or manual SYSVOL browse. No elevated privileges.",
         "impact": "Plaintext admin credentials for kiosk, service, or privileged accounts configured for AutoLogon — often domain admin or high-privilege accounts set by sysadmins for automated sign-in. Immediate credential compromise enabling full lateral movement or privilege escalation.",
         "detection": "SMB access to SYSVOL (Event 5140 — network share object access) if share auditing is enabled on DCs. Access to specific Registry.pol files in Policies subdirectory. Normal policy refresh also reads SYSVOL, so distinguishing malicious browsing from policy processing requires behavioral context (e.g., access from a non-workstation IP, access outside policy refresh cycles).",
@@ -12925,7 +12925,7 @@ const COMMAND_DATA = {
         "blue-team"
       ],
       "mitre": [
-        "T1552.004"
+        "T1552.001"
       ],
       "notes": "=== BACKGROUND ===\n  Every domain user can read most AD object properties by default\n  Description and Info fields are fully readable by all authenticated users\n  Common admin mistake: storing temp passwords or service account passwords in Description\n\n=== ATTACK: PowerShell Function ===\n# Load the search function (paste into PS session)\nFunction SearchUserClearTextInformation {\n    Param (\n        [Parameter(Mandatory=$true)][Array] $Terms,\n        [Parameter(Mandatory=$false)][String] $Domain\n    )\n    if ([string]::IsNullOrEmpty($Domain)) {\n        $dc = (Get-ADDomain).RIDMaster\n    } else {\n        $dc = (Get-ADDomain $Domain).RIDMaster\n    }\n    $list = @()\n    foreach ($t in $Terms) {\n        $list += \"(`$_.Description -like `\"*$t*`\")\"\n        $list += \"(`$_.Info -like `\"*$t*`\")\"\n    }\n    Get-ADUser -Filter * -Server $dc -Properties Enabled,Description,Info,PasswordNeverExpires,PasswordLastSet |\n        Where { Invoke-Expression ($list -join ' -OR ') } |\n        Select SamAccountName,Enabled,Description,Info,PasswordNeverExpires,PasswordLastSet |\n        fl\n}\n\n# Run it: search for 'pass' in Description/Info fields\nSearchUserClearTextInformation -Terms \"pass\"\n\n# Multiple terms\nSearchUserClearTextInformation -Terms \"pass\",\"pw\",\"secret\",\"key\"\n\n# Target specific domain\nSearchUserClearTextInformation -Terms \"pass\" -Domain \"<DOMAIN>\"\n\n=== DETECTION ===\nEvent 4738: 'A user account was changed'\n  → Does NOT show which property changed or new values\n  → Can detect when non-admin modifies a user object (naming convention violation)\n  → Alert if non-privileged user modifies any user account\n\nEvent 4624/4625 (logon success/failure) and 4768 (Kerberos TGT):\n  → Correlate against expected logon locations for the account\n  → Service accounts authenticating from workstations = suspicious\n\nHoneypot technique:\n  → Create service account with fake password in Description field\n  → Account is enabled, has old password (2+ years), has logins\n  → Any 4625/4771/4776 for this account = alert\n\n=== PREVENTION ===\n  → Continuous assessments to detect credentials in object properties\n  → Educate admins: never put passwords in Description/Info\n  → Automate user creation to minimize manual admin handling",
       "examples": [
@@ -31342,7 +31342,7 @@ const COMMAND_DATA = {
       "source": "CRTP",
       "opsec": "moderate",
       "mitre": [
-        "T1059.007",
+        "T1059",
         "T1505.003"
       ],
       "tools": [
@@ -90558,7 +90558,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-02T10:20:40.494Z",
+  "buildDate": "2026-09-02T10:39:01.972Z",
   "certifications": [
     "CDSA",
     "CPTS",

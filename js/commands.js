@@ -12265,7 +12265,7 @@ const COMMAND_DATA = {
       "description": "PSReadLine saves every PowerShell command to a per-user history file that often contains plaintext passwords passed on the command line. Read your own and, if accessible, every user's.",
       "opsec": "loud",
       "mitre": [
-        "T1552.003"
+        "T1552.001"
       ],
       "exam": "exam-ok",
       "defense": {
@@ -90558,7 +90558,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-02T10:48:28.607Z",
+  "buildDate": "2026-09-02T11:16:44.725Z",
   "certifications": [
     "CDSA",
     "CPTS",

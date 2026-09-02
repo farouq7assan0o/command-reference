@@ -14619,7 +14619,7 @@ const COMMAND_DATA = {
       "notes": "Directory traversal DISCLOSES files (read); LFI EXECUTES included files. High-value reads: /etc/passwd (user list), ~/.ssh/id_rsa (instant SSH), config files with DB creds, and web-app source. Always over-traverse (more ../ than needed — extras are ignored at filesystem root). If ../ is stripped, try %2e%2e, double-encoding %252e, or ....// nested sequences. On Windows target boot.ini / windows/win.ini and use ..\\ or its encodings. Also covered in: OSCP PEN-200 Chapter 9 (Common Web Application Attacks).",
       "mitre": [
         "T1083",
-        "T1006"
+        "T1005"
       ],
       "opsec": "moderate",
       "recommended": [
@@ -90558,7 +90558,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-02T10:39:01.972Z",
+  "buildDate": "2026-09-02T10:48:28.607Z",
   "certifications": [
     "CDSA",
     "CPTS",

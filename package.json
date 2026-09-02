@@ -8,6 +8,8 @@
     "health": "node healthcheck.js --render",
     "coverage": "node coverage-report.js",
     "coverage:tools": "node coverage.js --module",
+    "coverage:all": "node coverage-all.js",
+    "depth": "node depth-check.js",
     "chains": "node chain-health.js",
     "check": "node build-commands.js && node validate.js --errors-only && node healthcheck.js --render && node coverage-report.js && echo \"ALL GATES PASS\""
   },

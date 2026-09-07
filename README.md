@@ -33,39 +33,131 @@ so you can see what leads to a technique and where it goes next.
 - **Offline & private** — self-contained, works on an exam/lab VPN; everything you personalize is
   saved locally in your browser.
 
-## Use it
+## How to use
 
-1. Download or clone the repo.
-2. Open **`index.html`** in any modern browser. That's it — no build, no server.
+Download or clone the repo and open **`index.html`** in any modern browser — no install, no server,
+works offline. (Or visit the hosted site once it's live.) Then:
 
-(Or just visit the hosted site once it's live.)
+### 1. Set your target once — the TARGET bar
+
+The bar under the top navigation holds your **engagement variables**: IP, user, password, domain,
+DC, LHOST/LPORT, and more. Fill them once and **every command auto-fills** with your values. It's
+**alias-aware** — a command written with `<target>` or `<host>` still fills from your single **IP**
+field. Click **Show all variables** for the full set.
+Use the **≡ menu** to save the current values as a named **engagement** and switch between targets
+(e.g. one per box), or export/import them to move a setup between machines.
+
+### 2. Find a command
+
+- **Search** (`Ctrl+K`) — relevance-ranked, match-highlighted, typo-tolerant. Narrow with
+  `field:value`: `tool:hydra`, `opsec:loud`, `platform:windows`, `cat:enumeration`,
+  `sub:kerberoasting`, `type:payload`, `mitre:T1003`, `tag:pivoting`, `access:credentials` —
+  combine freely (`tool:crackmapexec opsec:loud spray`). The **?** by the box lists these.
+- **Category tree** (left) — Category → Group → Subcategory, with counts on every node.
+- **Filters, Favorites ★, Recently used, Collections** — in the sidebar / top toggles.
+
+### 3. Build & copy
+
+Click a card and the **builder** (right panel) shows the command filled with your target values.
+
+- Fill any command-specific fields; **Unfilled** flags anything you still need to set; **Copy** grabs it.
+- **Variations** are alternate ways to run it (tabs across the top of the builder).
+- **Attack Chain** shows ordered steps with **Copy all** and **Script** (copy the whole sequence as a
+  runnable bash/PowerShell script, target filled in).
+- **Examples** are concrete captioned samples; **References** link the tool's docs + the course module.
+- The **OpSec badge** (silent → loud) tells you how noisy it is; **MITRE** chips link to ATT&CK.
+
+### 4. See the attack path — Map
+
+The top-bar **Map** opens an interactive graph around the selected command: **what leads here**
+(left) → **this** → **next / escalation** (right), colored by relationship. Click a node to
+re-center, zoom with **− / ⤢ / +**, or use **Path to:** to trace the shortest chain from here to a
+goal (e.g. Golden Ticket). **Export path** saves the whole path as a Markdown cheatsheet.
+
+### 5. Study for your exam — Study
+
+The top-bar **Study** gives **flashcards** (see the name + description, recall the command, reveal &
+self-grade *Got it / Again*) and a **quiz** ("what's next after X?", "which command does X?"). Scope
+to **All / Favorites / a cert**. Cards you miss are remembered as **Weak areas** and resurfaced
+across sessions (spaced repetition) — so you drill exactly what you keep getting wrong.
+
+### 6. Track coverage — Coverage
+
+The top-bar **Coverage** has four tabs: **MITRE ATT&CK** technique counts, **By Certification**
+(cards + defense/chain %), **Source coverage** (per-module tool-coverage %), and **Tools**. Click any
+cell to filter the library to it.
+
+### 7. Export & print
+
+**Export** (top bar) turns the current filtered view into a **Markdown cheatsheet**. The **Script**
+button (Attack Chain) copies steps as a runnable script. **`Ctrl+P`** prints a clean black-on-white
+sheet (chrome stripped, reference URLs spelled out) for paper study.
+
+### 8. Exam Mode
+
+The **Exam Mode** button opens a separate battle-station page: engagement variables, a methodology
+playbook, host tracker, findings log, and one-click **Markdown report** export. Push a command into
+its findings log with the **Findings** button in any card.
+
+### 9. Make it yours & back up
+
+**Favorites ★**, **Collections** (your own named sets), and per-card **Notes ✎** all save locally in
+your browser. From the **≡ menu → Back up ALL my data** you can export favorites, notes, engagements,
+collections, and study progress to one JSON file, and **Restore** it later. Nothing ever leaves your
+machine — clearing browser data wipes it, so back up.
 
 ---
 
 ## Add your own commands
 
-Two ways, depending on whether you want to do it yourself or have me do it.
+The library is plain **JSON cards** (one file per command) plus a few Node scripts, built to be
+extended. Two ways:
 
-### Option A — Do it yourself (with an AI coding agent)
+### Option A — Do it yourself with an AI coding agent
 
-The library is plain JSON cards plus a few Node scripts, built to be **extended by an AI assistant**
-(Claude Code, Cursor, etc.):
-
-1. Open the project in your agent.
-2. Paste the prompt in **[`NEW-SESSION-PROMPT.md`](NEW-SESSION-PROMPT.md)** and give it your source
-   material — a Markdown command list, course notes, or a chapter export.
-3. It generates cards under `commands/**`, then you run the gate:
+1. Open the project in an agent (Claude Code, Cursor, Copilot Chat, …).
+2. Paste the ready prompt from **[`ADD-COMMANDS-PROMPT.md`](ADD-COMMANDS-PROMPT.md)** and drop your
+   commands / notes at the bottom of it. (For a whole course module, use
+   **[`NEW-SESSION-PROMPT.md`](NEW-SESSION-PROMPT.md)** instead — it has the full module protocol.)
+3. The agent writes cards under `commands/**` following the schema.
+4. Verify:
    ```
-   npm run check      # build + validate + healthcheck + coverage snapshot → "ALL GATES PASS"
+   npm run check      # build + schema validation + render sweep + coverage → "ALL GATES PASS"
    ```
-4. Commit and (if hosting) redeploy.
+5. Commit, and (if you're hosting it) redeploy.
 
-Full contributor docs: **[`DEVELOPING.md`](DEVELOPING.md)** (architecture + protocol) and
-**[`AUTHORING.md`](AUTHORING.md)** (the card schema + QA checklist).
+**A card is just JSON** — target values become `<placeholders>` that auto-fill in the builder:
+
+```json
+{
+  "id": "smb-share-enum",
+  "name": "SMB - List Shares (null session)",
+  "command": "smbclient -N -L //<ip>",
+  "description": "List SMB shares over a null session — no credentials required.",
+  "platform": "linux",
+  "type": "command",
+  "category": "Enumeration",
+  "subcategory": "SMB",
+  "certifications": ["CPTS"],
+  "source": "CPTS Module 04: Footprinting",
+  "opsec": "quiet",
+  "tools": ["smbclient"],
+  "tags": ["smb", "enumeration"],
+  "mitre": ["T1135"],
+  "references": [ { "title": "smbclient man page", "url": "https://www.samba.org/samba/docs/current/man-html/smbclient.1.html" } ],
+  "recommended": [ { "id": "smb-mount", "rel": "next", "note": "mount a readable share" } ]
+}
+```
+
+Rules the agent follows (and you should too): use **lowercase canonical placeholders** from
+`js/vars.js` (`<ip>`, `<user>`, `<domain>`, `<lhost>`…) so they auto-fill; keep literal values in
+`examples`, not `command`; never duplicate an `id`; and if a command isn't card-worthy on its own,
+add it as a **variation / example / note** on the closest existing card rather than dropping it.
+Full contract: **[`SCHEMA.md`](SCHEMA.md)**; workflow + QA: **[`AUTHORING.md`](AUTHORING.md)**.
 
 ### Option B — Have me deploy it for you
 
-Prefer to just hand it off? Send me:
+Prefer to hand it off? Send me (see **Contact**):
 
 - **The source material** — your command notes / cheat-sheet / course export for the cert or module
   (Markdown, PDF, or plain text; the more command-rich, the better).

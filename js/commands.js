@@ -90628,7 +90628,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-02T14:27:14.837Z",
+  "buildDate": "2026-09-07T19:10:31.074Z",
   "certifications": [
     "CDSA",
     "CPTS",

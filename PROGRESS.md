@@ -10369,3 +10369,6 @@ CRTP AUTHORING (908 cards now, all gates PASS):
   RESULT: CRTP AD-folder tool-gaps 28 -> ~0 (residual = lab hostnames, helper cmdlets, Invoke-MimiEx/TheKat
     lab wrappers of carded SafetyKatz, Install-ServiceBinary already a crtp-powerup example). 908 cards,
     build/validate/healthcheck --render all PASS. Report: MISSED-COMMANDS-SCAN.md.
+
+## README user manual + ADD-COMMANDS-PROMPT.md (2026-08-26)
+Expanded the public README into a detailed usage manual: 9 walkthrough sections (set target once, find a command, build & copy, Map, Study, Coverage, Export & print, Exam Mode, make-it-yours & backup). Rewrote "Add your own commands": Option A now embeds a valid JSON card template + the placeholder/no-drop rules and links a NEW ready-to-paste prompt file; Option B unchanged. Added ADD-COMMANDS-PROMPT.md - a copy-paste prompt for an AI agent (read SCHEMA/AUTHORING/vars, template placeholders, one card per command, npm run check) with the card template inline. Verified: README fences balanced, JSON example parses. Docs only - no app/build impact.

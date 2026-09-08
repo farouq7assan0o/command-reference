@@ -77,5 +77,15 @@
     "secure_config": "# Set a strong domain password policy:\nSet-ADDefaultDomainPasswordPolicy -Identity corp.local \\\n    -MinPasswordLength 14 \\\n    -PasswordHistoryCount 24 \\\n    -ComplexityEnabled $true \\\n    -MaxPasswordAge 90.00:00:00 \\\n    -LockoutThreshold 5 \\\n    -LockoutDuration 00:30:00 \\\n    -LockoutObservationWindow 00:30:00\n\n# Fine-Grained PSO for privileged accounts (stricter):\nNew-ADFineGrainedPasswordPolicy -Name PrivilegedPSO \\\n    -MinPasswordLength 20 -PasswordHistoryCount 48 \\\n    -ComplexityEnabled $true -LockoutThreshold 3 \\\n    -LockoutDuration 01:00:00 -Precedence 1\nAdd-ADFineGrainedPasswordPolicySubject PrivilegedPSO -Subjects 'Domain Admins'\n\n# Deploy Azure AD Password Protection (blocks common passwords on-prem too)\n# Enable Microsoft Entra ID Smart Lockout",
     "evasion": "Low-and-slow, respect lockout thresholds, spray one credential widely rather than many against one account, and prefer protocols without logging where valid."
   },
-  "type": "command"
+  "type": "command",
+  "variations": [
+    {
+      "label": "Pick a specific format",
+      "command": "./username-anarchy --select-format first.last -i <names_file>"
+    },
+    {
+      "label": "Generate from a single name",
+      "command": "./username-anarchy Jane Doe"
+    }
+  ]
 }

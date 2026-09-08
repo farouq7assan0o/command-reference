@@ -77,5 +77,15 @@
       "MITRE T1595"
     ],
     "evasion": "Throttle and randomize the screenshot/probe sweep; use a normal User-Agent; scope to in-scope hosts to avoid a fan-out pattern."
-  }
+  },
+  "variations": [
+    {
+      "label": "Screenshot a URL list",
+      "command": "eyewitness --web -f urls.txt -d <output_dir>"
+    },
+    {
+      "label": "All protocols (RDP/VNC/web)",
+      "command": "eyewitness --all-protocols -x web_discovery.xml -d <output_dir>"
+    }
+  ]
 }

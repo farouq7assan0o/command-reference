@@ -64,7 +64,8 @@
   "notes": "=== WHAT TO LOOK FOR ===\nDefender: RealTimeProtectionEnabled=True \u2192 built-in tools or signed LOLBins only\nAppLocker: Look for paths NOT blocked \u2014 SysWOW64, TEMP, user-writable dirs often missed\nCLM: ConstrainedLanguage \u2192 many PowerView/PowerUp functions break; use C# or bypass\n\n=== COMMON APPLOCKER BYPASS ===\nIf system32\\powershell.exe is blocked:\n  C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe  (32-bit, often missed)\n  PowerShell_ISE.exe  (sometimes not in rules)\n\n=== CLM BYPASS APPROACHES ===\n  1. PS downgrade: powershell.exe -version 2 (no CLM, no Script Block Logging)\n  2. Use compiled C# (runspace bypass)\n  3. Use tools that don't rely on PS (SharpHound.exe, etc.)",
   "mitre": [
     "T1518.001",
-    "T1562.001"
+    "T1562.001",
+    "T1685"
   ],
   "defense": {
     "why_it_works": "Native PowerShell cmdlets (Get-MpComputerStatus, Get-AppLockerPolicy) and WMI/SC calls query security product state through legitimate management interfaces. No special privilege needed \u2014 any authenticated user can read Defender and AppLocker configuration. This enumeration is completely silent under default logging.",

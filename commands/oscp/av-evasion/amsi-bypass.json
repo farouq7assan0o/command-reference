@@ -62,6 +62,7 @@
   "opsec": "moderate",
   "mitre": [
     "T1562.001",
+    "T1685",
     "T1059.001"
   ],
   "exam": "exam-ok",

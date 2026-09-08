@@ -890,7 +890,8 @@ const COMMAND_DATA = {
       "notes": "=== WHAT TO LOOK FOR ===\nDefender: RealTimeProtectionEnabled=True → built-in tools or signed LOLBins only\nAppLocker: Look for paths NOT blocked — SysWOW64, TEMP, user-writable dirs often missed\nCLM: ConstrainedLanguage → many PowerView/PowerUp functions break; use C# or bypass\n\n=== COMMON APPLOCKER BYPASS ===\nIf system32\\powershell.exe is blocked:\n  C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe  (32-bit, often missed)\n  PowerShell_ISE.exe  (sometimes not in rules)\n\n=== CLM BYPASS APPROACHES ===\n  1. PS downgrade: powershell.exe -version 2 (no CLM, no Script Block Logging)\n  2. Use compiled C# (runspace bypass)\n  3. Use tools that don't rely on PS (SharpHound.exe, etc.)",
       "mitre": [
         "T1518.001",
-        "T1562.001"
+        "T1562.001",
+        "T1685"
       ],
       "defense": {
         "why_it_works": "Native PowerShell cmdlets (Get-MpComputerStatus, Get-AppLockerPolicy) and WMI/SC calls query security product state through legitimate management interfaces. No special privilege needed — any authenticated user can read Defender and AppLocker configuration. This enumeration is completely silent under default logging.",
@@ -2388,6 +2389,7 @@ const COMMAND_DATA = {
       "opsec": "moderate",
       "mitre": [
         "T1562.001",
+        "T1685",
         "T1059.001",
         "T1140"
       ],
@@ -2546,6 +2548,7 @@ const COMMAND_DATA = {
       "opsec": "moderate",
       "mitre": [
         "T1562.001",
+        "T1685",
         "T1059.001"
       ],
       "exam": "exam-ok",
@@ -14858,7 +14861,8 @@ const COMMAND_DATA = {
       "description": "With admin rights, disable Defender's real-time monitoring so your payloads/tools aren't quarantined. Needs an elevated PowerShell.",
       "opsec": "loud",
       "mitre": [
-        "T1562.001"
+        "T1562.001",
+        "T1685"
       ],
       "exam": "exam-ok",
       "defense": {
@@ -15217,8 +15221,7 @@ const COMMAND_DATA = {
         "secure_config": "# Fix application (developer-side):\n# Use SetDllDirectory('') + LoadLibrary('C:\\Program Files\\App\\lib.dll')\n\n# OS-side: restrict app directory permissions:\nicacls 'C:\\Program Files\\VulnApp' /inheritance:r /grant 'SYSTEM:(OI)(CI)F' /grant 'Administrators:(OI)(CI)F'\n\n# Enable SafeDllSearchMode:\nreg add HKLM\\System\\CurrentControlSet\\Control\\Session\\ Manager /v SafeDllSearchMode /t REG_DWORD /d 1 /f",
         "sources": [
           "HTB M26",
-          "MITRE T1574.001",
-          "MITRE T1574.002"
+          "MITRE T1574.001"
         ],
         "evasion": "Place the hijack DLL, trigger the load, then remove it and restore the directory to reduce the on-disk window."
       }
@@ -15247,8 +15250,7 @@ const COMMAND_DATA = {
       ],
       "notes": "DLL Search Order Hijacking (how the attack works):\n  Windows loads DLLs in this order:\n    1. Directory of the executable\n    2. System directory (C:\\Windows\\System32)\n    3. Windows directory (C:\\Windows)\n    4. Current directory\n    5. PATH entries\n  Attacker: places malicious DLL with a legitimate name in a directory\n    searched BEFORE the real DLL location.\n\nSysmon Event ID 7 (ImageLoad) key fields:\n  Image         → the process loading the DLL\n  ImageLoaded   → full path of the DLL that was loaded\n  Hashes        → MD5, SHA256, ImpHash of loaded DLL\n  Signed        → true/false — is the DLL signed?\n  Signature     → signing certificate / vendor\n  SignatureStatus → Valid, Expired, Revoked, Unchecked\n\nDetection IOCs:\n  → Signed=false for a DLL that should always be signed (e.g. Windows system DLLs)\n  → ImageLoaded path outside System32 for a known system DLL name\n  → Same DLL name loaded from two different paths across processes\n  → Low/no-reputation DLL loaded by high-privilege process\n  → ImpHash matches known malware family\n\nLab analysis path: C:\\Logs\\DLLHijack\\\n  → Contains sysmon.evtx with DLL hijack evidence\n  → Look for Event 7 where Signed=false or ImageLoaded path is suspicious\n\nXML query for unsigned DLL loads:\n  $query = @'\n  <QueryList><Query Id=\"0\">\n    <Select Path=\"Microsoft-Windows-Sysmon/Operational\">\n      *[System[EventID=7]] and *[EventData[Data[@Name='Signed']='false']]\n    </Select>\n  </Query></QueryList>\n  '@\n  Get-WinEvent -FilterXml $query",
       "mitre": [
-        "T1574.001",
-        "T1574.002"
+        "T1574.001"
       ],
       "examples": [
         {
@@ -16435,7 +16437,7 @@ const COMMAND_DATA = {
         "sources": [
           "HTB M26",
           "MITRE T1543.003",
-          "MITRE T1574.002"
+          "MITRE T1574.001"
         ]
       }
     },
@@ -29783,7 +29785,8 @@ const COMMAND_DATA = {
       "mitre": [
         "T1620",
         "T1562.001",
-        "T1562.006"
+        "T1562.006",
+        "T1685"
       ],
       "tools": [
         "Loader.exe",
@@ -30518,6 +30521,7 @@ const COMMAND_DATA = {
       "opsec": "quiet",
       "mitre": [
         "T1562.001",
+        "T1685",
         "T1574.012",
         "T1112"
       ],
@@ -69013,7 +69017,7 @@ const COMMAND_DATA = {
         "T1071.001",
         "T1059.001",
         "T1055",
-        "T1574.002",
+        "T1574.001",
         "T1041"
       ],
       "examples": [
@@ -82872,7 +82876,8 @@ const COMMAND_DATA = {
       "steps": [],
       "notes": "=== WHY INTERCEPT RESPONSES? ===\nClient-side controls (HTML attributes, JS validation) only exist in the browser.\nThe server never enforces them — so if you change the response before the browser\nrenders it, the browser sees no restriction and lets you submit anything.\n\nCommon targets:\n  type=\"number\"  → type=\"text\"          (bypass numeric-only restriction)\n  maxlength=\"3\" → maxlength=\"100\"       (allow longer input)\n  disabled=\"true\" → remove disabled attr (enable submit buttons)\n  type=\"hidden\" → type=\"text\"           (see and modify hidden fields)\n\n=== ONE-TIME vs PERSISTENT ===\n  One-time: Proxy > Intercept on > forward request > modify intercepted response > forward\n  Persistent (Burp): Match and Replace rules — applied to EVERY matching response\n  Persistent (ZAP): Replacer rules (CTRL+R)\n  No-intercept (ZAP): HUD Show/Enable button — fastest for simple field enabling\n\n=== WORKFLOW FOR COMMAND INJECTION VIA RESPONSE MODIFY ===\n  1. Enable response interception (or set M&R rule)\n  2. Refresh page — input field now accepts text\n  3. Enter payload directly in browser: ;ls;\n  4. Submit — no need to intercept request, payload goes through as-is",
       "mitre": [
-        "T1562.001"
+        "T1562.001",
+        "T1685"
       ],
       "defense": {
         "why_it_works": "HTML attributes like type=\"number\", maxlength, and disabled are client-side browser hints — they are never enforced by the HTTP protocol or the server. A proxy intercepts the response and edits the HTML before the browser renders it, so the browser has no restrictions. The server must validate all input independently on the back-end.",
@@ -90628,7 +90633,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-07T19:10:31.074Z",
+  "buildDate": "2026-09-08T10:27:52.984Z",
   "certifications": [
     "CDSA",
     "CPTS",

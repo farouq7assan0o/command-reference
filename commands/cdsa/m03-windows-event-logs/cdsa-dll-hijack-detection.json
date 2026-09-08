@@ -8,14 +8,25 @@
   "opsec": "silent",
   "category": "Windows Events/Forensics",
   "subcategory": "Threat Detection",
-  "certifications": ["CDSA"],
+  "certifications": [
+    "CDSA"
+  ],
   "source": "CDSA Module 03: Windows Event Logs & Finding Evil",
-  "tags": ["dll-hijacking", "sysmon", "imageload", "detection", "forensics", "blue-team"],
-  "notes": "DLL Search Order Hijacking (how the attack works):\n  Windows loads DLLs in this order:\n    1. Directory of the executable\n    2. System directory (C:\\Windows\\System32)\n    3. Windows directory (C:\\Windows)\n    4. Current directory\n    5. PATH entries\n  Attacker: places malicious DLL with a legitimate name in a directory\n    searched BEFORE the real DLL location.\n\nSysmon Event ID 7 (ImageLoad) key fields:\n  Image         → the process loading the DLL\n  ImageLoaded   → full path of the DLL that was loaded\n  Hashes        → MD5, SHA256, ImpHash of loaded DLL\n  Signed        → true/false — is the DLL signed?\n  Signature     → signing certificate / vendor\n  SignatureStatus → Valid, Expired, Revoked, Unchecked\n\nDetection IOCs:\n  → Signed=false for a DLL that should always be signed (e.g. Windows system DLLs)\n  → ImageLoaded path outside System32 for a known system DLL name\n  → Same DLL name loaded from two different paths across processes\n  → Low/no-reputation DLL loaded by high-privilege process\n  → ImpHash matches known malware family\n\nLab analysis path: C:\\Logs\\DLLHijack\\\n  → Contains sysmon.evtx with DLL hijack evidence\n  → Look for Event 7 where Signed=false or ImageLoaded path is suspicious\n\nXML query for unsigned DLL loads:\n  $query = @'\n  <QueryList><Query Id=\"0\">\n    <Select Path=\"Microsoft-Windows-Sysmon/Operational\">\n      *[System[EventID=7]] and *[EventData[Data[@Name='Signed']='false']]\n    </Select>\n  </Query></QueryList>\n  '@\n  Get-WinEvent -FilterXml $query",
-  "mitre": ["T1574.001", "T1574.002"],
+  "tags": [
+    "dll-hijacking",
+    "sysmon",
+    "imageload",
+    "detection",
+    "forensics",
+    "blue-team"
+  ],
+  "notes": "DLL Search Order Hijacking (how the attack works):\n  Windows loads DLLs in this order:\n    1. Directory of the executable\n    2. System directory (C:\\Windows\\System32)\n    3. Windows directory (C:\\Windows)\n    4. Current directory\n    5. PATH entries\n  Attacker: places malicious DLL with a legitimate name in a directory\n    searched BEFORE the real DLL location.\n\nSysmon Event ID 7 (ImageLoad) key fields:\n  Image         \u2192 the process loading the DLL\n  ImageLoaded   \u2192 full path of the DLL that was loaded\n  Hashes        \u2192 MD5, SHA256, ImpHash of loaded DLL\n  Signed        \u2192 true/false \u2014 is the DLL signed?\n  Signature     \u2192 signing certificate / vendor\n  SignatureStatus \u2192 Valid, Expired, Revoked, Unchecked\n\nDetection IOCs:\n  \u2192 Signed=false for a DLL that should always be signed (e.g. Windows system DLLs)\n  \u2192 ImageLoaded path outside System32 for a known system DLL name\n  \u2192 Same DLL name loaded from two different paths across processes\n  \u2192 Low/no-reputation DLL loaded by high-privilege process\n  \u2192 ImpHash matches known malware family\n\nLab analysis path: C:\\Logs\\DLLHijack\\\n  \u2192 Contains sysmon.evtx with DLL hijack evidence\n  \u2192 Look for Event 7 where Signed=false or ImageLoaded path is suspicious\n\nXML query for unsigned DLL loads:\n  $query = @'\n  <QueryList><Query Id=\"0\">\n    <Select Path=\"Microsoft-Windows-Sysmon/Operational\">\n      *[System[EventID=7]] and *[EventData[Data[@Name='Signed']='false']]\n    </Select>\n  </Query></QueryList>\n  '@\n  Get-WinEvent -FilterXml $query",
+  "mitre": [
+    "T1574.001"
+  ],
   "examples": [
     {
-      "label": "Read DLLHijack lab evtx — all Event 7 (ImageLoad) events",
+      "label": "Read DLLHijack lab evtx \u2014 all Event 7 (ImageLoad) events",
       "command": "Get-WinEvent -Path 'C:\\Logs\\DLLHijack\\sysmon.evtx' | Where-Object {$_.Id -eq 7} | Select-Object TimeCreated, Message | Format-List"
     },
     {

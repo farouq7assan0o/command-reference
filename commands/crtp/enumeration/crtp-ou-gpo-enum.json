@@ -59,6 +59,10 @@
     {
       "label": "gpresult /z - verbose applied GPOs",
       "command": "gpresult /z"
+    },
+    {
+      "label": "PowerView OU (course alias of Get-DomainOU)",
+      "command": "Get-NetOU -FullData | select name,distinguishedname"
     }
   ],
   "steps": [

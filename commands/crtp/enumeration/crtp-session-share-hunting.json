@@ -66,6 +66,10 @@
     {
       "label": "Get-NetShare (shares on a specific host)",
       "command": "Get-NetShare -ComputerName <host>"
+    },
+    {
+      "label": "File servers (course alias of Get-DomainFileServer)",
+      "command": "Get-NetFileServer -Domain <domain>"
     }
   ],
   "steps": [

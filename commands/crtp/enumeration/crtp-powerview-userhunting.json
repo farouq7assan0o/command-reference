@@ -113,6 +113,14 @@
     {
       "label": "Find-DomainLocalGroupMember (local group members domain-wide)",
       "command": "Find-DomainLocalGroupMember -GroupName Administrators"
+    },
+    {
+      "label": "Who is logged on locally (needs local admin)",
+      "command": "Get-LoggedonLocal -ComputerName <host>"
+    },
+    {
+      "label": "Last user logged on to a host",
+      "command": "Get-LastLoggedOn -ComputerName <host>"
     }
   ]
 }

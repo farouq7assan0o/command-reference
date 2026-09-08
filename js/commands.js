@@ -1963,7 +1963,25 @@ const COMMAND_DATA = {
         "misconfiguration": "All domain users can read most AD object attributes by default. No Script Block Logging. No CLM enforcement. MDI not deployed. No LDAP-tier restriction.",
         "vulnerable_config": "# PowerShell execution unrestricted:\nGet-ExecutionPolicy -List  # All scopes: Unrestricted or RemoteSigned\n\n# No Script Block Logging:\n# HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\n# EnableScriptBlockLogging = 0\n\n# ADWS port 9389 accessible from all workstations",
         "secure_config": "# Enable Script Block Logging via GPO:\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1\n\n# CLM via WDAC (AllowMicrosoft base policy):\n# Unsigned scripts → Constrained Language Mode\n\n# MDI: built-in LDAP reconnaissance detection\n\n# Tiering: block workstations from DC LDAP/ADWS ports at firewall:\n# deny tcp 10.0.1.0/24 (workstations) 10.0.0.10/32 (DC) eq 389,636,9389"
-      }
+      },
+      "variations": [
+        {
+          "label": "Computers + OS (spot the DCs/servers)",
+          "command": "Get-ADComputer -Filter * -Properties OperatingSystem | select Name,OperatingSystem,DNSHostName"
+        },
+        {
+          "label": "Organizational Units",
+          "command": "Get-ADOrganizationalUnit -Filter * | select Name,DistinguishedName"
+        },
+        {
+          "label": "Domain trusts",
+          "command": "Get-ADTrust -Filter * | select Source,Target,Direction,TrustType"
+        },
+        {
+          "label": "Forest / global catalogs",
+          "command": "Get-ADForest | select Name,RootDomain,Domains,GlobalCatalogs"
+        }
+      ]
     },
     {
       "id": "ad-adidnsdump",
@@ -50986,6 +51004,10 @@ const COMMAND_DATA = {
         {
           "label": "gpresult /z - verbose applied GPOs",
           "command": "gpresult /z"
+        },
+        {
+          "label": "PowerView OU (course alias of Get-DomainOU)",
+          "command": "Get-NetOU -FullData | select name,distinguishedname"
         }
       ],
       "steps": [
@@ -56207,6 +56229,14 @@ const COMMAND_DATA = {
         {
           "label": "Find-DomainLocalGroupMember (local group members domain-wide)",
           "command": "Find-DomainLocalGroupMember -GroupName Administrators"
+        },
+        {
+          "label": "Who is logged on locally (needs local admin)",
+          "command": "Get-LoggedonLocal -ComputerName <host>"
+        },
+        {
+          "label": "Last user logged on to a host",
+          "command": "Get-LastLoggedOn -ComputerName <host>"
         }
       ]
     },
@@ -65139,6 +65169,10 @@ const COMMAND_DATA = {
         {
           "label": "Get-NetShare (shares on a specific host)",
           "command": "Get-NetShare -ComputerName <host>"
+        },
+        {
+          "label": "File servers (course alias of Get-DomainFileServer)",
+          "command": "Get-NetFileServer -Domain <domain>"
         }
       ],
       "steps": [
@@ -90943,7 +90977,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-08T15:12:07.057Z",
+  "buildDate": "2026-09-08T22:07:54.847Z",
   "certifications": [
     "CDSA",
     "CPTS",

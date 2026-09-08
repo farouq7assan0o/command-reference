@@ -55817,6 +55817,10 @@ const COMMAND_DATA = {
         {
           "label": "Interesting files, last-accessed filter",
           "command": "Find-InterestingDomainShareFile -Include *cred*,*.ps1 -LastAccessTime (Get-Date).AddDays(-30)"
+        },
+        {
+          "label": "PowerView recursive file finder",
+          "command": "Invoke-FileFinder -Verbose   # PowerView: find files by name/pattern across reachable shares"
         }
       ],
       "examples": [
@@ -90993,7 +90997,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-08T22:17:37.849Z",
+  "buildDate": "2026-09-08T22:32:42.036Z",
   "certifications": [
     "CDSA",
     "CPTS",

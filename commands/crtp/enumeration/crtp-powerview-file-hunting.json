@@ -46,6 +46,10 @@
     {
       "label": "Interesting files, last-accessed filter",
       "command": "Find-InterestingDomainShareFile -Include *cred*,*.ps1 -LastAccessTime (Get-Date).AddDays(-30)"
+    },
+    {
+      "label": "PowerView recursive file finder",
+      "command": "Invoke-FileFinder -Verbose   # PowerView: find files by name/pattern across reachable shares"
     }
   ],
   "examples": [

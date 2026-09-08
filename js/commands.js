@@ -13371,6 +13371,127 @@ const COMMAND_DATA = {
       }
     },
     {
+      "id": "crtp-exam-methodology",
+      "name": "CRTP Exam Methodology & Playbook",
+      "command": "# Flow: Setup/Recon -> Local PrivEsc -> Hunt DA session -> Domain Dominance -> Cross-Trust/Forest -> Document",
+      "description": "Start-to-finish orientation for the 24h CRTP exam: the phase order, which card to reach for at each step, and the gotchas that silently break chains. Open this first, then drill into the linked cards.",
+      "platform": "windows",
+      "category": "Active Directory",
+      "subcategory": "Methodology",
+      "type": "reference",
+      "certifications": [
+        "CRTP"
+      ],
+      "primary_cert": "CRTP",
+      "source": "CRTP",
+      "opsec": "quiet",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1078",
+        "T1087.002"
+      ],
+      "tools": [
+        "PowerView",
+        "Rubeus",
+        "SafetyKatz",
+        "InviShell",
+        "BloodHound"
+      ],
+      "tags": [
+        "methodology",
+        "playbook",
+        "exam",
+        "crtp",
+        "checklist"
+      ],
+      "steps": [
+        {
+          "label": "0. Setup on your foothold (studentx)",
+          "command": "# Drop into a clean shell: InviShell (crtp-invishell) OR AMSI+SBL bypass (crtp-amsi-sbl-bypass). Then recon the environment (crtp-exec-env-recon): LanguageMode, AppLocker, Defender, whoami /priv, klist."
+        },
+        {
+          "label": "1. Domain enumeration (no external tools if CLM)",
+          "command": "# PowerView (crtp-powerview-domain/-users-groups/-acls/-trusts) OR signed AD module (crtp-ad-module-enum). Run BloodHound/SOAPHound (crtp-bloodhound) and mark 'Shortest paths to DA'."
+        },
+        {
+          "label": "2. Local privilege escalation on studentx",
+          "command": "# PowerUp/PrivEscCheck (crtp-powerup). Look for unquoted paths, modifiable service binaries (abyssws/SNMPTRAP in lab), AlwaysInstallElevated. Or abuse a permissive GPO (crtp-gpo-abuse). Goal: local admin."
+        },
+        {
+          "label": "3. Hunt where a Domain Admin is logged in",
+          "command": "# crtp-powerview-userhunting (Find-DomainUserLocation, Get-NetLoggedon/Get-LoggedonLocal) + crtp-session-share-hunting. Get local admin on THAT box, then extract the DA token/creds (crtp-credential-dumping via SafetyKatz/Loader)."
+        },
+        {
+          "label": "4. Move laterally to that box (mind the DOUBLE HOP)",
+          "command": "# crtp-psremoting / winrs. If you must chain A->DC, fix the double hop FIRST (crtp-double-hop: createnetonly + asktgt /ptt). Overpass-the-Hash (crtp-overpass-hash) with /aes256 to get a ticket."
+        },
+        {
+          "label": "5. Domain dominance",
+          "command": "# DCSync krbtgt (crtp-dcsync) -> Golden Ticket (crtp-golden-ticket) for persistence, Silver (crtp-silver-ticket) for one quiet service. Also: Kerberoast (crtp-kerberoasting), delegation (crtp-unconstrained-delegation, crtp-constrained-delegation, crtp-rbcd)."
+        },
+        {
+          "label": "6. Persistence (only if the exam scenario needs it)",
+          "command": "# Diamond (crtp-diamond-ticket), DSRM (crtp-dsrm-backdoor), AdminSDHolder (crtp-adminsdholder), ACL/DCSync rights (crtp-acl-persistence), security-descriptor backdoors (crtp-race-backdoors)."
+        },
+        {
+          "label": "7. Cross-trust -> Enterprise Admin -> other forest",
+          "command": "# Child->parent: krbtgt+SID history OR trust key (crtp-child-to-parent, both methods). Forest trust (crtp-forest-trust-abuse). MSSQL links to eurocorp (crtp-mssql-links). AD CS ESC1/ESC3 (crtp-adcs-esc1/-esc3)."
+        },
+        {
+          "label": "8. Document as you go",
+          "command": "# Screenshot every compromise (command + output + hostname). You submit a report - re-finding a path at hour 20 is painful. Keep a per-host notes file."
+        }
+      ],
+      "examples": [
+        {
+          "label": "First 10 minutes on the foothold",
+          "command": ". C:\\AD\\Tools\\InvisiShell\\RunWithRegistryNonAdmin.bat ; $ExecutionContext.SessionState.LanguageMode ; whoami /priv ; . C:\\AD\\Tools\\PowerView.ps1 ; Get-Domain"
+        },
+        {
+          "label": "Sanity chain once you think you have DA",
+          "command": "Rubeus.exe asktgt /user:Administrator /aes256:<krbtgt_aes> /ptt ; dir \\\\dcorp-dc\\C$ ; SafetyKatz.exe \"lsadump::dcsync /user:dcorp\\krbtgt\" \"exit\""
+        }
+      ],
+      "notes": "PHASE ORDER matters: enumerate -> local admin -> find a DA session -> steal it -> DCSync -> cross-trust. TOP GOTCHAS: (1) Bypass AMSI/SBL BEFORE loading any .ps1 or the load fails silently. (2) Under Constrained Language Mode use the signed AD module + run compiled tools via Loader.exe, never dot-source .ps1. (3) AppLocker usually allows only C:\\Windows and C:\\Program Files - run from a writable subfolder or in-memory. (4) The DOUBLE HOP: a remote PSSession can't reach a 3rd host - use createnetonly + asktgt /ptt (crtp-double-hop). (5) Prefer /aes256 over /rc4 for all ticket ops (RC4 is a detection flag). (6) klist often; klist purge when switching identity. (7) Only tamper with Defender AFTER local admin, and prefer in-memory so you never touch it. (8) SID filtering blocks the EA-SID trick across FOREST trusts but not intra-forest (that's why child->parent works and cross-forest needs the trust key / links). (9) Silver ticket = no DC contact (quiet); Golden = full but noisier. LINKED CARDS use their ids above - search the id to open each.",
+      "references": [
+        {
+          "title": "CRTP - Attacking and Defending Active Directory (course)",
+          "url": "https://www.alteredsecurity.com/adlab"
+        },
+        {
+          "title": "PayloadsAllTheThings - Active Directory Attack",
+          "url": "https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/Methodology%20and%20Resources/Active%20Directory%20Attack.md"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "crtp-exec-env-recon",
+          "note": "Phase 0: check defenses before running anything",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-powerview-domain",
+          "note": "Phase 1: domain enumeration",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-double-hop",
+          "note": "Phase 4: fix before chaining to the DC",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-dcsync",
+          "note": "Phase 5: domain dominance",
+          "rel": "next"
+        },
+        {
+          "id": "crtp-child-to-parent",
+          "note": "Phase 7: escalate to Enterprise Admin",
+          "rel": "next"
+        }
+      ]
+    },
+    {
       "id": "crunch-wordlist",
       "name": "Crunch Wordlist Generator",
       "command": "crunch <min> <max> <charset> -t <pattern> -o <output_file>",
@@ -91247,8 +91368,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 910,
-  "buildDate": "2026-09-08T22:57:31.414Z",
+  "totalCommands": 911,
+  "buildDate": "2026-09-08T23:04:49.101Z",
   "certifications": [
     "CDSA",
     "CPTS",

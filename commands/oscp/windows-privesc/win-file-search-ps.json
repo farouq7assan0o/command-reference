@@ -103,6 +103,12 @@
     ],
     "misconfiguration": "Credentials embedded in config files readable by standard users. Unattend.xml left on disk after OS installation. SSH keys in user home directories without passphrase. KeePass databases with weak master passwords.",
     "vulnerable_config": "# Unattend.xml with plaintext credentials (common after Windows deployment):\nGet-ChildItem C:\\ -Recurse -Include 'Unattend.xml','sysprep.xml' -ErrorAction SilentlyContinue\n# Contains: <AdministratorPassword><Value>PlaintextPass123</Value></AdministratorPassword>\n\n# Web.config with database credentials:\nGet-ChildItem C:\\inetpub -Recurse -Include 'web.config' | Select-String 'password'",
-    "secure_config": "# Use DPAPI or Azure Key Vault for application secrets:\n# web.config — use ASP.NET encrypted config sections:\naspnet_regiis -pe 'connectionStrings' -app '/MyApp'\n# → connectionStrings section encrypted with machine key\n\n# Audit for embedded credentials:\nGet-ChildItem C:\\ -Recurse -Include '*.config','*.xml','*.ini','*.txt' -EA SilentlyContinue | Select-String -Pattern 'password\\s*=' -CaseSensitive:$false | Select-Object Filename,Line\n\n# Remove Unattend.xml after OS deployment:\nRemove-Item C:\\Windows\\Panther\\Unattend.xml -ErrorAction SilentlyContinue\nRemove-Item C:\\Windows\\System32\\sysprep\\Unattend.xml -ErrorAction SilentlyContinue"
-  }
+    "secure_config": "# Use DPAPI or Azure Key Vault for application secrets:\n# web.config \u2014 use ASP.NET encrypted config sections:\naspnet_regiis -pe 'connectionStrings' -app '/MyApp'\n# \u2192 connectionStrings section encrypted with machine key\n\n# Audit for embedded credentials:\nGet-ChildItem C:\\ -Recurse -Include '*.config','*.xml','*.ini','*.txt' -EA SilentlyContinue | Select-String -Pattern 'password\\s*=' -CaseSensitive:$false | Select-Object Filename,Line\n\n# Remove Unattend.xml after OS deployment:\nRemove-Item C:\\Windows\\Panther\\Unattend.xml -ErrorAction SilentlyContinue\nRemove-Item C:\\Windows\\System32\\sysprep\\Unattend.xml -ErrorAction SilentlyContinue"
+  },
+  "tags": [
+    "windows",
+    "file-search",
+    "powershell",
+    "credential-hunting"
+  ]
 }

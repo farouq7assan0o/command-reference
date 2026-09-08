@@ -6,13 +6,13 @@
   "category": "Lateral Movement",
   "subcategory": "Pass the Hash",
   "type": "command",
-  "description": "Use an NTLM hash directly to authenticate to SMB shares with smbclient — no password cracking required. The --pw-nt-hash flag tells smbclient to treat the supplied string as an NT hash rather than a plaintext password.",
+  "description": "Use an NTLM hash directly to authenticate to SMB shares with smbclient \u2014 no password cracking required. The --pw-nt-hash flag tells smbclient to treat the supplied string as an NT hash rather than a plaintext password.",
   "notes": "smbclient with --pw-nt-hash uses the NT portion of the NTLM hash. Domain can be a workgroup name for local accounts (use the hostname or WORKGROUP). Combine with -c for non-interactive file operations. impacket-smbclient and impacket-psexec are alternatives when you need code execution vs. just file access. Also covered in: OSCP PEN-200 Chapter 15 (Password Attacks).",
   "variations": [
     {
       "command": "smbclient \\\\\\\\<target>\\\\ADMIN$ -U Administrator --pw-nt-hash <nt_hash>",
       "caption": "Connect to ADMIN$ share as local Administrator",
-      "label": "smbclient \\\\\\\\<target>\\\\ADMIN$ -U …"
+      "label": "smbclient \\\\\\\\<target>\\\\ADMIN$ -U \u2026"
     },
     {
       "command": "smbclient \\\\\\\\<target>\\\\<share> -U <domain>/<user> --pw-nt-hash <nt_hash> -c 'ls'",
@@ -99,7 +99,7 @@
     }
   ],
   "defense": {
-    "why_it_works": "NTLM authentication uses a challenge-response mechanism where the client proves knowledge of the password by applying it to a server challenge. The actual plaintext password is never transmitted — only the NTLM hash is used in the computation. smbclient -U 'domain/user%' --pw-nt-hash accepts the NTLM hash directly in place of the password, authenticating as the user without cracking the hash.",
+    "why_it_works": "NTLM authentication uses a challenge-response mechanism where the client proves knowledge of the password by applying it to a server challenge. The actual plaintext password is never transmitted \u2014 only the NTLM hash is used in the computation. smbclient -U 'domain/user%' --pw-nt-hash accepts the NTLM hash directly in place of the password, authenticating as the user without cracking the hash.",
     "prerequisites": "NTLM hash of the target account (from LSASS dump, DCSync, SAM dump). smbclient on Linux attacker. SMB port 445 accessible. SMB signing disabled on target (or NTLMv2 accepted).",
     "impact": "T1550.002 Use Alternate Authentication Material: Pass the Hash. Lateral movement to any SMB-accessible resource where the hash is valid. Applicable to any Windows host where the account is a local admin or has SMB access. Works against all Windows versions when NTLM authentication is allowed.",
     "detection": "Event 4624 type 3 (network logon) with NTLM authentication from unexpected source IP. Event 4625: failed PtH attempt. Sysmon Event 3: SMB connection from Linux/non-Windows host (no typical Windows source info). MDI: 'Pass-the-Hash' detection. NTLM audit logs: Event 4776 on DC for NTLMv1/v2 success.\nStolen Kerberos tickets or token impersonation: logon sessions from accounts without expected interactive logon events (DET0338/AN0954).\nAccess tokens or SSH keys used without corresponding login shell or PAM module activity, especially for remote execution (AN0955).\nToken replay or impersonation in federated logins without interactive browser session or MFA prompts (AN0956).\nOAuth token reuse from different geographic regions without full login events (AN0957).\nContainer process using mounted cloud credentials or token cache without known orchestration (AN0958).\nAccess token reuse for SharePoint or Outlook APIs without interactive user context (AN0959).\nInstance metadata token use across instances or misuse of short-lived tokens for different roles (AN0960).",
@@ -110,7 +110,14 @@
       "https://attack.mitre.org/techniques/T1550/002/"
     ],
     "misconfiguration": "Same local admin password on all workstations (no LAPS). NTLM not restricted. Credential Guard not deployed. MDI not deployed. SMB signing not required.",
-    "vulnerable_config": "# Same local admin hash on all workstations (no LAPS):\n# Mimikatz dumps: Administrator:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# smbclient -U 'CORP/Administrator%' //ws02/C$ --pw-nt-hash 8846f7eaee8fb117ad06bdd830b7586c\n# → Access to ALL workstations via one hash\n\n# NTLM not restricted:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').LmCompatibilityLevel  # 3 or lower allows NTLMv1",
-    "secure_config": "# LAPS: unique local admin passwords per host:\n# Install LAPS → extend AD schema → GPO:\n# Computer Config → Admin Templates → LAPS → Password Settings: Enabled\n# Length: 25, Complexity: All characters, Age: 30 days\n\n# Disable NTLMv1:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name LmCompatibilityLevel -Value 5\n# 5 = NTLMv2 only on client; DCs refuse anything below NTLMv2\n\n# Restrict NTLM to specific servers:\n# Computer Config → Windows Settings → Security Settings → Local Policies → Security Options\n# → Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers: Deny all\n\n# Protected Users (no NTLM for members):\nAdd-ADGroupMember 'Protected Users' 'DomainAdmin1'"
-  }
+    "vulnerable_config": "# Same local admin hash on all workstations (no LAPS):\n# Mimikatz dumps: Administrator:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# smbclient -U 'CORP/Administrator%' //ws02/C$ --pw-nt-hash 8846f7eaee8fb117ad06bdd830b7586c\n# \u2192 Access to ALL workstations via one hash\n\n# NTLM not restricted:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').LmCompatibilityLevel  # 3 or lower allows NTLMv1",
+    "secure_config": "# LAPS: unique local admin passwords per host:\n# Install LAPS \u2192 extend AD schema \u2192 GPO:\n# Computer Config \u2192 Admin Templates \u2192 LAPS \u2192 Password Settings: Enabled\n# Length: 25, Complexity: All characters, Age: 30 days\n\n# Disable NTLMv1:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name LmCompatibilityLevel -Value 5\n# 5 = NTLMv2 only on client; DCs refuse anything below NTLMv2\n\n# Restrict NTLM to specific servers:\n# Computer Config \u2192 Windows Settings \u2192 Security Settings \u2192 Local Policies \u2192 Security Options\n# \u2192 Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers: Deny all\n\n# Protected Users (no NTLM for members):\nAdd-ADGroupMember 'Protected Users' 'DomainAdmin1'"
+  },
+  "tags": [
+    "pass-the-hash",
+    "smbclient",
+    "ntlm",
+    "lateral",
+    "pth"
+  ]
 }

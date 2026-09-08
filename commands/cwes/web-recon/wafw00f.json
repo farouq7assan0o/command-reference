@@ -1,6 +1,6 @@
 {
   "id": "wafw00f",
-  "name": "wafw00f – WAF Detection",
+  "name": "wafw00f \u2013 WAF Detection",
   "command": "wafw00f <url>",
   "platform": "linux",
   "category": "Reconnaissance",
@@ -16,7 +16,7 @@
     },
     {
       "command": "wafw00f https://<target> -v",
-      "caption": "Verbose output — shows each probe and response",
+      "caption": "Verbose output \u2014 shows each probe and response",
       "label": "wafw00f https://<target> -v"
     },
     {
@@ -68,19 +68,26 @@
     }
   ],
   "defense": {
-    "why_it_works": "wafw00f sends crafted requests and analyses the responses (headers, cookies, block pages, status codes) to fingerprint the WAF vendor and product sitting in front of a site — so the tester knows what protection exists before probing further.",
+    "why_it_works": "wafw00f sends crafted requests and analyses the responses (headers, cookies, block pages, status codes) to fingerprint the WAF vendor and product sitting in front of a site \u2014 so the tester knows what protection exists before probing further.",
     "prerequisites": "Network access to the target web application (URL).",
     "impact": "Identification of the WAF vendor/product (e.g. Wordfence) protecting the target, which informs the evasion techniques needed in subsequent testing and avoids false negatives.",
-    "detection": "Low to Moderate: wafw00f sends a small set of crafted probe requests. A WAF can block, alter, or log these fingerprinting attempts and may alert — the probes are few but distinctive, and a WAF is designed to notice anomalous requests.\n\n[MITRE T1595.002] The active, crafted-request pattern is loggable at the WAF and web server.",
+    "detection": "Low to Moderate: wafw00f sends a small set of crafted probe requests. A WAF can block, alter, or log these fingerprinting attempts and may alert \u2014 the probes are few but distinctive, and a WAF is designed to notice anomalous requests.\n\n[MITRE T1595.002] The active, crafted-request pattern is loggable at the WAF and web server.",
     "artifacts": "A handful of crafted/anomalous probe requests in web and WAF logs; WAF detection events for the fingerprinting payloads.",
     "prevention": "Configure the WAF to return generic responses that do not reveal its vendor identity (uniform block pages, no vendor-specific headers or cookies); monitor WAF logs for fingerprinting probe patterns and known scanner signatures.\n\n[MITRE T1595.002 M1056] Minimise identifying information exposed to external parties.",
-    "evasion": "Only a few crafted requests are sent, so low-and-slow timing and a benign user-agent reduce the footprint — though a well-tuned WAF may still log the probes.",
+    "evasion": "Only a few crafted requests are sent, so low-and-slow timing and a benign user-agent reduce the footprint \u2014 though a well-tuned WAF may still log the probes.",
     "sources": [
       "CWES M04",
       "MITRE T1595.002"
     ],
     "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
-    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
-  }
+    "vulnerable_config": "# IPMI cipher 0 \u2014 no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data \u2014 auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS \u2014 version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI \u2014 disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync \u2014 require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec \u2014 disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS \u2014 disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  },
+  "tags": [
+    "wafw00f",
+    "waf",
+    "detection",
+    "recon",
+    "web"
+  ]
 }

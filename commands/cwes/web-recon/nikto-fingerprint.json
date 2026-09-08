@@ -1,13 +1,13 @@
 {
   "id": "nikto-fingerprint",
-  "name": "Nikto – Web Server Fingerprinting",
+  "name": "Nikto \u2013 Web Server Fingerprinting",
   "command": "nikto -h <url> -Tuning b",
   "platform": "linux",
   "category": "Reconnaissance",
   "subcategory": "Web Reconnaissance",
   "type": "command",
   "description": "Nikto web scanner fingerprints the server, detects misconfigurations, outdated software, dangerous files, and default credentials. -Tuning b restricts to software identification only (fast, less noisy). Full scan (-Tuning 0123456789abcde) is comprehensive but loud.",
-  "notes": "Tuning codes: b = Software Identification, 1 = Interesting Files, 2 = Misconfig, 4 = Info Disclosure, 9 = SQL Injection, a = Auth Bypass, c = XSS/Injection. Use -ssl for HTTPS targets. -output saves to file; -Format specifies format (txt/xml/html/csv). Nikto is not stealthy — generates many requests and is easily detected by WAFs/IDS. Run after wafw00f to understand detection risk.",
+  "notes": "Tuning codes: b = Software Identification, 1 = Interesting Files, 2 = Misconfig, 4 = Info Disclosure, 9 = SQL Injection, a = Auth Bypass, c = XSS/Injection. Use -ssl for HTTPS targets. -output saves to file; -Format specifies format (txt/xml/html/csv). Nikto is not stealthy \u2014 generates many requests and is easily detected by WAFs/IDS. Run after wafw00f to understand detection risk.",
   "variations": [
     {
       "command": "nikto -h <url>",
@@ -74,9 +74,9 @@
     }
   ],
   "defense": {
-    "why_it_works": "Nikto is an active web-server scanner that requests known files and paths to identify software and configuration. With -Tuning b it restricts to Software Identification modules — avoiding the noisiest vulnerability probes while still fingerprinting the server, CMS, and exposed files.",
+    "why_it_works": "Nikto is an active web-server scanner that requests known files and paths to identify software and configuration. With -Tuning b it restricts to Software Identification modules \u2014 avoiding the noisiest vulnerability probes while still fingerprinting the server, CMS, and exposed files.",
     "prerequisites": "Network access to the target web server (URL/host).",
-    "impact": "A technology profile: web-server and version (e.g. Apache 2.4.41, outdated), CMS (WordPress), the login page (/wp-login.php), disclosed files (license.txt), and missing security headers — each a CVE match or entry point.",
+    "impact": "A technology profile: web-server and version (e.g. Apache 2.4.41, outdated), CMS (WordPress), the login page (/wp-login.php), disclosed files (license.txt), and missing security headers \u2014 each a CVE match or entry point.",
     "detection": "Active scanning: Nikto issues many requests for known files/paths, which appear in web access logs and are readily flagged by IDS/WAF (Nikto has a recognisable default user-agent and request signature). -Tuning b reduces volume but the traffic is still active and loggable.\n\n[MITRE T1595.002] Vulnerability scanning checks whether a target's software and version align with a known exploit; the probing pattern is detectable in web/IDS logs.",
     "artifacts": "A burst of requests for known paths/files (wp-login.php, license.txt, admin pages) in web access logs; Nikto's default user-agent string; WAF/IDS scan alerts.",
     "prevention": "Deploy a WAF and bot/scan detection; suppress server version/banner disclosure and remove or protect files such as license.txt; add the missing security headers (HSTS, X-Content-Type-Options); rate-limit. Keep software patched so any disclosed version is not exploitable.\n\n[MITRE T1595.002 M1056] Focus on minimising the amount and sensitivity of data exposed to external parties.",
@@ -86,7 +86,14 @@
       "MITRE T1595.002"
     ],
     "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
-    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
-  }
+    "vulnerable_config": "# IPMI cipher 0 \u2014 no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data \u2014 auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS \u2014 version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI \u2014 disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync \u2014 require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec \u2014 disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS \u2014 disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+  },
+  "tags": [
+    "nikto",
+    "web",
+    "fingerprinting",
+    "recon",
+    "scanner"
+  ]
 }

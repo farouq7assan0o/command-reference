@@ -6,8 +6,8 @@
   "category": "Exploitation",
   "subcategory": "API Attacks",
   "type": "command",
-  "description": "Probe old API versions (v0, v1, v2, beta, legacy) that developers forgot to retire. OWASP API9 – Improper Inventory Management. Old versions often lack the security controls of current versions — missing auth checks, exposing deleted records, or returning more data than intended.",
-  "notes": "APIs commonly expose /api/v0/, /api/v1/, /api/v2/, /api/beta/, /api/legacy/. Old versions may not require authentication, may expose soft-deleted records, or may have weaker authorization. Swagger UI (usually at /swagger, /api-docs, /openapi.json) often documents ALL versions including deprecated ones — check it first to map the full surface. Also try /api/v0/admin/, /internal/, /debug/ endpoints.",
+  "description": "Probe old API versions (v0, v1, v2, beta, legacy) that developers forgot to retire. OWASP API9 \u2013 Improper Inventory Management. Old versions often lack the security controls of current versions \u2014 missing auth checks, exposing deleted records, or returning more data than intended.",
+  "notes": "APIs commonly expose /api/v0/, /api/v1/, /api/v2/, /api/beta/, /api/legacy/. Old versions may not require authentication, may expose soft-deleted records, or may have weaker authorization. Swagger UI (usually at /swagger, /api-docs, /openapi.json) often documents ALL versions including deprecated ones \u2014 check it first to map the full surface. Also try /api/v0/admin/, /internal/, /debug/ endpoints.",
   "variations": [
     {
       "command": "for ver in v0 v1 v2 v3 beta legacy internal; do echo \"=== $ver ===\"; curl -s http://<target>/api/$ver/<endpoint> -H \"Authorization: Bearer <jwt_token>\" | jq; done",
@@ -26,7 +26,7 @@
     },
     {
       "command": "curl -s http://<target>/api-docs | jq '.paths | keys[]'",
-      "caption": "OpenAPI spec — alternative path for endpoint discovery",
+      "caption": "OpenAPI spec \u2014 alternative path for endpoint discovery",
       "label": "Swagger - /api-docs"
     },
     {
@@ -38,7 +38,7 @@
   "examples": [
     {
       "command": "curl -s http://<target>/api/v0/supplier-companies/deleted -H \"Authorization: Bearer <jwt_token>\" | jq\ncurl -s http://<target>/api/v0/customers/deleted | jq",
-      "caption": "CWES M18: v0 endpoint returns deleted records with no auth — data exposure via deprecated version"
+      "caption": "CWES M18: v0 endpoint returns deleted records with no auth \u2014 data exposure via deprecated version"
     }
   ],
   "tools": [
@@ -59,7 +59,7 @@
   "source": "CWES Module 18: API Attacks",
   "references": [
     {
-      "title": "OWASP API Security Top 10 – API9:2023 Improper Inventory Management",
+      "title": "OWASP API Security Top 10 \u2013 API9:2023 Improper Inventory Management",
       "url": "https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/"
     }
   ],
@@ -67,7 +67,7 @@
     {
       "id": "api-bola-sequential-enum",
       "rel": "next",
-      "note": "Test old version endpoints for BOLA — may lack authorization checks entirely"
+      "note": "Test old version endpoints for BOLA \u2014 may lack authorization checks entirely"
     },
     {
       "id": "api-ffuf-json-bruteforce",
@@ -76,20 +76,26 @@
     }
   ],
   "defense": {
-    "why_it_works": "API versioning (v1, v2, beta, legacy) allows developers to maintain backward compatibility while adding security controls to newer versions. Old API versions are often left running but not maintained — they may lack authentication requirements, input validation, or rate-limiting added to current versions. OWASP API9 (Improper Inventory Management) describes scenarios where retired or shadow API endpoints expose data and functionality that the current version no longer permits.",
+    "why_it_works": "API versioning (v1, v2, beta, legacy) allows developers to maintain backward compatibility while adding security controls to newer versions. Old API versions are often left running but not maintained \u2014 they may lack authentication requirements, input validation, or rate-limiting added to current versions. OWASP API9 (Improper Inventory Management) describes scenarios where retired or shadow API endpoints expose data and functionality that the current version no longer permits.",
     "prerequisites": "Any network access to the API host. Knowledge (or guessing) of common version prefixes: /api/v0/, /api/v1/, /api/v2/, /api/beta/, /api/legacy/, /v1/, /v2/. ffuf or gobuster for systematic enumeration. No authentication required for the enumeration phase itself if old versions lack auth.",
     "impact": "T1190 Exploit Public-Facing Application + T1087 Account Discovery. Access to unprotected legacy endpoints that bypass current auth controls. Exposure of data the current API hides (e.g., full PII in v1 vs. masked in v2). Exploit vulnerabilities patched in current version but present in legacy version. Shadow APIs not in API documentation may expose internal admin functions.",
-    "detection": "API gateway access logs showing requests to deprecated version path prefixes (/v0/, /beta/, /legacy/). Alert on traffic to API paths that are not in the current API specification (use OpenAPI spec as allowlist). Monitor for version-scanning patterns: sequential requests to /api/v1/, /api/v2/, /api/v3/ from same source. WAF virtual patching on retired API paths — return 404 even if the route is still active, log the attempt.\nAbnormal request patterns to public endpoint → elevated 4xx/5xx or unusual methods/paths → server process (w3wp.exe/service) spawns shell/LOLbins or loads non-standard modules → optional outbound callback (DET0080/AN0219).\nSuspicious requests in access logs → spike of 5xx or WAF blocks → web server interpreter (apache2/nginx/php-fpm/node/python) spawns /bin/sh, curl, wget, socat, or writes webshell → outbound callback (AN0220).\nContainerized app: suspicious request in ingress/app logs → container process spawns shell/exec → egress to Internet or metadata service 169.254.169.254 (AN0222).\nALB/ELB/Cloud LB logs show exploit-like inputs or error spikes → workload spawns shell or reaches metadata API → egress to new external hosts (AN0223).",
+    "detection": "API gateway access logs showing requests to deprecated version path prefixes (/v0/, /beta/, /legacy/). Alert on traffic to API paths that are not in the current API specification (use OpenAPI spec as allowlist). Monitor for version-scanning patterns: sequential requests to /api/v1/, /api/v2/, /api/v3/ from same source. WAF virtual patching on retired API paths \u2014 return 404 even if the route is still active, log the attempt.\nAbnormal request patterns to public endpoint \u2192 elevated 4xx/5xx or unusual methods/paths \u2192 server process (w3wp.exe/service) spawns shell/LOLbins or loads non-standard modules \u2192 optional outbound callback (DET0080/AN0219).\nSuspicious requests in access logs \u2192 spike of 5xx or WAF blocks \u2192 web server interpreter (apache2/nginx/php-fpm/node/python) spawns /bin/sh, curl, wget, socat, or writes webshell \u2192 outbound callback (AN0220).\nContainerized app: suspicious request in ingress/app logs \u2192 container process spawns shell/exec \u2192 egress to Internet or metadata service 169.254.169.254 (AN0222).\nALB/ELB/Cloud LB logs show exploit-like inputs or error spikes \u2192 workload spawns shell or reaches metadata API \u2192 egress to new external hosts (AN0223).",
     "artifacts": "API gateway logs: GET /api/v0/* or /api/beta/* requests | WAF alert: access to deprecated API version paths | Application logs: requests to deprecated route handlers | Network capture: systematic version path enumeration from single source",
-    "prevention": "Maintain a complete API inventory (OpenAPI/Swagger) and decommission unused versions by removing the route handlers, not just hiding them. Use an API gateway to enforce an allowlist of active API paths — requests to unlisted paths return 404. Require authentication on all API versions equally. Apply the same rate-limiting, WAF rules, and security controls to all API versions, including beta. Regularly audit deployed API routes against the official inventory. Use api-version deprecation sunset headers to signal clients before removal.",
+    "prevention": "Maintain a complete API inventory (OpenAPI/Swagger) and decommission unused versions by removing the route handlers, not just hiding them. Use an API gateway to enforce an allowlist of active API paths \u2014 requests to unlisted paths return 404. Require authentication on all API versions equally. Apply the same rate-limiting, WAF rules, and security controls to all API versions, including beta. Regularly audit deployed API routes against the official inventory. Use api-version deprecation sunset headers to signal clients before removal.",
     "evasion": "Try non-obvious version strings: /api/internal/, /api/admin/, /api/debug/, /api/test/, /api/dev/. Fuzz with HTTP header versioning (Accept: application/vnd.api+json;version=2) instead of URL versioning. Access via different hostnames if APIs are served on multiple domains (api.internal vs api.example.com).",
     "sources": [
       "https://attack.mitre.org/techniques/T1190/",
       "https://attack.mitre.org/techniques/T1087/",
       "https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/"
     ],
-    "misconfiguration": "Legacy API versions left active in routing configuration but removed from documentation and security review. No API gateway allowlist enforcing active-only routes. Beta/test API routes deployed to production without authentication. Different security middleware applied to v1 vs v2 routes — v1 lacks auth requirement. No automated inventory audit against deployed routes.",
-    "vulnerable_config": "# Express — v1 left active with weaker controls:\nconst router_v1 = express.Router()\nconst router_v2 = express.Router()\n\n// v2 has auth middleware:\napp.use('/api/v2', authenticate, router_v2)\n\n// v1 forgotten — no auth, still active:\napp.use('/api/v1', router_v1)  // VULNERABLE: /api/v1/users returns full PII without auth\napp.use('/api/beta', router_v1) // VULNERABLE: beta alias also active\n\n// Django urls.py — deprecated paths not removed:\nurlpatterns = [\n  path('api/v2/', include('api_v2.urls')),\n  path('api/v1/', include('api_v1.urls')),  # VULNERABLE: never removed\n  path('api/internal/', include('api_internal.urls')),  # VULNERABLE: debug routes\n]",
-    "secure_config": "# Express — only active version mounted, gateway enforces allowlist:\n// Remove all unused router registrations:\napp.use('/api/v2', authenticate, rateLimiter, router_v2)\n// v1 completely removed — no route handler, no 404 → 410 Gone:\napp.use('/api/v1', (req, res) => res.status(410).json({ error: 'API v1 retired. Use /api/v2' }))\napp.use('/api/beta', (req, res) => res.status(410).json({ error: 'Beta API retired.' }))\n\n# API Gateway (Kong) — path allowlist:\n# services:\n#   - name: api-v2-only\n#     url: http://backend:3000/api/v2\n#     routes:\n#       - paths: [/api/v2/]  # only v2 exposed through gateway\n\n# OpenAPI spec as source of truth — CI check:\n# 1. Extract all routes from deployed app\n# 2. Compare against openapi.yaml paths\n# 3. Fail build if unlisted routes found\n\n# Nginx — block old versions at load balancer:\n# location ~ ^/api/v[01]/ {\n#   return 410 '{\"error\": \"API version retired\"}';\n#   add_header Content-Type application/json;\n# }"
-  }
+    "misconfiguration": "Legacy API versions left active in routing configuration but removed from documentation and security review. No API gateway allowlist enforcing active-only routes. Beta/test API routes deployed to production without authentication. Different security middleware applied to v1 vs v2 routes \u2014 v1 lacks auth requirement. No automated inventory audit against deployed routes.",
+    "vulnerable_config": "# Express \u2014 v1 left active with weaker controls:\nconst router_v1 = express.Router()\nconst router_v2 = express.Router()\n\n// v2 has auth middleware:\napp.use('/api/v2', authenticate, router_v2)\n\n// v1 forgotten \u2014 no auth, still active:\napp.use('/api/v1', router_v1)  // VULNERABLE: /api/v1/users returns full PII without auth\napp.use('/api/beta', router_v1) // VULNERABLE: beta alias also active\n\n// Django urls.py \u2014 deprecated paths not removed:\nurlpatterns = [\n  path('api/v2/', include('api_v2.urls')),\n  path('api/v1/', include('api_v1.urls')),  # VULNERABLE: never removed\n  path('api/internal/', include('api_internal.urls')),  # VULNERABLE: debug routes\n]",
+    "secure_config": "# Express \u2014 only active version mounted, gateway enforces allowlist:\n// Remove all unused router registrations:\napp.use('/api/v2', authenticate, rateLimiter, router_v2)\n// v1 completely removed \u2014 no route handler, no 404 \u2192 410 Gone:\napp.use('/api/v1', (req, res) => res.status(410).json({ error: 'API v1 retired. Use /api/v2' }))\napp.use('/api/beta', (req, res) => res.status(410).json({ error: 'Beta API retired.' }))\n\n# API Gateway (Kong) \u2014 path allowlist:\n# services:\n#   - name: api-v2-only\n#     url: http://backend:3000/api/v2\n#     routes:\n#       - paths: [/api/v2/]  # only v2 exposed through gateway\n\n# OpenAPI spec as source of truth \u2014 CI check:\n# 1. Extract all routes from deployed app\n# 2. Compare against openapi.yaml paths\n# 3. Fail build if unlisted routes found\n\n# Nginx \u2014 block old versions at load balancer:\n# location ~ ^/api/v[01]/ {\n#   return 410 '{\"error\": \"API version retired\"}';\n#   add_header Content-Type application/json;\n# }"
+  },
+  "tags": [
+    "api",
+    "versioning",
+    "enumeration",
+    "improper-inventory"
+  ]
 }

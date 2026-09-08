@@ -27056,7 +27056,7 @@ const COMMAND_DATA = {
       "examples": [
         {
           "label": "HEAD reaches a GET-protected admin action",
-          "command": "curl -i -X HEAD http://SERVER_IP:PORT/admin/reset.php"
+          "command": "curl -I http://SERVER_IP:PORT/admin/reset.php   # -I sends HEAD (won't hang like -X HEAD); a 200 instead of 401 confirms the bypass"
         }
       ],
       "notes": "HEAD returns no body but still runs server-side logic. In Burp, right-click -> Change Request Method to swap GET/HEAD/DELETE. Root cause: Apache <Limit GET>, Tomcat <http-method>GET</http-method>, or ASP.NET verbs=\"GET\" restricting only listed methods. Also covered in: OSCP PEN-200 (Web Application Attacks — HTTP verb tampering).",
@@ -85573,7 +85573,7 @@ const COMMAND_DATA = {
       ],
       "opsec": "loud",
       "mitre": [
-        "T1203"
+        "T1210"
       ],
       "exam": "exam-ok",
       "defense": {
@@ -85663,7 +85663,7 @@ const COMMAND_DATA = {
       ],
       "opsec": "loud",
       "mitre": [
-        "T1203"
+        "T1210"
       ],
       "exam": "exam-ok",
       "defense": {
@@ -85755,7 +85755,7 @@ const COMMAND_DATA = {
       ],
       "opsec": "loud",
       "mitre": [
-        "T1203"
+        "T1210"
       ],
       "exam": "exam-ok",
       "defense": {
@@ -85847,7 +85847,7 @@ const COMMAND_DATA = {
       ],
       "opsec": "loud",
       "mitre": [
-        "T1203"
+        "T1210"
       ],
       "exam": "exam-ok",
       "defense": {
@@ -85933,7 +85933,7 @@ const COMMAND_DATA = {
       ],
       "opsec": "loud",
       "mitre": [
-        "T1203",
+        "T1210",
         "T1059"
       ],
       "exam": "exam-ok",
@@ -90943,7 +90943,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 908,
-  "buildDate": "2026-09-08T14:55:11.381Z",
+  "buildDate": "2026-09-08T15:12:07.057Z",
   "certifications": [
     "CDSA",
     "CPTS",

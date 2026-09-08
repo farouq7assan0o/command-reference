@@ -69,7 +69,7 @@
   ],
   "opsec": "loud",
   "mitre": [
-    "T1203"
+    "T1210"
   ],
   "exam": "exam-ok",
   "defense": {

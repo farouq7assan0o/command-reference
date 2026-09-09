@@ -1,0 +1,120 @@
+{
+  "id": "cpts-exam-methodology",
+  "name": "CPTS Exam Methodology & Playbook",
+  "command": "# Loop: Recon -> Initial Access -> Pillage -> PrivEsc -> Loot -> AD -> Lateral -> Pivot -> (repeat) -> Report",
+  "description": "Start-to-finish orientation for the CPTS exam (multi-host internal pentest + report). The phase loop, which card to reach for at each step, the 'when stuck' checklist, and the time-wasting mistakes to avoid. Open this when you land on a new host or get stuck.",
+  "platform": "multi",
+  "type": "reference",
+  "category": "Fundamentals",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CPTS"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 01: Penetration Testing Process",
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1595",
+    "T1078"
+  ],
+  "tags": [
+    "methodology",
+    "playbook",
+    "exam",
+    "cpts",
+    "checklist"
+  ],
+  "tools": [
+    "nmap",
+    "ffuf",
+    "BloodHound",
+    "ligolo-ng",
+    "netexec"
+  ],
+  "steps": [
+    {
+      "label": "1. New network/host -> RECON (do not jump to exploit)",
+      "command": "# Conservative nmap first (full TCP -p-, then -sCV on open), then UDP top ports. Web: whatweb/gobuster/ffuf, check robots.txt + vhosts. Identify services & roles before touching anything. Cards: nmap-*, ffuf-web-fuzz, gobuster, gs-web-recon."
+    },
+    {
+      "label": "2. Initial access",
+      "command": "# Default/weak creds first, then service misconfig, web attacks (SQLi/LFI/upload/cmdi), then public exploits (searchsploit) LAST. Cards: default creds, sqlmap-*, lfi-*, file-upload-*, cmdi-*, exploit-vetting."
+    },
+    {
+      "label": "3. Low-priv shell -> PILLAGE before privesc",
+      "command": "# Stabilise TTY, then hunt creds/configs/history/db strings and TEST them everywhere (reuse!). Only then escalate. Cards: spawn-tty/tty-shell-upgrade, linux-cred-hunt, findstr-hunt, win-file-search-ps, snaffler, lazagne-run."
+    },
+    {
+      "label": "4. Local privilege escalation",
+      "command": "# Run enum (linPEAS/winPEAS, linux-enum-*, winpe-*), then the specific vector. Cards: winpe-initial-enum, linux-enum-*, seimpersonate-printspoofer, weak-service-binary, sudo/cron/SUID (linux), missing-patch-enum."
+    },
+    {
+      "label": "5. Priv esc achieved -> LOOT EVERYTHING",
+      "command": "# Dump creds/hashes/tickets, SSH keys, browser/DPAPI, KeePass. Re-run AD enum with the new context. Cards: mimikatz-lsadump, secretsdump-*, lsass-dump, mimikatz-dpapi-chrome, ntds-vss."
+    },
+    {
+      "label": "6. Active Directory",
+      "command": "# Enumerate (BloodHound + ldapdomaindump), then attack: SYSVOL/GPP passwords, Kerberoast, AS-REP roast, ACL abuse, delegation, DCSync, trusts. Cards: ad-bloodhound-python, ad-ldapdomaindump, ad-gpp-*, ad-kerberoast*, ad-asrep*, ad-acl-*, ad-*-delegation, ad-*-dcsync, ad-trust*."
+    },
+    {
+      "label": "7. Lateral movement",
+      "command": "# Reuse creds/hashes/tickets across hosts. Cards: pth-* (PtH), *-ptt (PtT), impacket-exec (psexec/wmiexec/smbexec/atexec), evil-winrm, crackmapexec/netexec, mssql lateral."
+    },
+    {
+      "label": "8. New pivot -> RE-SCAN from the new position (never skip)",
+      "command": "# Set up the tunnel, then re-enumerate the newly reachable subnet from scratch. Cards: ligolo-ng-pivot, chisel-socks, ssh-dynamic-socks, sshuttle, msf-autoroute. Then loop back to step 1 for the new network."
+    },
+    {
+      "label": "9. Documentation & report (continuous)",
+      "command": "# Screenshot every finding (command + output + host) AS YOU GO. Track hosts/creds/findings. Cards: report-components, pentest-lifecycle."
+    }
+  ],
+  "examples": [
+    {
+      "label": "Conservative first scan (don't over-tune speed)",
+      "command": "nmap -p- --min-rate 1000 -Pn -oA nmap/allports <ip> ; nmap -sCV -p<open> -oA nmap/services <ip>"
+    },
+    {
+      "label": "When stuck: re-test creds everywhere",
+      "command": "netexec smb <subnet>/24 -u <user> -p '<pass>' --continue-on-success   # also winrm/ssh/mssql/ldap"
+    },
+    {
+      "label": "When stuck: always check SYSVOL for GPP passwords",
+      "command": "# mount \\\\<dc>\\SYSVOL ; grep -r cpassword ; or ad-gpp-* card"
+    }
+  ],
+  "notes": "PHASE LOOP (from EXAM FLOW): new host -> recon -> initial access -> pillage -> privesc -> loot -> AD -> lateral -> pivot -> RE-SCAN -> repeat -> report. WHEN STUCK: re-read the recon results, re-test creds EVERYWHERE (assume reuse), check SYSVOL/GPP, re-enumerate. TIME-WASTING MISTAKES TO AVOID (from DO-NOT-REPEAT): (1) Don't ignore SYSVOL - check GPP cpassword early. (2) ALWAYS test credential reuse across hosts/services. (3) Don't overfocus on CVEs - misconfig/creds/privesc win more boxes. (4) RE-ENUMERATE after every pivot - the new subnet is fresh attack surface. (5) Scan FROM the new network position after pivoting. (6) Don't skip 'too basic' things (robots.txt, default creds). (7) Don't overtrust nmap -O; read service banners. (8) Treat 'filtered' as a firewall signal, not 'service absent' - validate with -sA ACK scan, --source-port, or an internal pivot before ruling out AD. (9) Don't over-tune nmap speed (-T5/low retries) on discovery - you silently miss hosts/services; go conservative first, speed up only after confirming visibility. (10) Business-critical data services often survive on non-standard ports where standard ones are filtered. LINKED CARDS: search the ids named in each step.",
+  "references": [
+    {
+      "title": "HTB Academy - Penetration Testing Process",
+      "url": "https://academy.hackthebox.com/module/details/90"
+    },
+    {
+      "title": "HTB CPTS exam - process & reporting",
+      "url": "https://academy.hackthebox.com/preview/certifications/htb-certified-penetration-testing-specialist"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-bloodhound-python",
+      "note": "AD enumeration once you reach the domain",
+      "rel": "next"
+    },
+    {
+      "id": "ad-ldapdomaindump",
+      "note": "Flat LDAP inventory of the domain",
+      "rel": "next"
+    },
+    {
+      "id": "ligolo-ng-pivot",
+      "note": "Pivot to newly discovered subnets, then re-scan",
+      "rel": "next"
+    },
+    {
+      "id": "report-components",
+      "note": "What the deliverable report must contain",
+      "rel": "next"
+    }
+  ]
+}

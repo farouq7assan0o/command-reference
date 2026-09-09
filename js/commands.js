@@ -40047,6 +40047,116 @@ const COMMAND_DATA = {
       ]
     },
     {
+      "id": "mcrta-methodology",
+      "name": "MCRTA Multi-Cloud Red Team Methodology (AWS / Azure / GCP)",
+      "command": "# Flow: Initial access (creds/keys or app->metadata token) -> Identity enum -> IAM privesc -> Lateral -> Persistence -> Exfil",
+      "description": "Orientation for MCRTA and multi-cloud red-team ops: the common attack loop across AWS, Azure, and GCP, with the equivalent commands/services in each cloud and links to the per-cloud cards. Cloud attacks are identity attacks - know who you are, what you can do, and how to become someone better.",
+      "platform": "multi",
+      "type": "reference",
+      "category": "Fundamentals",
+      "subcategory": "Methodology",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst",
+      "opsec": "quiet",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1078.004",
+        "T1580"
+      ],
+      "tags": [
+        "methodology",
+        "playbook",
+        "cloud",
+        "aws",
+        "azure",
+        "gcp",
+        "mcrta"
+      ],
+      "tools": [
+        "aws",
+        "az",
+        "gcloud",
+        "Microsoft Graph PowerShell",
+        "Pacu"
+      ],
+      "steps": [
+        {
+          "label": "1. Initial access - get a credential or a token",
+          "command": "# Leaked long-term creds: AWS access key id/secret, Azure SP app-id+secret, GCP SA JSON key. OR compromise an app (SSRF/RCE) and steal the instance metadata token. Cards: aws-cli-setup, azure-authentication, gcp-authentication; aws metadata / azure-managed-identity-token / gcp-metadata-token."
+        },
+        {
+          "label": "2. Identity - who am I?",
+          "command": "# AWS: aws sts get-caller-identity | Azure: az account show / Get-MgContext | GCP: gcloud auth list + config list. Establish the principal + scope before acting."
+        },
+        {
+          "label": "3. Enumerate IAM / RBAC - what can I do, and who is over-privileged?",
+          "command": "# AWS: iam get-account-authorization-details, enumerate-iam. Azure: az role assignment/definition list + Get-Mg* (Entra). GCP: get-iam-policy (org/project/SA) + roles describe. Cards: aws-iam-full-dump, azure-arm-enum/azure-entra-enum, gcp-iam-enum."
+        },
+        {
+          "label": "4. Privilege escalation - abuse IAM misconfigs",
+          "command": "# AWS: iam:PassRole/CreatePolicyVersion/AttachUserPolicy etc. Azure: managed identity token, Add-MgApplicationPassword on an owned app. GCP: actAs/getAccessToken (impersonate), serviceAccountKeys.create, roles.update. Cards: aws-iam-privesc-backdoor, azure-managed-identity-token, azure-app-credential-abuse, gcp-iam-privesc."
+        },
+        {
+          "label": "5. Lateral movement - across accounts / subscriptions / projects",
+          "command": "# AWS: assume-role into trusted accounts (sts assume-role). Azure: SP/managed identity across subscriptions; Entra app trust. GCP: impersonate SAs across projects (--impersonate-service-account). Re-enumerate in each new scope."
+        },
+        {
+          "label": "6. Persistence - plant a durable credential",
+          "command": "# AWS: new access key / login profile / role trust. Azure: app secret/cert (Add-MgApplicationPassword). GCP: new SA key (keys create). Cards: aws-iam-privesc-backdoor, azure-app-credential-abuse, gcp-sa-key-persistence."
+        },
+        {
+          "label": "7. Exfil / impact - storage + secrets",
+          "command": "# AWS: s3 ls/cp, secrets manager. Azure: blob/storage, Key Vault. GCP: gcloud storage ls/cp, Secret Manager. Cards: aws-s3-ec2-public-enum, aws-s3-git-secrets, gcp-storage-exfil."
+        }
+      ],
+      "examples": [
+        {
+          "label": "Who am I? (all three clouds)",
+          "command": "aws sts get-caller-identity\naz account show\ngcloud auth list"
+        },
+        {
+          "label": "Instance metadata token (per cloud)",
+          "command": "# AWS:  curl http://169.254.169.254/latest/meta-data/iam/security-credentials/<role>\n# Azure: curl -H 'Metadata:true' 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/'\n# GCP:  curl -H 'Metadata-Flavor: Google' http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"
+        }
+      ],
+      "notes": "CORE IDEA: cloud attacks are identity attacks - every step is 'what can this principal do, and how do I become a more-privileged one?'. The same loop applies to all three clouds; only the API/verbs change. CREDENTIAL TYPES (all clouds): long-term (AWS keys / Azure SP secret / GCP SA key) vs short-term (OAuth/STS tokens) - tokens are quieter and often exempt from user-focused MFA/Conditional Access. METADATA SERVER is the #1 privesc pivot from a compromised VM/app in every cloud (AWS IMDS, Azure IMDS w/ Metadata:true, GCP metadata w/ Metadata-Flavor:Google) - and header-controlling SSRF reaches all three. OVER-PRIVILEGED DEFAULTS to hunt: AWS default roles/wildcard policies, Azure default Contributor SPs + Global Admins, GCP default Compute SA (Editor) + Basic roles. PERSISTENCE = mint an additional credential on a privileged principal (key/secret) - survives password resets. EXFIL from object storage (S3/Blob/GCS) frequently yields MORE credentials (leaked keys/tfstate/.env) to pivot. DEFENSE (blue side, on every card): least-privilege IAM/RBAC, disable long-lived keys (use federation/managed identities), restrict metadata access + fix SSRF, enable Data Access/Activity/Cloud audit logs, and alert on credential creation + role changes.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "MITRE ATT&CK - Cloud Matrix",
+          "url": "https://attack.mitre.org/matrices/enterprise/cloud/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "azure-managed-identity-token",
+          "rel": "next",
+          "note": "Azure metadata token privesc"
+        },
+        {
+          "id": "gcp-metadata-token",
+          "rel": "next",
+          "note": "GCP metadata token privesc"
+        },
+        {
+          "id": "gcp-iam-privesc",
+          "rel": "next",
+          "note": "GCP IAM escalation primitives"
+        },
+        {
+          "id": "aws-iam-privesc-backdoor",
+          "rel": "next",
+          "note": "AWS IAM escalation + persistence"
+        }
+      ]
+    },
+    {
       "id": "medusa-services-chain",
       "name": "Medusa - Multi-Service Brute Force Chain",
       "type": "attack-chain",
@@ -93544,8 +93654,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 931,
-  "buildDate": "2026-09-09T13:06:11.108Z",
+  "totalCommands": 932,
+  "buildDate": "2026-09-09T13:08:27.211Z",
   "certifications": [
     "CDSA",
     "CPTS",

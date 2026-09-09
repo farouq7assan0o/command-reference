@@ -5990,6 +5990,293 @@ const COMMAND_DATA = {
       }
     },
     {
+      "id": "azure-authentication",
+      "name": "Azure Authentication (az / Az PowerShell / Mg Graph)",
+      "command": "az login --service-principal -u <app_id> -p <secret> --tenant <tenant_id>",
+      "description": "Authenticate to Azure/Entra as a compromised user or service principal across the three CLIs: az (cross-platform, ARM), Az PowerShell (ARM), and Microsoft Graph PowerShell (Entra ID). Supports password, client-secret/cert, and access-token flows.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "az",
+        "Az PowerShell",
+        "Microsoft Graph PowerShell"
+      ],
+      "tags": [
+        "azure",
+        "entra-id",
+        "authentication",
+        "service-principal",
+        "access-token",
+        "mcrta"
+      ],
+      "category": "Enumeration",
+      "subcategory": "Cloud - Azure",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+      "examples": [
+        {
+          "label": "az - user (interactive / device code)",
+          "command": "az login   # or: az login --use-device-code"
+        },
+        {
+          "label": "az - service principal (app id + secret)",
+          "command": "az login --service-principal -u <app_id> -p <client_secret> --tenant <tenant_id>"
+        },
+        {
+          "label": "az - get an ARM access token",
+          "command": "az account get-access-token --resource=https://management.azure.com"
+        },
+        {
+          "label": "Az PowerShell - user / SP / token",
+          "command": "Connect-AzAccount\nConnect-AzAccount -ServicePrincipal -Tenant <tenant_id> -Credential $cred\nConnect-AzAccount -AccessToken <ARM_token> -AccountId <id>"
+        },
+        {
+          "label": "Microsoft Graph - Entra directory access",
+          "command": "Connect-MgGraph -Scopes \"Directory.Read.All\"; Get-MgContext\nConnect-MgGraph -AccessToken <graph_token>"
+        }
+      ],
+      "notes": "Three planes: az / Az PowerShell target ARM (management.azure.com); Mg Graph targets Entra ID (graph.microsoft.com) - you often need BOTH (a token for one resource does not work on the other). For -ServicePrincipal $cred: Username = Application (Client) ID, Password = client secret. Long-term creds = user pw / SSO pw / client id+secret/cert; short-term = OAuth access token. Grab an ARM token with 'az account get-access-token' and reuse it via Connect-AzAccount -AccessToken.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Microsoft Learn - Azure CLI",
+          "url": "https://learn.microsoft.com/en-us/cli/azure/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "azure-entra-enum",
+          "rel": "next",
+          "note": "Enumerate Entra ID once authenticated"
+        },
+        {
+          "id": "azure-arm-enum",
+          "rel": "next",
+          "note": "Enumerate ARM resources and RBAC"
+        }
+      ],
+      "opsec": "moderate",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1078.004"
+      ],
+      "defense": {
+        "why_it_works": "Azure exposes the same identities through multiple credential types (passwords, service-principal secrets/certs, OAuth access tokens) across ARM and Microsoft Graph. Any valid credential - including a stolen access token - grants API access at the identity's assigned RBAC/directory-role scope, with no host foothold required.",
+        "prerequisites": "A valid credential: user password, service-principal app id + secret/cert, or an OAuth access token for management.azure.com or graph.microsoft.com.",
+        "impact": "T1078.004 Valid Accounts: Cloud Accounts. API access to Azure/Entra at the principal's privilege - the entry point for all further cloud enumeration and attack.",
+        "detection": "Entra sign-in logs: interactive vs non-interactive / service-principal sign-ins, new/unusual IPs, ROPC / device-code flows, impossible travel. Azure Activity Log for token use.",
+        "artifacts": "Entra ID SignInLogs (UPN/appId, IP, clientAppUsed), Azure Activity Log, token issuance events.",
+        "prevention": "Conditional Access (MFA, block legacy/ROPC, device compliance, named locations). Least-privilege RBAC + Entra roles. Short-lived credentials; rotate SP secrets; prefer managed identities/certs over secrets.",
+        "evasion": "Use tokens (no interactive sign-in), authenticate from an allowed IP/region, and reuse a legitimate service principal to blend with normal automation.",
+        "sources": [
+          "MCRTA Azure",
+          "https://attack.mitre.org/techniques/T1078/004/"
+        ],
+        "misconfiguration": "No Conditional Access / MFA; long-lived service-principal secrets; over-privileged users/SPs.",
+        "vulnerable_config": "# SP with a long-lived secret and Contributor at subscription scope, no CA/MFA:\naz login --service-principal -u <app_id> -p <secret> --tenant <tid>   # succeeds from anywhere",
+        "secure_config": "# Enforce Conditional Access + MFA; block ROPC/legacy auth.\n# Use managed identities or cert-based SP auth; rotate secrets; scope RBAC to least privilege."
+      }
+    },
+    {
+      "id": "azure-managed-identity-token",
+      "name": "Azure Managed Identity Token Theft (VM IMDS)",
+      "command": "curl -H \"Metadata:true\" \"http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/\"",
+      "description": "From code execution on an Azure VM (or App Service/Function) that has a managed identity, request an access token from the Instance Metadata Service (IMDS), then authenticate as that identity. Managed identities frequently hold RBAC roles, so this is a common privilege-escalation / lateral-movement pivot.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "shell"
+      ],
+      "protocols": [
+        "http"
+      ],
+      "tools": [
+        "curl",
+        "Az PowerShell"
+      ],
+      "tags": [
+        "azure",
+        "managed-identity",
+        "imds",
+        "token-theft",
+        "privilege-escalation",
+        "metadata",
+        "mcrta"
+      ],
+      "category": "Privilege Escalation",
+      "subcategory": "Cloud - Azure",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+      "examples": [
+        {
+          "label": "Request an ARM token for the VM's managed identity",
+          "command": "curl -s -H \"Metadata:true\" \"http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/\""
+        },
+        {
+          "label": "Use the stolen token in Az PowerShell",
+          "command": "$token = \"<access_token>\"\nConnect-AzAccount -AccessToken $token -AccountId <subscription_id>"
+        },
+        {
+          "label": "Enumerate what the managed identity can do",
+          "command": "Get-AzRoleAssignment -ObjectId <managed_identity_principal_id>"
+        },
+        {
+          "label": "Token for Microsoft Graph instead of ARM",
+          "command": "curl -s -H \"Metadata:true\" \"http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://graph.microsoft.com/\""
+        }
+      ],
+      "notes": "IMDS (169.254.169.254) is reachable only from ON the instance and requires the 'Metadata:true' header (blocks naive SSRF that can't set headers - but header-controlling SSRF CAN reach it). Change &resource= to target ARM (management.azure.com) or Graph (graph.microsoft.com) - request a token per resource. System-assigned vs user-assigned identity: for user-assigned add &client_id=<id> or &mi_res_id=<resource_id>. After Connect-AzAccount with the token, you act as the managed identity at its RBAC scope - check Get-AzRoleAssignment for Contributor/Owner to escalate. Classic chain: web SSRF on an Azure VM -> IMDS token -> ARM access.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Microsoft Learn - Azure Instance Metadata Service",
+          "url": "https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "azure-arm-enum",
+          "rel": "next",
+          "note": "Enumerate ARM with the stolen identity"
+        },
+        {
+          "id": "ssrf-exploit",
+          "rel": "alternative",
+          "note": "SSRF that can set headers can reach IMDS remotely"
+        }
+      ],
+      "opsec": "moderate",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1552.005",
+        "T1078.004"
+      ],
+      "defense": {
+        "why_it_works": "A VM with an attached managed identity can request OAuth tokens for that identity from the local IMDS endpoint without any secret. Any code (or header-controlling SSRF) running on the instance can obtain a token and then act as the managed identity, inheriting whatever RBAC roles it holds - often far more than the compromised app needs.",
+        "prerequisites": "Code execution on (or header-controlling SSRF against) an Azure VM/App Service/Function that has a system- or user-assigned managed identity with RBAC assignments.",
+        "impact": "T1552.005 Unsecured Credentials: Cloud Instance Metadata API + T1078.004 Valid Accounts: Cloud Accounts. The attacker acts as the managed identity across ARM/Graph - privilege escalation and lateral movement into the subscription.",
+        "detection": "Azure Activity Log: managed-identity principal performing actions from an unexpected context/time; token requests followed by anomalous ARM/Graph calls; Defender for Cloud IMDS/credential-theft alerts. SSRF patterns hitting 169.254.169.254 in web logs.",
+        "artifacts": "Activity Log entries by the managed identity's principalId; token issuance to the MI; web logs with requests to 169.254.169.254.",
+        "prevention": "Least-privilege the managed identity (scope to exactly what the app needs). Use IMDSv-style protections / restrict metadata access (host firewall/eBPF) for workloads that don't need it. Fix SSRF (allowlist egress, block link-local 169.254.0.0/16). Monitor MI usage anomalies.",
+        "evasion": "Use the token quickly and from expected operations; request only the resource you need; blend with the app's normal ARM/Graph calls.",
+        "sources": [
+          "MCRTA Azure",
+          "https://attack.mitre.org/techniques/T1552/005/"
+        ],
+        "misconfiguration": "Over-privileged managed identity (e.g., Contributor at subscription scope) on an internet-facing VM/app; SSRF that can set request headers.",
+        "vulnerable_config": "# MI with Contributor at subscription, app has SSRF -> attacker sets Metadata header via SSRF:\n# GET http://169.254.169.254/metadata/identity/oauth2/token?...&resource=https://management.azure.com/ (Metadata:true)",
+        "secure_config": "# Scope the managed identity to least privilege (specific resource group / resource).\n# Block workload egress to 169.254.169.254 where the app does not need IMDS.\n# Remediate SSRF (egress allowlist, block link-local); alert on MI anomalies in Activity Log."
+      }
+    },
+    {
+      "id": "azure-arm-enum",
+      "name": "Azure Resource Manager (ARM) Enumeration",
+      "command": "az resource list -o table",
+      "description": "Enumerate the ARM side with az CLI: subscriptions, resource groups, resources, and - critically - role assignments and role definitions (RBAC) to find what your principal can do and where you can escalate.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "az"
+      ],
+      "tags": [
+        "azure",
+        "arm",
+        "rbac",
+        "enumeration",
+        "role-assignment",
+        "subscription",
+        "mcrta"
+      ],
+      "category": "Enumeration",
+      "subcategory": "Cloud - Azure",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+      "examples": [
+        {
+          "label": "Current session + subscriptions",
+          "command": "az account show\naz account list --all"
+        },
+        {
+          "label": "Resource groups + resources",
+          "command": "az group list\naz resource list --resource-group <rg_name>"
+        },
+        {
+          "label": "Role assignments (who has what)",
+          "command": "az role assignment list --all\naz role assignment list --assignee <objectId_or_email_or_SP> --all"
+        },
+        {
+          "label": "Role definitions (permissions per role)",
+          "command": "az role definition list -n <RoleName>\naz role definition list --custom-role-only"
+        }
+      ],
+      "notes": "ARM hierarchy: Tenant -> Management Group -> Subscription -> Resource Group -> Resource; RBAC role assignments inherit top-down. Built-in roles: Owner (full + can assign roles), Contributor (full but NOT role assignment), Reader (read-only), plus custom roles. Hunt for: your principal's assignments (--assignee), custom roles with dangerous actions, and Owner / User Access Administrator to escalate by assigning yourself a role. ARM REST base: https://management.azure.com/{version}/{resource}?{query}.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Microsoft Learn - az role",
+          "url": "https://learn.microsoft.com/en-us/cli/azure/role"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "azure-managed-identity-token",
+          "rel": "next",
+          "note": "Steal a VM managed-identity token for more ARM access"
+        },
+        {
+          "id": "azure-entra-enum",
+          "rel": "alternative",
+          "note": "Entra ID side enumeration"
+        }
+      ],
+      "opsec": "quiet",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1580",
+        "T1526"
+      ],
+      "defense": {
+        "why_it_works": "Any principal with Reader (or broader) at a scope can enumerate the ARM resource tree and all role assignments/definitions in that scope. This reveals the full RBAC picture and any misassigned Owner / User Access Administrator rights an attacker can abuse to escalate.",
+        "prerequisites": "A credential/token with at least Reader at some scope (management.azure.com).",
+        "impact": "T1580 Cloud Infrastructure Discovery + T1526 Cloud Service Discovery. Complete map of subscriptions/resources and the RBAC assignments needed to plan escalation and lateral movement.",
+        "detection": "Azure Activity Log: high-volume Microsoft.Authorization/roleAssignments and resource 'list' reads from one principal; Defender for Cloud anomalous enumeration.",
+        "artifacts": "Azure Activity Log read/list operations; role assignment reads.",
+        "prevention": "Least-privilege RBAC; avoid broad Reader at management-group/subscription scope; use PIM for privileged roles; monitor enumeration bursts; deny standing Owner / User Access Administrator.",
+        "evasion": "Scope queries to a single resource group; spread reads over time; use an existing automation SP.",
+        "sources": [
+          "MCRTA Azure",
+          "https://attack.mitre.org/techniques/T1580/"
+        ],
+        "misconfiguration": "Broad Reader/Contributor at high scope; Owner or User Access Administrator granted to non-admins; unreviewed custom roles with wildcard actions.",
+        "vulnerable_config": "# Contributor at subscription scope can enumerate everything and run most resource actions:\naz role assignment list --assignee <me> --all   # shows Contributor / Subscription scope",
+        "secure_config": "# Scope RBAC tightly (resource-group not subscription); use PIM; review custom roles for wildcard actions;\n# alert on roleAssignments list/write spikes in Activity Log."
+      }
+    },
+    {
       "type": "command",
       "platform": "windows",
       "requires": [
@@ -19806,6 +20093,198 @@ const COMMAND_DATA = {
           "command": "Enter-PSSession -ComputerName <target> -Credential $cred"
         }
       ]
+    },
+    {
+      "id": "azure-app-credential-abuse",
+      "name": "Entra App Credential Abuse (Add-MgApplicationPassword)",
+      "command": "Add-MgApplicationPassword -ApplicationId \"<app_object_id>\" | ConvertTo-Json",
+      "description": "As an owner of an Entra application (or with the right permissions), add a new client secret to it, then authenticate as that application's service principal. If the app/SP holds directory roles or RBAC assignments, this is both privilege escalation and stealthy persistence that survives the user's password reset.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "Microsoft Graph PowerShell",
+        "az"
+      ],
+      "tags": [
+        "azure",
+        "entra-id",
+        "service-principal",
+        "persistence",
+        "credential-abuse",
+        "application",
+        "mcrta"
+      ],
+      "category": "Persistence",
+      "subcategory": "Cloud - Azure",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+      "examples": [
+        {
+          "label": "Find apps you own",
+          "command": "Get-MgUserOwnedObject -UserId <your_user_id> | ConvertTo-Json"
+        },
+        {
+          "label": "Add a secret to an app you own",
+          "command": "Add-MgApplicationPassword -ApplicationId \"<app_object_id>\" | ConvertTo-Json   # returns SecretText"
+        },
+        {
+          "label": "Authenticate as the app's service principal with the new secret",
+          "command": "az login --service-principal -u <app_client_id> -p <new_secret> --tenant <tenant_id>"
+        },
+        {
+          "label": "Check the app/SP's directory role",
+          "command": "Get-MgServicePrincipal -Filter \"AppId eq '<app_client_id>'\" | ConvertTo-Json"
+        }
+      ],
+      "notes": "Why it's powerful persistence: you never touch the user's password/MFA - you mint a NEW credential on an application principal, which authenticates non-interactively (often exempt from user-focused Conditional Access). If the app/SP has an Entra directory role (e.g., an app with RoleManagement or Directory write) or ARM RBAC, adding a secret escalates to that. App owners can add credentials by default. Related abuse: Add-MgServicePrincipalPassword, or add a certificate (Add-MgApplicationKey) for quieter long-term access. Secrets you add are visible under the app's Certificates & secrets - defenders can spot unexpected ones.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Microsoft Learn - Add-MgApplicationPassword",
+          "url": "https://learn.microsoft.com/en-us/powershell/module/microsoft.graph.applications/add-mgapplicationpassword"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "azure-entra-enum",
+          "rel": "prereq",
+          "note": "Find owned/over-privileged apps first"
+        },
+        {
+          "id": "azure-authentication",
+          "rel": "next",
+          "note": "Authenticate as the SP with the new secret"
+        }
+      ],
+      "opsec": "loud",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1098.001"
+      ],
+      "defense": {
+        "why_it_works": "By default an application's owner can add credentials (secrets/certs) to it. A service principal with an added secret authenticates non-interactively as the app, inheriting the app's directory roles and ARM RBAC. This bypasses the original user's password/MFA and persists independently of that user, making it a favored escalation + persistence technique.",
+        "prerequisites": "Ownership of (or write access to) an Entra application/service principal - typically obtained after compromising a user who owns apps. The app should ideally hold a role worth inheriting.",
+        "impact": "T1098.001 Account Manipulation: Additional Cloud Credentials. Durable, MFA-independent access as the application/service principal at its privilege level - persistence and, if the app is privileged, escalation.",
+        "detection": "Entra audit logs: 'Add service principal credentials' / 'Update application - Certificates and secrets management' events; new keyCredentials/passwordCredentials on apps; SP sign-ins using a brand-new credential. Alert on credential additions to privileged apps.",
+        "artifacts": "Entra AuditLogs credential-add events; unexpected secrets under the app's Certificates & secrets; non-interactive SP sign-ins.",
+        "prevention": "Restrict who can own/manage app registrations; review application owners regularly. Alert on credential additions (especially to privileged apps). Prefer certificate credentials with governance; use app management policies to restrict secret creation. Apply least privilege to app/SP role assignments.",
+        "evasion": "Add a certificate instead of a secret (quieter), give it a legitimate-looking name, and use the SP from expected automation contexts.",
+        "sources": [
+          "MCRTA Azure",
+          "https://attack.mitre.org/techniques/T1098/001/"
+        ],
+        "misconfiguration": "App owners unrestricted; privileged apps/SPs (directory roles or Owner/Contributor RBAC) whose ownership is loosely controlled; no alerting on credential additions.",
+        "vulnerable_config": "# Compromised user owns an app that has a directory role -> add a secret and become that app:\nAdd-MgApplicationPassword -ApplicationId <app_obj_id>   # then log in as the SP",
+        "secure_config": "# Restrict app registration ownership + use Entra app management policies to limit secret creation;\n# alert on passwordCredential/keyCredential additions; least-privilege app role assignments; review owners."
+      }
+    },
+    {
+      "id": "azure-entra-enum",
+      "name": "Entra ID (Azure AD) Enumeration via Microsoft Graph",
+      "command": "Get-MgUser -All | ConvertTo-Json",
+      "description": "Enumerate the Entra ID tenant with Microsoft Graph PowerShell after authenticating: users, groups, devices, applications, service principals, directory roles, and app/delegated permissions - the identity attack surface.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "Microsoft Graph PowerShell"
+      ],
+      "tags": [
+        "azure",
+        "entra-id",
+        "azure-ad",
+        "enumeration",
+        "service-principal",
+        "directory-roles",
+        "mcrta"
+      ],
+      "category": "Enumeration",
+      "subcategory": "Cloud - Azure",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+      "examples": [
+        {
+          "label": "Unauth: is the org using Entra ID? (IdP realm check)",
+          "command": "curl -s \"https://login.microsoftonline.com/getuserrealm.srf?login=<user>@<domain>&xml=1\""
+        },
+        {
+          "label": "Directory roles + members",
+          "command": "Get-MgDirectoryRole | ConvertTo-Json\nGet-MgDirectoryRoleMember -DirectoryRoleId <role_id> | ConvertTo-Json"
+        },
+        {
+          "label": "Applications + owners",
+          "command": "Get-MgApplication\nGet-MgApplication -ApplicationId <app_obj_id> | ConvertTo-Json\nGet-MgApplicationOwner -ApplicationId <app_obj_id> | ConvertTo-Json"
+        },
+        {
+          "label": "App permissions (roles it requests/holds)",
+          "command": "$app = Get-MgApplication -ApplicationId <app_obj_id>; $app.RequiredResourceAccess"
+        },
+        {
+          "label": "Microsoft Graph app roles",
+          "command": "$res = Get-MgServicePrincipal -Filter \"DisplayName eq 'Microsoft Graph'\"; $res.AppRoles | Where-Object {$_.Id -eq '<AppRoleID>'} | ConvertTo-Json"
+        }
+      ],
+      "notes": "Every Entra object has a unique objectId. Objects: Users, Groups (security/dynamic/M365), Devices (AAD-joined/hybrid/registered), Applications (+ service principals + managed identities). Directory roles = Entra admin roles (Global Admin, Application Admin, User Admin...) - distinct from ARM RBAC roles. getuserrealm.srf tells you (unauthenticated) whether a domain is Managed (Entra) or Federated. Enumerate app RequiredResourceAccess / OAuth2 permissions to find over-privileged apps to abuse.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Microsoft Learn - Microsoft Graph PowerShell",
+          "url": "https://learn.microsoft.com/en-us/powershell/microsoftgraph/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "azure-app-credential-abuse",
+          "rel": "next",
+          "note": "Abuse an app you own by adding a credential"
+        },
+        {
+          "id": "azure-arm-enum",
+          "rel": "next",
+          "note": "Enumerate the ARM side"
+        }
+      ],
+      "opsec": "moderate",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1087.004",
+        "T1069.003",
+        "T1526"
+      ],
+      "defense": {
+        "why_it_works": "By default any authenticated Entra principal can read most directory objects (users, groups, apps, service principals, roles) via Microsoft Graph. Attackers use this open read access to map identities, find over-privileged apps/SPs, and locate escalation paths - no admin required.",
+        "prerequisites": "Any valid Entra credential/token with default directory read (or Directory.Read.All).",
+        "impact": "T1087.004 Account Discovery: Cloud Account + T1069.003 Permission Groups Discovery: Cloud Groups + T1526 Cloud Service Discovery. Full identity map of the tenant to plan privilege escalation.",
+        "detection": "Entra audit / Microsoft Graph activity logs for bulk directory reads; Defender for Cloud Apps anomalous enumeration; unusual Graph API volume from one principal.",
+        "artifacts": "Entra AuditLogs / MicrosoftGraphActivityLogs; high-volume directory read calls.",
+        "prevention": "Restrict guest and member default directory permissions (Entra user settings / external collaboration). Least-privilege app permissions. Monitor Graph read volume. Use PIM for admin roles.",
+        "evasion": "Throttle queries and scope filters to avoid bulk-read spikes; use a legitimate app's token.",
+        "sources": [
+          "MCRTA Azure",
+          "https://attack.mitre.org/techniques/T1087/004/",
+          "https://attack.mitre.org/techniques/T1526/"
+        ],
+        "misconfiguration": "Default directory read left wide open; over-privileged enterprise apps/service principals; standing Global Admins (no PIM).",
+        "vulnerable_config": "# Any user can enumerate every app + its permissions:\nGet-MgApplication; (Get-MgApplication -ApplicationId <id>).RequiredResourceAccess",
+        "secure_config": "# Restrict directory read for members/guests; enforce least-privilege app permissions;\n# use Entra PIM for just-in-time admin; alert on bulk Graph directory reads."
+      }
     },
     {
       "id": "ad-enum4linux",
@@ -92403,8 +92882,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 919,
-  "buildDate": "2026-09-09T12:28:25.671Z",
+  "totalCommands": 924,
+  "buildDate": "2026-09-09T12:57:41.168Z",
   "certifications": [
     "CDSA",
     "CPTS",

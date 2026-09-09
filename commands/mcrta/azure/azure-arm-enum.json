@@ -1,0 +1,93 @@
+{
+  "id": "azure-arm-enum",
+  "name": "Azure Resource Manager (ARM) Enumeration",
+  "command": "az resource list -o table",
+  "description": "Enumerate the ARM side with az CLI: subscriptions, resource groups, resources, and - critically - role assignments and role definitions (RBAC) to find what your principal can do and where you can escalate.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "az"
+  ],
+  "tags": [
+    "azure",
+    "arm",
+    "rbac",
+    "enumeration",
+    "role-assignment",
+    "subscription",
+    "mcrta"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - Azure",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+  "examples": [
+    {
+      "label": "Current session + subscriptions",
+      "command": "az account show\naz account list --all"
+    },
+    {
+      "label": "Resource groups + resources",
+      "command": "az group list\naz resource list --resource-group <rg_name>"
+    },
+    {
+      "label": "Role assignments (who has what)",
+      "command": "az role assignment list --all\naz role assignment list --assignee <objectId_or_email_or_SP> --all"
+    },
+    {
+      "label": "Role definitions (permissions per role)",
+      "command": "az role definition list -n <RoleName>\naz role definition list --custom-role-only"
+    }
+  ],
+  "notes": "ARM hierarchy: Tenant -> Management Group -> Subscription -> Resource Group -> Resource; RBAC role assignments inherit top-down. Built-in roles: Owner (full + can assign roles), Contributor (full but NOT role assignment), Reader (read-only), plus custom roles. Hunt for: your principal's assignments (--assignee), custom roles with dangerous actions, and Owner / User Access Administrator to escalate by assigning yourself a role. ARM REST base: https://management.azure.com/{version}/{resource}?{query}.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Microsoft Learn - az role",
+      "url": "https://learn.microsoft.com/en-us/cli/azure/role"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "azure-managed-identity-token",
+      "rel": "next",
+      "note": "Steal a VM managed-identity token for more ARM access"
+    },
+    {
+      "id": "azure-entra-enum",
+      "rel": "alternative",
+      "note": "Entra ID side enumeration"
+    }
+  ],
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1580",
+    "T1526"
+  ],
+  "defense": {
+    "why_it_works": "Any principal with Reader (or broader) at a scope can enumerate the ARM resource tree and all role assignments/definitions in that scope. This reveals the full RBAC picture and any misassigned Owner / User Access Administrator rights an attacker can abuse to escalate.",
+    "prerequisites": "A credential/token with at least Reader at some scope (management.azure.com).",
+    "impact": "T1580 Cloud Infrastructure Discovery + T1526 Cloud Service Discovery. Complete map of subscriptions/resources and the RBAC assignments needed to plan escalation and lateral movement.",
+    "detection": "Azure Activity Log: high-volume Microsoft.Authorization/roleAssignments and resource 'list' reads from one principal; Defender for Cloud anomalous enumeration.",
+    "artifacts": "Azure Activity Log read/list operations; role assignment reads.",
+    "prevention": "Least-privilege RBAC; avoid broad Reader at management-group/subscription scope; use PIM for privileged roles; monitor enumeration bursts; deny standing Owner / User Access Administrator.",
+    "evasion": "Scope queries to a single resource group; spread reads over time; use an existing automation SP.",
+    "sources": [
+      "MCRTA Azure",
+      "https://attack.mitre.org/techniques/T1580/"
+    ],
+    "misconfiguration": "Broad Reader/Contributor at high scope; Owner or User Access Administrator granted to non-admins; unreviewed custom roles with wildcard actions.",
+    "vulnerable_config": "# Contributor at subscription scope can enumerate everything and run most resource actions:\naz role assignment list --assignee <me> --all   # shows Contributor / Subscription scope",
+    "secure_config": "# Scope RBAC tightly (resource-group not subscription); use PIM; review custom roles for wildcard actions;\n# alert on roleAssignments list/write spikes in Activity Log."
+  }
+}

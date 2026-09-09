@@ -1,0 +1,97 @@
+{
+  "id": "azure-authentication",
+  "name": "Azure Authentication (az / Az PowerShell / Mg Graph)",
+  "command": "az login --service-principal -u <app_id> -p <secret> --tenant <tenant_id>",
+  "description": "Authenticate to Azure/Entra as a compromised user or service principal across the three CLIs: az (cross-platform, ARM), Az PowerShell (ARM), and Microsoft Graph PowerShell (Entra ID). Supports password, client-secret/cert, and access-token flows.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "az",
+    "Az PowerShell",
+    "Microsoft Graph PowerShell"
+  ],
+  "tags": [
+    "azure",
+    "entra-id",
+    "authentication",
+    "service-principal",
+    "access-token",
+    "mcrta"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - Azure",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+  "examples": [
+    {
+      "label": "az - user (interactive / device code)",
+      "command": "az login   # or: az login --use-device-code"
+    },
+    {
+      "label": "az - service principal (app id + secret)",
+      "command": "az login --service-principal -u <app_id> -p <client_secret> --tenant <tenant_id>"
+    },
+    {
+      "label": "az - get an ARM access token",
+      "command": "az account get-access-token --resource=https://management.azure.com"
+    },
+    {
+      "label": "Az PowerShell - user / SP / token",
+      "command": "Connect-AzAccount\nConnect-AzAccount -ServicePrincipal -Tenant <tenant_id> -Credential $cred\nConnect-AzAccount -AccessToken <ARM_token> -AccountId <id>"
+    },
+    {
+      "label": "Microsoft Graph - Entra directory access",
+      "command": "Connect-MgGraph -Scopes \"Directory.Read.All\"; Get-MgContext\nConnect-MgGraph -AccessToken <graph_token>"
+    }
+  ],
+  "notes": "Three planes: az / Az PowerShell target ARM (management.azure.com); Mg Graph targets Entra ID (graph.microsoft.com) - you often need BOTH (a token for one resource does not work on the other). For -ServicePrincipal $cred: Username = Application (Client) ID, Password = client secret. Long-term creds = user pw / SSO pw / client id+secret/cert; short-term = OAuth access token. Grab an ARM token with 'az account get-access-token' and reuse it via Connect-AzAccount -AccessToken.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Microsoft Learn - Azure CLI",
+      "url": "https://learn.microsoft.com/en-us/cli/azure/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "azure-entra-enum",
+      "rel": "next",
+      "note": "Enumerate Entra ID once authenticated"
+    },
+    {
+      "id": "azure-arm-enum",
+      "rel": "next",
+      "note": "Enumerate ARM resources and RBAC"
+    }
+  ],
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1078.004"
+  ],
+  "defense": {
+    "why_it_works": "Azure exposes the same identities through multiple credential types (passwords, service-principal secrets/certs, OAuth access tokens) across ARM and Microsoft Graph. Any valid credential - including a stolen access token - grants API access at the identity's assigned RBAC/directory-role scope, with no host foothold required.",
+    "prerequisites": "A valid credential: user password, service-principal app id + secret/cert, or an OAuth access token for management.azure.com or graph.microsoft.com.",
+    "impact": "T1078.004 Valid Accounts: Cloud Accounts. API access to Azure/Entra at the principal's privilege - the entry point for all further cloud enumeration and attack.",
+    "detection": "Entra sign-in logs: interactive vs non-interactive / service-principal sign-ins, new/unusual IPs, ROPC / device-code flows, impossible travel. Azure Activity Log for token use.",
+    "artifacts": "Entra ID SignInLogs (UPN/appId, IP, clientAppUsed), Azure Activity Log, token issuance events.",
+    "prevention": "Conditional Access (MFA, block legacy/ROPC, device compliance, named locations). Least-privilege RBAC + Entra roles. Short-lived credentials; rotate SP secrets; prefer managed identities/certs over secrets.",
+    "evasion": "Use tokens (no interactive sign-in), authenticate from an allowed IP/region, and reuse a legitimate service principal to blend with normal automation.",
+    "sources": [
+      "MCRTA Azure",
+      "https://attack.mitre.org/techniques/T1078/004/"
+    ],
+    "misconfiguration": "No Conditional Access / MFA; long-lived service-principal secrets; over-privileged users/SPs.",
+    "vulnerable_config": "# SP with a long-lived secret and Contributor at subscription scope, no CA/MFA:\naz login --service-principal -u <app_id> -p <secret> --tenant <tid>   # succeeds from anywhere",
+    "secure_config": "# Enforce Conditional Access + MFA; block ROPC/legacy auth.\n# Use managed identities or cert-based SP auth; rotate secrets; scope RBAC to least privilege."
+  }
+}

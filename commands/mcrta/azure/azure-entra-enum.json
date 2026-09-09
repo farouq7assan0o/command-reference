@@ -1,0 +1,99 @@
+{
+  "id": "azure-entra-enum",
+  "name": "Entra ID (Azure AD) Enumeration via Microsoft Graph",
+  "command": "Get-MgUser -All | ConvertTo-Json",
+  "description": "Enumerate the Entra ID tenant with Microsoft Graph PowerShell after authenticating: users, groups, devices, applications, service principals, directory roles, and app/delegated permissions - the identity attack surface.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "Microsoft Graph PowerShell"
+  ],
+  "tags": [
+    "azure",
+    "entra-id",
+    "azure-ad",
+    "enumeration",
+    "service-principal",
+    "directory-roles",
+    "mcrta"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - Azure",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+  "examples": [
+    {
+      "label": "Unauth: is the org using Entra ID? (IdP realm check)",
+      "command": "curl -s \"https://login.microsoftonline.com/getuserrealm.srf?login=<user>@<domain>&xml=1\""
+    },
+    {
+      "label": "Directory roles + members",
+      "command": "Get-MgDirectoryRole | ConvertTo-Json\nGet-MgDirectoryRoleMember -DirectoryRoleId <role_id> | ConvertTo-Json"
+    },
+    {
+      "label": "Applications + owners",
+      "command": "Get-MgApplication\nGet-MgApplication -ApplicationId <app_obj_id> | ConvertTo-Json\nGet-MgApplicationOwner -ApplicationId <app_obj_id> | ConvertTo-Json"
+    },
+    {
+      "label": "App permissions (roles it requests/holds)",
+      "command": "$app = Get-MgApplication -ApplicationId <app_obj_id>; $app.RequiredResourceAccess"
+    },
+    {
+      "label": "Microsoft Graph app roles",
+      "command": "$res = Get-MgServicePrincipal -Filter \"DisplayName eq 'Microsoft Graph'\"; $res.AppRoles | Where-Object {$_.Id -eq '<AppRoleID>'} | ConvertTo-Json"
+    }
+  ],
+  "notes": "Every Entra object has a unique objectId. Objects: Users, Groups (security/dynamic/M365), Devices (AAD-joined/hybrid/registered), Applications (+ service principals + managed identities). Directory roles = Entra admin roles (Global Admin, Application Admin, User Admin...) - distinct from ARM RBAC roles. getuserrealm.srf tells you (unauthenticated) whether a domain is Managed (Entra) or Federated. Enumerate app RequiredResourceAccess / OAuth2 permissions to find over-privileged apps to abuse.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Microsoft Learn - Microsoft Graph PowerShell",
+      "url": "https://learn.microsoft.com/en-us/powershell/microsoftgraph/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "azure-app-credential-abuse",
+      "rel": "next",
+      "note": "Abuse an app you own by adding a credential"
+    },
+    {
+      "id": "azure-arm-enum",
+      "rel": "next",
+      "note": "Enumerate the ARM side"
+    }
+  ],
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1087.004",
+    "T1069.003",
+    "T1526"
+  ],
+  "defense": {
+    "why_it_works": "By default any authenticated Entra principal can read most directory objects (users, groups, apps, service principals, roles) via Microsoft Graph. Attackers use this open read access to map identities, find over-privileged apps/SPs, and locate escalation paths - no admin required.",
+    "prerequisites": "Any valid Entra credential/token with default directory read (or Directory.Read.All).",
+    "impact": "T1087.004 Account Discovery: Cloud Account + T1069.003 Permission Groups Discovery: Cloud Groups + T1526 Cloud Service Discovery. Full identity map of the tenant to plan privilege escalation.",
+    "detection": "Entra audit / Microsoft Graph activity logs for bulk directory reads; Defender for Cloud Apps anomalous enumeration; unusual Graph API volume from one principal.",
+    "artifacts": "Entra AuditLogs / MicrosoftGraphActivityLogs; high-volume directory read calls.",
+    "prevention": "Restrict guest and member default directory permissions (Entra user settings / external collaboration). Least-privilege app permissions. Monitor Graph read volume. Use PIM for admin roles.",
+    "evasion": "Throttle queries and scope filters to avoid bulk-read spikes; use a legitimate app's token.",
+    "sources": [
+      "MCRTA Azure",
+      "https://attack.mitre.org/techniques/T1087/004/",
+      "https://attack.mitre.org/techniques/T1526/"
+    ],
+    "misconfiguration": "Default directory read left wide open; over-privileged enterprise apps/service principals; standing Global Admins (no PIM).",
+    "vulnerable_config": "# Any user can enumerate every app + its permissions:\nGet-MgApplication; (Get-MgApplication -ApplicationId <id>).RequiredResourceAccess",
+    "secure_config": "# Restrict directory read for members/guests; enforce least-privilege app permissions;\n# use Entra PIM for just-in-time admin; alert on bulk Graph directory reads."
+  }
+}

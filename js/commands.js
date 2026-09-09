@@ -20222,6 +20222,14 @@ const COMMAND_DATA = {
           "command": "curl -s \"https://login.microsoftonline.com/getuserrealm.srf?login=<user>@<domain>&xml=1\""
         },
         {
+          "label": "Users + a user's group memberships",
+          "command": "Get-MgUser -All | ConvertTo-Json\nGet-MgUserMemberOf -UserId <user_id> | ConvertTo-Json"
+        },
+        {
+          "label": "Groups + members (find privileged/dynamic groups)",
+          "command": "Get-MgGroup -All | ConvertTo-Json\nGet-MgGroupMember -GroupId <group_id> | ConvertTo-Json"
+        },
+        {
           "label": "Directory roles + members",
           "command": "Get-MgDirectoryRole | ConvertTo-Json\nGet-MgDirectoryRoleMember -DirectoryRoleId <role_id> | ConvertTo-Json"
         },
@@ -93655,7 +93663,7 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 932,
-  "buildDate": "2026-09-09T13:08:27.211Z",
+  "buildDate": "2026-09-09T14:05:02.443Z",
   "certifications": [
     "CDSA",
     "CPTS",

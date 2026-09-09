@@ -51658,6 +51658,114 @@ const COMMAND_DATA = {
       "exam": "exam-ok"
     },
     {
+      "id": "oscp-exam-methodology",
+      "name": "OSCP Exam Methodology & Rules Playbook",
+      "command": "# Per host: Enumerate -> Foothold -> Local enum -> PrivEsc -> Loot -> (AD set: pivot to DC). Screenshot everything.",
+      "description": "Orientation for the 24-hour proctored OSCP exam: the point structure and rules (esp. the Metasploit-once limit), the per-host loop, the AD-set flow, and the anti-rabbit-hole habits. Open this at the start and whenever you stall.",
+      "platform": "multi",
+      "type": "reference",
+      "category": "Fundamentals",
+      "subcategory": "Methodology",
+      "certifications": [
+        "OSCP"
+      ],
+      "primary_cert": "OSCP",
+      "source": "OSCP PEN-200 Chapter 1: Penetration Testing with Kali Linux - General Course Information",
+      "opsec": "quiet",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1595",
+        "T1078"
+      ],
+      "tags": [
+        "methodology",
+        "playbook",
+        "exam",
+        "oscp",
+        "rules",
+        "checklist"
+      ],
+      "tools": [
+        "nmap",
+        "ffuf",
+        "linpeas",
+        "winpeas",
+        "ligolo-ng"
+      ],
+      "steps": [
+        {
+          "label": "0. Know the rules (before you touch anything)",
+          "command": "# ~5-6 targets, 70/100 to pass, 23h45 hacking + 24h to submit the report. Metasploit/meterpreter (+ auto exploits, msfvenom-with-multi/handler counts) allowed on ONE single target only. No other automated exploitation tools (sqlmap/automatic exploit chaining is restricted - check current rules), no AI. Manual exploitation everywhere else."
+        },
+        {
+          "label": "1. Enumerate EVERY host thoroughly (don't jump to exploit)",
+          "command": "# Full TCP: nmap -p- --min-rate 1000 -Pn <ip> ; then -sCV on open ports ; then UDP top ports. Web: gobuster/ffuf + manual review + source/robots.txt. Enumerate until you have a concrete lead. Cards: nmap-*, ffuf-directory, gs-web-recon."
+        },
+        {
+          "label": "2. Foothold (manual first, public exploits adapted)",
+          "command": "# Default/weak creds, service misconfig, then searchsploit a version match and ADAPT the PoC (fix offsets/paths/shellcode). Cards: exploit-vetting, fix-web-exploit, fix-memory-corruption-exploit, cross-compile-exploit, web injection cards."
+        },
+        {
+          "label": "3. Local enumeration after every shell",
+          "command": "# Stabilise TTY, then linpeas/winpeas + manual. whoami /priv, sudo -l, SUID, cron, services, kernel. Cards: linux-enum-*, winpe-initial-enum, seimpersonate-printspoofer, weak-service-binary, passwd-write-lpe."
+        },
+        {
+          "label": "4. Privilege escalation -> grab proof",
+          "command": "# Exploit the identified vector to root/SYSTEM, then read proof.txt (and local.txt as the low-priv user). Screenshot: id/whoami + hostname + ip a + the flag, in one shot."
+        },
+        {
+          "label": "5. AD set: foothold -> loot creds -> lateral -> DC",
+          "command": "# The connected AD set (3 hosts) is a large chunk of points. Enumerate (bloodhound-python, ldapdomaindump), get creds (kerberoast/asrep/mimikatz/secretsdump), reuse them (PtH/PtT/evil-winrm/psexec), reach the DC. Cards: ad-* , pth-*, *-ptt, impacket-exec, crtp/cpts AD cards."
+        },
+        {
+          "label": "6. Pivot to unreachable hosts, then re-scan",
+          "command": "# Tunnel through your foothold and re-enumerate the new subnet. Cards: ligolo-ng-pivot, chisel-socks, ssh-dynamic-socks, proxychains-run."
+        },
+        {
+          "label": "7. Document continuously",
+          "command": "# Screenshot every step with proof (command + output + host + IP). Keep per-host notes and copies of all exploits/commands used. You will not remember at hour 20."
+        }
+      ],
+      "examples": [
+        {
+          "label": "Proof screenshot one-liner (Linux)",
+          "command": "id; hostname; ip a | grep inet; cat proof.txt"
+        },
+        {
+          "label": "Proof screenshot one-liner (Windows)",
+          "command": "whoami; hostname; ipconfig; type C:\\Users\\Administrator\\Desktop\\proof.txt"
+        }
+      ],
+      "notes": "POINTS: need 70/100. Typical layout: standalone machines + a 3-host AD set worth a big block - plan time so you don't miss the AD set. METASPLOIT RULE: you may use Metasploit/Meterpreter (and its auto-exploits / multi-handler / a single msfvenom+exploit combo) against ONE target of your choice for the whole exam; everything else must be manual. Read the current exam guide - rules change. ANTI-RABBIT-HOLE HABITS: (1) enumerate MORE before assuming a box is hard - most stalls are missed enumeration. (2) time-box each target; move on and come back. (3) if a box is broken/behaving oddly, REVERT it. (4) re-test found creds on every host/service. (5) don't overfocus on kernel CVEs - misconfig/creds/services win more. (6) keep a running notes file with every command + screenshot as you go. (7) for public exploits: read the code, fix the offset/target/IP/shellcode, cross-compile if needed - don't run blind. WHEN STUCK: re-enumerate, re-read service banners, try the next port/service, test creds everywhere, take a short break. LINKED CARDS: search the ids named per step.",
+      "references": [
+        {
+          "title": "OffSec - OSCP Exam Guide",
+          "url": "https://help.offsec.com/hc/en-us/articles/360040165632-OSCP-Exam-Guide"
+        },
+        {
+          "title": "OffSec PEN-200",
+          "url": "https://www.offsec.com/courses/pen-200/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "exploit-vetting",
+          "note": "Vet + adapt a public exploit before running it",
+          "rel": "next"
+        },
+        {
+          "id": "ligolo-ng-pivot",
+          "note": "Pivot to internal hosts, then re-scan",
+          "rel": "next"
+        },
+        {
+          "id": "ad-bloodhound-python",
+          "note": "Map the AD set once you have a foothold",
+          "rel": "next"
+        }
+      ]
+    },
+    {
       "id": "osticket-sensitive-data-exposure",
       "name": "osTicket - Email Harvesting & Sensitive Data Exposure",
       "command": "# 1) create a ticket at /open.php -> get a company email  2) reuse leaked creds at /scp/login.php  3) read tickets for leaked passwords",
@@ -92175,8 +92283,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 917,
-  "buildDate": "2026-09-09T11:11:12.512Z",
+  "totalCommands": 918,
+  "buildDate": "2026-09-09T11:28:43.425Z",
   "certifications": [
     "CDSA",
     "CPTS",

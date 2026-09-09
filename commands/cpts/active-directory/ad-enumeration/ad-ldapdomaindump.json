@@ -1,0 +1,110 @@
+{
+  "id": "ad-ldapdomaindump",
+  "name": "ldapdomaindump - AD Dump via LDAP (HTML/JSON/greppable)",
+  "command": "sudo ldapdomaindump -u '<domain>\\<user>' -p '<password>' <dc_ip> -o loot/",
+  "description": "Dumps the whole directory over LDAP into browsable HTML plus JSON and greppable .grep files: users, groups, computers, domain policy, and trusts. One command gives you an offline, searchable copy of the domain - ideal early enum, and it works with an anonymous bind when the DC allows it.",
+  "platform": "linux",
+  "type": "command",
+  "opsec": "moderate",
+  "category": "Enumeration",
+  "subcategory": "AD Enumeration",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 13: Active Directory Enumeration & Attacks",
+  "tags": [
+    "ldapdomaindump",
+    "ldap",
+    "ad-enumeration",
+    "password-policy",
+    "recon",
+    "linux"
+  ],
+  "mitre": [
+    "T1087.002",
+    "T1069.002",
+    "T1482"
+  ],
+  "exam": "exam-ok",
+  "notes": "Runs entirely over LDAP (389) / LDAPS (636) from Linux - no Windows host needed. OUTPUT (in -o dir): domain_users.html, domain_groups.html, domain_computers.html, domain_policy.html, domain_trusts.html, plus matching .json and .grep files. The HTML is clickable/cross-linked; the .grep files are perfect for `grep`-ing SPNs, descriptions (password-in-description!), adminCount, pwdLastSet, and UAC flags. ANONYMOUS BIND: if the DC allows it, drop -u/-p and just point at ldap://<dc_ip> to pull the password policy and more with no creds. Complements BloodHound (attack paths) - ldapdomaindump is the fast flat inventory. Also reachable via the impacket dependency (it ships ldapdomaindump). GOTCHA: add the DC to /etc/hosts and use the FQDN if name resolution fails.",
+  "examples": [
+    {
+      "label": "Authenticated dump to a loot folder",
+      "command": "sudo ldapdomaindump -u 'INLANEFREIGHT\\forend' -p 'Klmcargo2' 172.16.5.5 -o ldapdump/"
+    },
+    {
+      "label": "Anonymous bind (no creds) - often still gets the password policy",
+      "command": "sudo ldapdomaindump ldap://172.16.5.5 -o anon/"
+    },
+    {
+      "label": "Grep the greppable output for interesting data",
+      "command": "grep -i 'pass\\|admincount\\|servicePrincipalName' ldapdump/domain_users.grep"
+    }
+  ],
+  "references": [
+    {
+      "title": "ldapdomaindump (dirkjanm)",
+      "url": "https://github.com/dirkjanm/ldapdomaindump"
+    },
+    {
+      "title": "HTB Academy - Active Directory Enumeration & Attacks",
+      "url": "https://academy.hackthebox.com/module/details/143"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "ad-bloodhound-python",
+      "rel": "next",
+      "note": "Graph the attack paths after the flat LDAP inventory"
+    },
+    {
+      "id": "ad-ldapsearch-pwpolicy",
+      "rel": "alternative",
+      "note": "Manual LDAP query for the password policy"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Active Directory's default read ACL lets any authenticated user (and, when anonymous bind is enabled, any unauthenticated client) read most of the directory over LDAP. ldapdomaindump issues broad LDAP queries and renders the results, so a single low-privileged account produces a full offline map of users, groups, computers, policy, and trusts.",
+    "prerequisites": "Network access to the DC on 389/636. Valid domain credentials, OR an anonymous-bind-enabled DC for unauthenticated dumps.",
+    "impact": "T1087.002 Account Discovery: Domain Account + T1069.002 Permission Groups Discovery + T1482 Domain Trust Discovery. A complete, searchable inventory of the domain that seeds every later attack (kerberoast targets, admin groups, trust paths, password-policy for spraying).",
+    "detection": "Bulk LDAP queries from one non-DC source in a short window (Microsoft Defender for Identity 'Account Enumeration Reconnaissance'; Event 1644 with LDAP query logging). The .html/.json/.grep output files on the attacker host. Anonymous LDAP binds (Event 2889 on the DC) when creds are omitted.",
+    "artifacts": "domain_*.html/json/grep files | burst of LDAP 389/636 queries from a workstation | anonymous bind events (2889) on the DC",
+    "prevention": "Disable anonymous LDAP binds (dsHeuristics). Deploy MDI for recon detection. Apply least privilege / tiering. Monitor and baseline LDAP query volume. Restrict which hosts may query the DC's LDAP.",
+    "evasion": "Use valid creds (anonymous binds are logged distinctly). Query during business hours to blend with normal LDAP volume. Scope queries rather than pulling everything at once.",
+    "sources": [
+      "HTB M13",
+      "MITRE T1087.002",
+      "MITRE T1069.002",
+      "MITRE T1482",
+      "https://github.com/dirkjanm/ldapdomaindump"
+    ],
+    "misconfiguration": "Anonymous LDAP bind enabled on the DC, or the default authenticated-users read ACL left wide open, lets low/no-privilege clients inventory the whole domain.",
+    "vulnerable_config": "# Anonymous bind allowed -> no creds needed:\nsudo ldapdomaindump ldap://<dc_ip> -o anon/   # succeeds -> misconfig\n# Any authenticated user can read all users/groups/computers/policy/trusts by default",
+    "secure_config": "# Disable anonymous binds (should be default):\n#   dsHeuristics 7th char must NOT be 2 (2 = anonymous read enabled)\n# Monitor LDAP recon:\n#   Enable 'Field Engineering' LDAP diagnostics (Event 1644) and baseline\n#   Deploy Microsoft Defender for Identity (Account Enumeration Reconnaissance)\n# Least privilege + tiering; restrict LDAP source hosts via firewall."
+  },
+  "tools": [
+    "ldapdomaindump"
+  ],
+  "variations": [
+    {
+      "label": "Kerberos auth",
+      "command": "sudo ldapdomaindump -k -u '<domain>\\<user>' <dc_fqdn> -o loot/"
+    },
+    {
+      "label": "Force LDAPS (636)",
+      "command": "sudo ldapdomaindump -u '<domain>\\<user>' -p '<password>' ldaps://<dc_ip> -o loot/"
+    }
+  ],
+  "steps": [
+    {
+      "label": "Dump the domain over LDAP",
+      "command": "sudo ldapdomaindump -u '<domain>\\<user>' -p '<password>' <dc_ip> -o loot/"
+    },
+    {
+      "label": "Open the HTML or grep the .grep files for quick wins",
+      "command": "xdg-open loot/domain_users.html ; grep -i pass loot/domain_users.grep"
+    }
+  ]
+}

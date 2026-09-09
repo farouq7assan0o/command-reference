@@ -8232,6 +8232,111 @@ const COMMAND_DATA = {
       }
     },
     {
+      "id": "cdsa-analyst-methodology",
+      "name": "CDSA SOC Analyst Investigation & Reporting Playbook",
+      "command": "# Flow: Triage -> Scope -> Investigate (pivot log sources + timeline) -> Attribute (ATT&CK/kill chain) -> Contain/Eradicate/Recover -> Report",
+      "description": "Orientation for the CDSA exam and day-to-day SOC work: how to take an alert or dataset, investigate it across log sources, build an evidence-backed timeline, map it to ATT&CK, and write the incident report. The CDSA exam is investigation + report writing - this is the workflow and what the report must contain.",
+      "platform": "multi",
+      "type": "reference",
+      "category": "Incident Response",
+      "subcategory": "Methodology",
+      "certifications": [
+        "CDSA"
+      ],
+      "source": "CDSA Module 01: Incident Handling Process + Module 15: Security Incident Reporting",
+      "opsec": "silent",
+      "tags": [
+        "methodology",
+        "playbook",
+        "soc",
+        "cdsa",
+        "incident-response",
+        "threat-hunting",
+        "reporting",
+        "blue-team"
+      ],
+      "tools": [
+        "Splunk",
+        "Elastic",
+        "Wireshark",
+        "Zeek",
+        "TheHive"
+      ],
+      "steps": [
+        {
+          "label": "1. Triage the alert (is it real? how bad?)",
+          "command": "# Validate the detection (rule out false positive), grab the raw event, note the initial indicator (host/user/IP/hash/process). Assign severity + category. Cards: cdsa-incident-categories, cdsa-ir-lifecycle, cdsa-cyber-kill-chain."
+        },
+        {
+          "label": "2. Scope it (what/when/where/who)",
+          "command": "# Establish the time window, affected hosts/accounts, and the entry indicator. Pull everything around that pivot from the SIEM. Cards: cdsa-spl-fundamentals, cdsa-kql-fundamentals, cdsa-splunk-data-exploration, cdsa-windows-event-ids-siem."
+        },
+        {
+          "label": "3. Investigate - pivot across log sources + build a TIMELINE",
+          "command": "# Correlate: Windows Security/Sysmon events, PowerShell 4104, SIEM (Splunk/Elastic), network (Zeek/PCAP/tshark), endpoint, and disk/memory forensics. Every finding gets a timestamp. Cards: cdsa-get-winevent, cdsa-sysmon-event-ids, cdsa-m14-ad-attack-detection, cdsa-m07-tshark-wireshark, cdsa-m08-*, cdsa-m13-*."
+        },
+        {
+          "label": "4. Attribute - map activity to ATT&CK / kill chain (Pyramid of Pain)",
+          "command": "# Identify the TTPs (not just IOCs) and place them on the kill chain: recon -> initial access -> execution -> persistence -> priv-esc -> defense-evasion -> cred-access -> lateral -> C2 -> exfil/impact. Prioritise TTP-level detections (harder for the attacker to change). Cards: cdsa-cyber-kill-chain, cdsa-m12-sigma-rules, cdsa-m12-yara-hunting."
+        },
+        {
+          "label": "5. Contain / Eradicate / Recover",
+          "command": "# Isolate affected hosts, disable compromised accounts, remove persistence, restore from known-good, reset credentials/krbtgt (x2) if AD. Cards: cdsa-ir-lifecycle, cdsa-m06-* (Windows attacks & defense)."
+        },
+        {
+          "label": "6. Report - evidence-backed, timeline-driven",
+          "command": "# Exec summary -> timeline of events -> technical findings (with evidence + ATT&CK IDs) -> IOCs -> impact/scope -> remediation -> lessons learned. Cards: cdsa-m15-incident-reporting."
+        }
+      ],
+      "examples": [
+        {
+          "label": "Splunk: pull everything around a suspect host in a window",
+          "command": "index=main host=<host> earliest=\"<mm/dd/yyyy:HH:MM:SS>\" latest=\"<...>\" | sort _time | table _time, source, EventCode, user, Image, process"
+        },
+        {
+          "label": "Build a quick timeline (sorted, deduped) of key events",
+          "command": "index=main (EventCode=4624 OR EventCode=4688 OR EventCode=4104 OR EventCode=4769) host=<host> | sort _time | table _time, EventCode, user, Image, CommandLine"
+        }
+      ],
+      "notes": "MINDSET: the CDSA exam gives you data (SIEM/logs/PCAP/disk) and questions, and you write a professional incident report - so investigate to ANSWER with evidence, and record timestamps as you go (you will rebuild the timeline for the report). WORKFLOW: triage -> scope -> investigate (pivot + timeline) -> attribute (ATT&CK/kill chain) -> contain/eradicate/recover -> report. PIVOTING: start from the one known indicator and expand - an IP leads to hosts, a host to processes (Sysmon 1) and logons (4624/4625), a process to network (Sysmon 3) and children, a user to their sessions and Kerberos activity (4768/4769). PYRAMID OF PAIN: hashes/IPs/domains are cheap for attackers to change; TTPs and tools hurt most - prioritise TTP-level findings. KILL CHAIN: place every finding on a phase so gaps in your timeline become obvious. EVIDENCE DISCIPLINE: every claim in the report needs a log line / screenshot / artifact + a timestamp + (where possible) an ATT&CK technique ID. REPORT STRUCTURE (M15): executive summary (non-technical), incident timeline, detailed findings with evidence, IOCs, affected scope/impact, containment & remediation, lessons learned. LINKED CARDS: search the ids named per step.",
+      "references": [
+        {
+          "title": "HTB Academy - Incident Handling Process",
+          "url": "https://academy.hackthebox.com/module/details/230"
+        },
+        {
+          "title": "HTB Academy - Security Incident Reporting",
+          "url": "https://academy.hackthebox.com/module/details/240"
+        },
+        {
+          "title": "MITRE ATT&CK",
+          "url": "https://attack.mitre.org/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "cdsa-cyber-kill-chain",
+          "rel": "next",
+          "note": "Frame findings on the kill chain + Pyramid of Pain"
+        },
+        {
+          "id": "cdsa-m14-ad-attack-detection",
+          "rel": "next",
+          "note": "The SPL detections you'll run during investigation"
+        },
+        {
+          "id": "cdsa-m15-incident-reporting",
+          "rel": "next",
+          "note": "What the final report must contain"
+        },
+        {
+          "id": "cdsa-ir-lifecycle",
+          "rel": "prereq",
+          "note": "The IR lifecycle this workflow sits inside"
+        }
+      ]
+    },
+    {
       "type": "command",
       "platform": "linux",
       "requires": [
@@ -92283,8 +92388,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 918,
-  "buildDate": "2026-09-09T11:28:43.425Z",
+  "totalCommands": 919,
+  "buildDate": "2026-09-09T12:04:32.360Z",
   "certifications": [
     "CDSA",
     "CPTS",

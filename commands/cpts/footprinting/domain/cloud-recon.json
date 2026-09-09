@@ -21,7 +21,8 @@
   "subcategory": "Cloud",
   "certifications": [
     "CPTS",
-    "OSCP"
+    "OSCP",
+    "MCRTA"
   ],
   "primary_cert": "CPTS",
   "source": "CPTS Module 04: Footprinting",
@@ -80,7 +81,7 @@
   "defense": {
     "why_it_works": "Cloud providers expose APIs and CLI commands (AWS DescribeInstances, ListBuckets; GCP gcloud compute instances list; Azure az vm list) that return detailed infrastructure information to any authenticated caller. Adversaries with compromised credentials enumerate compute instances, storage buckets, and database resources to map the environment and identify high-value targets for the next phase.",
     "prerequisites": "The target's cloud footprint (public buckets/APIs), and for authenticated calls, valid cloud credentials or keys.",
-    "impact": "Exposed cloud assets — open storage buckets, instance metadata, misconfigured APIs — often leaking data or credentials.",
+    "impact": "Exposed cloud assets \u2014 open storage buckets, instance metadata, misconfigured APIs \u2014 often leaking data or credentials.",
     "detection": "Monitor for suspicious enumeration of cloud infrastructure via discovery APIs or CLI tools: repeated listing operations (DescribeInstances, ListBuckets, az vm list) from new or untrusted identities, unusual geolocations or IPs, or rapid multi-service discovery in sequence. Correlate discovery API usage with later snapshot creation or instance modification.",
     "artifacts": "Public bucket access logs; authenticated API calls recorded in cloud audit trails (e.g. AWS CloudTrail).",
     "prevention": "Limit permissions to discover cloud infrastructure in accordance with least privilege. Minimize the number of users with IAM roles that have administrative privileges. Reduce permanent privileged role assignments and conduct periodic entitlement reviews on IAM users, roles, and policies.",
@@ -88,7 +89,7 @@
       "MITRE T1580"
     ],
     "misconfiguration": "Services expose excessive information: version banners, supported auth methods, valid usernames via error responses. IPMI has no authentication (version 2.0 cipher 0 vulnerability). RSH/rexec trust .rhosts files. rsync shares readable anonymously. Oracle TNS allows remote poisoning in older versions.",
-    "vulnerable_config": "# IPMI cipher 0 — no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data — auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS — version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
-    "secure_config": "# IPMI — disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync — require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec — disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS — disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
+    "vulnerable_config": "# IPMI cipher 0 \u2014 no authentication required:\n# ipmitool -H <ip> -U admin -P '' -I lanplus -C 0 chassis status\n# Returns valid data \u2014 auth bypassed entirely\n\n# rsync anonymous access:\n# rsync --list-only rsync://<ip>/  # lists all modules without auth\n# rsync rsync://<ip>/backup /tmp   # downloads backup files\n\n# Oracle TNS \u2014 version banner reveals exact version:\n# nmap -p 1521 -sV -> Oracle Database 11.2.0.4 (exact version)",
+    "secure_config": "# IPMI \u2014 disable cipher 0, enable only strong ciphers:\n# /etc/ipmi/ipmievd.conf: IPMI_CIPHER_SUITE=17  (AES, mandatory auth)\n# Or disable IPMI entirely if not needed (BMC IPMI = critical attack surface)\n\n# rsync \u2014 require auth:\n# /etc/rsyncd.conf:\n# [backup]\n#   auth users = backupuser\n#   secrets file = /etc/rsyncd.secrets\n#   hosts allow = 10.10.1.0/24\n\n# RSH/rexec \u2014 disable entirely (replaced by SSH):\nsystemctl disable rsh.socket rexec.socket rlogin.socket\n\n# Oracle TNS \u2014 disable remote admin, enforce auth:\n# sqlnet.ora: SQLNET.AUTHENTICATION_SERVICES = (BEQ, TCPS)  (not NONE)"
   }
 }

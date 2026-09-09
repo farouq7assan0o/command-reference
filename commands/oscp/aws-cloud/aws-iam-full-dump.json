@@ -24,7 +24,8 @@
   "category": "Enumeration",
   "subcategory": "Cloud - AWS",
   "certifications": [
-    "OSCP"
+    "OSCP",
+    "MCRTA"
   ],
   "primary_cert": "OSCP",
   "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.5.2, 24.5.3)",

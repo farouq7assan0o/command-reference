@@ -4287,7 +4287,8 @@ const COMMAND_DATA = {
       "category": "Enumeration",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.3.3, 24.3.4)",
@@ -4401,7 +4402,8 @@ const COMMAND_DATA = {
       "category": "Lateral Movement",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.10.2 - 25.10.3)",
@@ -4531,7 +4533,8 @@ const COMMAND_DATA = {
       "category": "Credential Access",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.5.3)",
@@ -4659,7 +4662,8 @@ const COMMAND_DATA = {
       "category": "Enumeration",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.3.2, 24.3.3)",
@@ -4774,7 +4778,8 @@ const COMMAND_DATA = {
       "category": "Enumeration",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.5.2, 24.5.3)",
@@ -4895,7 +4900,8 @@ const COMMAND_DATA = {
       "category": "Enumeration",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.4.3)",
@@ -5018,7 +5024,8 @@ const COMMAND_DATA = {
       "category": "Exploitation",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.6.2)",
@@ -5145,7 +5152,8 @@ const COMMAND_DATA = {
       "category": "Exploitation",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.5.2, 25.5.3)",
@@ -5275,7 +5283,8 @@ const COMMAND_DATA = {
       "category": "Enumeration",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.3.4, 24.5.4)",
@@ -5406,7 +5415,8 @@ const COMMAND_DATA = {
       "category": "Exploitation",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.9.2 - 25.9.6)",
@@ -5527,7 +5537,8 @@ const COMMAND_DATA = {
       "category": "Credential Access",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.4.1, 25.4.2)",
@@ -5652,7 +5663,8 @@ const COMMAND_DATA = {
       "category": "Credential Access",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 25: Attacking AWS Cloud Infrastructure (25.10.6)",
@@ -5774,7 +5786,8 @@ const COMMAND_DATA = {
       "category": "Enumeration",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.3.1, 24.4.2)",
@@ -5882,7 +5895,8 @@ const COMMAND_DATA = {
       "category": "Enumeration",
       "subcategory": "Cloud - AWS",
       "certifications": [
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "OSCP",
       "source": "OSCP PEN-200 Chapter 24: Enumerating AWS Cloud Infrastructure (24.2.2, 24.2.3)",
@@ -9029,7 +9043,8 @@ const COMMAND_DATA = {
       "subcategory": "Cloud",
       "certifications": [
         "CPTS",
-        "OSCP"
+        "OSCP",
+        "MCRTA"
       ],
       "primary_cert": "CPTS",
       "source": "CPTS Module 04: Footprinting",
@@ -92389,12 +92404,13 @@ const COMMAND_DATA = {
     }
   ],
   "totalCommands": 919,
-  "buildDate": "2026-09-09T12:04:32.360Z",
+  "buildDate": "2026-09-09T12:28:25.671Z",
   "certifications": [
     "CDSA",
     "CPTS",
     "CRTP",
     "CWES",
+    "MCRTA",
     "OSCP"
   ],
   "types": [

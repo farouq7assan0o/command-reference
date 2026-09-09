@@ -1,0 +1,87 @@
+{
+  "id": "gcp-sa-key-persistence",
+  "name": "GCP Persistence via Service Account Key Creation",
+  "command": "gcloud iam service-accounts keys create key.json --iam-account <sa_email>",
+  "description": "Create a new JSON key for a service account you can manage (iam.serviceAccountKeys.create). The downloaded key is a long-lived, MFA-independent credential that authenticates as the SA - stealthy persistence that survives user password resets and outlives the original foothold.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "gcloud"
+  ],
+  "tags": [
+    "gcp",
+    "persistence",
+    "service-account",
+    "key-creation",
+    "credential-abuse",
+    "mcrta"
+  ],
+  "category": "Persistence",
+  "subcategory": "Cloud - GCP",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+  "examples": [
+    {
+      "label": "Mint a new key for a target SA",
+      "command": "gcloud iam service-accounts keys create bd.json --iam-account <sa_email>"
+    },
+    {
+      "label": "Authenticate as the SA with the new key (anywhere, anytime)",
+      "command": "gcloud auth activate-service-account --key-file bd.json"
+    },
+    {
+      "label": "List existing keys (spot yours / others')",
+      "command": "gcloud iam service-accounts keys list --iam-account <sa_email>"
+    }
+  ],
+  "notes": "Why it's strong persistence: an SA key is a self-contained bearer credential - no MFA, no interactive login, valid until explicitly deleted (default keys don't expire). If you can create a key on a privileged SA (or one you escalated to), you keep its access indefinitely. Related: add a key by uploading your own public key, or grant yourself iam.serviceAccountTokenCreator for token-based (keyless, quieter) persistence. Defenders can enumerate keys with 'keys list' - your key shows a creation date, so it's detectable. Prefer impersonation for stealth; use key creation when you need durable offline access.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Google Cloud - Managing service account keys",
+      "url": "https://cloud.google.com/iam/docs/keys-create-delete"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gcp-iam-privesc",
+      "rel": "prereq",
+      "note": "Escalate to a privileged SA first, then persist"
+    },
+    {
+      "id": "gcp-authentication",
+      "rel": "next",
+      "note": "Activate the new key to regain access"
+    }
+  ],
+  "opsec": "loud",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1098.001"
+  ],
+  "defense": {
+    "why_it_works": "A principal with iam.serviceAccountKeys.create can mint a new long-lived JSON key for a service account. The key authenticates non-interactively as the SA with no MFA and no expiry by default, so it persists independently of the compromised user and the original access path.",
+    "prerequisites": "iam.serviceAccountKeys.create on a target SA (via Editor/Owner, Service Account Key Admin, or a custom role) - often obtained after escalation.",
+    "impact": "T1098.001 Account Manipulation: Additional Cloud Credentials. Durable, MFA-independent access as the service account at its privilege - persistence and (if the SA is privileged) standing escalation.",
+    "detection": "Cloud Audit Logs: google.iam.admin.v1.CreateServiceAccountKey events, especially on privileged SAs or from unexpected principals. Periodic review of 'keys list' for unknown keys. SCC key-age/anomaly findings.",
+    "artifacts": "Audit Log CreateServiceAccountKey entries; new user-managed keys under the SA; the downloaded key.json.",
+    "prevention": "Disable SA key creation org-wide (constraints/iam.disableServiceAccountKeyCreation) and use Workload Identity Federation / impersonation instead. Restrict Service Account Key Admin. Alert on CreateServiceAccountKey. Rotate and expire keys; inventory keys regularly.",
+    "evasion": "Prefer token impersonation (no key artifact) where possible; name/time the key to blend with legitimate automation; delete after use if only short-term access is needed.",
+    "sources": [
+      "MCRTA GCP",
+      "https://attack.mitre.org/techniques/T1098/001/"
+    ],
+    "misconfiguration": "SA key creation allowed (no org policy) and key-create permission granted broadly; privileged SAs whose keys anyone with Editor can mint.",
+    "vulnerable_config": "# Any Editor on the project can mint a key for a privileged SA:\ngcloud iam service-accounts keys create bd.json --iam-account <priv_sa>   # long-lived backdoor",
+    "secure_config": "# Org policy: constraints/iam.disableServiceAccountKeyCreation = true\n# Use Workload Identity Federation / short-lived impersonation; restrict Key Admin;\n# alert on CreateServiceAccountKey; inventory + rotate keys."
+  }
+}

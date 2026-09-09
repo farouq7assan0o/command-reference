@@ -1,0 +1,95 @@
+{
+  "id": "gcp-iam-privesc",
+  "name": "GCP IAM Privilege Escalation (misconfigured permissions)",
+  "command": "python3 check_for_privesc.py",
+  "description": "Turn a low-privileged GCP identity into a high-privileged one by abusing dangerous IAM permissions (e.g. iam.roles.update, iam.serviceAccounts.getAccessToken/actAs, iam.serviceAccountKeys.create, setIamPolicy, deploymentmanager). Enumerate the current member's permissions, find a privesc primitive, and exploit it.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "gcloud",
+    "GCP-IAM-Privilege-Escalation"
+  ],
+  "tags": [
+    "gcp",
+    "iam",
+    "privilege-escalation",
+    "service-account",
+    "actas",
+    "rhinosecuritylabs",
+    "mcrta"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Cloud - GCP",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+  "examples": [
+    {
+      "label": "Enumerate the member's actual permissions",
+      "command": "python3 enumerate_member_permissions.py -p <project_id>"
+    },
+    {
+      "label": "Scan for privesc primitives",
+      "command": "python3 check_for_privesc.py"
+    },
+    {
+      "label": "Exploit a misconfigured permission (e.g. update a role you can edit)",
+      "command": "python3 exploit_scripts/iam.roles.update.py"
+    },
+    {
+      "label": "Impersonate a more-privileged SA (if you have actAs/getAccessToken)",
+      "command": "gcloud <cmd> --impersonate-service-account <target_sa_email>\ngcloud iam service-accounts keys create key.json --iam-account <target_sa_email>"
+    }
+  ],
+  "notes": "GCP privesc is about specific dangerous permissions rather than a single 'admin' flag. High-value primitives: iam.serviceAccounts.getAccessToken / iam.serviceAccounts.actAs / iam.serviceAccounts.implicitDelegation (impersonate a more-privileged SA), iam.serviceAccountKeys.create (mint a key for a better SA), iam.roles.update (add permissions to a role you can edit), *.setIamPolicy (bind yourself a better role), deploymentmanager.deployments.create + cloudfunctions/compute (run as a privileged SA), cloudbuild. RhinoSecurityLabs GCP-IAM-Privilege-Escalation automates enumeration (enumerate_member_permissions.py) and detection/exploitation (check_for_privesc.py + exploit_scripts/*). Manual path: gcloud iam service-accounts get-iam-policy to find SAs you can actAs, then --impersonate-service-account or keys create.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "RhinoSecurityLabs - GCP-IAM-Privilege-Escalation",
+      "url": "https://github.com/RhinoSecurityLabs/GCP-IAM-Privilege-Escalation"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gcp-iam-enum",
+      "rel": "prereq",
+      "note": "Enumerate roles/bindings to find the primitive"
+    },
+    {
+      "id": "gcp-sa-key-persistence",
+      "rel": "next",
+      "note": "Persist by minting an SA key after escalating"
+    }
+  ],
+  "opsec": "loud",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1548",
+    "T1098.003"
+  ],
+  "defense": {
+    "why_it_works": "GCP grants fine-grained permissions through roles; several individual permissions are effectively 'admin-equivalent' because they let a principal act as, or grant rights to, a more-privileged identity - e.g. impersonating a service account (actAs/getAccessToken), creating a key for it, editing a role's permission set, or setting an IAM policy. A least-privileged-looking role that includes one of these is a full escalation path.",
+    "prerequisites": "A GCP identity holding at least one dangerous permission (iam.serviceAccounts.getAccessToken/actAs, iam.serviceAccountKeys.create, iam.roles.update, *.setIamPolicy, or a deploy/compute/function 'run-as' permission) over a more-privileged target.",
+    "impact": "T1548 Abuse Elevation Control Mechanism + T1098.003 Account Manipulation: Additional Cloud Roles. Escalation from a limited principal to a highly-privileged SA (up to Owner/Editor), enabling full project/org compromise.",
+    "detection": "Cloud Audit Logs: GenerateAccessToken / SignJwt on service accounts, service-account key creation, roles.update, SetIamPolicy, and deploymentmanager/cloudfunctions runs by unexpected principals. SCC/IAM Recommender flag these dangerous grants.",
+    "artifacts": "Audit Log: iam.serviceAccounts.getAccessToken, CreateServiceAccountKey, UpdateRole, SetIamPolicy events by the escalating principal.",
+    "prevention": "Least privilege - never grant actAs / getAccessToken / serviceAccountKeys.create / roles.update / setIamPolicy broadly. Separate duties. Use IAM Recommender + Policy Analyzer to find and remove escalation-enabling grants. Org policy to disable SA key creation. Alert on the audit events above.",
+    "evasion": "Prefer impersonation (token) over key creation (quieter); perform the escalation once and operate with the impersonated identity from normal contexts.",
+    "sources": [
+      "MCRTA GCP",
+      "https://attack.mitre.org/techniques/T1548/",
+      "https://github.com/RhinoSecurityLabs/GCP-IAM-Privilege-Escalation"
+    ],
+    "misconfiguration": "Non-admins granted actAs/getAccessToken over privileged SAs, serviceAccountKeys.create, iam.roles.update, or *.setIamPolicy; default Editor SAs reusable as escalation targets.",
+    "vulnerable_config": "# Principal can impersonate a project-Editor SA:\ngcloud iam service-accounts get-iam-policy <priv_sa>   # shows you as roles/iam.serviceAccountTokenCreator\ngcloud storage ls --impersonate-service-account <priv_sa>",
+    "secure_config": "# Remove actAs/getAccessToken/keys.create/roles.update/setIamPolicy from non-admin roles;\n# use IAM Recommender + Policy Analyzer to prune escalation paths; disable SA key creation via org policy;\n# alert on GenerateAccessToken/CreateServiceAccountKey/UpdateRole/SetIamPolicy in audit logs."
+  }
+}

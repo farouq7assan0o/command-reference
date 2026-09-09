@@ -1,0 +1,91 @@
+{
+  "id": "gcp-authentication",
+  "name": "GCP Authentication (gcloud user / service-account / token)",
+  "command": "gcloud auth activate-service-account --key-file <sa_key>.json",
+  "description": "Authenticate to Google Cloud with gcloud as a compromised user (OAuth) or service account (JSON key), or by using a stolen OAuth access token. First step for all GCP red-team operations.",
+  "type": "command",
+  "platform": "multi",
+  "requires": [
+    "credentials"
+  ],
+  "tools": [
+    "gcloud"
+  ],
+  "tags": [
+    "gcp",
+    "authentication",
+    "service-account",
+    "access-token",
+    "gcloud",
+    "mcrta"
+  ],
+  "category": "Enumeration",
+  "subcategory": "Cloud - GCP",
+  "certifications": [
+    "MCRTA"
+  ],
+  "primary_cert": "MCRTA",
+  "source": "MCRTA (CyberWarFare Labs) - Multi-Cloud Red Team Analyst: GCP",
+  "examples": [
+    {
+      "label": "User account (OAuth, opens browser)",
+      "command": "gcloud auth login"
+    },
+    {
+      "label": "Service account with a stolen JSON key",
+      "command": "gcloud auth activate-service-account --key-file <sa_key>.json"
+    },
+    {
+      "label": "List authenticated accounts + active config",
+      "command": "gcloud auth list\ngcloud config list"
+    },
+    {
+      "label": "Use a stolen OAuth access token directly",
+      "command": "gcloud projects list --access-token-file token.txt"
+    }
+  ],
+  "notes": "Credential types: long-term = Gmail/Workspace/Cloud Identity user pw, or a service-account JSON key file; short-term = OAuth access token. A leaked SA JSON key is game over for that SA's permissions - activate it and you ARE the service account. Tokens can be passed with --access-token-file <file> on most gcloud commands (no full login). After auth, 'gcloud auth list' shows the active identity and 'gcloud config list' shows the active project. gcloud stores creds on disk (see gcp-stored-credentials) - a foothold on a dev box often yields active tokens/keys.",
+  "references": [
+    {
+      "title": "CyberWarFare Labs - MCRTA",
+      "url": "https://cyberwarfare.live/product/multi-cloud-red-team-analyst-mcrta/"
+    },
+    {
+      "title": "Google Cloud - gcloud auth",
+      "url": "https://cloud.google.com/sdk/gcloud/reference/auth"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gcp-iam-enum",
+      "rel": "next",
+      "note": "Enumerate IAM policies/roles once authenticated"
+    },
+    {
+      "id": "gcp-stored-credentials",
+      "rel": "alternative",
+      "note": "Harvest gcloud creds from a compromised host"
+    }
+  ],
+  "opsec": "moderate",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1078.004"
+  ],
+  "defense": {
+    "why_it_works": "GCP identities authenticate via OAuth (users) or service-account keys, and any valid key or token grants API access at that identity's IAM-granted scope with no host access required. Service-account JSON keys are long-lived bearer secrets - whoever holds the file can act as the SA until the key is revoked.",
+    "prerequisites": "A valid credential: user OAuth login, a service-account JSON key file, or an OAuth access token.",
+    "impact": "T1078.004 Valid Accounts: Cloud Accounts. API access to GCP at the identity's IAM privilege - the entry point for all GCP enumeration and attack.",
+    "detection": "Cloud Audit Logs (Admin Activity / Data Access): authentication and API calls from new IPs/user agents; service-account key usage from unexpected locations; sudden use of a dormant SA. Login Challenge / MFA events for users.",
+    "artifacts": "Cloud Audit Log entries (authenticationInfo.principalEmail, callerIp, userAgent); SA key-based API calls.",
+    "prevention": "Prefer Workload Identity Federation / attached service accounts over downloadable SA keys; disable SA key creation via org policy (iam.disableServiceAccountKeyCreation). Enforce MFA/2SV and context-aware access for users. Rotate/limit key lifetime; alert on SA key usage anomalies.",
+    "evasion": "Use a token or an existing SA key, call from an allowed region, and mimic the SA's normal API patterns.",
+    "sources": [
+      "MCRTA GCP",
+      "https://attack.mitre.org/techniques/T1078/004/"
+    ],
+    "misconfiguration": "Downloadable service-account keys enabled and long-lived; no MFA on users; over-privileged service accounts (Owner/Editor).",
+    "vulnerable_config": "# Leaked SA key with Editor/Owner -> full access:\ngcloud auth activate-service-account --key-file leaked-sa.json   # now you are the SA",
+    "secure_config": "# Org policy: constraints/iam.disableServiceAccountKeyCreation = true\n# Use Workload Identity Federation / attached SAs instead of keys; enforce 2SV;\n# least-privilege SA roles; alert on SA key usage in Cloud Audit Logs."
+  }
+}

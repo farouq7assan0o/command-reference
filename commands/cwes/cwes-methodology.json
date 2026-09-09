@@ -1,0 +1,108 @@
+{
+  "id": "cwes-methodology",
+  "name": "CWES / Web Assessment Methodology & Playbook",
+  "command": "# Flow: Recon/Map -> Fingerprint -> Test each vuln class -> Chain -> Score (CVSS) -> Report",
+  "description": "Orientation for the CWES exam and web assessments: how to work a web target end to end - map it, fingerprint the stack, test each vulnerability class in a sensible order, chain findings, and write them up with CVSS. Open this when you start a target or get stuck.",
+  "platform": "multi",
+  "type": "reference",
+  "category": "Web Exploitation",
+  "subcategory": "Methodology",
+  "certifications": [
+    "CWES"
+  ],
+  "primary_cert": "CWES",
+  "source": "CWES Module 20: Bug Bounty Hunting Process",
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1595.003",
+    "T1190"
+  ],
+  "tags": [
+    "methodology",
+    "playbook",
+    "web",
+    "cwes",
+    "bug-bounty",
+    "checklist"
+  ],
+  "tools": [
+    "burpsuite",
+    "ffuf",
+    "sqlmap",
+    "curl"
+  ],
+  "steps": [
+    {
+      "label": "1. Recon & mapping (know the surface before attacking)",
+      "command": "# Subdomains/vhosts, crawl, robots.txt, sitemap, JS files. Cards: gs-web-recon, ffuf-subdomain, ffuf-vhost, web-crawling, js-deobfuscate (endpoints/secrets in JS), web-archives."
+    },
+    {
+      "label": "2. Fingerprint the stack",
+      "command": "# Server, framework, CMS, WAF. Cards: web-fingerprinting, wafw00f, whatweb, wpscan/joomla/drupal detect, cms discovery."
+    },
+    {
+      "label": "3. Content & parameter discovery",
+      "command": "# Directories, files, params, values. Cards: ffuf-directory, ffuf-page-extension, ffuf-parameter, ffuf-value, fuzzer-flags-ref (filtering)."
+    },
+    {
+      "label": "4. Test each vulnerability class (inject where input is reflected/used)",
+      "command": "# SQLi (sqli-*, sqlmap-*), XSS (xss-*), cmd injection (cmdi-*), file inclusion (lfi-*/rfi), file upload (upload-*), SSRF/SSTI/SSI/XSLT (ssrf-*/ssti-*), XXE (xxe-*), IDOR (idor-*), auth (auth-*/login brute), GraphQL (graphql-*), API (api-*/cors-misconfiguration)."
+    },
+    {
+      "label": "5. Broken auth & access control (high-value, often overlooked)",
+      "command": "# JWT flaws, weak reset/2FA, session issues, IDOR, mass assignment, CORS. Cards: auth-*, idor-*, mass-assignment, cors-misconfiguration."
+    },
+    {
+      "label": "6. Chain findings for impact",
+      "command": "# e.g. reflected value in JS -> parameter -> SQLi -> file write -> RCE; or XSS -> CSRF admin create -> takeover; or SSRF -> cloud metadata. Follow each card's 'recommended' links."
+    },
+    {
+      "label": "7. Score with CVSS + write the finding",
+      "command": "# ref-cvss card / CVSS calculator; then title, impact, steps-to-reproduce, evidence, remediation. Cards: ref-cvss, report-components."
+    }
+  ],
+  "examples": [
+    {
+      "label": "Quick reflect test across a parameter (spot injectable classes)",
+      "command": "curl -s \"http://<target>/page?q=cwestest'\\\"<x>\" | grep -o 'cwestest[^ <]*'"
+    },
+    {
+      "label": "When stuck: pull endpoints/secrets out of the site's JS",
+      "command": "curl -s http://<target>/js/main.js | js-beautify - | grep -oiE '/api/[a-z0-9_/.-]+|apikey|token'"
+    }
+  ],
+  "notes": "ORDER: map -> fingerprint -> discover content/params -> test each class -> chain -> score -> report. WEB TESTING PRIORITIES: test EVERY input (URL, params, headers, cookies, JSON body, file names/metadata) for each class; a value reflected in the response = XSS candidate, a value used in a query/file/command/URL = SQLi/LFI/cmdi/SSRF candidate. HIGH-VALUE, OFTEN-MISSED: IDOR (increment/enumerate object IDs), broken auth (JWT alg/none, weak reset tokens, 2FA bypass), CORS (reflective origin + credentials), mass assignment (add admin=true), GraphQL introspection. CHAIN for impact - a lone reflected XSS scores low, but XSS->admin CSRF->RCE is critical; SSRF->cloud metadata->creds is critical. CVSS: score base metrics honestly (AV/AC/PR/UI/S/C/I/A); mark scope-changed when you pivot trust boundaries. REPORT: title, severity+CVSS vector, impact, reproducible steps, evidence, remediation. LINKED CARDS: search the ids named per step.",
+  "references": [
+    {
+      "title": "HTB Academy - Bug Bounty Hunting Process",
+      "url": "https://academy.hackthebox.com/module/details/159"
+    },
+    {
+      "title": "OWASP Web Security Testing Guide",
+      "url": "https://owasp.org/www-project-web-security-testing-guide/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "js-deobfuscate",
+      "note": "Recon: recover hidden endpoints/secrets from client JS",
+      "rel": "next"
+    },
+    {
+      "id": "ffuf-parameter",
+      "note": "Discover hidden parameters to test",
+      "rel": "next"
+    },
+    {
+      "id": "cors-misconfiguration",
+      "note": "High-value broken-access-control class",
+      "rel": "next"
+    },
+    {
+      "id": "ref-cvss",
+      "note": "Score findings for the report",
+      "rel": "next"
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "id": "js-deobfuscate",
+  "name": "JavaScript Deobfuscation - Recover Endpoints & Secrets",
+  "command": "curl -s http://<target>/js/<file>.js | js-beautify -",
+  "description": "Client-side JS often hides API endpoints, hardcoded credentials/keys, hidden parameters, and logic behind minification, packing, or obfuscation. Beautify then deobfuscate it to recover the real code, then follow the endpoints/secrets you find. A core web-recon step (CWES M06).",
+  "platform": "linux",
+  "requires": [
+    "network-access"
+  ],
+  "protocols": [
+    "http"
+  ],
+  "tools": [
+    "js-beautify",
+    "prettier",
+    "curl",
+    "CyberChef"
+  ],
+  "tags": [
+    "javascript",
+    "deobfuscation",
+    "web-recon",
+    "beautify",
+    "secrets",
+    "endpoints"
+  ],
+  "category": "Web Exploitation",
+  "subcategory": "JavaScript Deobfuscation",
+  "certifications": [
+    "CWES",
+    "CPTS"
+  ],
+  "primary_cert": "CWES",
+  "source": "CWES Module 06: JavaScript Deobfuscation",
+  "opsec": "quiet",
+  "exam": "exam-ok",
+  "mitre": [
+    "T1592.002",
+    "T1140"
+  ],
+  "steps": [
+    {
+      "label": "Pull the script and beautify it (undo minify/pack)",
+      "command": "curl -s http://<target>/js/main.js | js-beautify - > main.pretty.js"
+    },
+    {
+      "label": "Deobfuscate packed/obfuscated code (eval/packer/hex arrays)",
+      "command": "# paste into https://deobfuscate.io or de4js; or use CyberChef 'JavaScript Beautify' + 'Decode' recipe"
+    },
+    {
+      "label": "Grep the recovered code for endpoints, params, secrets",
+      "command": "grep -oiE \"(/api/[a-z0-9_/.-]+|https?://[^'\\\"]+|apikey|api_key|token|secret|password|bearer)\" main.pretty.js | sort -u"
+    },
+    {
+      "label": "Replay a discovered endpoint",
+      "command": "curl -s -X POST http://<target>/api/<hidden_endpoint> -H 'Content-Type: application/json' -d '{}'"
+    }
+  ],
+  "examples": [
+    {
+      "label": "Decode a base64 string found in the JS",
+      "command": "echo '<b64_string>' | base64 -d"
+    },
+    {
+      "label": "Decode hex-encoded strings",
+      "command": "echo '<hex>' | xxd -r -p"
+    },
+    {
+      "label": "Rot13 (Caesar) decode",
+      "command": "echo '<text>' | tr 'A-Za-z' 'N-ZA-Mn-za-m'"
+    }
+  ],
+  "notes": "M06 flow: minify/pack/obfuscate are reversible - beautify (prettier / js-beautify / CyberChef 'JavaScript Beautify') to restore structure, then deobfuscate (de4js, deobfuscate.io, or manually resolve packer arrays and eval() chains). Common hidden loot: undocumented /api/ routes, hardcoded API keys/JWTs, hidden form fields, debug flags, client-side auth checks (bypassable). Encodings seen in the module: Base64 (atob/btoa), Hex, Caesar/Rot13, char-code arrays (String.fromCharCode / charCodeAt). Always diff the deobfuscated logic for client-side 'security' you can simply skip server-side. Blue-team JS deobf (malware) is a different context - see cdsa-m11 cards.",
+  "references": [
+    {
+      "title": "HTB Academy - JavaScript Deobfuscation",
+      "url": "https://academy.hackthebox.com/module/details/41"
+    },
+    {
+      "title": "de4js",
+      "url": "https://lelinhtinh.github.io/de4js/"
+    },
+    {
+      "title": "CyberChef",
+      "url": "https://gchq.github.io/CyberChef/"
+    }
+  ],
+  "recommended": [
+    {
+      "id": "gs-web-recon",
+      "note": "Broader web recon / fingerprinting",
+      "rel": "prereq"
+    },
+    {
+      "id": "ffuf-parameter",
+      "note": "Fuzz the hidden parameters you recovered from the JS",
+      "rel": "next"
+    }
+  ],
+  "variations": [
+    {
+      "label": "Beautify with prettier",
+      "command": "prettier --parser babel main.js > main.pretty.js"
+    },
+    {
+      "label": "Find all script sources on a page",
+      "command": "curl -s http://<target>/ | grep -oE 'src=\"[^\"]+\\.js\"' | cut -d'\"' -f2"
+    }
+  ],
+  "defense": {
+    "why_it_works": "Obfuscation and minification only transform JavaScript for size/readability - they are fully reversible and provide no security. Anything shipped to the browser (endpoints, keys, logic, 'hidden' fields) is recoverable by beautifying and decoding, because the client must ultimately execute the real code.",
+    "prerequisites": "Access to the application's client-side JavaScript (any visitor has it). Beautifier/deobfuscator (js-beautify, prettier, de4js, CyberChef).",
+    "impact": "T1592.002 Gather Victim Host Information: Software + T1140 Deobfuscate/Decode Information. Recovers hidden API endpoints, hardcoded secrets/keys/JWTs, and client-side logic - directly expands attack surface and can yield immediate credential/API access.",
+    "detection": "Largely client-side (no server signal for beautifying). Follow-on requests to newly-discovered hidden endpoints may appear in access logs. Hardcoded-key reuse from a client can be detected by anomalous key usage.",
+    "artifacts": "Requests to endpoints only referenced inside JS; use of API keys that were embedded in client code.",
+    "prevention": "Never ship secrets/keys in client-side code - keep them server-side. Do not rely on obfuscation for security. Enforce all authorization server-side (client checks are advisory). Rotate any key ever exposed in client code. Scope client API keys minimally.",
+    "evasion": "Purely local analysis - nothing to evade until you act on the findings; then throttle/scope requests to discovered endpoints.",
+    "sources": [
+      "HTB CWES M06",
+      "MITRE T1140",
+      "MITRE T1592.002"
+    ],
+    "misconfiguration": "Secrets, API keys, or authorization logic placed in client-side JavaScript under the assumption that obfuscation/minification hides them.",
+    "vulnerable_config": "// shipped app.js (minified/obfuscated but recoverable):\nconst API_KEY='sk_live_2b9...';\nfetch('/api/admin/users',{headers:{'x-api-key':API_KEY}})\n// beautify -> key + hidden /api/admin/ endpoint recovered by any visitor",
+    "secure_config": "// Keep secrets server-side; proxy privileged calls through the backend.\n// Client holds NO API keys; the server authenticates the session and authorizes each action.\n// Treat all client code as public; enforce authZ server-side; rotate leaked keys."
+  },
+  "type": "command"
+}

